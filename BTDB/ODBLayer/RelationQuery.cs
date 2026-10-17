@@ -328,7 +328,7 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.LongCount):
             {
                 if (lambda != null) source = Where(source, lambda);
-                using var scanner = CreateScanner(source, null);
+                using var scanner = CreateScanner(source, null, false);
                 var count = scanner.Count();
                 if (name == nameof(Queryable.Count)) return checked((int)count);
                 return count;
@@ -336,7 +336,7 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.Any):
             {
                 if (lambda != null) source = Where(source, lambda);
-                using var scanner = CreateScanner(source, null);
+                using var scanner = CreateScanner(source, null, false);
                 return scanner.MoveNext();
             }
             case nameof(Queryable.All) when lambda != null:
@@ -344,7 +344,7 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
                 // All stops at the first row failing the predicate, exactly like Any of its negation.
                 source = new WhereQueryNode(source,
                     new NotQueryNode(RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode)));
-                using var scanner = CreateScanner(source, null);
+                using var scanner = CreateScanner(source, null, false);
                 return !scanner.MoveNext();
             }
             case nameof(Queryable.First):
@@ -362,7 +362,9 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
                 if (lambda == null)
                     throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
                 var selector = RelationQueryAstBuilder.BuildSelector(lambda, _queryNode);
-                using var scanner = CreateScanner(source, selector);
+                // Sums and averages of floats or with overflow checks depend on the order of rows.
+                using var scanner = CreateScanner(source, selector,
+                    name is nameof(Queryable.Sum) or nameof(Queryable.Average));
                 var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
                 scanner.Aggregate(aggregator);
                 return aggregator.Result();
@@ -421,9 +423,10 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
         return new(source, RelationQueryAstBuilder.BuildPredicate(predicate, _queryNode));
     }
 
-    RelationQueryScanner CreateScanner(QueryNode source, QueryNode? selector)
+    RelationQueryScanner CreateScanner(QueryNode source, QueryNode? selector, bool orderSensitive = true)
     {
-        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source, selector);
+        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source, selector,
+            orderSensitive);
         return new(_transaction, plan);
     }
 
@@ -1022,30 +1025,25 @@ static class RelationQueryExecutionPlan
     }
 }
 
-/// Compiled relation query: a cursor prefix plus interpreter programs evaluated on serialized key and value bytes.
+/// Compiled relation query: key ranges to scan plus interpreter programs evaluated on serialized key and value bytes.
 sealed class RelationQueryPlan
 {
-    public RelationQueryPlan(byte[] cursorPrefix, bool neverMatches, RelationQueryProgram? keyProgram,
-        RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount, RelationQueryResult? result = null)
+    public RelationQueryPlan(RelationQueryRange[] ranges, RelationQueryProgram? keyProgram,
+        RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount, RelationQueryResult? result = null,
+        RelationQuerySecondaryKey? secondaryKey = null)
     {
-        CursorPrefix = cursorPrefix;
-        NeverMatches = neverMatches;
+        Ranges = ranges;
         KeyProgram = keyProgram;
         ValuePrograms = valuePrograms;
         FrameSize = frameSize;
         ObjectCount = objectCount;
         Result = result;
+        SecondaryKey = secondaryKey;
     }
 
-    /// Where the last program of a matching row stores the selector value; null without a selector.
-    public RelationQueryResult? Result { get; }
-
-    public bool HasPrograms => KeyProgram != null || ValuePrograms != null;
-
-    public byte[] CursorPrefix { get; }
-
-    /// A conjunct folded to false, so no row can match.
-    public bool NeverMatches { get; }
+    /// Ascending, disjoint ranges of primary keys, or of secondary index keys when SecondaryKey is set. No ranges
+    /// means no row can match.
+    public RelationQueryRange[] Ranges { get; }
 
     /// Tests conjuncts using only primary key fields before the value is read. Null when there are none.
     public RelationQueryProgram? KeyProgram { get; }
@@ -1058,6 +1056,38 @@ sealed class RelationQueryPlan
     public int FrameSize { get; }
 
     public int ObjectCount { get; }
+
+    /// Where the last program of a matching row stores the selector value; null without a selector.
+    public RelationQueryResult? Result { get; }
+
+    public RelationQuerySecondaryKey? SecondaryKey { get; }
+
+    /// Whether primary rows are tested by programs.
+    public bool HasPrograms => KeyProgram != null || ValuePrograms != null;
+}
+
+/// Scanning a secondary index: index keys in the plan ranges are tested by IndexProgram, then their primary rows by
+/// the plan programs, in primary key order when SortCandidates is set.
+sealed class RelationQuerySecondaryKey
+{
+    public RelationQuerySecondaryKey(RelationQueryProgram? indexProgram, bool sortCandidates, bool covering,
+        RelationInfo.SecondaryKeyValueToPKLoader toPrimaryKey, byte[] primaryKeyPrefix)
+    {
+        IndexProgram = indexProgram;
+        SortCandidates = sortCandidates;
+        Covering = covering;
+        ToPrimaryKey = toPrimaryKey;
+        PrimaryKeyPrefix = primaryKeyPrefix;
+    }
+
+    public RelationQueryProgram? IndexProgram { get; }
+    public bool SortCandidates { get; }
+
+    /// The index key holds everything needed, so primary rows are never read.
+    public bool Covering { get; }
+
+    public RelationInfo.SecondaryKeyValueToPKLoader ToPrimaryKey { get; }
+    public byte[] PrimaryKeyPrefix { get; }
 }
 
 /// Frame location of a selector value computed for each matching row.
@@ -1193,9 +1223,10 @@ sealed class RelationQueryCompiler
 
     readonly record struct Conjunct(QueryNode Node, int Index, bool Throws);
 
-    /// The optional selector is computed for every matching row into RelationQueryPlan.Result.
+    /// The optional selector is computed for every matching row into RelationQueryPlan.Result. When the result does
+    /// not depend on row order (Count, Any, All, Min, Max), a secondary index may be scanned in its own order.
     public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast,
-        QueryNode? selector = null)
+        QueryNode? selector = null, bool orderSensitive = true)
     {
         var predicate = ExtractPredicate(ast);
         if (predicate != null) CollectFields(predicate);
@@ -1222,25 +1253,79 @@ sealed class RelationQueryCompiler
         foreach (var node in nodes)
         {
             // A false conjunct makes the query empty unless an earlier conjunct could throw first.
-            if (IsFalse(node) && !seenThrowing) return new(_relationInfo.Prefix, true, null, null, 0, 0, result);
+            if (IsFalse(node) && !seenThrowing) return new([], null, null, 0, 0, result);
             if (IsTrue(node)) continue;
             var throws = CanThrow(node);
             conjuncts.Add(new(node, conjuncts.Count, throws));
             seenThrowing |= throws;
         }
 
-        // Equalities encoded in the cursor prefix are removed; every row under the prefix satisfies them.
-        var cursorPrefix = BuildCursorPrefix(transaction, conjuncts, out var prefixFieldCount);
+        // Equalities, IN lists and bounds on leading key fields become key ranges and are removed; every key in the
+        // ranges satisfies them. The primary key wins ties with secondary indexes.
+        var path = AnalyzeAccessPath(transaction, conjuncts, _primaryKeyFields.ToArray(), _relationInfo.Prefix, -1);
+        if (!_relationInfo.HasInKeyValue)
+        {
+            foreach (var (index, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                var prefix = new byte[_relationInfo.PrefixSecondary.Length + 1];
+                _relationInfo.PrefixSecondary.CopyTo(prefix, 0);
+                prefix[^1] = (byte)index;
+                var candidate = AnalyzeAccessPath(transaction, conjuncts,
+                    _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(index).ToArray(), prefix, (int)index);
+                if (candidate.Score > path.Score) path = candidate;
+            }
+        }
 
+        conjuncts.RemoveAll(c => path.Used.Contains(c.Index));
+        var ranges = path.Ranges.ToArray();
+        if (path.SecondaryKeyIndex < 0)
+        {
+            var (keyProgram, valuePrograms) = BuildPrimaryPrograms(conjuncts, selector, path.CommonPrefixLength,
+                path.CommonFieldCount);
+            return new(ranges, keyProgram, valuePrograms, _frameSize, _objectCount, result);
+        }
+
+        // Index conjuncts are tested on index keys; they must not throw, because index order is not row order.
+        var indexConjuncts = new List<Conjunct>();
+        var primaryConjuncts = new List<Conjunct>();
+        var barrier = false;
+        foreach (var conjunct in conjuncts)
+        {
+            barrier |= conjunct.Throws;
+            if (!barrier && UsesOnlyFields(conjunct.Node, path.KeyFields)) indexConjuncts.Add(conjunct);
+            else primaryConjuncts.Add(conjunct);
+        }
+
+        var anyThrows = barrier || selector != null && CanThrow(selector);
+        var covering = !orderSensitive && primaryConjuncts.Count == 0 && !anyThrows &&
+                       (selector == null || UsesOnlyFields(selector, path.KeyFields));
+        var indexProgram = indexConjuncts.Count > 0 || covering && selector != null
+            ? BuildProgram(indexConjuncts, null, path.CommonPrefixLength, path.CommonFieldCount,
+                covering ? selector : null, path.KeyFields, path.Prefix.Length)
+            : null;
+        RelationQueryProgram? primaryKeyProgram = null;
+        RelationQueryProgram?[]? primaryValuePrograms = null;
+        if (!covering)
+            (primaryKeyProgram, primaryValuePrograms) = BuildPrimaryPrograms(primaryConjuncts, selector,
+                _relationInfo.Prefix.Length, 0);
+        var secondaryKey = new RelationQuerySecondaryKey(indexProgram, !covering && (orderSensitive || anyThrows),
+            covering, _relationInfo.GetSKKeyValueToPKMerger((uint)path.SecondaryKeyIndex), _relationInfo.Prefix);
+        return new(ranges, primaryKeyProgram, primaryValuePrograms, _frameSize, _objectCount, result, secondaryKey);
+    }
+
+    (RelationQueryProgram? KeyProgram, RelationQueryProgram?[]? ValuePrograms) BuildPrimaryPrograms(
+        List<Conjunct> conjuncts, QueryNode? selector, int prefixLength, int prefixFieldCount)
+    {
         // Conjuncts are evaluated in a different order than written, so a throwing conjunct must still see every
         // earlier conjunct evaluated first, and nothing after it may move before it.
+        var primaryKeyFields = _primaryKeyFields.ToArray();
         var keyConjuncts = new List<Conjunct>();
         var valueConjuncts = new List<Conjunct>();
         var barrier = false;
         var allPreviousInKey = true;
         foreach (var conjunct in conjuncts)
         {
-            if (UsesOnlyPrimaryKeyFields(conjunct.Node) && !barrier && (!conjunct.Throws || allPreviousInKey))
+            if (UsesOnlyFields(conjunct.Node, primaryKeyFields) && !barrier && (!conjunct.Throws || allPreviousInKey))
             {
                 keyConjuncts.Add(conjunct);
             }
@@ -1255,10 +1340,11 @@ sealed class RelationQueryCompiler
 
         // The selector runs in the last program of a row: the value programs when they exist or it needs value
         // fields, otherwise the key program.
-        var hasValueStage = valueConjuncts.Count > 0 || selector != null && !UsesOnlyPrimaryKeyFields(selector);
+        var hasValueStage = valueConjuncts.Count > 0 || selector != null && !UsesOnlyFields(selector, primaryKeyFields);
         var keyProgram = keyConjuncts.Count == 0 && (selector == null || hasValueStage)
             ? null
-            : BuildProgram(keyConjuncts, null, cursorPrefix.Length, prefixFieldCount, hasValueStage ? null : selector);
+            : BuildProgram(keyConjuncts, null, prefixLength, prefixFieldCount, hasValueStage ? null : selector,
+                primaryKeyFields, _relationInfo.Prefix.Length);
         RelationQueryProgram?[]? valuePrograms = null;
         if (hasValueStage)
         {
@@ -1266,11 +1352,240 @@ sealed class RelationQueryCompiler
             foreach (var (version, _) in _relationInfo.RelationVersions) maxVersion = Math.Max(maxVersion, version);
             valuePrograms = new RelationQueryProgram?[maxVersion + 1];
             foreach (var (version, info) in _relationInfo.RelationVersions)
-                valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, cursorPrefix.Length,
-                    prefixFieldCount, selector);
+                valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, prefixLength, prefixFieldCount,
+                    selector, primaryKeyFields, _relationInfo.Prefix.Length);
         }
 
-        return new(cursorPrefix, false, keyProgram, valuePrograms, _frameSize, _objectCount, result);
+        return (keyProgram, valuePrograms);
+    }
+
+    sealed class AccessPath
+    {
+        public int SecondaryKeyIndex = -1;
+        public TableFieldInfo[] KeyFields = [];
+        public byte[] Prefix = [];
+        public List<RelationQueryRange> Ranges = [];
+
+        /// Bytes and fields shared by every range: Prefix and the leading single-valued equalities.
+        public int CommonPrefixLength;
+
+        public int CommonFieldCount;
+        public readonly HashSet<int> Used = [];
+        public int Score;
+
+        /// An additional range per prefix, for keys a residual conjunct must still see.
+        public Func<byte[], RelationQueryRange>? ExtraRanges;
+    }
+
+    // At most this many ranges come from IN lists, so huge lists stay residual conjuncts.
+    const int MaxRanges = 1024;
+
+    [SkipLocalsInit]
+    AccessPath AnalyzeAccessPath(IInternalObjectDBTransaction transaction, List<Conjunct> conjuncts,
+        TableFieldInfo[] keyFields, byte[] prefix, int secondaryKeyIndex)
+    {
+        var path = new AccessPath
+        {
+            SecondaryKeyIndex = secondaryKeyIndex, KeyFields = keyFields, Prefix = prefix,
+            CommonPrefixLength = prefix.Length
+        };
+        IWriterCtx? writerCtx = null;
+        var prefixes = new List<byte[]> { prefix };
+        var allSingle = true;
+        var fieldIndex = 0;
+        for (; fieldIndex < keyFields.Length; fieldIndex++)
+        {
+            var field = keyFields[fieldIndex];
+            if (field.Computed) break;
+            var values = FindEqualityValues(conjuncts, field.Name, out var conjunctIndex, out var propertyType);
+            if (values == null || !CanSaveConstant(propertyType) || prefixes.Count * values.Count > MaxRanges) break;
+            if (field.Handler!.NeedsCtx()) writerCtx ??= new DBWriterCtx(transaction);
+            var save = field.Handler.Save(propertyType, _relationInfo.TypeConverterFactory);
+            var encodings = new List<byte[]>();
+            foreach (var value in values)
+            {
+                var encoded = Encode(save, writerCtx, propertyType, value);
+                if (!encodings.Exists(e => e.AsSpan().SequenceEqual(encoded))) encodings.Add(encoded);
+            }
+
+            var next = new List<byte[]>(prefixes.Count * encodings.Count);
+            foreach (var p in prefixes)
+            foreach (var e in encodings)
+                next.Add([..p, ..e]);
+            prefixes = next;
+            path.Used.Add(conjunctIndex);
+            path.Score += 2;
+            if (allSingle && encodings.Count == 1)
+            {
+                path.CommonPrefixLength += encodings[0].Length;
+                path.CommonFieldCount++;
+            }
+            else
+            {
+                allSingle = false;
+            }
+        }
+
+        RelationQueryRange CreateRange(byte[] p) => new(p, p, false, null, false);
+        Func<byte[], RelationQueryRange> createRange = CreateRange;
+        if (fieldIndex < keyFields.Length && !keyFields[fieldIndex].Computed)
+            createRange = AnalyzeRangeField(transaction, conjuncts, keyFields[fieldIndex], path) ?? createRange;
+        foreach (var p in prefixes)
+        {
+            path.Ranges.Add(createRange(p));
+            if (path.ExtraRanges != null) path.Ranges.Add(path.ExtraRanges(p));
+        }
+
+        path.Ranges.Sort(static (a, b) => a.Start.AsSpan().SequenceCompareTo(b.Start));
+        return path;
+    }
+
+    // A range on the field after the equalities: ordinal StartsWith on ordered strings, or bounds on fields whose
+    // encoding is order preserving.
+    Func<byte[], RelationQueryRange>? AnalyzeRangeField(IInternalObjectDBTransaction transaction,
+        List<Conjunct> conjuncts, TableFieldInfo field, AccessPath path)
+    {
+        var handler = field.Handler!;
+        object? lower = null, upper = null;
+        var lowerInclusive = false;
+        var upperInclusive = false;
+        Type? type = null;
+        foreach (var conjunct in conjuncts)
+        {
+            if (conjunct.Node is StringMethodQueryNode { Operand: PropQueryNode prop } startsWith &&
+                prop.Name == field.Name && handler.Name == "StringOrderable" && UsesEncodedStartsWith(startsWith))
+            {
+                // StartsWith throws for a null key, so the conjunct stays and the null keys are scanned too.
+                var writer = new MemWriter();
+                writer.WriteStringOrderedPrefix((string)startsWith.Argument!);
+                var encodedPrefix = writer.GetSpan().ToArray();
+                writer = new();
+                writer.WriteStringOrdered(null);
+                var encodedNull = writer.GetSpan().ToArray();
+                path.Score++;
+                path.ExtraRanges = p =>
+                {
+                    byte[] nullKeys = [..p, ..encodedNull];
+                    return new(nullKeys, nullKeys, false, null, false);
+                };
+                return p =>
+                {
+                    byte[] start = [..p, ..encodedPrefix];
+                    return new(start, start, false, null, false);
+                };
+            }
+
+            if (conjunct.Throws) break;
+
+            if (conjunct.Node is not CompareQueryNode compare || !TrySplitPropertyConstant(compare, out var property,
+                    out var constant) || property.Name != field.Name || constant.Value == null ||
+                constant.Value.GetType() != property.Type || !CanSaveConstant(property.Type) ||
+                !RelationQueryKeyRanges.IsOrderPreserving(handler))
+                continue;
+            var op = compare.Left is ConstantQueryNode ? Mirror(compare.Compare) : compare.Compare;
+            if (op is QueryCompare.Greater or QueryCompare.GreaterOrEqual && lower == null)
+            {
+                lower = constant.Value;
+                lowerInclusive = op == QueryCompare.GreaterOrEqual;
+            }
+            else if (op is QueryCompare.Less or QueryCompare.LessOrEqual && upper == null)
+            {
+                upper = constant.Value;
+                upperInclusive = op == QueryCompare.LessOrEqual;
+            }
+            else
+            {
+                continue;
+            }
+
+            type = property.Type;
+            path.Used.Add(conjunct.Index);
+        }
+
+        if (type == null) return null;
+        path.Score++;
+        IWriterCtx? writerCtx = handler.NeedsCtx() ? new DBWriterCtx(transaction) : null;
+        var save = handler.Save(type, _relationInfo.TypeConverterFactory);
+        var lowerBytes = lower == null ? null : Encode(save, writerCtx, type, lower);
+        var upperBytes = upper == null ? null : Encode(save, writerCtx, type, upper);
+        return p => new(p, lowerBytes == null ? p : [..p, ..lowerBytes], lowerBytes != null && !lowerInclusive,
+            upperBytes, upperInclusive);
+    }
+
+    static byte[] Encode(FieldHandlerSave save, IWriterCtx? writerCtx, Type type, object? value)
+    {
+        var writer = new MemWriter();
+        SaveConstant(save, ref writer, writerCtx, type, value);
+        return writer.GetSpan().ToArray();
+    }
+
+    // Values of the first equality, IN list or OR of equalities on the field written before any throwing conjunct.
+    static List<object?>? FindEqualityValues(List<Conjunct> conjuncts, string name, out int conjunctIndex,
+        out Type propertyType)
+    {
+        foreach (var conjunct in conjuncts)
+        {
+            if (conjunct.Throws) break;
+            conjunctIndex = conjunct.Index;
+            switch (conjunct.Node)
+            {
+                case CompareQueryNode { Compare: QueryCompare.Equal } equals
+                    when TrySplitPropertyConstant(equals, out var property, out var constant) &&
+                         property.Name == name && IsExactConstant(property, constant):
+                    propertyType = property.Type;
+                    return [constant.Value];
+                case InSetQueryNode { Operand: PropQueryNode property } inSet when property.Name == name:
+                {
+                    propertyType = property.Type;
+                    var values = new List<object?>();
+                    if (inSet.Set is QueryStringSet stringSet)
+                    {
+                        foreach (var value in stringSet.Lookup.Set) values.Add(value);
+                        if (stringSet.ContainsNull) values.Add(null);
+                        return values;
+                    }
+
+                    if (property.Type.IsEnum) continue;
+                    foreach (var value in (IEnumerable)inSet.Set) values.Add(value);
+                    return values;
+                }
+                case BoolOrQueryNode or:
+                {
+                    var values = new List<object?>();
+                    Type? type = null;
+                    if (CollectOrEqualities(or, name, values, ref type))
+                    {
+                        propertyType = type!;
+                        return values;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        conjunctIndex = -1;
+        propertyType = typeof(void);
+        return null;
+    }
+
+    static bool CollectOrEqualities(QueryNode node, string name, List<object?> values, ref Type? type)
+    {
+        if (node is BoolOrQueryNode or)
+            return CollectOrEqualities(or.Left, name, values, ref type) &&
+                   CollectOrEqualities(or.Right, name, values, ref type);
+        if (node is not CompareQueryNode { Compare: QueryCompare.Equal } equals ||
+            !TrySplitPropertyConstant(equals, out var property, out var constant) || property.Name != name ||
+            !IsExactConstant(property, constant) || type != null && type != property.Type)
+            return false;
+        type = property.Type;
+        values.Add(constant.Value);
+        return true;
+    }
+
+    static bool IsExactConstant(PropQueryNode property, ConstantQueryNode constant)
+    {
+        return constant.Value == null ? property.Type == typeof(string) : constant.Value.GetType() == property.Type;
     }
 
     void CollectFields(QueryNode node)
@@ -1323,10 +1638,13 @@ sealed class RelationQueryCompiler
         return (ushort)_objectCount++;
     }
 
+    /// Key fields are the primary key fields, or the fields of a secondary index key whose prefix has basePrefixLength
+    /// bytes; prefixLength and prefixFieldCount describe the leading fields every scanned key shares.
     RelationQueryProgram BuildProgram(List<Conjunct> conjuncts, ReadOnlyMemory<TableFieldInfo>? valueFields,
-        int cursorPrefixLength, int prefixFieldCount, QueryNode? selector)
+        int prefixLength, int prefixFieldCount, QueryNode? selector, TableFieldInfo[] keyFieldArray,
+        int basePrefixLength)
     {
-        var keyFields = _primaryKeyFields.Span;
+        var keyFields = keyFieldArray.AsSpan();
         var specialized = new List<Conjunct>(conjuncts.Count);
         var seenThrowing = false;
         foreach (var conjunct in conjuncts)
@@ -1360,7 +1678,7 @@ sealed class RelationQueryCompiler
 
         // Fields encoded in the cursor prefix are skipped unless a remaining conjunct still needs them.
         var startField = firstKeyField >= prefixFieldCount ? prefixFieldCount : 0;
-        var keyStart = startField == prefixFieldCount ? cursorPrefixLength : _relationInfo.Prefix.Length;
+        var keyStart = startField == prefixFieldCount ? prefixLength : basePrefixLength;
 
         _encodings.Clear();
         for (var i = startField; i <= lastKeyField; i++) RememberEncoding(keyFields[i]);
@@ -2369,52 +2687,6 @@ sealed class RelationQueryCompiler
         }
     }
 
-    [SkipLocalsInit]
-    byte[] BuildCursorPrefix(IInternalObjectDBTransaction transaction, List<Conjunct> conjuncts,
-        out int prefixFieldCount)
-    {
-        prefixFieldCount = 0;
-        var primaryKeyFields = _primaryKeyFields.Span;
-        if (primaryKeyFields.Length == 0) return _relationInfo.Prefix;
-        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
-        writer.WriteBlock(_relationInfo.Prefix);
-        IWriterCtx? writerCtx = null;
-        foreach (var field in primaryKeyFields)
-        {
-            var conjunctIndex = FindExactProperty(conjuncts, field.Name, out var property, out var constant);
-            if (conjunctIndex < 0) break;
-            if (constant.Value == null && property.Type != typeof(string) ||
-                constant.Value != null && constant.Value.GetType() != property.Type ||
-                !CanSaveConstant(property.Type))
-                break;
-
-            if (field.Handler!.NeedsCtx()) writerCtx ??= new DBWriterCtx(transaction);
-            var saver = field.Handler.Save(property.Type, _relationInfo.TypeConverterFactory);
-            SaveConstant(saver, ref writer, writerCtx, property.Type, constant.Value);
-            conjuncts.RemoveAt(conjunctIndex);
-            prefixFieldCount++;
-        }
-
-        return prefixFieldCount == 0 ? _relationInfo.Prefix : writer.GetSpan().ToArray();
-    }
-
-    // Only an equality before every throwing conjunct can move into the prefix.
-    static int FindExactProperty(List<Conjunct> conjuncts, string propertyName, out PropQueryNode property,
-        out ConstantQueryNode constant)
-    {
-        for (var i = 0; i < conjuncts.Count; i++)
-        {
-            if (conjuncts[i].Node is CompareQueryNode { Compare: QueryCompare.Equal } equals &&
-                TrySplitPropertyConstant(equals, out property, out constant) && property.Name == propertyName)
-                return i;
-            if (conjuncts[i].Throws) break;
-        }
-
-        property = null!;
-        constant = null!;
-        return -1;
-    }
-
     static bool TrySplitPropertyConstant(CompareQueryNode compare, out PropQueryNode prop,
         out ConstantQueryNode constant)
     {
@@ -2772,12 +3044,12 @@ sealed class RelationQueryCompiler
         return false;
     }
 
-    bool UsesOnlyPrimaryKeyFields(QueryNode node)
+    static bool UsesOnlyFields(QueryNode node, TableFieldInfo[] fields)
     {
         var names = new HashSet<string>();
         CollectPropertyNames(node, names);
         foreach (var name in names)
-            if (!IsPrimaryKeyField(name)) return false;
+            if (Array.FindIndex(fields, f => f.Name == name) < 0) return false;
         return true;
     }
 
@@ -2788,7 +3060,8 @@ sealed class RelationQueryCompiler
     }
 }
 
-/// Moves a cursor over rows matching a compiled plan, testing rows on their stored bytes.
+/// Moves a cursor over rows matching a compiled plan, testing rows on their stored bytes. Rows come from the plan key
+/// ranges, or from secondary index keys whose primary rows it looks up.
 sealed class RelationQueryScanner : IDisposable
 {
     const int ValueBufferSize = 4096;
@@ -2796,15 +3069,24 @@ sealed class RelationQueryScanner : IDisposable
     readonly IInternalObjectDBTransaction _transaction;
     readonly CursorIterateCallback _stopAtMatch;
     readonly CursorIterateCallback _aggregateMatches;
+    readonly CursorIterateCallback _countKeys;
+    readonly CursorIterateCallback _collectCandidates;
+    readonly CursorIterateCallback _aggregateIndex;
     readonly long[] _frame;
     readonly object?[] _objects;
     readonly byte[]? _valueBuffer;
     IKeyValueDBCursor? _cursor;
+    IKeyValueDBCursor? _indexCursor;
     RelationQueryAggregator? _aggregator;
+    RelationQueryRange? _range;
+    int _rangeIndex;
+    bool _inRange;
     bool _first = true;
     bool _afterEnd;
     bool _matched;
     bool _skipCurrentRow;
+    List<byte[]>? _candidates;
+    int _candidateIndex;
 
     public RelationQueryScanner(IInternalObjectDBTransaction transaction, RelationQueryPlan plan)
     {
@@ -2812,6 +3094,9 @@ sealed class RelationQueryScanner : IDisposable
         Plan = plan;
         _stopAtMatch = StopAtMatch;
         _aggregateMatches = AggregateMatches;
+        _countKeys = CountKeys;
+        _collectCandidates = CollectCandidate;
+        _aggregateIndex = AggregateIndex;
         _frame = new long[plan.FrameSize / sizeof(long)];
         _objects = new object?[plan.ObjectCount];
         if (plan.ValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
@@ -2820,7 +3105,7 @@ sealed class RelationQueryScanner : IDisposable
 
     public RelationQueryPlan Plan { get; }
 
-    /// Positioned on the matching row after MoveNext returned true.
+    /// Positioned on the matching primary row after MoveNext or MoveLast returned true.
     public IKeyValueDBCursor Cursor
     {
         get
@@ -2830,53 +3115,140 @@ sealed class RelationQueryScanner : IDisposable
         }
     }
 
-    [SkipLocalsInit]
-    public bool MoveNext()
+    IKeyValueDBCursor IndexCursor => _indexCursor ??= _transaction.KeyValueDBTransaction.CreateCursor();
+
+    Span<byte> FrameBytes => MemoryMarshal.AsBytes(_frame.AsSpan());
+
+    void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_cursor == null, this);
         _transaction.ThrowIfDisposed();
+    }
+
+    public bool MoveNext()
+    {
+        ThrowIfDisposed();
         if (_afterEnd) return false;
-        var prefix = Plan.CursorPrefix;
+        if (Plan.SecondaryKey == null) return MoveNextInRanges() || AfterEnd();
+        _candidates ??= CollectCandidates();
+        while (_candidateIndex < _candidates.Count)
+        {
+            var primaryKey = _candidates[_candidateIndex++];
+            if (_cursor!.FindExactKey(primaryKey) && Evaluate(primaryKey)) return true;
+        }
+
+        return AfterEnd();
+    }
+
+    [SkipLocalsInit]
+    bool MoveNextInRanges()
+    {
+        var cursor = _cursor!;
+        Span<byte> keyBuffer = stackalloc byte[512];
         if (_first)
         {
             _first = false;
-            if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return AfterEnd();
-            _skipCurrentRow = false;
-        }
-        else if (!Plan.HasPrograms)
-        {
-            if (!_cursor.FindNextKey(prefix)) return AfterEnd();
-        }
-        else if (_cursor.IsValid())
-        {
-            // FastIterate continues from the previously matched row, which is cheaper than moving the cursor; that row
-            // itself is skipped.
-            _skipCurrentRow = true;
-        }
-        else
-        {
-            // The previously matched row was removed, FindNextKey moves to its next sibling.
-            if (!_cursor.FindNextKey(prefix)) return AfterEnd();
-            _skipCurrentRow = false;
+            _rangeIndex = 0;
+            _inRange = false;
         }
 
-        if (!Plan.HasPrograms) return true;
+        while (_rangeIndex < Plan.Ranges.Length)
+        {
+            var range = Plan.Ranges[_rangeIndex];
+            if (!_inRange)
+            {
+                if (!Seek(cursor, range))
+                {
+                    _rangeIndex++;
+                    continue;
+                }
 
-        // Tests rows starting at the cursor position without moving the cursor per row; iteration stops on the first
-        // matching row or the first key outside the prefix.
-        _matched = false;
-        Span<byte> keyBuffer = stackalloc byte[512];
-        if (Plan.ValuePrograms == null)
-            _cursor.FastIterateNoCursor(ref keyBuffer, _stopAtMatch);
-        else
-            _cursor.FastIterate(ref keyBuffer, _stopAtMatch);
-        return _matched || AfterEnd();
+                _inRange = true;
+                _skipCurrentRow = false;
+            }
+            else if (Plan.HasPrograms && cursor.IsValid())
+            {
+                // FastIterate continues from the previously matched row, which is cheaper than moving the cursor;
+                // that row itself is skipped.
+                _skipCurrentRow = true;
+            }
+            else
+            {
+                // Without programs, or when the previously matched row was removed, FindNextKey moves on.
+                if (!cursor.FindNextKey(range.Prefix))
+                {
+                    NextRange();
+                    continue;
+                }
+
+                _skipCurrentRow = false;
+            }
+
+            if (!Plan.HasPrograms)
+            {
+                if (range.Contains(cursor.GetKeySpan(ref keyBuffer))) return true;
+                NextRange();
+                continue;
+            }
+
+            // Tests rows starting at the cursor position without moving the cursor per row; iteration stops on the
+            // first matching row or the first key outside the range.
+            _matched = false;
+            _range = range;
+            if (Plan.ValuePrograms == null)
+                cursor.FastIterateNoCursor(ref keyBuffer, _stopAtMatch);
+            else
+                cursor.FastIterate(ref keyBuffer, _stopAtMatch);
+            if (_matched) return true;
+            NextRange();
+        }
+
+        return false;
     }
 
-    bool AfterEnd()
+    void NextRange()
     {
-        _afterEnd = true;
-        return false;
+        _rangeIndex++;
+        _inRange = false;
+    }
+
+    /// Positions the cursor on the first key of the range.
+    static bool Seek(IKeyValueDBCursor cursor, RelationQueryRange range)
+    {
+        if (range.Start.Length == range.Prefix.Length) return cursor.FindFirstKey(range.Prefix);
+        switch (cursor.Find(range.Start, (uint)range.Prefix.Length))
+        {
+            case FindResult.Exact:
+            case FindResult.Next:
+                break;
+            case FindResult.Previous:
+                if (!cursor.FindNextKey(range.Prefix)) return false;
+                break;
+            default:
+                return false;
+        }
+
+        if (range.ExcludeStart && cursor.KeyHasPrefix(range.Start))
+        {
+            cursor.FindLastKey(range.Start);
+            if (!cursor.FindNextKey(range.Prefix)) return false;
+        }
+
+        return true;
+    }
+
+    /// Positions the cursor on the last key of the range.
+    static bool SeekLast(IKeyValueDBCursor cursor, RelationQueryRange range)
+    {
+        if (range.Stop == null) return cursor.FindLastKey(range.Prefix);
+        byte[] stop = [..range.Prefix, ..range.Stop];
+        if (range.StopInclusive && cursor.FindLastKey(stop)) return true;
+        return cursor.Find(stop, (uint)range.Prefix.Length) switch
+        {
+            FindResult.Previous => true,
+            FindResult.Exact or FindResult.Next => cursor.FindPreviousKey(range.Prefix),
+            _ => false
+        };
     }
 
     bool StopAtMatch(long keyIndex, ReadOnlySpan<byte> key)
@@ -2887,7 +3259,7 @@ sealed class RelationQueryScanner : IDisposable
             return false;
         }
 
-        if (!key.StartsWith(Plan.CursorPrefix)) return true;
+        if (!_range!.Contains(key)) return true;
         if (!Evaluate(key)) return false;
         _matched = true;
         return true;
@@ -2898,70 +3270,199 @@ sealed class RelationQueryScanner : IDisposable
     [SkipLocalsInit]
     public bool MoveLast()
     {
-        ObjectDisposedException.ThrowIf(_cursor == null, this);
-        _transaction.ThrowIfDisposed();
-        var prefix = Plan.CursorPrefix;
-        if (Plan.NeverMatches || !_cursor.FindLastKey(prefix)) return false;
-        if (!Plan.HasPrograms) return true;
-        Span<byte> keyBuffer = stackalloc byte[512];
-        do
+        ThrowIfDisposed();
+        if (Plan.SecondaryKey != null)
         {
-            if (Evaluate(_cursor.GetKeySpan(ref keyBuffer))) return true;
-        } while (_cursor.FindPreviousKey(prefix));
+            _candidates ??= CollectCandidates();
+            for (var i = _candidates.Count - 1; i >= 0; i--)
+                if (_cursor!.FindExactKey(_candidates[i]) && Evaluate(_candidates[i]))
+                    return true;
+            return false;
+        }
+
+        var cursor = _cursor!;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        for (var i = Plan.Ranges.Length - 1; i >= 0; i--)
+        {
+            var range = Plan.Ranges[i];
+            if (!SeekLast(cursor, range)) continue;
+            do
+            {
+                var key = cursor.GetKeySpan(ref keyBuffer);
+                if (!range.Contains(key)) break;
+                if (!Plan.HasPrograms || Evaluate(key)) return true;
+            } while (cursor.FindPreviousKey(range.Prefix));
+        }
 
         return false;
     }
 
-    /// Counts matching rows without materializing them; without a predicate it only computes key indexes.
+    /// Counts matching rows without materializing them; whole prefix ranges without programs are a difference of key
+    /// indexes.
     public long Count()
     {
-        ObjectDisposedException.ThrowIf(_cursor == null, this);
-        _transaction.ThrowIfDisposed();
-        if (Plan.HasPrograms)
+        ThrowIfDisposed();
+        var secondaryKey = Plan.SecondaryKey;
+        var noPrograms = !Plan.HasPrograms && (secondaryKey == null || secondaryKey.IndexProgram == null);
+        if (noPrograms && Array.TrueForAll(Plan.Ranges, r => r.IsWholePrefix))
         {
-            var counter = new RelationQueryCounter();
-            Aggregate(counter);
-            return counter.Count;
+            var cursor = secondaryKey == null ? _cursor! : IndexCursor;
+            var count = 0L;
+            foreach (var range in Plan.Ranges)
+            {
+                if (!cursor.FindFirstKey(range.Prefix)) continue;
+                var firstIndex = cursor.GetKeyIndex();
+                cursor.FindLastKey(range.Prefix);
+                count += cursor.GetKeyIndex() - firstIndex + 1;
+            }
+
+            return count;
         }
 
-        var prefix = Plan.CursorPrefix;
-        if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return 0;
-        var firstIndex = _cursor.GetKeyIndex();
-        _cursor.FindLastKey(prefix);
-        return _cursor.GetKeyIndex() - firstIndex + 1;
+        var counter = new RelationQueryCounter();
+        Aggregate(counter);
+        return counter.Count;
     }
 
     /// Passes the frame of every matching row, with the selector value when the plan has one, to the aggregator.
     [SkipLocalsInit]
     public void Aggregate(RelationQueryAggregator aggregator)
     {
-        ObjectDisposedException.ThrowIf(_cursor == null, this);
-        _transaction.ThrowIfDisposed();
-        var prefix = Plan.CursorPrefix;
-        if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return;
-        if (!Plan.HasPrograms)
-        {
-            do aggregator.Add(MemoryMarshal.AsBytes(_frame.AsSpan()));
-            while (_cursor.FindNextKey(prefix));
-            return;
-        }
-
+        ThrowIfDisposed();
         _aggregator = aggregator;
-        Span<byte> keyBuffer = stackalloc byte[512];
-        if (Plan.ValuePrograms == null)
-            _cursor.FastIterateNoCursor(ref keyBuffer, _aggregateMatches);
-        else
-            _cursor.FastIterate(ref keyBuffer, _aggregateMatches);
-        _aggregator = null;
+        try
+        {
+            var secondaryKey = Plan.SecondaryKey;
+            Span<byte> keyBuffer = stackalloc byte[512];
+            if (secondaryKey == null)
+            {
+                var cursor = _cursor!;
+                foreach (var range in Plan.Ranges)
+                {
+                    if (!Seek(cursor, range)) continue;
+                    _range = range;
+                    if (!Plan.HasPrograms) cursor.FastIterateNoCursor(ref keyBuffer, _countKeys);
+                    else if (Plan.ValuePrograms == null) cursor.FastIterateNoCursor(ref keyBuffer, _aggregateMatches);
+                    else cursor.FastIterate(ref keyBuffer, _aggregateMatches);
+                }
+
+                return;
+            }
+
+            if (secondaryKey.SortCandidates)
+            {
+                foreach (var primaryKey in _candidates ??= CollectCandidates())
+                    if (_cursor!.FindExactKey(primaryKey) && Evaluate(primaryKey))
+                        aggregator.Add(FrameBytes);
+                return;
+            }
+
+            // Order does not matter and nothing can throw, so index keys are processed in index order.
+            var indexCursor = IndexCursor;
+            foreach (var range in Plan.Ranges)
+            {
+                if (!Seek(indexCursor, range)) continue;
+                _range = range;
+                indexCursor.FastIterateNoCursor(ref keyBuffer, _aggregateIndex);
+            }
+        }
+        finally
+        {
+            _aggregator = null;
+        }
     }
 
     bool AggregateMatches(long keyIndex, ReadOnlySpan<byte> key)
     {
-        if (!key.StartsWith(Plan.CursorPrefix)) return true;
-        if (Evaluate(key)) _aggregator!.Add(MemoryMarshal.AsBytes(_frame.AsSpan()));
+        if (!_range!.Contains(key)) return true;
+        if (Evaluate(key)) _aggregator!.Add(FrameBytes);
         return false;
     }
 
+    bool CountKeys(long keyIndex, ReadOnlySpan<byte> key)
+    {
+        if (!_range!.Contains(key)) return true;
+        _aggregator!.Add(FrameBytes);
+        return false;
+    }
+
+    [SkipLocalsInit]
+    bool AggregateIndex(long keyIndex, ReadOnlySpan<byte> key)
+    {
+        if (!_range!.Contains(key)) return true;
+        if (!EvaluateIndex(key)) return false;
+        if (Plan.SecondaryKey!.Covering)
+        {
+            _aggregator!.Add(FrameBytes);
+            return false;
+        }
+
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+        var primaryKey = ToPrimaryKey(key, ref writer);
+        if (_cursor!.FindExactKey(primaryKey) && Evaluate(primaryKey)) _aggregator!.Add(FrameBytes);
+        return false;
+    }
+
+    // Primary keys of index keys in the ranges passing the index program, sorted when row order matters.
+    [SkipLocalsInit]
+    List<byte[]> CollectCandidates()
+    {
+        _candidates = [];
+        var indexCursor = IndexCursor;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        foreach (var range in Plan.Ranges)
+        {
+            if (!Seek(indexCursor, range)) continue;
+            _range = range;
+            indexCursor.FastIterateNoCursor(ref keyBuffer, _collectCandidates);
+        }
+
+        if (Plan.SecondaryKey!.SortCandidates)
+            _candidates.Sort(static (a, b) => a.AsSpan().SequenceCompareTo(b));
+        return _candidates;
+    }
+
+    [SkipLocalsInit]
+    bool CollectCandidate(long keyIndex, ReadOnlySpan<byte> key)
+    {
+        if (!_range!.Contains(key)) return true;
+        if (!EvaluateIndex(key)) return false;
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+        _candidates!.Add(ToPrimaryKey(key, ref writer).ToArray());
+        return false;
+    }
+
+    unsafe ReadOnlySpan<byte> ToPrimaryKey(ReadOnlySpan<byte> indexKey, ref MemWriter writer)
+    {
+        var secondaryKey = Plan.SecondaryKey!;
+        writer.WriteBlock(secondaryKey.PrimaryKeyPrefix);
+        fixed (byte* pointer = indexKey)
+        {
+            var reader = new MemReader(pointer, indexKey.Length);
+            secondaryKey.ToPrimaryKey(ref reader, ref writer);
+        }
+
+        return writer.GetSpan();
+    }
+
+    unsafe bool EvaluateIndex(ReadOnlySpan<byte> indexKey)
+    {
+        var program = Plan.SecondaryKey!.IndexProgram;
+        if (program == null) return true;
+        if (program.Program == null) return program.ConstantResult;
+        ref var frame = ref Unsafe.As<long, byte>(ref MemoryMarshal.GetArrayDataReference(_frame));
+        ref var objects = ref MemoryMarshal.GetArrayDataReference(_objects);
+        fixed (byte* keyPointer = indexKey)
+        {
+            var keyReader = new MemReader(keyPointer + program.KeyStart, indexKey.Length - program.KeyStart);
+            var valueReader = new MemReader();
+            var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
+            BTDB.Interpreter.Interpreter.Run(ref ctx);
+            return ctx.BoolResult;
+        }
+    }
+
+    // Tests the primary row the cursor is positioned on, whose key is passed.
     unsafe bool Evaluate(ReadOnlySpan<byte> key)
     {
         ref var frame = ref Unsafe.As<long, byte>(ref MemoryMarshal.GetArrayDataReference(_frame));
@@ -3007,18 +3508,28 @@ sealed class RelationQueryScanner : IDisposable
         }
     }
 
+    bool AfterEnd()
+    {
+        _afterEnd = true;
+        return false;
+    }
+
     public void Reset()
     {
-        ObjectDisposedException.ThrowIf(_cursor == null, this);
-        _cursor.Invalidate();
+        ThrowIfDisposed();
+        _cursor!.Invalidate();
         _first = true;
         _afterEnd = false;
+        _candidates = null;
+        _candidateIndex = 0;
     }
 
     public void Dispose()
     {
         _cursor?.Dispose();
         _cursor = null;
+        _indexCursor?.Dispose();
+        _indexCursor = null;
         Array.Clear(_objects);
     }
 }
@@ -3327,6 +3838,66 @@ sealed class MinMaxAggregator<T> : RelationQueryValueAggregator<T> where T : unm
     {
         if (!_any) return _nullable ? null : throw NoElements();
         return _enumType != null ? Enum.ToObject(_enumType, _value) : _value;
+    }
+}
+
+/// A contiguous part of the key space scanned by a relation query: keys starting with Prefix, from Start on and up to
+/// the Stop bound of the field following Prefix.
+sealed class RelationQueryRange
+{
+    public RelationQueryRange(byte[] prefix, byte[] start, bool excludeStart, byte[]? stop, bool stopInclusive)
+    {
+        Prefix = prefix;
+        Start = start;
+        ExcludeStart = excludeStart;
+        Stop = stop;
+        StopInclusive = stopInclusive;
+    }
+
+    public byte[] Prefix { get; }
+
+    /// Prefix followed by the encoded lower bound, or just Prefix.
+    public byte[] Start { get; }
+
+    /// Keys starting with Start are excluded (exclusive lower bound).
+    public bool ExcludeStart { get; }
+
+    /// Encoded upper bound of the field following Prefix.
+    public byte[]? Stop { get; }
+
+    public bool StopInclusive { get; }
+
+    /// The range is all keys with Prefix, so its size is a difference of key indexes.
+    public bool IsWholePrefix => Stop == null && !ExcludeStart && Start.Length == Prefix.Length;
+
+    public bool Contains(ReadOnlySpan<byte> key)
+    {
+        if (!key.StartsWith(Prefix)) return false;
+        if (Start.Length != Prefix.Length)
+        {
+            if (ExcludeStart && key.StartsWith(Start)) return false;
+            if (!key.StartsWith(Start) && key.SequenceCompareTo(Start) < 0) return false;
+        }
+
+        return Stop == null || !IsPastStop(key[Prefix.Length..]);
+    }
+
+    /// Whether the key, already known to be at or after Start, is past the upper bound.
+    public bool IsPastStop(ReadOnlySpan<byte> rest)
+    {
+        // Encodings are prefix free, so a key either starts with the bound encoding or differs within it.
+        var equal = rest.StartsWith(Stop);
+        return StopInclusive ? !equal && rest.SequenceCompareTo(Stop) > 0 : equal || rest.SequenceCompareTo(Stop) > 0;
+    }
+}
+
+static class RelationQueryKeyRanges
+{
+    /// Field handlers whose key encoding orders bytes like values (checked by RelationQueryKeyOrderTest), so
+    /// comparisons can become range seeks. DateTime is not one: its encoding includes Kind, which C# ignores.
+    public static bool IsOrderPreserving(IFieldHandler handler)
+    {
+        return handler is EnumFieldHandler || handler.Name is "Unsigned" or "Signed" or "Bool" or "UInt8" or "Int8Orderable";
     }
 }
 

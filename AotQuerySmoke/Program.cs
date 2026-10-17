@@ -13,7 +13,7 @@ public class SmokePerson
     [PrimaryKey(1)] public ulong TenantId { get; set; }
     [PrimaryKey(2)] public string Email { get; set; } = "";
     public string? Name { get; set; }
-    public int Age { get; set; }
+    [SecondaryKey("Age")] public int Age { get; set; }
     public bool Active { get; set; }
     public DateTime Created { get; set; }
     public SmokeLevel Level { get; set; }
@@ -121,6 +121,16 @@ static class Program
                 $"{query.Sum(p => p.Price)}/{query.Average(p => p.Bonus)}");
             Check("min and max", $"{all.Min(p => p.Created)}/{all.Max(p => p.Level)}",
                 $"{query.Min(p => p.Created)}/{query.Max(p => p.Level)}");
+            var tenants = new[] { 3ul, 0ul };
+            Check("key range", all.Count(p => p.TenantId >= 1 && p.TenantId < 3),
+                query.Count(p => p.TenantId >= 1 && p.TenantId < 3));
+            Check("key in list", all.Count(p => tenants.Contains(p.TenantId) && p.Active),
+                query.Count(p => tenants.Contains(p.TenantId) && p.Active));
+            Check("key starts with", all.Count(p => p.TenantId == 1 && p.Email.StartsWith("user0", StringComparison.Ordinal)),
+                query.Count(p => p.TenantId == 1 && p.Email.StartsWith("user0", StringComparison.Ordinal)));
+            Check("index", string.Join(",", all.Where(p => p.Age == 32 && p.Active).Select(p => p.Email)),
+                string.Join(",", query.Where(p => p.Age == 32 && p.Active).AsEnumerable().Select(p => p.Email)));
+            Check("covering index count", all.Count(p => p.Age > 40), query.Count(p => p.Age > 40));
             Check("materialized row", "user025@example.com",
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1 && p.Email == "user025@example.com")
                     .AsEnumerable().Single().Email);

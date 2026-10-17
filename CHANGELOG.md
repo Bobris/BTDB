@@ -32,6 +32,13 @@
   - `Min`, `Max`, `Sum` and `Average` with a selector, which read only the needed fields.
 
   Results and exceptions match LINQ-to-Objects.
+- `IRelation.Query<T>()` plans access paths. These become key range seeks instead of row tests:
+  - equalities and `Contains` / `||` lists on leading key fields, as several seeks merged in key order;
+  - `<`, `<=`, `>`, `>=` on integer, `bool` and enum key fields;
+  - ordinal `StartsWith` on string key fields.
+
+  Secondary indexes are chosen when they allow a longer prefix or range than the primary key, still returning rows in
+  primary key order. `Count`, `Any`, `All`, `Min` and `Max` read only a covering index.
 - The low-level interpreter has expression opcodes (`OpCode` 163–183):
   - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
   - capturing raw field bytes, with encoded equality and `StartsWith`;

@@ -415,8 +415,22 @@ compiled to interpreter programs and tested directly on the stored bytes. Only m
 selective queries are faster than enumerating the relation and filtering with LINQ. Everything works without
 `Reflection.Emit`, so it is usable with NativeAOT.
 
-Rows are returned in primary key order. Equalities on leading primary key fields become a cursor prefix, so only that
-part of the relation is scanned.
+Rows are returned in primary key order. Conditions on key fields decide which part of the relation is scanned:
+
+- Equalities on leading primary key fields become a key prefix.
+- `Contains` on a constant collection, or `||` of equalities on such a field, becomes one seek per value, merged in key
+  order. At most 1024 seeks are used; larger lists are tested per row instead.
+- After those, one more field can limit a range:
+  - `<`, `<=`, `>`, `>=` on integer, `bool` and enum fields;
+  - ordinal `StartsWith` on a string field.
+- A secondary index is used when its fields allow a longer prefix or range than the primary key; ties go to the
+  primary key.
+  - Index keys are tested first by conditions on index fields.
+  - Primary rows are read only for the remaining index keys, and are still returned in primary key order.
+  - `Count`, `Any`, `All`, `Min` and `Max` read only the index when it has every field they need.
+
+Equality and range conditions are only used this way when every condition written before them cannot throw, so the
+result stays exactly as with LINQ.
 
 Supported in `Where`:
 
@@ -448,8 +462,8 @@ condition that can throw only runs after every condition written before it, so g
 `p.Name != null && p.Name.StartsWith("A")` work as in LINQ.
 
 Terminal operators run on the stored rows too, with their predicate overloads:
-- `Count` and `LongCount` never materialize rows. Without a predicate, or when the predicate is only equalities on
-  leading primary key fields, they only compute key indexes in O(log n).
+- `Count` and `LongCount` never materialize rows. When the conditions are fully covered by key prefixes and seeks,
+  of the primary key or of a secondary index, they only compute key indexes in O(log n).
 - `Any` and `All` stop at the first deciding row.
 - `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last` and `LastOrDefault` materialize only the returned
   row. The `OrDefault` overloads with a default value are supported.

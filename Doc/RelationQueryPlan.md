@@ -389,6 +389,66 @@ programs) now dominates `Count` and `Any` on key ranges. Plan caching (design de
 - `OR` / `IN` on key fields becomes several seeks, merged in key order.
 - Optional `.UsingIndex("Name")` hint extension.
 
+#### Phase 4 status: done
+
+What was built, and where it differs from the plan above:
+
+- **Order preservation, proven.** `RelationQueryKeyOrderTest` checks every integer key handler on boundary and random
+  values: `Unsigned`, `Signed`, `UInt8`, `Int8Orderable`, `Bool` and both enum kinds.
+  - `DateTime` is excluded: its key encoding includes `Kind`, which C# comparisons ignore.
+  - Strings need no order proof for `StartsWith`, only the prefix property from Phase 2.
+- **Access paths.** `AnalyzeAccessPath` scores the primary key and every secondary index.
+  - Each leading key field with an equality, an `IN` list or an `||` of equalities scores 2.
+  - The next field can add 1, for bounds or for ordinal `StartsWith` on `StringOrderable`.
+  - The highest score wins, with ties going to the primary key.
+  - Only conjuncts written before the first throwing conjunct take part. Used equalities, sets and bounds are exact,
+    so they are removed from the programs.
+- **Ranges.** `RelationQueryRange` replaces the cursor prefix.
+  - `IN` values multiply into at most 1024 ranges; beyond that, the set stays a residual conjunct.
+  - Ranges are sorted and disjoint, so results stay in key order.
+  - Seeks use `Find` the way `RelationAdvancedEnumerator` does. Upper bounds compare the bytes after the prefix,
+    which is exact because encodings are prefix free.
+  - Programs skip only the prefix every range shares: the leading single-valued equalities.
+- **`StartsWith` and null keys.** `StartsWith` throws for a null key, so it cannot simply drop non-matching rows. It
+  stays as a residual conjunct, and an extra range covers the null-key group, so those rows still throw like LINQ.
+  The differential data now has a null primary key string, and many null names under the `Name` index.
+- **Secondary indexes** (not for relations with `InKeyValue` fields, whose index keys omit them):
+  - Index keys in the ranges are tested by an index program: the non-throwing leading conjuncts on index fields.
+  - Their primary keys come from `GetSKKeyValueToPKMerger`; primary rows are read with `FindExactKey` and tested by
+    the usual programs.
+  - Candidates are sorted into primary key order whenever the operation is order sensitive (enumeration, element
+    operators, `Sum`, `Average`) or anything can throw, so results, exceptions and tested rows match LINQ.
+  - Otherwise index keys are processed in index order.
+  - The index is **covering** for `Count`, `Any`, `All`, `Min` and `Max` when no primary conjunct remains, nothing
+    throws, and the selector uses only index fields. The selector then runs in the index program, and the primary
+    rows are never read.
+- **`Count`** is a difference of key indexes over whole-prefix ranges without programs, on the primary key or the
+  index. Other key ranges are counted by iterating keys without evaluating anything.
+- **Not done:** the optional `.UsingIndex("Name")` hint, since the scoring picked the expected index in every tested
+  case.
+- **Tests.**
+  - The differential relation has three indexes: one field, two fields, and one including the leading primary key
+    field. Its generator adds `Contains` on key fields.
+  - `PlannerChoosesKeyRangesAndSecondaryIndexes` asserts the chosen paths.
+  - Mutation checks catch an ignored exclusive start, a wrong inclusive stop, unsorted index candidates and a missing
+    null-key range.
+
+Results (same machine and settings as before, per call):
+
+| Scenario                                          | Query     | LINQ over all rows |
+|---------------------------------------------------|----------:|-------------------:|
+| `Count(p => p.City == x)`, covering index         | 2.8 µs    | 12.5 ms            |
+| `City == x && Age == 35` through the City index   | 1.3 ms    | 12.4 ms            |
+| `TenantId >= 3 && TenantId < 5 && Age == 35`      | 1.9 ms    | 12.4 ms            |
+| `tenants.Contains(TenantId) && Active`, count     | 1.9 ms    | 12.5 ms            |
+| Empty result, per query                           | 1.9 µs, 6.2 KB | `FindById` 0.1 µs |
+
+What this means:
+- Index scans pay about 270 ns per candidate: merging the primary key, sorting, `FindExactKey` and the value program.
+  That is still 9× faster than scanning everything at 5 % selectivity.
+- Planning now analyzes every index, adding about 0.5 µs and 2 KB per query. Plan caching (design decision 3) is the
+  next cost to remove.
+
 ### Phase 5: Ordering and paging
 
 - `OrderBy`, `ThenBy` and their `Descending` forms stream when the order matches the chosen access path after its

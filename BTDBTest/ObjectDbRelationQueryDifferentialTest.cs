@@ -40,10 +40,13 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
     {
         [PrimaryKey(1)] public ulong Tenant { get; set; }
         [PrimaryKey(2)] public string Code { get; set; } = "";
-        public string? Name { get; set; }
-        public int Age { get; set; }
-        public long Score { get; set; }
-        public uint Rank { get; set; }
+
+        // Secondary indexes let the planner choose index scans: a single field, two fields, and one including the
+        // leading primary key field.
+        [SecondaryKey("Name", Order = 1)] public string? Name { get; set; }
+        [SecondaryKey("Age")] public int Age { get; set; }
+        [SecondaryKey("Name", Order = 2)] public long Score { get; set; }
+        [SecondaryKey("Rank", IncludePrimaryKeyOrder = 1)] public uint Rank { get; set; }
         public bool Active { get; set; }
         public DateTime Created { get; set; }
         public double Ratio { get; set; }
@@ -139,6 +142,54 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         }
     }
 
+    [Fact]
+    public void PlannerChoosesKeyRangesAndSecondaryIndexes()
+    {
+        FillRows(new(1));
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+
+        RelationQueryPlan Plan(Expression<Func<DiffRow, bool>> predicate, bool orderSensitive = true)
+        {
+            var relationInfo = ((IRelationDbManipulator)table).RelationInfo;
+            var ast = RelationQueryAstBuilder.Build(table.Query<DiffRow>().Where(predicate).Expression,
+                new(relationInfo.Id, typeof(DiffRow)));
+            return new RelationQueryCompiler(relationInfo, typeof(DiffRow))
+                .Compile((IInternalObjectDBTransaction)tr, ast, null, orderSensitive);
+        }
+
+        var tenants = new[] { 3ul, 1ul };
+        Assert.Equal(2, Plan(p => tenants.Contains(p.Tenant)).Ranges.Length);
+        Assert.Equal(2, Plan(p => p.Tenant == 1 || p.Tenant == 2).Ranges.Length);
+        var bounded = Plan(p => p.Tenant > 1 && p.Tenant <= 2);
+        Assert.Null(bounded.SecondaryKey);
+        Assert.True(bounded.Ranges[0].ExcludeStart);
+        Assert.True(bounded.Ranges[0].StopInclusive);
+        Assert.False(bounded.HasPrograms);
+        // StartsWith throws for a null key, so it stays as a residual test and the null keys get a range too.
+        var startsWith = Plan(p => p.Tenant == 2 && p.Code.StartsWith("c0", StringComparison.Ordinal));
+        Assert.Equal(2, startsWith.Ranges.Length);
+        Assert.True(startsWith.Ranges[0].IsWholePrefix);
+        // The Age index key is Age, Tenant, Code, so it uses both equalities and beats the primary key.
+        Assert.NotNull(Plan(p => p.Tenant == 1 && p.Age == 25).SecondaryKey);
+        // Ties go to the primary key: Tenant is also the first field of the Rank index.
+        Assert.Null(Plan(p => p.Tenant == 1 && p.Active).SecondaryKey);
+        var age = Plan(p => p.Age == 25 && p.Active);
+        Assert.NotNull(age.SecondaryKey);
+        Assert.True(age.SecondaryKey!.SortCandidates);
+        Assert.True(Plan(p => p.Age > 25, false).SecondaryKey!.Covering);
+        Assert.NotNull(Plan(p => p.Name == "n1" && p.Score > 0).SecondaryKey);
+        Assert.NotNull(Plan(p => p.Tenant == 1 && p.Rank == 3).SecondaryKey);
+        // A throwing conjunct written first keeps every row in play.
+        var guarded = Plan(p => p.Note!.Length > 2 && p.Age == 25);
+        Assert.Null(guarded.SecondaryKey);
+        Assert.True(guarded.Ranges[0].IsWholePrefix);
+
+        Assert.Equal(table.Count(p => p.Age > 25), table.Query<DiffRow>().Count(p => p.Age > 25));
+        Assert.Equal(table.Count(p => p.Tenant == 1 && p.Rank == 3),
+            table.Query<DiffRow>().Count(p => p.Tenant == 1 && p.Rank == 3));
+    }
+
     static readonly DiffRow DefaultRow = new() { Code = "default" };
 
     // Each terminal gets the source and a predicate it may use as its argument.
@@ -225,8 +276,9 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             table.Insert(new()
             {
                 Tenant = (ulong)random.Next(4),
-                // Some keys are non-ASCII, so ordered string decoding sees multi-byte and surrogate chars.
-                Code = i % 9 == 0 ? $"ž{i:D3}😀" : $"c{i:D3}",
+                // Some keys are non-ASCII, so ordered string decoding sees multi-byte and surrogate chars; one key is
+                // null, which string methods on it must throw for.
+                Code = i == 7 ? null! : i % 9 == 0 ? $"ž{i:D3}😀" : $"c{i:D3}",
                 Name = Names[random.Next(Names.Length)],
                 Age = 20 + random.Next(10),
                 Score = random.Next(-5, 6),
@@ -380,6 +432,12 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
                 typeof(HashSet<long>).GetMethod(nameof(HashSet<long>.Contains))!, Property(nameof(DiffRow.Score))));
             _leaves.Add(() => Expression.Call(EnumerableContains<Guid>(), Constant(new[] { Tokens[Pick(Tokens.Length)] }),
                 Property(nameof(DiffRow.Token))));
+            // Contains on key fields becomes several seeks.
+            _leaves.Add(() => Expression.Call(EnumerableContains<ulong>(),
+                Constant(new[] { (ulong)Pick(5), (ulong)Pick(5) }), Property(nameof(DiffRow.Tenant))));
+            _leaves.Add(() => Expression.Call(EnumerableContains<string>(),
+                Constant(new[] { $"c{Pick(RowCount):D3}", $"ž{Pick(RowCount / 9) * 9:D3}😀", $"c{Pick(RowCount):D3}" }),
+                Property(nameof(DiffRow.Code))));
         }
 
         int Pick(int count) => _random.Next(count);

@@ -16,7 +16,7 @@ public class QueryBenchRow
     [PrimaryKey(1)] public ulong TenantId { get; set; }
     [PrimaryKey(2)] public ulong Id { get; set; }
     public string? Name { get; set; }
-    public string? City { get; set; }
+    [SecondaryKey("City")] public string? City { get; set; }
     public int Age { get; set; }
     public long Score { get; set; }
     public bool Active { get; set; }
@@ -142,6 +142,36 @@ public class RelationQueryBenchmark
     [BenchmarkCategory("PkPrefixAndValue"), Benchmark(OperationsPerInvoke = QueryBenchData.RowsPerTenant)]
     public int PkPrefixAndValueFindById() =>
         _table.FindById(QueryBenchData.SelectedTenant).Count(p => p.Age == QueryBenchData.SelectiveAge);
+
+    /// Access paths, measured per call: a primary key range, an IN list of tenants and the City index.
+    [BenchmarkCategory("PkRange"), Benchmark(Baseline = true)]
+    public int PkRangeQuery() =>
+        Count(_table.Query<QueryBenchRow>().Where(p => p.TenantId >= 3 && p.TenantId < 5 && p.Age == 35));
+
+    [BenchmarkCategory("PkRange"), Benchmark]
+    public int PkRangeLinq() => _table.Count(p => p.TenantId >= 3 && p.TenantId < 5 && p.Age == 35);
+
+    static readonly ulong[] SelectedTenants = [2, 7];
+
+    [BenchmarkCategory("InList"), Benchmark(Baseline = true)]
+    public int InListQuery() =>
+        _table.Query<QueryBenchRow>().Count(p => SelectedTenants.Contains(p.TenantId) && p.Active);
+
+    [BenchmarkCategory("InList"), Benchmark]
+    public int InListLinq() => _table.Count(p => SelectedTenants.Contains(p.TenantId) && p.Active);
+
+    [BenchmarkCategory("IndexEquality"), Benchmark(Baseline = true)]
+    public int IndexEqualityQuery() =>
+        Count(_table.Query<QueryBenchRow>().Where(p => p.City == QueryBenchData.SelectedCity && p.Age == 35));
+
+    [BenchmarkCategory("IndexEquality"), Benchmark]
+    public int IndexEqualityLinq() => _table.Count(p => p.City == QueryBenchData.SelectedCity && p.Age == 35);
+
+    [BenchmarkCategory("IndexCount"), Benchmark(Baseline = true)]
+    public int IndexCountQuery() => _table.Query<QueryBenchRow>().Count(p => p.City == QueryBenchData.SelectedCity);
+
+    [BenchmarkCategory("IndexCount"), Benchmark]
+    public int IndexCountLinq() => _table.Count(p => p.City == QueryBenchData.SelectedCity);
 
     /// Without a predicate Count only computes key indexes, so it is measured per call.
     [BenchmarkCategory("CountAll"), Benchmark(Baseline = true)]
