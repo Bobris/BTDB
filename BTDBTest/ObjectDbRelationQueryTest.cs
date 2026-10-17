@@ -556,6 +556,39 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
             Assert.Throws<InvalidOperationException>(() => rows.Where(p => p.Id > 5).Average(p => p.Price)).Message);
     }
 
+    [Fact]
+    public void QueryOrdersAndPagesLikeLinq()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var query = tr.GetRelation<IPersonTable>().Query<Person>();
+
+        Assert.Equal(["Dana", null, "Bob", "Ada"], Names(query.OrderByDescending(p => p.TenantId).ThenByDescending(p => p.Email)));
+        // Ties keep primary key order in both directions.
+        Assert.Equal([null, "Bob", "Ada", "Dana"], Names(query.OrderBy(p => p.Age)));
+        Assert.Equal(["Ada", "Dana", "Bob", null], Names(query.OrderByDescending(p => p.Age)));
+        Assert.Equal(["Dana", "Ada", "Bob", null], Names(query.OrderByDescending(p => p.Age).ThenByDescending(p => p.TenantId)));
+        // Strings are ordered by the current culture like Comparer<string>.Default; null comes first.
+        Assert.Equal([null, "Ada", "Bob", "Dana"], Names(query.OrderBy(p => p.Name)));
+        Assert.Equal(["Bob", null], Names(query.Skip(1).Take(2)));
+        Assert.Equal(["Bob", "Ada"], Names(query.Where(p => p.TenantId == 1).OrderByDescending(p => p.Email).Take(5)));
+        Assert.Equal(["Dana"], Names(query.OrderBy(p => p.Age).Skip(3)));
+        Assert.Empty(Names(query.OrderBy(p => p.Age).Take(0)));
+
+        Assert.Equal("Dana", query.OrderByDescending(p => p.Uploaded).First().Name);
+        Assert.Equal("Bob", query.OrderBy(p => p.Age).First(p => p.TenantId == 1).Name);
+        Assert.Equal("Dana", query.OrderBy(p => p.Age).Last().Name);
+        Assert.Equal(2, query.Skip(1).Take(2).Count());
+        Assert.Equal(1, query.OrderBy(p => p.Age).Skip(3).Count());
+        Assert.Equal(82, query.OrderByDescending(p => p.Age).Take(2).Sum(p => p.Age));
+        Assert.Equal(28, query.OrderBy(p => p.Age).Min(p => p.Age));
+
+        Assert.Throws<NotSupportedException>(() => Names(query.OrderBy(p => p.Age).Where(p => p.Age > 30)));
+        Assert.Throws<NotSupportedException>(() => Names(query.Take(2).Where(p => p.Age > 30)));
+        Assert.Throws<NotSupportedException>(() => query.OrderBy(p => p.Age).First(p => p.Name!.Length > 2));
+    }
+
     static string?[] Names(IQueryable<Person> query) => query.AsEnumerable().Select(p => p.Name).ToArray();
     static ulong[] Ids(IQueryable<QueryTypesRow> query) => query.AsEnumerable().Select(p => p.Id).ToArray();
 

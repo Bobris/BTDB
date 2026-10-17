@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Numerics;
@@ -252,7 +253,7 @@ sealed class ThrowQueryNode : QueryNode
     public QueryException Exception { get; }
 }
 
-class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
+class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
 {
     readonly IInternalObjectDBTransaction _transaction;
     readonly RelationInfo _relationInfo;
@@ -281,8 +282,61 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
 
     public IEnumerator<T> GetEnumerator()
     {
-        var ast = RelationQueryAstBuilder.Build(_expression, _queryNode);
-        return RelationQueryExecutionPlan.Create<T>(_transaction, _relationInfo, _loaderInfo, ast).GetEnumerator();
+        var source = RelationQueryAstBuilder.BuildSource(_expression, _queryNode);
+        if (source.HasOrdering || source.HasPaging) return CreateWindow(source, null);
+        return RelationQueryExecutionPlan.Create<T>(_transaction, _relationInfo, _loaderInfo, source.Filter)
+            .GetEnumerator();
+    }
+
+    RelationQueryWindow<T> CreateWindow(RelationQuerySource source, QueryNode? selector, bool keepFrames = false)
+    {
+        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter, selector);
+        var order = RelationQueryOrder.Forward;
+        var descending = Array.Empty<bool>();
+        if (source.HasOrdering)
+        {
+            // Streaming in key order returns rows before all are tested, which LINQ's OrderBy does not, so it is only
+            // possible when no test can throw.
+            if (!plan.CanThrow && MatchesPrimaryKeyOrder(plan, source.Ordering, out var backward))
+            {
+                order = backward ? RelationQueryOrder.Backward : RelationQueryOrder.Forward;
+            }
+            else
+            {
+                var keys = new List<QueryNode>();
+                foreach (var (key, _) in source.Ordering) keys.Add(key);
+                plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter,
+                    selector, true, keys);
+                order = RelationQueryOrder.Sorted;
+                descending = source.Ordering.ConvertAll(o => o.Descending).ToArray();
+            }
+        }
+
+        return new(_transaction, _loaderInfo, plan, order, descending, source.Skip, source.Take, keepFrames);
+    }
+
+    // Rows come in primary key order, so an ordering by the key fields not fixed by equalities, in key order and one
+    // direction, is already satisfied. Descending works only over all of them, because ties keep source order.
+    bool MatchesPrimaryKeyOrder(RelationQueryPlan plan, List<(QueryNode Key, bool Descending)> ordering,
+        out bool backward)
+    {
+        backward = false;
+        var remaining = new List<TableFieldInfo>();
+        foreach (var field in _relationInfo.ClientRelationVersionInfo.PrimaryKeyFields.Span)
+            if (!plan.FixedPrimaryKeyFields.Contains(field.Name)) remaining.Add(field);
+        var keys = ordering.FindAll(o => !(o.Key is PropQueryNode prop && plan.FixedPrimaryKeyFields.Contains(prop.Name)));
+        if (keys.Count == 0) return true;
+        if (keys.Count > remaining.Count) return false;
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (keys[i].Key is not PropQueryNode prop || prop.Name != remaining[i].Name ||
+                keys[i].Descending != keys[0].Descending ||
+                !RelationQueryKeyRanges.IsOrderPreserving(remaining[i].Handler!))
+                return false;
+        }
+
+        backward = keys[0].Descending;
+        return !backward || keys.Count == remaining.Count;
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -319,9 +373,11 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
         if (expression is not MethodCallExpression call || call.Method.DeclaringType != typeof(Queryable))
             throw new NotSupportedException("Relation query supports only Queryable operators.");
         var arguments = call.Arguments;
-        var source = RelationQueryAstBuilder.Build(arguments[0], _queryNode);
+        var querySource = RelationQueryAstBuilder.BuildSource(arguments[0], _queryNode);
         var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
         var name = call.Method.Name;
+        if (querySource.HasOrdering || querySource.HasPaging) return ExecuteWindowed(name, call, querySource, lambda);
+        var source = querySource.Filter;
         switch (name)
         {
             case nameof(Queryable.Count):
@@ -372,6 +428,121 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
         }
+    }
+
+    // Terminal operators after OrderBy, Skip or Take.
+    object? ExecuteWindowed(string name, MethodCallExpression call, RelationQuerySource source,
+        LambdaExpression? lambda)
+    {
+        var isAggregate = name is nameof(Queryable.Min) or nameof(Queryable.Max) or nameof(Queryable.Sum)
+            or nameof(Queryable.Average);
+        if (lambda != null && !isAggregate)
+        {
+            // LINQ tests such a predicate on rows in sorted order, which equals filtering before ordering only when it
+            // cannot throw, and only without paging.
+            var predicate = RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode);
+            if (source.HasPaging || RelationQueryCompiler.CanThrowNode(predicate))
+                throw new NotSupportedException(
+                    $"Relation query supports Queryable.{name} with a predicate after OrderBy only when the predicate cannot throw, and not after Skip or Take.");
+            source.Filter = new WhereQueryNode(source.Filter,
+                name == nameof(Queryable.All) ? new NotQueryNode(predicate) : predicate);
+        }
+
+        switch (name)
+        {
+            case nameof(Queryable.Count):
+            case nameof(Queryable.LongCount):
+            case nameof(Queryable.Any):
+            case nameof(Queryable.All):
+            {
+                var count = CountWindow(source, name is nameof(Queryable.Any) or nameof(Queryable.All));
+                return name switch
+                {
+                    nameof(Queryable.Count) => checked((int)count),
+                    nameof(Queryable.LongCount) => count,
+                    nameof(Queryable.Any) => count > 0,
+                    _ => count == 0
+                };
+            }
+            case nameof(Queryable.First):
+            case nameof(Queryable.FirstOrDefault):
+            case nameof(Queryable.Single):
+            case nameof(Queryable.SingleOrDefault):
+            case nameof(Queryable.Last):
+            case nameof(Queryable.LastOrDefault):
+            {
+                var hasPredicate = lambda != null;
+                var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
+                var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
+                    ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
+                    : null;
+                using var window = CreateWindow(source, null);
+                if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(hasPredicate);
+                if (name.StartsWith("Last", StringComparison.Ordinal))
+                {
+                    var lastKey = window.Scanner.Cursor.GetKeySpan(Span<byte>.Empty, true).ToArray();
+                    while (window.MoveNext()) lastKey = window.Scanner.Cursor.GetKeySpan(Span<byte>.Empty, true).ToArray();
+                    window.Scanner.Cursor.FindExactKey(lastKey);
+                    return RelationQueryRows.Load<T>(_transaction, _loaderInfo, window.Scanner.Cursor);
+                }
+
+                var result = window.Current;
+                if (name.StartsWith("Single", StringComparison.Ordinal) && window.MoveNext())
+                    throw new InvalidOperationException(hasPredicate
+                        ? "Sequence contains more than one matching element"
+                        : "Sequence contains more than one element");
+                return result;
+            }
+            case nameof(Queryable.Min):
+            case nameof(Queryable.Max):
+            case nameof(Queryable.Sum):
+            case nameof(Queryable.Average):
+            {
+                if (lambda == null)
+                    throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
+                var selector = RelationQueryAstBuilder.BuildSelector(lambda, _queryNode);
+                if (source.HasOrdering && !source.HasPaging && name is nameof(Queryable.Min) or nameof(Queryable.Max))
+                {
+                    // Min and Max of all rows do not depend on their order.
+                    using var scanner = CreateScanner(source.Filter, selector, false);
+                    var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
+                    scanner.Aggregate(aggregator);
+                    return aggregator.Result();
+                }
+
+                // Sums and averages follow the window order like LINQ, which matters for floats and overflow checks.
+                using var window = CreateWindow(source, selector, true);
+                var windowAggregator = RelationQueryAggregator.Create(name, window.Scanner.Plan.Result!);
+                while (window.MoveNext()) windowAggregator.Add(window.CurrentFrame);
+                return windowAggregator.Result();
+            }
+            default:
+                throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
+        }
+    }
+
+    // Rows in the window, stopping at the first one when only presence matters. Like LINQ, an ordered source tests
+    // every row, while an unordered one stops at the end of the window.
+    long CountWindow(RelationQuerySource source, bool presenceOnly)
+    {
+        // Take(0) is empty without testing any row, like LINQ.
+        if (source.Take == 0) return 0;
+        if (source.HasOrdering)
+        {
+            using var scanner = CreateScanner(source.Filter, null, false);
+            var total = Math.Max(0, scanner.Count() - source.Skip);
+            return source.Take is { } take ? Math.Min(total, take) : total;
+        }
+
+        using var window = CreateWindow(source, null);
+        var count = 0L;
+        while (window.MoveNext())
+        {
+            count++;
+            if (presenceOnly) break;
+        }
+
+        return count;
     }
 
     object? ExecuteElement(string name, MethodCallExpression call, QueryNode source, LambdaExpression? lambda)
@@ -434,30 +605,108 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
     {
         if (expression is MethodCallExpression methodCall &&
             methodCall.Method.DeclaringType == typeof(Queryable) &&
-            methodCall.Method.Name == nameof(Queryable.Where))
+            methodCall.Method.Name is nameof(Queryable.Where) or nameof(Queryable.OrderBy)
+                or nameof(Queryable.OrderByDescending) or nameof(Queryable.ThenBy)
+                or nameof(Queryable.ThenByDescending) or nameof(Queryable.Skip) or nameof(Queryable.Take))
             return;
         if (expression is ConstantExpression)
             return;
-        throw new NotSupportedException("Relation query supports only Queryable.Where.");
+        throw new NotSupportedException(
+            "Relation query supports only Queryable.Where, OrderBy, ThenBy, Skip and Take.");
     }
+}
+
+/// A relation query source as built from Queryable calls: a filter, then an optional ordering, then paging.
+sealed class RelationQuerySource
+{
+    public RelationQuerySource(QueryNode filter)
+    {
+        Filter = filter;
+    }
+
+    /// QueryByIdQueryNode or a chain of WhereQueryNode.
+    public QueryNode Filter { get; set; }
+
+    /// Sort keys, most significant first.
+    public List<(QueryNode Key, bool Descending)> Ordering { get; } = [];
+
+    // Where ThenBy keys of the latest OrderBy are inserted; keys after it come from earlier OrderBy calls, whose order
+    // a stable sort keeps among ties.
+    internal int OrderingGroupEnd;
+
+    public long Skip { get; set; }
+    public long? Take { get; set; }
+    public bool HasOrdering => Ordering.Count > 0;
+    public bool HasPaging => Skip > 0 || Take != null;
 }
 
 static class RelationQueryAstBuilder
 {
+    /// Builds a source made only of Where calls.
     public static QueryNode Build(Expression expression, QueryByIdQueryNode query)
     {
-        if (expression is ConstantExpression) return query;
-        if (expression is MethodCallExpression methodCall &&
-            methodCall.Method.DeclaringType == typeof(Queryable) &&
-            methodCall.Method.Name == nameof(Queryable.Where))
-        {
-            var source = Build(methodCall.Arguments[0], query);
-            var lambda = (LambdaExpression)StripQuote(methodCall.Arguments[1]);
-            var converter = new ExpressionConverter(lambda.Parameters[0], query);
-            return new WhereQueryNode(source, converter.ConvertPredicate(lambda.Body));
-        }
+        var source = BuildSource(expression, query);
+        if (source.HasOrdering || source.HasPaging)
+            throw new NotSupportedException("Relation query supports only Queryable.Where here.");
+        return source.Filter;
+    }
 
-        throw new NotSupportedException("Relation query supports only Queryable.Where.");
+    public static RelationQuerySource BuildSource(Expression expression, QueryByIdQueryNode query)
+    {
+        if (expression is ConstantExpression) return new(query);
+        if (expression is not MethodCallExpression { Method.DeclaringType: var declaringType } call ||
+            declaringType != typeof(Queryable))
+            throw new NotSupportedException("Relation query supports only Queryable operators.");
+        var source = BuildSource(call.Arguments[0], query);
+        var name = call.Method.Name;
+        switch (name)
+        {
+            case nameof(Queryable.Where):
+                if (source.HasOrdering || source.HasPaging)
+                    throw new NotSupportedException("Relation query supports Where only before OrderBy, Skip and Take.");
+                source.Filter = new WhereQueryNode(source.Filter,
+                    BuildPredicate((LambdaExpression)StripQuote(call.Arguments[1]), query));
+                return source;
+            case nameof(Queryable.OrderBy):
+            case nameof(Queryable.OrderByDescending):
+            case nameof(Queryable.ThenBy):
+            case nameof(Queryable.ThenByDescending):
+            {
+                if (source.HasPaging || call.Arguments.Count != 2)
+                    throw new NotSupportedException($"Relation query does not support {name} here.");
+                var key = BuildSelector((LambdaExpression)StripQuote(call.Arguments[1]), query);
+                if (key.Type == typeof(string) ? key is not PropQueryNode : !RelationQueryTypes.TryGetStorage(key.Type, out _, out _, out _))
+                    throw new NotSupportedException($"Relation query does not support ordering by {key.Type.ToSimpleName()}.");
+                var descending = name.EndsWith("Descending", StringComparison.Ordinal);
+                if (name.StartsWith("OrderBy", StringComparison.Ordinal))
+                {
+                    source.Ordering.Insert(0, (key, descending));
+                    source.OrderingGroupEnd = 1;
+                }
+                else
+                {
+                    source.Ordering.Insert(source.OrderingGroupEnd++, (key, descending));
+                }
+
+                return source;
+            }
+            case nameof(Queryable.Skip) when call.Arguments[1].Type == typeof(int):
+            {
+                var count = (int)EvaluateConstant(call.Arguments[1])!;
+                if (count <= 0) return source;
+                if (source.Take != null) source.Take = Math.Max(0, source.Take.Value - count);
+                source.Skip += count;
+                return source;
+            }
+            case nameof(Queryable.Take) when call.Arguments[1].Type == typeof(int):
+            {
+                var count = Math.Max(0, (int)EvaluateConstant(call.Arguments[1])!);
+                source.Take = source.Take == null ? count : Math.Min(source.Take.Value, count);
+                return source;
+            }
+            default:
+                throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
+        }
     }
 
     public static LambdaExpression? TryGetLambda(Expression expression) => StripQuote(expression) as LambdaExpression;
@@ -1032,6 +1281,8 @@ sealed class RelationQueryPlan
         RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount, RelationQueryResult? result = null,
         RelationQuerySecondaryKey? secondaryKey = null)
     {
+        SortKeys = [];
+        FixedPrimaryKeyFields = [];
         Ranges = ranges;
         KeyProgram = keyProgram;
         ValuePrograms = valuePrograms;
@@ -1064,6 +1315,15 @@ sealed class RelationQueryPlan
 
     /// Whether primary rows are tested by programs.
     public bool HasPrograms => KeyProgram != null || ValuePrograms != null;
+
+    /// Sort key values of a matching row, computed by its last program.
+    public RelationQueryResult[] SortKeys { get; internal set; }
+
+    /// Primary key fields every matching row has the same value of.
+    public HashSet<string> FixedPrimaryKeyFields { get; internal set; }
+
+    /// Whether testing a row can throw, so evaluating fewer rows than LINQ would be observable.
+    public bool CanThrow { get; internal set; }
 }
 
 /// Scanning a secondary index: index keys in the plan ranges are tested by IndexProgram, then their primary rows by
@@ -1100,6 +1360,49 @@ sealed class RelationQueryResult
         ValueType = valueType;
         Slot = slot;
         HasValueSlot = hasValueSlot;
+    }
+
+    /// A string property, read from the chars its program decoded.
+    public RelationQueryResult(ushort charsObject, ushort lengthSlot)
+    {
+        Type = typeof(string);
+        StorageType = typeof(string);
+        IsString = true;
+        Slot = lengthSlot;
+        HasValueSlot = charsObject;
+    }
+
+    public bool IsString { get; }
+
+    /// Reads the value of the current row; enums are returned as their underlying type.
+    public object? Read(ReadOnlySpan<byte> frame, object?[] objects)
+    {
+        if (IsString)
+        {
+            var length = MemoryMarshal.Read<int>(frame[Slot..]);
+            return length < 0 ? null : new string((char[])objects[HasValueSlot]!, 0, length);
+        }
+
+        if (frame[HasValueSlot] == 0) return null;
+        var value = frame[Slot..];
+        if (StorageType == typeof(bool)) return MemoryMarshal.Read<bool>(value);
+        if (StorageType == typeof(byte)) return MemoryMarshal.Read<byte>(value);
+        if (StorageType == typeof(sbyte)) return MemoryMarshal.Read<sbyte>(value);
+        if (StorageType == typeof(ushort)) return MemoryMarshal.Read<ushort>(value);
+        if (StorageType == typeof(short)) return MemoryMarshal.Read<short>(value);
+        if (StorageType == typeof(uint)) return MemoryMarshal.Read<uint>(value);
+        if (StorageType == typeof(int)) return MemoryMarshal.Read<int>(value);
+        if (StorageType == typeof(ulong)) return MemoryMarshal.Read<ulong>(value);
+        if (StorageType == typeof(long)) return MemoryMarshal.Read<long>(value);
+        if (StorageType == typeof(Half)) return MemoryMarshal.Read<Half>(value);
+        if (StorageType == typeof(float)) return MemoryMarshal.Read<float>(value);
+        if (StorageType == typeof(double)) return MemoryMarshal.Read<double>(value);
+        if (StorageType == typeof(DateTime)) return MemoryMarshal.Read<DateTime>(value);
+        if (StorageType == typeof(Guid)) return MemoryMarshal.Read<Guid>(value);
+        if (StorageType == typeof(decimal)) return MemoryMarshal.Read<decimal>(value);
+        if (StorageType == typeof(TimeSpan)) return MemoryMarshal.Read<TimeSpan>(value);
+        if (StorageType == typeof(DateTimeOffset)) return MemoryMarshal.Read<DateTimeOffset>(value);
+        throw new NotSupportedException($"Relation query cannot read {StorageType.ToSimpleName()} results.");
     }
 
     /// Selector type, possibly nullable or an enum.
@@ -1208,7 +1511,7 @@ sealed class RelationQueryCompiler
     ushort _frameTemporary;
     ushort _objectTemporary;
 
-    RelationQueryResult? _result;
+    readonly List<(QueryNode Node, RelationQueryResult Result)> _selectors = [];
 
     // State of the program being built.
     InterpreterBuilder _builder = null!;
@@ -1225,24 +1528,57 @@ sealed class RelationQueryCompiler
 
     /// The optional selector is computed for every matching row into RelationQueryPlan.Result. When the result does
     /// not depend on row order (Count, Any, All, Min, Max), a secondary index may be scanned in its own order.
+    /// Sort keys are computed for every matching row into RelationQueryPlan.SortKeys.
     public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast,
-        QueryNode? selector = null, bool orderSensitive = true)
+        QueryNode? selector = null, bool orderSensitive = true, IReadOnlyList<QueryNode>? sortKeys = null)
     {
         var predicate = ExtractPredicate(ast);
         if (predicate != null) CollectFields(predicate);
         RelationQueryResult? result = null;
         if (selector != null)
         {
+            result = AddSelector(selector);
+        }
+
+        var sortKeyResults = new RelationQueryResult[sortKeys?.Count ?? 0];
+        for (var i = 0; i < sortKeyResults.Length; i++)
+        {
+            if (CanThrow(sortKeys![i]))
+                throw new NotSupportedException("Relation query does not support ordering keys which can throw.");
+            sortKeyResults[i] = AddSelector(sortKeys[i]);
+        }
+
+        var plan = CompilePlan(transaction, predicate, result, orderSensitive);
+        plan.SortKeys = sortKeyResults;
+        return plan;
+    }
+
+    RelationQueryResult AddSelector(QueryNode selector)
+    {
+        CollectFields(selector);
+        RelationQueryResult result;
+        if (selector is PropQueryNode { Type: var type } stringProp && type == typeof(string))
+        {
+            var field = _fields[stringProp.Name];
+            result = new(field.CharsObject, field.LengthSlot);
+        }
+        else
+        {
             if (!RelationQueryTypes.TryGetStorage(selector.Type, out var storage, out var valueType, out _))
                 throw new NotSupportedException(
                     $"Relation query does not support selecting {selector.Type.ToSimpleName()} values yet.");
-            CollectFields(selector);
             var size = RelationQueryTypes.SlotSize(storage);
             var slot = AllocFrame(size + 8);
             result = new(selector.Type, storage, valueType, slot, (ushort)(slot + size));
         }
 
-        _result = result;
+        _selectors.Add((selector, result));
+        return result;
+    }
+
+    RelationQueryPlan CompilePlan(IInternalObjectDBTransaction transaction, QueryNode? predicate,
+        RelationQueryResult? result, bool orderSensitive)
+    {
         _frameTemporary = AllocFrame(16);
         _objectTemporary = AllocObjectSlot();
 
@@ -1253,7 +1589,7 @@ sealed class RelationQueryCompiler
         foreach (var node in nodes)
         {
             // A false conjunct makes the query empty unless an earlier conjunct could throw first.
-            if (IsFalse(node) && !seenThrowing) return new([], null, null, 0, 0, result);
+            if (IsFalse(node) && !seenThrowing) return new([], null, null, _frameSize, _objectCount, result);
             if (IsTrue(node)) continue;
             var throws = CanThrow(node);
             conjuncts.Add(new(node, conjuncts.Count, throws));
@@ -1276,13 +1612,16 @@ sealed class RelationQueryCompiler
             }
         }
 
+        var canThrow = seenThrowing || _selectors.Exists(s => CanThrow(s.Node));
+        var fixedFields = new HashSet<string>(path.FixedFields);
         conjuncts.RemoveAll(c => path.Used.Contains(c.Index));
         var ranges = path.Ranges.ToArray();
         if (path.SecondaryKeyIndex < 0)
         {
-            var (keyProgram, valuePrograms) = BuildPrimaryPrograms(conjuncts, selector, path.CommonPrefixLength,
+            var (keyProgram, valuePrograms) = BuildPrimaryPrograms(conjuncts, path.CommonPrefixLength,
                 path.CommonFieldCount);
-            return new(ranges, keyProgram, valuePrograms, _frameSize, _objectCount, result);
+            return new(ranges, keyProgram, valuePrograms, _frameSize, _objectCount, result)
+                { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow };
         }
 
         // Index conjuncts are tested on index keys; they must not throw, because index order is not row order.
@@ -1296,25 +1635,26 @@ sealed class RelationQueryCompiler
             else primaryConjuncts.Add(conjunct);
         }
 
-        var anyThrows = barrier || selector != null && CanThrow(selector);
+        var anyThrows = barrier || _selectors.Exists(s => CanThrow(s.Node));
         var covering = !orderSensitive && primaryConjuncts.Count == 0 && !anyThrows &&
-                       (selector == null || UsesOnlyFields(selector, path.KeyFields));
-        var indexProgram = indexConjuncts.Count > 0 || covering && selector != null
+                       _selectors.TrueForAll(s => UsesOnlyFields(s.Node, path.KeyFields));
+        var indexProgram = indexConjuncts.Count > 0 || covering && _selectors.Count > 0
             ? BuildProgram(indexConjuncts, null, path.CommonPrefixLength, path.CommonFieldCount,
-                covering ? selector : null, path.KeyFields, path.Prefix.Length)
+                covering ? _selectors : [], path.KeyFields, path.Prefix.Length)
             : null;
         RelationQueryProgram? primaryKeyProgram = null;
         RelationQueryProgram?[]? primaryValuePrograms = null;
         if (!covering)
-            (primaryKeyProgram, primaryValuePrograms) = BuildPrimaryPrograms(primaryConjuncts, selector,
+            (primaryKeyProgram, primaryValuePrograms) = BuildPrimaryPrograms(primaryConjuncts,
                 _relationInfo.Prefix.Length, 0);
         var secondaryKey = new RelationQuerySecondaryKey(indexProgram, !covering && (orderSensitive || anyThrows),
             covering, _relationInfo.GetSKKeyValueToPKMerger((uint)path.SecondaryKeyIndex), _relationInfo.Prefix);
-        return new(ranges, primaryKeyProgram, primaryValuePrograms, _frameSize, _objectCount, result, secondaryKey);
+        return new(ranges, primaryKeyProgram, primaryValuePrograms, _frameSize, _objectCount, result, secondaryKey)
+            { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow };
     }
 
     (RelationQueryProgram? KeyProgram, RelationQueryProgram?[]? ValuePrograms) BuildPrimaryPrograms(
-        List<Conjunct> conjuncts, QueryNode? selector, int prefixLength, int prefixFieldCount)
+        List<Conjunct> conjuncts, int prefixLength, int prefixFieldCount)
     {
         // Conjuncts are evaluated in a different order than written, so a throwing conjunct must still see every
         // earlier conjunct evaluated first, and nothing after it may move before it.
@@ -1338,12 +1678,13 @@ sealed class RelationQueryCompiler
             barrier |= conjunct.Throws;
         }
 
-        // The selector runs in the last program of a row: the value programs when they exist or it needs value
+        // Selectors run in the last program of a row: the value programs when they exist or a selector needs value
         // fields, otherwise the key program.
-        var hasValueStage = valueConjuncts.Count > 0 || selector != null && !UsesOnlyFields(selector, primaryKeyFields);
-        var keyProgram = keyConjuncts.Count == 0 && (selector == null || hasValueStage)
+        var hasValueStage = valueConjuncts.Count > 0 ||
+                            _selectors.Exists(s => !UsesOnlyFields(s.Node, primaryKeyFields));
+        var keyProgram = keyConjuncts.Count == 0 && (_selectors.Count == 0 || hasValueStage)
             ? null
-            : BuildProgram(keyConjuncts, null, prefixLength, prefixFieldCount, hasValueStage ? null : selector,
+            : BuildProgram(keyConjuncts, null, prefixLength, prefixFieldCount, hasValueStage ? [] : _selectors,
                 primaryKeyFields, _relationInfo.Prefix.Length);
         RelationQueryProgram?[]? valuePrograms = null;
         if (hasValueStage)
@@ -1353,7 +1694,7 @@ sealed class RelationQueryCompiler
             valuePrograms = new RelationQueryProgram?[maxVersion + 1];
             foreach (var (version, info) in _relationInfo.RelationVersions)
                 valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, prefixLength, prefixFieldCount,
-                    selector, primaryKeyFields, _relationInfo.Prefix.Length);
+                    _selectors, primaryKeyFields, _relationInfo.Prefix.Length);
         }
 
         return (keyProgram, valuePrograms);
@@ -1372,6 +1713,9 @@ sealed class RelationQueryCompiler
         public int CommonFieldCount;
         public readonly HashSet<int> Used = [];
         public int Score;
+
+        /// Primary key fields set to a single value by the used equalities.
+        public readonly HashSet<string> FixedFields = [];
 
         /// An additional range per prefix, for keys a residual conjunct must still see.
         public Func<byte[], RelationQueryRange>? ExtraRanges;
@@ -1415,6 +1759,7 @@ sealed class RelationQueryCompiler
             prefixes = next;
             path.Used.Add(conjunctIndex);
             path.Score += 2;
+            if (encodings.Count == 1 && IsPrimaryKeyField(field.Name)) path.FixedFields.Add(field.Name);
             if (allSingle && encodings.Count == 1)
             {
                 path.CommonPrefixLength += encodings[0].Length;
@@ -1641,7 +1986,8 @@ sealed class RelationQueryCompiler
     /// Key fields are the primary key fields, or the fields of a secondary index key whose prefix has basePrefixLength
     /// bytes; prefixLength and prefixFieldCount describe the leading fields every scanned key shares.
     RelationQueryProgram BuildProgram(List<Conjunct> conjuncts, ReadOnlyMemory<TableFieldInfo>? valueFields,
-        int prefixLength, int prefixFieldCount, QueryNode? selector, TableFieldInfo[] keyFieldArray,
+        int prefixLength, int prefixFieldCount,
+        IReadOnlyList<(QueryNode Node, RelationQueryResult Result)> selectors, TableFieldInfo[] keyFieldArray,
         int basePrefixLength)
     {
         var keyFields = keyFieldArray.AsSpan();
@@ -1660,13 +2006,19 @@ sealed class RelationQueryCompiler
             seenThrowing |= throws;
         }
 
-        if (selector != null && valueFields != null)
-            selector = Simplify(SubstituteMissing(selector, valueFields.Value.Span));
-        if (specialized.Count == 0 && selector == null) return new(null, 0, true);
+        if (valueFields != null)
+        {
+            var specializedSelectors = new List<(QueryNode Node, RelationQueryResult Result)>(selectors.Count);
+            foreach (var (node, result) in selectors)
+                specializedSelectors.Add((Simplify(SubstituteMissing(node, valueFields.Value.Span)), result));
+            selectors = specializedSelectors;
+        }
+
+        if (specialized.Count == 0 && selectors.Count == 0) return new(null, 0, true);
 
         var names = new HashSet<string>();
         foreach (var conjunct in specialized) CollectPropertyNames(conjunct.Node, names);
-        if (selector != null) CollectPropertyNames(selector, names);
+        foreach (var (node, _) in selectors) CollectPropertyNames(node, names);
         var firstKeyField = int.MaxValue;
         var lastKeyField = -1;
         for (var i = 0; i < keyFields.Length; i++)
@@ -1693,6 +2045,11 @@ sealed class RelationQueryCompiler
 
         var needsChars = new HashSet<string>();
         foreach (var conjunct in specialized) CollectNeedsChars(conjunct.Node, needsChars);
+        foreach (var (node, result) in selectors)
+        {
+            if (result.IsString && node is PropQueryNode stringProp) needsChars.Add(stringProp.Name);
+            else CollectNeedsChars(node, needsChars);
+        }
 
         var order = OrderConjuncts(specialized, valueFields == null ? keyFields : fields);
 
@@ -1741,7 +2098,12 @@ sealed class RelationQueryCompiler
 
         if (emitted != specialized.Count)
             throw new InvalidOperationException("Relation query compiler did not emit every conjunct.");
-        if (selector != null) EmitSelector(selector, _result!);
+        foreach (var (node, result) in selectors)
+        {
+            // A string selector reads the chars its field decoded; a missing field leaves a constant null.
+            if (!result.IsString) EmitSelector(node, result);
+            else if (node is not PropQueryNode) EmitNullString(result);
+        }
         _builder.AddInstruction(OpCode.SetBoolResultTrue);
         _builder.AddInstruction(OpCode.Stop);
         _builder.MarkLabel(falseLabel);
@@ -1750,6 +2112,17 @@ sealed class RelationQueryCompiler
         var program = _builder.Materialize();
         _builder = null!;
         return new(program, keyStart, false);
+    }
+
+    void EmitNullString(RelationQueryResult result)
+    {
+        var offset = _builder.AllocAlignedConst(sizeof(int));
+        _builder.ConstSpan<int>(offset) = -1;
+        _builder.AddInstruction(OpCode.CopyToFrame);
+        _builder.AddUInt8(sizeof(int));
+        _builder.AddUInt16(result.Slot);
+        _builder.AddUInt8((byte)QueryOperandKind.Constant);
+        _builder.AddUInt32(offset);
     }
 
     // Stores the selector value and its HasValue into the result slot.
@@ -2796,6 +3169,8 @@ sealed class RelationQueryCompiler
         return RelationQueryTypes.IsInteger(storage) || storage == typeof(decimal);
     }
 
+    public static bool CanThrowNode(QueryNode node) => CanThrow(node);
+
     /// Whether evaluating the node can throw, which limits reordering it with other conjuncts.
     static bool CanThrow(QueryNode node)
     {
@@ -3117,7 +3492,10 @@ sealed class RelationQueryScanner : IDisposable
 
     IKeyValueDBCursor IndexCursor => _indexCursor ??= _transaction.KeyValueDBTransaction.CreateCursor();
 
-    Span<byte> FrameBytes => MemoryMarshal.AsBytes(_frame.AsSpan());
+    /// Frame of the current row, with its selector value when the plan has one.
+    public Span<byte> FrameBytes => MemoryMarshal.AsBytes(_frame.AsSpan());
+
+    public object? ReadResult(RelationQueryResult result) => result.Read(FrameBytes, _objects);
 
     void ThrowIfDisposed()
     {
@@ -3263,6 +3641,99 @@ sealed class RelationQueryScanner : IDisposable
         if (!Evaluate(key)) return false;
         _matched = true;
         return true;
+    }
+
+    /// Moves to the previous matching row in descending key order, testing rows backwards from the end.
+    [SkipLocalsInit]
+    public bool MovePrevious()
+    {
+        ThrowIfDisposed();
+        if (_afterEnd) return false;
+        if (Plan.SecondaryKey != null)
+        {
+            _candidates ??= CollectCandidates();
+            if (_first)
+            {
+                _first = false;
+                _candidateIndex = _candidates.Count;
+            }
+
+            while (_candidateIndex > 0)
+            {
+                var primaryKey = _candidates[--_candidateIndex];
+                if (_cursor!.FindExactKey(primaryKey) && Evaluate(primaryKey)) return true;
+            }
+
+            return AfterEnd();
+        }
+
+        var cursor = _cursor!;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        if (_first)
+        {
+            _first = false;
+            _rangeIndex = Plan.Ranges.Length - 1;
+            _inRange = false;
+        }
+
+        while (_rangeIndex >= 0)
+        {
+            var range = Plan.Ranges[_rangeIndex];
+            if (!(_inRange ? cursor.FindPreviousKey(range.Prefix) : SeekLast(cursor, range)))
+            {
+                _rangeIndex--;
+                _inRange = false;
+                continue;
+            }
+
+            _inRange = true;
+            var key = cursor.GetKeySpan(ref keyBuffer);
+            if (!range.Contains(key))
+            {
+                _rangeIndex--;
+                _inRange = false;
+                continue;
+            }
+
+            if (!Plan.HasPrograms || Evaluate(key)) return true;
+        }
+
+        return AfterEnd();
+    }
+
+    /// Skips up to count rows before the first MoveNext using key indexes, which is possible when rows are whole
+    /// primary key prefix ranges without programs; returns the number of skipped rows.
+    public long SkipKeys(long count)
+    {
+        ThrowIfDisposed();
+        if (count <= 0 || !_first || Plan.SecondaryKey != null || Plan.HasPrograms ||
+            !Array.TrueForAll(Plan.Ranges, r => r.IsWholePrefix))
+            return 0;
+        var cursor = _cursor!;
+        _first = false;
+        var skipped = 0L;
+        for (_rangeIndex = 0; _rangeIndex < Plan.Ranges.Length; _rangeIndex++)
+        {
+            if (skipped == count) break;
+            var range = Plan.Ranges[_rangeIndex];
+            if (!cursor.FindFirstKey(range.Prefix)) continue;
+            var firstIndex = cursor.GetKeyIndex();
+            cursor.FindLastKey(range.Prefix);
+            var size = cursor.GetKeyIndex() - firstIndex + 1;
+            var remaining = count - skipped;
+            if (remaining < size)
+            {
+                // MoveNext continues with the key after the last skipped one.
+                cursor.FindKeyIndex(range.Prefix, remaining - 1);
+                _inRange = true;
+                return count;
+            }
+
+            skipped += size;
+        }
+
+        _inRange = false;
+        return skipped;
     }
 
     /// Positions the cursor on the last matching row by testing rows backwards from the end, like LINQ-to-Objects
@@ -3579,6 +4050,172 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
     public void Dispose()
     {
         _scanner.Dispose();
+    }
+
+    public IEnumerator<T> GetEnumerator() => this;
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+enum RelationQueryOrder
+{
+    /// Primary key order, which is the source order and also matches orderings by leading key fields.
+    Forward,
+
+    /// Descending primary key order, for descending orderings by all remaining key fields.
+    Backward,
+
+    /// All matching rows sorted by their sort keys in memory, stable like Enumerable.OrderBy.
+    Sorted
+}
+
+/// Rows of an ordered and paged relation query source; only rows in the window are materialized.
+sealed class RelationQueryWindow<T> : IEnumerator<T>, IEnumerable<T> where T : class
+{
+    readonly IInternalObjectDBTransaction _transaction;
+    readonly RelationInfo.ItemLoaderInfo _loaderInfo;
+    readonly RelationQueryOrder _order;
+    readonly bool[] _descending;
+    readonly long _skip;
+    readonly long? _take;
+    readonly bool _keepFrames;
+    bool _started;
+    long _taken;
+    List<SortEntry>? _sorted;
+    bool _hasCurrent;
+    T? _current;
+
+    public RelationQueryWindow(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
+        RelationQueryPlan plan, RelationQueryOrder order, bool[] descending, long skip, long? take,
+        bool keepFrames = false)
+    {
+        _keepFrames = keepFrames;
+        _transaction = transaction;
+        _loaderInfo = loaderInfo;
+        _order = order;
+        _descending = descending;
+        _skip = skip;
+        _take = take;
+        Scanner = new(transaction, plan);
+    }
+
+    /// Positioned on the current row; its frame holds the selector value of the plan.
+    public RelationQueryScanner Scanner { get; }
+
+    /// Frame of the current row; sorted windows keep copies of frames when created to keep them.
+    public ReadOnlySpan<byte> CurrentFrame =>
+        _order == RelationQueryOrder.Sorted ? _sorted![(int)(_skip + _taken - 1)].Frame : Scanner.FrameBytes;
+
+    public bool MoveNext()
+    {
+        _hasCurrent = false;
+        _current = null;
+        if (_take is { } take && _taken >= take) return false;
+        if (_order == RelationQueryOrder.Sorted)
+        {
+            _sorted ??= Sort();
+            var index = _skip + _taken;
+            if (index >= _sorted.Count) return false;
+            if (!Scanner.Cursor.FindExactKey(_sorted[(int)index].PrimaryKey))
+                throw new InvalidOperationException("Relation row was removed during query enumeration.");
+        }
+        else
+        {
+            if (!_started)
+            {
+                _started = true;
+                var skipped = _order == RelationQueryOrder.Forward ? Scanner.SkipKeys(_skip) : 0;
+                for (; skipped < _skip; skipped++)
+                    if (!Step()) return false;
+            }
+
+            if (!Step()) return false;
+        }
+
+        _taken++;
+        _hasCurrent = true;
+        return true;
+    }
+
+    bool Step() => _order == RelationQueryOrder.Forward ? Scanner.MoveNext() : Scanner.MovePrevious();
+
+    [SkipLocalsInit]
+    List<SortEntry> Sort()
+    {
+        var sortKeys = Scanner.Plan.SortKeys;
+        var comparer = new SortEntryComparer(_descending);
+        var limit = _take is { } take ? _skip + take : long.MaxValue;
+        var entries = new List<SortEntry>();
+        Span<byte> keyBuffer = stackalloc byte[512];
+        var sequence = 0L;
+        var probe = new SortEntry(new object?[sortKeys.Length], [], 0, null);
+        // Like Enumerable.OrderBy, every matching row is tested before the first one is returned.
+        while (Scanner.MoveNext())
+        {
+            for (var i = 0; i < sortKeys.Length; i++) probe.Keys[i] = Scanner.ReadResult(sortKeys[i]);
+            probe.Sequence = sequence++;
+            var position = entries.Count;
+            if (limit != long.MaxValue)
+            {
+                // Keeps only the first limit entries; the sequence makes every entry unique and the sort stable.
+                // Rejected rows allocate nothing beyond their boxed keys.
+                position = ~entries.BinarySearch(probe, comparer);
+                if (position >= limit) continue;
+            }
+
+            entries.Insert(position, new((object?[])probe.Keys.Clone(),
+                Scanner.Cursor.GetKeySpan(ref keyBuffer).ToArray(), probe.Sequence,
+                _keepFrames ? Scanner.FrameBytes.ToArray() : null));
+            if (entries.Count > limit) entries.RemoveAt(entries.Count - 1);
+        }
+
+        if (limit == long.MaxValue) entries.Sort(comparer);
+        return entries;
+    }
+
+    sealed class SortEntry(object?[] keys, byte[] primaryKey, long sequence, byte[]? frame)
+    {
+        public object?[] Keys { get; } = keys;
+        public byte[] PrimaryKey { get; } = primaryKey;
+        public long Sequence { get; set; } = sequence;
+        public byte[]? Frame { get; } = frame;
+    }
+
+    sealed class SortEntryComparer(bool[] descending) : IComparer<SortEntry>
+    {
+        // Comparer<T>.Default of Enumerable.OrderBy: culture sensitive for strings, nulls first.
+        readonly Comparer _comparer = new(CultureInfo.CurrentCulture);
+
+        public int Compare(SortEntry? x, SortEntry? y)
+        {
+            for (var i = 0; i < descending.Length; i++)
+            {
+                var order = _comparer.Compare(x!.Keys[i], y!.Keys[i]);
+                if (order != 0) return descending[i] ? -order : order;
+            }
+
+            return x!.Sequence.CompareTo(y!.Sequence);
+        }
+    }
+
+    public T Current
+    {
+        get
+        {
+            if (!_hasCurrent) throw new InvalidOperationException("Enumerator is not positioned on a row.");
+            return _current ??= RelationQueryRows.Load<T>(_transaction, _loaderInfo, Scanner.Cursor);
+        }
+    }
+
+    object IEnumerator.Current => Current;
+
+    public void Reset()
+    {
+        throw new NotSupportedException();
+    }
+
+    public void Dispose()
+    {
+        Scanner.Dispose();
     }
 
     public IEnumerator<T> GetEnumerator() => this;

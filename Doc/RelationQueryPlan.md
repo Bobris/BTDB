@@ -460,6 +460,55 @@ What this means:
 - `Take` stops early. `Skip` over a pure key range with no residual uses `FindKeyIndex(prefix, index + skip)` in
   O(log n).
 
+#### Phase 5 status: done
+
+What was built, and where it differs from the plan above:
+
+- **Source chains.** `RelationQuerySource` holds the `Where` filter, the ordering and normalized paging.
+  - `OrderBy` after an ordering inserts its keys before the earlier ones, because a stable re-sort keeps them as
+    tiebreakers; `ThenBy` inserts after the latest `OrderBy` group.
+  - `Skip`/`Take` sequences fold into one skip and one take.
+  - `Where` after ordering or paging is rejected, because LINQ would test it on sorted rows.
+  - `RelationQuery<T>` implements `IOrderedQueryable<T>`.
+- **Three window modes** in `RelationQueryWindow<T>`:
+  - **Forward:** no ordering, or an ordering equal to primary key order after the fixed key fields, ascending, on
+    order-preserving handlers.
+  - **Backward** (`MovePrevious`): the same descending, but only over all remaining key fields, because ties must
+    keep ascending source order.
+  - **Sorted:** everything else. Every matching row is tested; sort keys are read from result slots as boxed values
+    and compared with a culture-sensitive `Comparer`, with the row sequence as tiebreaker. With `Take`, a
+    `Skip + Take` bounded binary insertion keeps only the window, and rejected rows allocate only their boxed keys.
+- **Streaming an ordering** returns rows before testing all of them, which LINQ's `OrderBy` never does. It is
+  therefore used only when no conjunct or selector can throw (`RelationQueryPlan.CanThrow`).
+- **`SkipKeys`** jumps with `FindKeyIndex(prefix, index)` over whole-prefix ranges without programs.
+- **LINQ details matched:**
+  - `Take(0)` is empty without testing rows.
+  - `Count` and `Any` of an ordered source test every row.
+  - Unordered pages stop at their end.
+  - `Last` over a window scans the window.
+  - Terminal predicates after `OrderBy` are allowed only when they cannot throw, and never after paging.
+- **Aggregates over windows.** Sorted windows keep frame copies, so `Sum` and `Average` run in window order;
+  `Min`/`Max` of an ordered source without paging aggregate directly.
+- **Ordering keys** use the selector machinery: several result slots, string keys read from decoded chars, and a null
+  string for fields missing in older versions. Keys that can throw are rejected.
+- **Tests.**
+  - A third differential test combines random filters, 12 first and 7 next ordering keys (integers, strings,
+    nullable, enum, double, decimal, DateTime, DateTimeOffset, Guid, expressions), random `Skip`/`Take` and 11
+    terminals.
+  - Mutation checks catch a reverse scan over a key prefix, an off-by-one index skip, an unstable sort, and streaming
+    despite throwing conditions.
+
+Results (same machine and settings as before, per call):
+
+| Scenario                                                   | Query            | Comparison                 |
+|------------------------------------------------------------|-----------------:|----------------------------|
+| `Skip(50000).Take(10)`                                     | 3.0 µs           | LINQ 350 µs                |
+| `Where(TenantId == t).OrderBy(Id).Skip(100).Take(20)`      | 7.3 µs           | `FindById` + LINQ 1.5 ms   |
+| `OrderByDescending(Score).Take(10)` of 100 000 rows        | 15 ms, 2.3 MB    | LINQ 24 ms, 16 MB          |
+
+The benchmark `Score` is now pseudo-random. When it grew with the key, every row was a new maximum of the descending
+top 10: correct, but a worst case.
+
 ### Phase 6: Projection (`Select`)
 
 - Element-type change: `RelationQuery<TRow, TElement>`.

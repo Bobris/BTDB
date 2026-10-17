@@ -62,7 +62,8 @@ static class QueryBenchData
                 City = Cities[i % Cities.Length],
                 // 80 distinct ages make Age == SelectiveAge match 1.25 % of rows.
                 Age = 18 + i * 7 % 80,
-                Score = i * 31L,
+                // Pseudo-random, so top-K orderings do not see every row as a new maximum.
+                Score = i * 7919L % 100_003,
                 Active = i % 2 == 0,
                 Created = created.AddMinutes(i)
             });
@@ -142,6 +143,29 @@ public class RelationQueryBenchmark
     [BenchmarkCategory("PkPrefixAndValue"), Benchmark(OperationsPerInvoke = QueryBenchData.RowsPerTenant)]
     public int PkPrefixAndValueFindById() =>
         _table.FindById(QueryBenchData.SelectedTenant).Count(p => p.Age == QueryBenchData.SelectiveAge);
+
+    /// Paging, measured per call: a deep page without a filter skips by key indexes, a top 10 by a value keeps only
+    /// ten rows while testing all, and a tenant page in key order stops after its rows.
+    [BenchmarkCategory("DeepPage"), Benchmark(Baseline = true)]
+    public int DeepPageQuery() => Count(_table.Query<QueryBenchRow>().Skip(50_000).Take(10));
+
+    [BenchmarkCategory("DeepPage"), Benchmark]
+    public int DeepPageLinq() => _table.Skip(50_000).Take(10).Count(p => p.Id >= 0);
+
+    [BenchmarkCategory("TopByValue"), Benchmark(Baseline = true)]
+    public int TopByValueQuery() => Count(_table.Query<QueryBenchRow>().OrderByDescending(p => p.Score).Take(10));
+
+    [BenchmarkCategory("TopByValue"), Benchmark]
+    public int TopByValueLinq() => _table.OrderByDescending(p => p.Score).Take(10).Count(p => p.Id >= 0);
+
+    [BenchmarkCategory("TenantPage"), Benchmark(Baseline = true)]
+    public int TenantPageQuery() =>
+        Count(_table.Query<QueryBenchRow>().Where(p => p.TenantId == QueryBenchData.SelectedTenant)
+            .OrderBy(p => p.Id).Skip(100).Take(20));
+
+    [BenchmarkCategory("TenantPage"), Benchmark]
+    public int TenantPageFindById() =>
+        _table.FindById(QueryBenchData.SelectedTenant).OrderBy(p => p.Id).Skip(100).Take(20).Count(p => p.Id >= 0);
 
     /// Access paths, measured per call: a primary key range, an IN list of tenants and the City index.
     [BenchmarkCategory("PkRange"), Benchmark(Baseline = true)]

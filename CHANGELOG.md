@@ -39,6 +39,12 @@
 
   Secondary indexes are chosen when they allow a longer prefix or range than the primary key, still returning rows in
   primary key order. `Count`, `Any`, `All`, `Min` and `Max` read only a covering index.
+- `IRelation.Query<T>()` supports `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Skip` and `Take`
+  after `Where`, with LINQ-to-Objects results and exceptions:
+  - orderings by key fields stream in key order;
+  - other orderings sort keys read from stored bytes, keeping only `Skip + Take` rows;
+  - unfiltered `Skip` uses key indexes;
+  - only returned rows are materialized.
 - The low-level interpreter has expression opcodes (`OpCode` 163–183):
   - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
   - capturing raw field bytes, with encoded equality and `StartsWith`;

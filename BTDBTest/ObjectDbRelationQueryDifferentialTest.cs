@@ -190,6 +190,127 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             table.Query<DiffRow>().Count(p => p.Tenant == 1 && p.Rank == 3));
     }
 
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void OrderingAndPagingMatchLinqToObjects(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var generator = new RelationQueryPredicateGenerator(random);
+        var firstKeys = FirstOrderingKeys();
+        var nextKeys = NextOrderingKeys();
+        var terminals = WindowTerminals();
+        for (var i = 0; i < PredicatesPerSeed; i++)
+        {
+            var source = random.Next(3) == 0 ? null : generator.Generate();
+            var shape = new List<string>();
+            var steps = new List<Func<IQueryable<DiffRow>, IQueryable<DiffRow>>>();
+            if (random.Next(4) != 0)
+            {
+                var (firstName, first) = firstKeys[random.Next(firstKeys.Count)];
+                shape.Add(firstName);
+                var thenSteps = new List<Func<IOrderedQueryable<DiffRow>, IOrderedQueryable<DiffRow>>>();
+                for (var k = random.Next(3); k > 0; k--)
+                {
+                    var (thenName, then) = nextKeys[random.Next(nextKeys.Count)];
+                    shape.Add(thenName);
+                    thenSteps.Add(then);
+                }
+
+                steps.Add(q =>
+                {
+                    var ordered = first(q);
+                    foreach (var then in thenSteps) ordered = then(ordered);
+                    return ordered;
+                });
+            }
+
+            for (var k = random.Next(3); k > 0; k--)
+            {
+                var count = random.Next(-1, 40);
+                if (random.Next(2) == 0)
+                {
+                    shape.Add($"Skip({count})");
+                    steps.Add(q => q.Skip(count));
+                }
+                else
+                {
+                    shape.Add($"Take({count})");
+                    steps.Add(q => q.Take(count));
+                }
+            }
+
+            var (terminalName, terminal) = terminals[random.Next(terminals.Count)];
+            var description = $"{source} / {string.Join(".", shape)} / {terminalName}";
+
+            IQueryable<DiffRow> Apply(IQueryable<DiffRow> q)
+            {
+                foreach (var step in steps) q = step(q);
+                return q;
+            }
+
+            var expected = RunTerminal(() => terminal(Apply(source == null ? rows.AsQueryable() : rows.AsQueryable().Where(source))));
+            var actual = RunTerminal(() => terminal(Apply(source == null
+                ? table.Query<DiffRow>()
+                : generator.ApplyAsWhereChain(table.Query<DiffRow>(), source))));
+            if (actual.Exception is NotSupportedException notSupported)
+                throw new InvalidOperationException($"Seed {seed}, #{i} is not supported: {description}", notSupported);
+            if (expected.Value == actual.Value && expected.Exception?.GetType() == actual.Exception?.GetType() &&
+                expected.Exception?.Message == actual.Exception?.Message)
+                continue;
+            Assert.Fail($"Seed {seed}, #{i}: {description}\n" +
+                        $"expected {expected.Value} {expected.Exception?.GetType().Name}: {expected.Exception?.Message}\n" +
+                        $"actual {actual.Value} {actual.Exception?.GetType().Name}: {actual.Exception?.Message}\n" +
+                        $"{actual.Exception}");
+        }
+    }
+
+    static List<(string, Func<IQueryable<DiffRow>, IOrderedQueryable<DiffRow>>)> FirstOrderingKeys() =>
+    [
+        ("OrderBy(Tenant)", q => q.OrderBy(r => r.Tenant)),
+        ("OrderByDescending(Tenant)", q => q.OrderByDescending(r => r.Tenant)),
+        ("OrderBy(Code)", q => q.OrderBy(r => r.Code)),
+        ("OrderBy(Age)", q => q.OrderBy(r => r.Age)),
+        ("OrderByDescending(Score)", q => q.OrderByDescending(r => r.Score)),
+        ("OrderBy(Name)", q => q.OrderBy(r => r.Name)),
+        ("OrderByDescending(Created)", q => q.OrderByDescending(r => r.Created)),
+        ("OrderBy(Bonus)", q => q.OrderBy(r => r.Bonus)),
+        ("OrderBy(Kind)", q => q.OrderBy(r => r.Kind)),
+        ("OrderBy(Ratio)", q => q.OrderBy(r => r.Ratio)),
+        ("OrderByDescending(Price)", q => q.OrderByDescending(r => r.Price)),
+        ("OrderBy(Age + Score)", q => q.OrderBy(r => r.Age + r.Score)),
+    ];
+
+    static List<(string, Func<IOrderedQueryable<DiffRow>, IOrderedQueryable<DiffRow>>)> NextOrderingKeys() =>
+    [
+        ("ThenBy(Tenant)", q => q.ThenBy(r => r.Tenant)),
+        ("ThenByDescending(Code)", q => q.ThenByDescending(r => r.Code)),
+        ("ThenBy(Code)", q => q.ThenBy(r => r.Code)),
+        ("ThenByDescending(Age)", q => q.ThenByDescending(r => r.Age)),
+        ("ThenBy(Note)", q => q.ThenBy(r => r.Note)),
+        ("ThenBy(Token)", q => q.ThenBy(r => r.Token)),
+        ("ThenByDescending(Seen)", q => q.ThenByDescending(r => r.Seen)),
+    ];
+
+    static List<(string, Func<IQueryable<DiffRow>, object?>)> WindowTerminals() =>
+    [
+        ("Enumerate", q => string.Join(",", q.AsEnumerable().Select(Describe))),
+        ("Enumerate", q => string.Join(",", q.AsEnumerable().Select(Describe))),
+        ("Count", q => q.Count()),
+        ("Any", q => q.Any()),
+        ("First", q => q.First()),
+        ("FirstOrDefault", q => q.FirstOrDefault()),
+        ("Last", q => q.Last()),
+        ("SingleOrDefault", q => q.SingleOrDefault()),
+        ("Min(Age)", q => q.Min(r => r.Age)),
+        ("Sum(Score)", q => q.Sum(r => r.Score)),
+        ("Average(Ratio)", q => q.Average(r => r.Ratio)),
+    ];
+
     static readonly DiffRow DefaultRow = new() { Code = "default" };
 
     // Each terminal gets the source and a predicate it may use as its argument.

@@ -461,6 +461,26 @@ Conditions are not always evaluated in the written order: cheaper and key-only c
 condition that can throw only runs after every condition written before it, so guards like
 `p.Name != null && p.Name.StartsWith("A")` work as in LINQ.
 
+`OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Skip` and `Take` follow `Where`:
+- **Ordering by key fields** in primary key order, ignoring fields fixed by equalities, streams rows without sorting,
+  for example `Where(p => p.TenantId == t).OrderBy(p => p.Id)`. The same holds descending, when the ordering covers
+  all remaining key fields.
+- **Other orderings** sort the matching rows in memory by keys read from the stored bytes. The sort is stable, and
+  strings compare by the current culture like `Comparer<string>.Default`.
+  - With `Take`, only `Skip + Take` rows are kept.
+  - Only the returned rows are materialized.
+- **`Skip`/`Take` without ordering** stop the scan at the end of the page.
+- **Without a filter,** `Skip` jumps by key indexes in O(log n).
+- **Exceptions:** like LINQ, an ordered query tests every row before returning the first one, so ordering streams only
+  when no condition can throw. `Take(0)` tests no row.
+- **Terminal operators,** including aggregates, work on ordered and paged sources. Sums and averages follow the page
+  order like LINQ.
+- **Not supported:**
+  - `Where` after `OrderBy`, `Skip` or `Take`;
+  - ordering keys that can throw;
+  - a predicate argument of a terminal operator after `Skip` or `Take`, or after `OrderBy` when the predicate can
+    throw.
+
 Terminal operators run on the stored rows too, with their predicate overloads:
 - `Count` and `LongCount` never materialize rows. When the conditions are fully covered by key prefixes and seeks,
   of the primary key or of a secondary index, they only compute key indexes in O(log n).
@@ -478,7 +498,7 @@ Results, exceptions and which rows get tested are the same as LINQ-to-Objects ov
 - `Last` searching backwards from the end, except `Last(predicate)` after `Where`, which tests every row.
 
 Anything else throws `NotSupportedException` when the query is enumerated or executed. Examples:
-- other LINQ operators, such as `Select`, `OrderBy` or `Skip`;
+- other LINQ operators, such as `Select`, `Distinct` or `TakeLast`;
 - `Min`, `Max`, `Sum` and `Average` without a selector or over strings;
 - comparing two string properties;
 - string concatenation;

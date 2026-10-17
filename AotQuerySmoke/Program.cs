@@ -131,6 +131,11 @@ static class Program
             Check("index", string.Join(",", all.Where(p => p.Age == 32 && p.Active).Select(p => p.Email)),
                 string.Join(",", query.Where(p => p.Age == 32 && p.Active).AsEnumerable().Select(p => p.Email)));
             Check("covering index count", all.Count(p => p.Age > 40), query.Count(p => p.Age > 40));
+            Check("order and page", string.Join(",", all.OrderByDescending(p => p.Price).ThenBy(p => p.Name).Skip(3).Take(4).Select(p => p.Email)),
+                string.Join(",", query.OrderByDescending(p => p.Price).ThenBy(p => p.Name).Skip(3).Take(4).AsEnumerable().Select(p => p.Email)));
+            Check("key order page", string.Join(",", all.Where(p => p.TenantId == 2).OrderBy(p => p.Email).Skip(5).Take(3).Select(p => p.Email)),
+                string.Join(",", query.Where(p => p.TenantId == 2).OrderBy(p => p.Email).Skip(5).Take(3).AsEnumerable().Select(p => p.Email)));
+            Check("deep skip", all.Skip(90).First().Email, query.Skip(90).First().Email);
             Check("materialized row", "user025@example.com",
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1 && p.Email == "user025@example.com")
                     .AsEnumerable().Single().Email);
