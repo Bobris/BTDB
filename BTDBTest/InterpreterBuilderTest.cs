@@ -2125,6 +2125,259 @@ TryEnd
         Unsafe.As<AccessorTestObject>(obj).Value = Unsafe.As<byte, int>(ref value);
     }
 
+    [Fact]
+    public void FrameOpsReadKeyAndValueFieldsIntoFrameAndObjectSlots()
+    {
+        var keyWriter = new MemWriter();
+        keyWriter.WriteVUInt64(1234);
+        keyWriter.WriteString("skipped");
+        var valueWriter = new MemWriter();
+        valueWriter.WriteString("name");
+        valueWriter.WriteVInt64(-1);
+        valueWriter.WriteVInt64(-2);
+        valueWriter.WriteBool(true);
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.ReadKeyToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadVUInt64);
+        builder.AddUInt16(0);
+        builder.AddInstruction(OpCode.SkipKey);
+        builder.AddUInt8((byte)CodeOp.SkipString);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.ReadValueToObject);
+        builder.AddUInt8((byte)CodeOp.ReadString);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.SkipValue);
+        builder.AddUInt8((byte)CodeOp.SkipVInt64);
+        builder.AddUInt16(2);
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadBool);
+        builder.AddUInt16(8);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+
+        var frame = new long[2];
+        var objects = new object?[2];
+        RunFrameProgram(program, frame, objects, keyWriter.GetSpan(), valueWriter.GetSpan(), out var keyEof,
+            out var valueEof);
+
+        Assert.Equal(1234, frame[0]);
+        Assert.Equal(1, frame[1]);
+        Assert.Equal([null, "name"], objects);
+        Assert.True(keyEof);
+        Assert.True(valueEof);
+    }
+
+    [Theory]
+    [InlineData(QueryCompare.Equal, 5, 5, true)]
+    [InlineData(QueryCompare.Equal, 5, 7, false)]
+    [InlineData(QueryCompare.NotEqual, 5, 7, true)]
+    [InlineData(QueryCompare.Less, -1, 7, true)]
+    [InlineData(QueryCompare.Less, 7, 7, false)]
+    [InlineData(QueryCompare.LessOrEqual, 7, 7, true)]
+    [InlineData(QueryCompare.Greater, 8, 7, true)]
+    [InlineData(QueryCompare.GreaterOrEqual, 6, 7, false)]
+    public void JmpIfFrameConstComparesInt32(QueryCompare compare, int value, int constant, bool expected)
+    {
+        Assert.Equal(expected, RunFrameCompare(QueryValueType.Int32, compare, value, constant, true));
+        Assert.Equal(!expected, RunFrameCompare(QueryValueType.Int32, compare, value, constant, false));
+    }
+
+    [Fact]
+    public void JmpIfFrameConstUsesCSharpSemanticsOfFloatsAndDateTimes()
+    {
+        Assert.False(RunFrameCompare(QueryValueType.Double, QueryCompare.Equal, double.NaN, double.NaN, true));
+        Assert.True(RunFrameCompare(QueryValueType.Double, QueryCompare.NotEqual, double.NaN, double.NaN, true));
+        Assert.True(RunFrameCompare(QueryValueType.Single, QueryCompare.Equal, -0f, 0f, true));
+        var utc = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var local = new DateTime(utc.Ticks, DateTimeKind.Local);
+        Assert.True(RunFrameCompare(QueryValueType.DateTime, QueryCompare.Equal, utc, local, true));
+        Assert.True(RunFrameCompare(QueryValueType.DateTime, QueryCompare.Less, utc, local.AddTicks(1), true));
+        // Unsigned comparison of the same bits differs from the signed one.
+        Assert.True(RunFrameCompare(QueryValueType.UInt64, QueryCompare.Greater, ulong.MaxValue, 1ul, true));
+        Assert.True(RunFrameCompare(QueryValueType.Int64, QueryCompare.Less, -1L, 1L, true));
+    }
+
+    [Theory]
+    [InlineData(QueryCompare.Equal, "a", "a", true)]
+    [InlineData(QueryCompare.Equal, null, null, true)]
+    [InlineData(QueryCompare.Equal, "a", null, false)]
+    [InlineData(QueryCompare.NotEqual, "a", "b", true)]
+    [InlineData(QueryCompare.Less, "B", "a", true)]
+    [InlineData(QueryCompare.Less, null, "a", true)]
+    [InlineData(QueryCompare.GreaterOrEqual, "b", "b", true)]
+    public void JmpIfStringConstComparesOrdinally(QueryCompare compare, string? value, string? constant,
+        bool expected)
+    {
+        Assert.Equal(expected, RunStringCompare(compare, value, constant, true));
+        Assert.Equal(!expected, RunStringCompare(compare, value, constant, false));
+    }
+
+    [Fact]
+    public void ConvertSlotConvertsBetweenFrameSlotsWithResolvedConverter()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.ConvertSlot);
+        builder.AddUInt8((byte)QuerySlotKind.Frame);
+        builder.AddUInt16(0);
+        builder.AddUInt8((byte)QuerySlotKind.Frame);
+        builder.AddUInt16(8);
+        builder.AddConverterIndex(DefaultTypeConverterFactory.Instance, typeof(float), typeof(double));
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        var frame = new long[2];
+        Unsafe.As<long, float>(ref frame[0]) = 1.5f;
+
+        RunFrameProgram(program, frame, [], [], [], out _, out _);
+
+        Assert.Equal(1.5, BitConverter.Int64BitsToDouble(frame[1]));
+    }
+
+    [Fact]
+    public void MaterializeRejectsLabelTargetOfUnmarkedLabel()
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("missing");
+        builder.AddInstruction(OpCode.JmpIfFrameConst);
+        builder.AddUInt8((byte)QueryValueType.Int32);
+        builder.AddUInt8((byte)QueryCompare.Equal);
+        builder.AddUInt16(0);
+        builder.AddUInt32(0);
+        builder.AddLabelTarget(label);
+        builder.AddInstruction(OpCode.Stop);
+
+        Assert.Contains("missing", Assert.Throws<InvalidOperationException>(() => builder.Materialize()).Message);
+    }
+
+    [Fact]
+    public void DumpAsmIncludesFrameOps()
+    {
+        var builder = new InterpreterBuilder();
+        var falseLabel = builder.DeclareLabel("false");
+        var constant = builder.AllocAlignedConst(sizeof(int));
+        builder.ConstSpan<int>(constant) = 35;
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadVInt64);
+        builder.AddUInt16(8);
+        builder.AddInstruction(OpCode.SkipValue);
+        builder.AddUInt8((byte)CodeOp.SkipString);
+        builder.AddUInt16(2);
+        builder.AddInstruction(OpCode.JmpIfNotFrameConst);
+        builder.AddUInt8((byte)QueryValueType.Int32);
+        builder.AddUInt8((byte)QueryCompare.Equal);
+        builder.AddUInt16(8);
+        builder.AddUInt32(constant);
+        builder.AddLabelTarget(falseLabel);
+        builder.AddInstruction(OpCode.ReadValueToObject);
+        builder.AddUInt8((byte)CodeOp.ReadString);
+        builder.AddUInt16(0);
+        builder.AddInstruction(OpCode.JmpIfNotStringConst);
+        builder.AddUInt8((byte)QueryCompare.Equal);
+        builder.AddUInt16(0);
+        builder.AddUInt32((uint)builder.AddObjectConstant("Prague"));
+        builder.AddLabelTarget(falseLabel);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        builder.MarkLabel(falseLabel);
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddInstruction(OpCode.Stop);
+
+        var sb = new StringBuilder();
+        builder.DumpAsm(sb);
+        var asm = sb.ToString();
+
+        Assert.Contains("ReadValueToFrame ReadVInt64 frame[8]", asm);
+        Assert.Contains("SkipValue SkipString x2", asm);
+        Assert.Contains("JmpIfNotFrameConst Int32 Equal frame[8] const[" + constant + "] ; 35 -> false", asm);
+        Assert.Contains("ReadValueToObject ReadString objects[0]", asm);
+        Assert.Contains("JmpIfNotStringConst Equal objects[0] 0 ; Prague -> false", asm);
+    }
+
+    [Fact]
+    public void ExceptionInProgramWithoutTryBlocksIsStoredAndPropagates()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.DivInt32);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        var result = 0;
+        var param1 = 1;
+        var param2 = 0;
+        Span<byte> stack = stackalloc byte[1];
+        var ctx = new InterpreterCtx(ref Unsafe.As<int, byte>(ref result), ref Unsafe.As<int, byte>(ref param1),
+            ref Unsafe.As<int, byte>(ref param2), stack, program);
+
+        var thrown = false;
+        try
+        {
+            Interpreter.Run(ref ctx);
+        }
+        catch (DivideByZeroException exception)
+        {
+            thrown = true;
+            Assert.Same(exception, ctx.CurrentException);
+        }
+
+        Assert.True(thrown);
+    }
+
+    static bool RunFrameCompare<T>(QueryValueType type, QueryCompare compare, T value, T constant, bool jumpIfTrue)
+        where T : unmanaged
+    {
+        var builder = new InterpreterBuilder();
+        var jumpedLabel = builder.DeclareLabel("jumped");
+        var constantOffset = builder.AllocAlignedConst((uint)Unsafe.SizeOf<T>());
+        builder.ConstSpan<T>(constantOffset) = constant;
+        builder.AddInstruction(jumpIfTrue ? OpCode.JmpIfFrameConst : OpCode.JmpIfNotFrameConst);
+        builder.AddUInt8((byte)type);
+        builder.AddUInt8((byte)compare);
+        builder.AddUInt16(0);
+        builder.AddUInt32(constantOffset);
+        builder.AddLabelTarget(jumpedLabel);
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddInstruction(OpCode.Stop);
+        builder.MarkLabel(jumpedLabel);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[1];
+        Unsafe.As<long, T>(ref frame[0]) = value;
+        return RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+    }
+
+    static bool RunStringCompare(QueryCompare compare, string? value, string? constant, bool jumpIfTrue)
+    {
+        var builder = new InterpreterBuilder();
+        var jumpedLabel = builder.DeclareLabel("jumped");
+        builder.AddInstruction(jumpIfTrue ? OpCode.JmpIfStringConst : OpCode.JmpIfNotStringConst);
+        builder.AddUInt8((byte)compare);
+        builder.AddUInt16(1);
+        builder.AddUInt32((uint)builder.AddObjectConstant(constant));
+        builder.AddLabelTarget(jumpedLabel);
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddInstruction(OpCode.Stop);
+        builder.MarkLabel(jumpedLabel);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        return RunFrameProgram(builder.Materialize(), [], [null, value], [], [], out _, out _);
+    }
+
+    static unsafe bool RunFrameProgram(InterpreterProgram program, long[] frame, object?[] objects,
+        ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out bool keyEof, out bool valueEof)
+    {
+        fixed (byte* keyPointer = key)
+        fixed (byte* valuePointer = value)
+        {
+            var keyReader = new MemReader(keyPointer, key.Length);
+            var valueReader = new MemReader(valuePointer, value.Length);
+            var ctx = new InterpreterCtx(program,
+                ref Unsafe.As<long, byte>(ref MemoryMarshal.GetArrayDataReference(frame)),
+                ref MemoryMarshal.GetArrayDataReference(objects), ref keyReader, ref valueReader);
+            Interpreter.Run(ref ctx);
+            keyEof = keyReader.Eof;
+            valueEof = valueReader.Eof;
+            return ctx.BoolResult;
+        }
+    }
+
     class TestTypeConverterFactory : DefaultTypeConverterFactory
     {
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BTDB;
@@ -63,6 +64,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
 
     public interface IPersonTable : IRelation<Person>
     {
+        bool RemoveById(ulong tenantId, string email);
     }
 
     public interface IPersonProjection : IRelation<Person>
@@ -77,6 +79,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public string? Name { get; set; }
         public int Score { get; set; }
         public string? Ignored { get; set; }
+        public float Ratio { get; set; }
     }
 
     [Generate]
@@ -86,6 +89,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public long Score { get; set; }
         public string? Added { get; set; }
         public string? Name { get; set; }
+        public double Ratio { get; set; }
     }
 
     [PersistedName("RelationQueryVersions")]
@@ -253,6 +257,93 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
             .AsEnumerable()
             .Select(p => p.Name)
             .ToArray());
+    }
+
+    [Fact]
+    public void QueryProgramConvertsAndDefaultsFieldsOfOlderValueVersions()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IQueryVersion1Table>().Upsert(new() { Id = 1, Name = "old", Score = 11, Ratio = 1.5f });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IQueryVersion2Table>().Upsert(new()
+            {
+                Id = 2, Name = "new", Score = 22, Added = "new added", Ratio = 2.5
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var readTr = _db.StartTransaction();
+        var table = readTr.GetRelation<IQueryVersion2Table>();
+
+        // The old version stores Ratio as float, so the program converts it before comparing.
+        Assert.Equal(["old"], table.Query<QueryVersion2>().Where(p => p.Ratio == 1.5).AsEnumerable()
+            .Select(p => p.Name).ToArray());
+        Assert.Equal(["new"], table.Query<QueryVersion2>().Where(p => p.Ratio == 2.5).AsEnumerable()
+            .Select(p => p.Name).ToArray());
+        // Added does not exist in the old version, so it reads as its default value there.
+        Assert.Equal(["old"], table.Query<QueryVersion2>().Where(p => p.Added == null).AsEnumerable()
+            .Select(p => p.Name).ToArray());
+        Assert.Equal(["new"], table.Query<QueryVersion2>().Where(p => p.Added == "new added").AsEnumerable()
+            .Select(p => p.Name).ToArray());
+        Assert.Equal(["old", "new"], table.Query<QueryVersion2>()
+            .Where(p => p.Added == null || p.Score == 22).AsEnumerable().Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void QueryContinuesWhenMatchedRowsAreRemovedDuringEnumeration()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+        var names = new List<string?>();
+        foreach (var person in table.Query<Person>().Where(p => p.Age == 41))
+        {
+            names.Add(person.Name);
+            Assert.True(table.RemoveById(person.TenantId, person.Email));
+        }
+
+        Assert.Equal(["Ada", "Dana"], names);
+        Assert.Equal(["Bob", null], table.Query<Person>().AsEnumerable().Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void QueryContinuesWhenMatchedRowsAreUpdatedDuringEnumeration()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+        var names = new List<string?>();
+        foreach (var person in table.Query<Person>().Where(p => p.Age == 41))
+        {
+            names.Add(person.Name);
+            person.Age = 42;
+            Assert.False(table.Upsert(person));
+        }
+
+        Assert.Equal(["Ada", "Dana"], names);
+        Assert.Equal(["Ada", "Dana"], table.Query<Person>().Where(p => p.Age == 42).AsEnumerable()
+            .Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void QueryWithAlwaysFalsePredicateReturnsNothing()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        Assert.Empty(table.Query<Person>().Where(p => p.Age == 41 && false));
+        Assert.Equal(4, table.Query<Person>().Where(p => p.Age == 41 || true).AsEnumerable().Count());
     }
 
     [Fact]

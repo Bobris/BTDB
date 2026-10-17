@@ -167,7 +167,78 @@ public enum OpCode : byte
     CallSetter = 148,
     ConvertParam1ToResult = 149,
     StackBytesAlloc = 150,
-    EqualDateTime = 151
+    EqualDateTime = 151,
+
+    // Frame ops below use fixed-width little-endian operands and address InterpreterCtx.Frame (8-byte aligned bytes),
+    // InterpreterCtx.Objects (object slots), InterpreterCtx.KeyReader and InterpreterCtx.ValueReader directly.
+
+    /// Operands: CodeOp u8, frame byte offset u16. Runs a reading CodeOp on KeyReader into the frame.
+    ReadKeyToFrame = 152,
+
+    /// Operands: CodeOp u8, object slot index u16. Runs a reading CodeOp on KeyReader into an object slot.
+    ReadKeyToObject = 153,
+
+    /// Operands: CodeOp u8, frame byte offset u16. Runs a reading CodeOp on ValueReader into the frame.
+    ReadValueToFrame = 154,
+
+    /// Operands: CodeOp u8, object slot index u16. Runs a reading CodeOp on ValueReader into an object slot.
+    ReadValueToObject = 155,
+
+    /// Operands: skipping CodeOp u8, count u16. Runs the CodeOp count times on KeyReader.
+    SkipKey = 156,
+
+    /// Operands: skipping CodeOp u8, count u16. Runs the CodeOp count times on ValueReader.
+    SkipValue = 157,
+
+    /// Operands: QueryValueType u8, QueryCompare u8, frame byte offset u16, constant offset u32, target pc u32.
+    /// Jumps when the comparison of the frame value with the constant is true.
+    JmpIfFrameConst = 158,
+
+    /// Same operands as JmpIfFrameConst; jumps when the comparison is false.
+    JmpIfNotFrameConst = 159,
+
+    /// Operands: QueryCompare u8, object slot index u16, object constant index u32, target pc u32.
+    /// Jumps when the ordinal comparison of the string in the slot with the string constant is true.
+    JmpIfStringConst = 160,
+
+    /// Same operands as JmpIfStringConst; jumps when the comparison is false.
+    JmpIfNotStringConst = 161,
+
+    /// Operands: from QuerySlotKind u8, from slot u16, to QuerySlotKind u8, to slot u16, converter object constant
+    /// index u32.
+    ConvertSlot = 162
+}
+
+public enum QueryValueType : byte
+{
+    UInt8 = 0,
+    Int8 = 1,
+    UInt16 = 2,
+    Int16 = 3,
+    UInt32 = 4,
+    Int32 = 5,
+    UInt64 = 6,
+    Int64 = 7,
+    Half = 8,
+    Single = 9,
+    Double = 10,
+    DateTime = 11
+}
+
+public enum QueryCompare : byte
+{
+    Equal = 0,
+    NotEqual = 1,
+    Less = 2,
+    LessOrEqual = 3,
+    Greater = 4,
+    GreaterOrEqual = 5
+}
+
+public enum QuerySlotKind : byte
+{
+    Frame = 0,
+    Object = 1
 }
 
 public enum CodeOp : byte
@@ -300,6 +371,10 @@ public ref struct InterpreterCtx
     public bool BoolResult;
     public ref byte BeginProgram;
     public ref byte BeginConstants;
+    public ref byte Frame;
+    public ref object? Objects;
+    public ref MemReader KeyReader;
+    public ref MemReader ValueReader;
 
     public InterpreterCtx(ref byte result, ref byte param1, ref byte param2, Span<byte> stack,
         ReadOnlySpan<object?> objectConstants, ref byte beginProgram, ref byte beginConstants)
@@ -325,6 +400,16 @@ public ref struct InterpreterCtx
     {
         TryCatchFinallyBlocks = program.TryCatchFinallyBlocks;
     }
+
+    internal InterpreterCtx(InterpreterProgram program, ref byte frame, ref object? objects, ref MemReader keyReader,
+        ref MemReader valueReader)
+        : this(ref Unsafe.NullRef<byte>(), ref Unsafe.NullRef<byte>(), ref Unsafe.NullRef<byte>(), default, program)
+    {
+        Frame = ref frame;
+        Objects = ref objects;
+        KeyReader = ref keyReader;
+        ValueReader = ref valueReader;
+    }
 }
 
 class InterpreterBuilder
@@ -333,6 +418,8 @@ class InterpreterBuilder
     readonly ArrayBufferWriter<byte> _constants = new();
     readonly List<object?> _objectConstants = [];
     readonly List<(uint Offset, string? Name)> _labels = [];
+    readonly HashSet<uint> _markedLabels = [];
+    readonly List<(uint ProgramOffset, uint Label)> _labelTargets = [];
     readonly List<(uint Offset, Type Type)> _constantTypes = [];
     readonly List<(int Index, Type Type)> _typeParameters = [];
     readonly List<(ulong Pointer, Type Type)> _stackAllocatorTypes = [];
@@ -446,6 +533,44 @@ class InterpreterBuilder
     public void MarkLabel(uint label)
     {
         ConstSpan<uint>(label) = (uint)_program.WrittenCount;
+        _markedLabels.Add(label);
+    }
+
+    /// Writes a fixed-width u32 jump target operand which Materialize resolves to the label's program offset.
+    public void AddLabelTarget(uint label)
+    {
+        _labelTargets.Add(((uint)_program.WrittenCount, label));
+        AddUInt32(0);
+    }
+
+    public void AddUInt8(byte value)
+    {
+        _program.Write([value]);
+    }
+
+    public void AddUInt16(ushort value)
+    {
+        var span = _program.GetSpan(sizeof(ushort));
+        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), value);
+        _program.Advance(sizeof(ushort));
+    }
+
+    public void AddUInt32(uint value)
+    {
+        var span = _program.GetSpan(sizeof(uint));
+        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), value);
+        _program.Advance(sizeof(uint));
+    }
+
+    /// Writes a fixed-width u32 object constant index of the resolved converter, used by OpCode.ConvertSlot.
+    public void AddConverterIndex(ITypeConverterFactory typeConverterFactory, Type from, Type to)
+    {
+        var converter = typeConverterFactory.GetConverter(from, to) ??
+                        throw new ArgumentException($"Converter from {from.FullName} to {to.FullName} was not found.",
+                            nameof(typeConverterFactory));
+        var index = AddObjectConstant(converter);
+        _converters.Add(((uint)_program.WrittenCount, from, to, typeConverterFactory));
+        AddUInt32((uint)index);
     }
 
     public void AddTry()
@@ -525,6 +650,13 @@ class InterpreterBuilder
         var image = new byte[constantsLength + _program.WrittenCount];
         _constants.WrittenSpan.CopyTo(image);
         _program.WrittenSpan.CopyTo(image.AsSpan(constantsLength));
+        foreach (var (programOffset, label) in _labelTargets)
+        {
+            if (!_markedLabels.Contains(label))
+                throw new InvalidOperationException($"Label {GetLabelName(label)} was not marked.");
+            var target = MemoryMarshal.Read<uint>(_constants.WrittenSpan[(int)label..]);
+            Unsafe.WriteUnaligned(ref image[constantsLength + (int)programOffset], target);
+        }
         return new(image, (uint)constantsLength, _objectConstants.ToArray(), MaterializeTryBlocks());
     }
 
@@ -619,6 +751,53 @@ class InterpreterBuilder
                     var codeOp = (CodeOp)program[offset++];
                     sb.Append(' ');
                     sb.Append(codeOp);
+                    break;
+                case OpCode.ReadKeyToFrame:
+                case OpCode.ReadValueToFrame:
+                    sb.Append(' ').Append((CodeOp)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append(']');
+                    offset += 3;
+                    break;
+                case OpCode.ReadKeyToObject:
+                case OpCode.ReadValueToObject:
+                    sb.Append(' ').Append((CodeOp)program[offset]).Append(" objects[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append(']');
+                    offset += 3;
+                    break;
+                case OpCode.SkipKey:
+                case OpCode.SkipValue:
+                    sb.Append(' ').Append((CodeOp)program[offset]).Append(" x")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..]));
+                    offset += 3;
+                    break;
+                case OpCode.JmpIfFrameConst:
+                case OpCode.JmpIfNotFrameConst:
+                    var constantOffset = MemoryMarshal.Read<uint>(program[(offset + 4)..]);
+                    sb.Append(' ').Append((QueryValueType)program[offset]).Append(' ')
+                        .Append((QueryCompare)program[offset + 1]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 2)..])).Append("] const[")
+                        .Append(constantOffset).Append(']');
+                    AppendInlineConstantValue(sb, constantOffset);
+                    sb.Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 8);
+                    offset += 12;
+                    break;
+                case OpCode.JmpIfStringConst:
+                case OpCode.JmpIfNotStringConst:
+                    var objectConstant = MemoryMarshal.Read<uint>(program[(offset + 3)..]);
+                    sb.Append(' ').Append((QueryCompare)program[offset]).Append(" objects[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] ").Append(objectConstant)
+                        .Append(" ; ").Append(_objectConstants[(int)objectConstant]?.ToString() ?? "null").Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 7);
+                    offset += 11;
+                    break;
+                case OpCode.ConvertSlot:
+                    sb.Append(' ').Append((QuerySlotKind)program[offset]).Append('[')
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] -> ")
+                        .Append((QuerySlotKind)program[offset + 3]).Append('[')
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 4)..])).Append("] ");
+                    AppendConverterParameter(sb, (uint)offset + 6, MemoryMarshal.Read<uint>(program[(offset + 6)..]));
+                    offset += 10;
                     break;
             }
 
@@ -902,6 +1081,18 @@ class InterpreterBuilder
         }
     }
 
+    void AppendLabelTarget(StringBuilder sb, uint programOffset)
+    {
+        foreach (var (offset, label) in _labelTargets)
+        {
+            if (offset != programOffset) continue;
+            sb.Append(GetLabelName(label));
+            return;
+        }
+
+        sb.Append('?');
+    }
+
     string GetLabelName(uint label)
     {
         foreach (var (offset, name) in _labels)
@@ -961,612 +1152,878 @@ static class Interpreter
 
     static void Run(ref InterpreterCtx ctx, ref uint pc)
     {
-        Exception? escapingException = null;
-        var pendingStop = false;
-        var pendingStopPc = 0u;
-        var pendingFinallyBlockIndex = int.MaxValue;
+        if (ctx.TryCatchFinallyBlocks.IsEmpty)
+            RunWithoutTryBlocks(ref ctx, ref pc);
+        else
+            RunWithTryBlocks(ref ctx, ref pc);
+    }
+
+    // Programs without try blocks cannot handle exceptions, so the instruction loop runs without any exception
+    // bookkeeping and exceptions simply leave this Run.
+    static void RunWithoutTryBlocks(ref InterpreterCtx ctx, ref uint pc)
+    {
+        var state = new RunState { PendingFinallyBlockIndex = int.MaxValue };
+        try
+        {
+            Loop<WithoutTryBlocks>(ref ctx, ref pc, ref state);
+        }
+        catch (Exception exception)
+        {
+            ctx.CurrentException = exception;
+            throw;
+        }
+    }
+
+    static void RunWithTryBlocks(ref InterpreterCtx ctx, ref uint pc)
+    {
+        var state = new RunState { PendingFinallyBlockIndex = int.MaxValue };
         while (true)
         {
-            var instructionPc = pc;
             try
             {
-                var opCode = Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
-                pc++;
-                switch ((OpCode)opCode)
-                {
-                case OpCode.Invalid:
-                    throw new InvalidOperationException($"Invalid interpreter opcode at {instructionPc}.");
-                case OpCode.Stop:
-                    // A finally block entered because of an exception ends here, for example the one closing a stack
-                    // allocation. The exception leaves this Run, so a nested Run never continues in outer code.
-                    if (ctx.CurrentException != null && IsInsideFinally(ctx.TryCatchFinallyBlocks, instructionPc))
-                    {
-                        escapingException = ctx.CurrentException;
-                        break;
-                    }
-
-                    if (pendingStop) return;
-                    if (EnterNextFinallyForStop(ref ctx, ref pc, instructionPc, ref pendingFinallyBlockIndex))
-                    {
-                        pendingStop = true;
-                        pendingStopPc = instructionPc;
-                        continue;
-                    }
-
-                    return;
-                case OpCode.SetBoolResultFalse:
-                    ctx.BoolResult = false;
-                    break;
-                case OpCode.SetBoolResultTrue:
-                    ctx.BoolResult = true;
-                    break;
-                case OpCode.SetParam1ObjectConst:
-                    var index = ReadVUInt64(ref ctx, ref pc);
-                    Unsafe.As<byte, object?>(ref ctx.Param1) = ctx.ObjectConstants[(int)index];
-                    break;
-                case OpCode.SetParam2ObjectConst:
-                    index = ReadVUInt64(ref ctx, ref pc);
-                    Unsafe.As<byte, object?>(ref ctx.Param2) = ctx.ObjectConstants[(int)index];
-                    break;
-                case OpCode.SetParam1Const:
-                    var offset = ReadVUInt64(ref ctx, ref pc);
-                    ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)offset);
-                    break;
-                case OpCode.SetParam2Const:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)offset);
-                    break;
-                case OpCode.EqualString:
-                    ctx.BoolResult = Unsafe.As<byte, string?>(ref ctx.Param1) ==
-                                     Unsafe.As<byte, string?>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualDateTime:
-                    ctx.BoolResult = Unsafe.As<byte, DateTime>(ref ctx.Param1) ==
-                                     Unsafe.As<byte, DateTime>(ref ctx.Param2);
-                    break;
-                case OpCode.LessString:
-                    ctx.BoolResult = string.CompareOrdinal(Unsafe.As<byte, string?>(ref ctx.Param1),
-                        Unsafe.As<byte, string?>(ref ctx.Param2)) < 0;
-                    break;
-                case OpCode.EqualByte:
-                    ctx.BoolResult = Unsafe.As<byte, byte>(ref ctx.Param1) == Unsafe.As<byte, byte>(ref ctx.Param2);
-                    break;
-                case OpCode.LessByte:
-                    ctx.BoolResult = Unsafe.As<byte, byte>(ref ctx.Param1) < Unsafe.As<byte, byte>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualSByte:
-                    ctx.BoolResult = Unsafe.As<byte, sbyte>(ref ctx.Param1) == Unsafe.As<byte, sbyte>(ref ctx.Param2);
-                    break;
-                case OpCode.LessSByte:
-                    ctx.BoolResult = Unsafe.As<byte, sbyte>(ref ctx.Param1) < Unsafe.As<byte, sbyte>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualUInt16:
-                    ctx.BoolResult = Unsafe.As<byte, ushort>(ref ctx.Param1) == Unsafe.As<byte, ushort>(ref ctx.Param2);
-                    break;
-                case OpCode.LessUInt16:
-                    ctx.BoolResult = Unsafe.As<byte, ushort>(ref ctx.Param1) < Unsafe.As<byte, ushort>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualInt16:
-                    ctx.BoolResult = Unsafe.As<byte, short>(ref ctx.Param1) == Unsafe.As<byte, short>(ref ctx.Param2);
-                    break;
-                case OpCode.LessInt16:
-                    ctx.BoolResult = Unsafe.As<byte, short>(ref ctx.Param1) < Unsafe.As<byte, short>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualUInt32:
-                    ctx.BoolResult = Unsafe.As<byte, uint>(ref ctx.Param1) == Unsafe.As<byte, uint>(ref ctx.Param2);
-                    break;
-                case OpCode.LessUInt32:
-                    ctx.BoolResult = Unsafe.As<byte, uint>(ref ctx.Param1) < Unsafe.As<byte, uint>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualInt32:
-                    ctx.BoolResult = Unsafe.As<byte, int>(ref ctx.Param1) == Unsafe.As<byte, int>(ref ctx.Param2);
-                    break;
-                case OpCode.LessInt32:
-                    ctx.BoolResult = Unsafe.As<byte, int>(ref ctx.Param1) < Unsafe.As<byte, int>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualUInt64:
-                    ctx.BoolResult = Unsafe.As<byte, ulong>(ref ctx.Param1) == Unsafe.As<byte, ulong>(ref ctx.Param2);
-                    break;
-                case OpCode.LessUInt64:
-                    ctx.BoolResult = Unsafe.As<byte, ulong>(ref ctx.Param1) < Unsafe.As<byte, ulong>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualInt64:
-                    ctx.BoolResult = Unsafe.As<byte, long>(ref ctx.Param1) == Unsafe.As<byte, long>(ref ctx.Param2);
-                    break;
-                case OpCode.LessInt64:
-                    ctx.BoolResult = Unsafe.As<byte, long>(ref ctx.Param1) < Unsafe.As<byte, long>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualHalf:
-                    ctx.BoolResult = Unsafe.As<byte, Half>(ref ctx.Param1) == Unsafe.As<byte, Half>(ref ctx.Param2);
-                    break;
-                case OpCode.LessHalf:
-                    ctx.BoolResult = Unsafe.As<byte, Half>(ref ctx.Param1) < Unsafe.As<byte, Half>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualFloat:
-                    ctx.BoolResult = Unsafe.As<byte, float>(ref ctx.Param1) == Unsafe.As<byte, float>(ref ctx.Param2);
-                    break;
-                case OpCode.LessFloat:
-                    ctx.BoolResult = Unsafe.As<byte, float>(ref ctx.Param1) < Unsafe.As<byte, float>(ref ctx.Param2);
-                    break;
-                case OpCode.EqualDouble:
-                    ctx.BoolResult = Unsafe.As<byte, double>(ref ctx.Param1) == Unsafe.As<byte, double>(ref ctx.Param2);
-                    break;
-                case OpCode.LessDouble:
-                    ctx.BoolResult = Unsafe.As<byte, double>(ref ctx.Param1) < Unsafe.As<byte, double>(ref ctx.Param2);
-                    break;
-                case OpCode.AddByte:
-                    Add<byte>(ref ctx);
-                    break;
-                case OpCode.SubByte:
-                    Sub<byte>(ref ctx);
-                    break;
-                case OpCode.MulByte:
-                    Mul<byte>(ref ctx);
-                    break;
-                case OpCode.DivByte:
-                    Div<byte>(ref ctx);
-                    break;
-                case OpCode.AddSByte:
-                    Add<sbyte>(ref ctx);
-                    break;
-                case OpCode.SubSByte:
-                    Sub<sbyte>(ref ctx);
-                    break;
-                case OpCode.MulSByte:
-                    Mul<sbyte>(ref ctx);
-                    break;
-                case OpCode.DivSByte:
-                    Div<sbyte>(ref ctx);
-                    break;
-                case OpCode.AddUInt16:
-                    Add<ushort>(ref ctx);
-                    break;
-                case OpCode.SubUInt16:
-                    Sub<ushort>(ref ctx);
-                    break;
-                case OpCode.MulUInt16:
-                    Mul<ushort>(ref ctx);
-                    break;
-                case OpCode.DivUInt16:
-                    Div<ushort>(ref ctx);
-                    break;
-                case OpCode.AddInt16:
-                    Add<short>(ref ctx);
-                    break;
-                case OpCode.SubInt16:
-                    Sub<short>(ref ctx);
-                    break;
-                case OpCode.MulInt16:
-                    Mul<short>(ref ctx);
-                    break;
-                case OpCode.DivInt16:
-                    Div<short>(ref ctx);
-                    break;
-                case OpCode.AddUInt32:
-                    Add<uint>(ref ctx);
-                    break;
-                case OpCode.SubUInt32:
-                    Sub<uint>(ref ctx);
-                    break;
-                case OpCode.MulUInt32:
-                    Mul<uint>(ref ctx);
-                    break;
-                case OpCode.DivUInt32:
-                    Div<uint>(ref ctx);
-                    break;
-                case OpCode.AddInt32:
-                    Add<int>(ref ctx);
-                    break;
-                case OpCode.SubInt32:
-                    Sub<int>(ref ctx);
-                    break;
-                case OpCode.MulInt32:
-                    Mul<int>(ref ctx);
-                    break;
-                case OpCode.DivInt32:
-                    Div<int>(ref ctx);
-                    break;
-                case OpCode.AddUInt64:
-                    Add<ulong>(ref ctx);
-                    break;
-                case OpCode.SubUInt64:
-                    Sub<ulong>(ref ctx);
-                    break;
-                case OpCode.MulUInt64:
-                    Mul<ulong>(ref ctx);
-                    break;
-                case OpCode.DivUInt64:
-                    Div<ulong>(ref ctx);
-                    break;
-                case OpCode.AddInt64:
-                    Add<long>(ref ctx);
-                    break;
-                case OpCode.SubInt64:
-                    Sub<long>(ref ctx);
-                    break;
-                case OpCode.MulInt64:
-                    Mul<long>(ref ctx);
-                    break;
-                case OpCode.DivInt64:
-                    Div<long>(ref ctx);
-                    break;
-                case OpCode.AddHalf:
-                    Add<Half>(ref ctx);
-                    break;
-                case OpCode.SubHalf:
-                    Sub<Half>(ref ctx);
-                    break;
-                case OpCode.MulHalf:
-                    Mul<Half>(ref ctx);
-                    break;
-                case OpCode.DivHalf:
-                    Div<Half>(ref ctx);
-                    break;
-                case OpCode.AddFloat:
-                    Add<float>(ref ctx);
-                    break;
-                case OpCode.SubFloat:
-                    Sub<float>(ref ctx);
-                    break;
-                case OpCode.MulFloat:
-                    Mul<float>(ref ctx);
-                    break;
-                case OpCode.DivFloat:
-                    Div<float>(ref ctx);
-                    break;
-                case OpCode.AddDouble:
-                    Add<double>(ref ctx);
-                    break;
-                case OpCode.SubDouble:
-                    Sub<double>(ref ctx);
-                    break;
-                case OpCode.MulDouble:
-                    Mul<double>(ref ctx);
-                    break;
-                case OpCode.DivDouble:
-                    Div<double>(ref ctx);
-                    break;
-                case OpCode.BinaryAndByte:
-                    BinaryAnd<byte>(ref ctx);
-                    break;
-                case OpCode.BinaryOrByte:
-                    BinaryOr<byte>(ref ctx);
-                    break;
-                case OpCode.BinaryXorByte:
-                    BinaryXor<byte>(ref ctx);
-                    break;
-                case OpCode.BinaryNotByte:
-                    BinaryNot<byte>(ref ctx);
-                    break;
-                case OpCode.BinaryAndUInt16:
-                    BinaryAnd<ushort>(ref ctx);
-                    break;
-                case OpCode.BinaryOrUInt16:
-                    BinaryOr<ushort>(ref ctx);
-                    break;
-                case OpCode.BinaryXorUInt16:
-                    BinaryXor<ushort>(ref ctx);
-                    break;
-                case OpCode.BinaryNotUInt16:
-                    BinaryNot<ushort>(ref ctx);
-                    break;
-                case OpCode.BinaryAndUInt32:
-                    BinaryAnd<uint>(ref ctx);
-                    break;
-                case OpCode.BinaryOrUInt32:
-                    BinaryOr<uint>(ref ctx);
-                    break;
-                case OpCode.BinaryXorUInt32:
-                    BinaryXor<uint>(ref ctx);
-                    break;
-                case OpCode.BinaryNotUInt32:
-                    BinaryNot<uint>(ref ctx);
-                    break;
-                case OpCode.BinaryAndUInt64:
-                    BinaryAnd<ulong>(ref ctx);
-                    break;
-                case OpCode.BinaryOrUInt64:
-                    BinaryOr<ulong>(ref ctx);
-                    break;
-                case OpCode.BinaryXorUInt64:
-                    BinaryXor<ulong>(ref ctx);
-                    break;
-                case OpCode.BinaryNotUInt64:
-                    BinaryNot<ulong>(ref ctx);
-                    break;
-                case OpCode.NegByte:
-                    Neg<byte>(ref ctx);
-                    break;
-                case OpCode.NegSByte:
-                    Neg<sbyte>(ref ctx);
-                    break;
-                case OpCode.NegUInt16:
-                    Neg<ushort>(ref ctx);
-                    break;
-                case OpCode.NegInt16:
-                    Neg<short>(ref ctx);
-                    break;
-                case OpCode.NegUInt32:
-                    Neg<uint>(ref ctx);
-                    break;
-                case OpCode.NegInt32:
-                    Neg<int>(ref ctx);
-                    break;
-                case OpCode.NegUInt64:
-                    Neg<ulong>(ref ctx);
-                    break;
-                case OpCode.NegInt64:
-                    Neg<long>(ref ctx);
-                    break;
-                case OpCode.NegHalf:
-                    Neg<Half>(ref ctx);
-                    break;
-                case OpCode.NegFloat:
-                    Neg<float>(ref ctx);
-                    break;
-                case OpCode.NegDouble:
-                    Neg<double>(ref ctx);
-                    break;
-                case OpCode.NegateBoolResult:
-                    ctx.BoolResult = !ctx.BoolResult;
-                    break;
-                case OpCode.Jmp:
-                    pc = ReadJumpTarget(ref ctx, ref pc);
-                    break;
-                case OpCode.JmpIfTrue:
-                    var target = ReadJumpTarget(ref ctx, ref pc);
-                    if (ctx.BoolResult)
-                        pc = target;
-                    break;
-                case OpCode.JmpIfFalse:
-                    target = ReadJumpTarget(ref ctx, ref pc);
-                    if (!ctx.BoolResult)
-                        pc = target;
-                    break;
-                case OpCode.PushStack:
-                    var size = (uint)ReadVUInt64(ref ctx, ref pc);
-                    EnsureStackSize(ref ctx, ctx.SP + size);
-                    ctx.SP += size;
-                    break;
-                case OpCode.PopStack:
-                    ctx.SP -= (uint)ReadVUInt64(ref ctx, ref pc);
-                    break;
-                case OpCode.SetResultBySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    ctx.Result = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
-                    break;
-                case OpCode.SetParam1BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    ctx.Param1 = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
-                    break;
-                case OpCode.SetParam2BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    ctx.Param2 = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
-                    break;
-                case OpCode.StoreResultBySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
-                            (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Result);
-                    }
-                    break;
-                case OpCode.StoreParam1BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
-                            (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Param1);
-                    }
-                    break;
-                case OpCode.StoreParam2BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
-                            (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Param2);
-                    }
-                    break;
-                case OpCode.LoadResultBySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        ctx.Result = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
-                            ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
-                    }
-                    break;
-                case OpCode.LoadParam1BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        ctx.Param1 = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
-                            ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
-                    }
-                    break;
-                case OpCode.LoadParam2BySP:
-                    offset = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        ctx.Param2 = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
-                            ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
-                    }
-                    break;
-                case OpCode.IncrementRefResult:
-                    ctx.Result = ref Unsafe.AddByteOffset(ref ctx.Result, (nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.DecrementRefResult:
-                    ctx.Result = ref Unsafe.AddByteOffset(ref ctx.Result, -(nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.IncrementRefParam1:
-                    ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.Param1, (nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.DecrementRefParam1:
-                    ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.Param1, -(nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.IncrementRefParam2:
-                    ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.Param2, (nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.DecrementRefParam2:
-                    ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.Param2, -(nint)ReadVUInt64(ref ctx, ref pc));
-                    break;
-                case OpCode.SwapRefResultParam1:
-                    unsafe
-                    {
-                        var result = Unsafe.AsPointer(ref ctx.Result);
-                        ctx.Result = ref ctx.Param1;
-                        ctx.Param1 = ref Unsafe.AsRef<byte>(result);
-                    }
-                    break;
-                case OpCode.SwapRefParam1Param2:
-                    unsafe
-                    {
-                        var param1 = Unsafe.AsPointer(ref ctx.Param1);
-                        ctx.Param1 = ref ctx.Param2;
-                        ctx.Param2 = ref Unsafe.AsRef<byte>(param1);
-                    }
-                    break;
-                case OpCode.SwapRefResultParam2:
-                    unsafe
-                    {
-                        var result = Unsafe.AsPointer(ref ctx.Result);
-                        ctx.Result = ref ctx.Param2;
-                        ctx.Param2 = ref Unsafe.AsRef<byte>(result);
-                    }
-                    break;
-                case OpCode.AllocObjectToResult:
-                    index = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, object?>(ref ctx.Result) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
-                            .Creator();
-                    }
-                    break;
-                case OpCode.AllocObjectToParam1:
-                    index = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, object?>(ref ctx.Param1) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
-                            .Creator();
-                    }
-                    break;
-                case OpCode.AllocObjectToParam2:
-                    index = ReadVUInt64(ref ctx, ref pc);
-                    unsafe
-                    {
-                        Unsafe.As<byte, object?>(ref ctx.Param2) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
-                            .Creator();
-                    }
-                    break;
-                case OpCode.DerefObjectResult:
-                    ctx.Result = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Result));
-                    break;
-                case OpCode.DerefObjectParam1:
-                    ctx.Param1 = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Param1));
-                    break;
-                case OpCode.DerefObjectParam2:
-                    ctx.Param2 = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Param2));
-                    break;
-                case OpCode.AssignRefResultParam1:
-                    ctx.Result = ref ctx.Param1;
-                    break;
-                case OpCode.AssignRefResultParam2:
-                    ctx.Result = ref ctx.Param2;
-                    break;
-                case OpCode.AssignRefParam1Result:
-                    ctx.Param1 = ref ctx.Result;
-                    break;
-                case OpCode.AssignRefParam1Param2:
-                    ctx.Param1 = ref ctx.Param2;
-                    break;
-                case OpCode.AssignRefParam2Result:
-                    ctx.Param2 = ref ctx.Result;
-                    break;
-                case OpCode.AssignRefParam2Param1:
-                    ctx.Param2 = ref ctx.Param1;
-                    break;
-                case OpCode.StackAllocObject:
-                    var count = ReadVUInt64(ref ctx, ref pc);
-                    StackAllocObject(ref ctx, ref pc, count);
-                    break;
-                case OpCode.StackBytesAlloc:
-                    var bytesSize = ReadVUInt64(ref ctx, ref pc);
-                    StackBytesAlloc(ref ctx, ref pc, bytesSize);
-                    break;
-                case OpCode.StackStructAlloc:
-                    unsafe
-                    {
-                        var allocator =
-                            (delegate*<ref byte, ref nint, delegate*<ref byte, void>, void>)(nint)ReadVUInt64(
-                                ref ctx, ref pc);
-                        StackStructAlloc(ref ctx, ref pc, allocator);
-                    }
-
-                    break;
-                case OpCode.CallGetter:
-                    unsafe
-                    {
-                        var accessor = (delegate*<object, ref byte, void>)Unsafe.As<byte, nint>(
-                            ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)ReadVUInt64(ref ctx, ref pc)));
-                        accessor(Unsafe.As<byte, object>(ref ctx.Param1), ref ctx.Result);
-                    }
-
-                    break;
-                case OpCode.CallSetter:
-                    unsafe
-                    {
-                        var accessor = (delegate*<object, ref byte, void>)Unsafe.As<byte, nint>(
-                            ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)ReadVUInt64(ref ctx, ref pc)));
-                        accessor(Unsafe.As<byte, object>(ref ctx.Param1), ref ctx.Param2);
-                    }
-
-                    break;
-                case OpCode.ConvertParam1ToResult:
-                    index = ReadVUInt64(ref ctx, ref pc);
-                    ((Converter)ctx.ObjectConstants[(int)index]!)(ref ctx.Param1, ref ctx.Result);
-                    break;
-                case OpCode.CodeOps:
-                    RunCodeOp(ref ctx, ref pc);
-                    break;
-                case OpCode.ThrowException:
-                    ThrowExceptionFromParam1(ref ctx);
-                    break;
-                case OpCode.Rethrow:
-                    Rethrow(ref ctx, ref pc, instructionPc);
-                    break;
-                case OpCode.EndOfFinally:
-                    if (ctx.CurrentException != null)
-                    {
-                        PropagateCurrentException(ref ctx, ref pc, instructionPc);
-                    }
-                    else if (pendingStop)
-                    {
-                        if (EnterNextFinallyForStop(ref ctx, ref pc, pendingStopPc, ref pendingFinallyBlockIndex))
-                            continue;
-                        return;
-                    }
-
-                    break;
-                case OpCode.CatchedException:
-                    CatchedException(ref ctx, ref pc, instructionPc);
-                    break;
-                case OpCode.JmpFinally:
-                    pc = ReadFinallyTarget(ref ctx, ref pc);
-                    break;
-                default:
-                    throw new InvalidOperationException("Unknown interpreter opcode.");
-                }
-
-                if (escapingException != null) break;
+                Loop<WithTryBlocks>(ref ctx, ref pc, ref state);
+                break;
             }
             catch (Exception exception)
             {
                 ctx.CurrentException = exception;
-                if (HandleException(ref ctx, ref pc, instructionPc, -1)) continue;
+                if (HandleException(ref ctx, ref pc, state.InstructionPc, -1)) continue;
                 ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
 
-        ExceptionDispatchInfo.Capture(escapingException!).Throw();
+        // A finally block entered because of an exception ended, for example the one closing a stack allocation. The
+        // exception leaves this Run, so a nested Run never continues in outer code.
+        if (state.EscapingException != null) ExceptionDispatchInfo.Capture(state.EscapingException).Throw();
+    }
+
+    interface IRunMode
+    {
+        static abstract bool HasTryBlocks { get; }
+    }
+
+    struct WithoutTryBlocks : IRunMode
+    {
+        public static bool HasTryBlocks => false;
+    }
+
+    struct WithTryBlocks : IRunMode
+    {
+        public static bool HasTryBlocks => true;
+    }
+
+    struct RunState
+    {
+        public uint InstructionPc;
+        public bool PendingStop;
+        public uint PendingStopPc;
+        public int PendingFinallyBlockIndex;
+        public Exception? EscapingException;
+    }
+
+    // Keeps pc in a local so it can live in a register; it is written back to pcRef when the program stops. Cold
+    // instructions that need pc by reference get a temporary copy, so the local itself is never address exposed.
+    static void Loop<TMode>(ref InterpreterCtx ctx, ref uint pcRef, ref RunState state) where TMode : struct, IRunMode
+    {
+        var pc = pcRef;
+        while (true)
+        {
+            var instructionPc = pc;
+            if (TMode.HasTryBlocks) state.InstructionPc = instructionPc;
+            var opCode = Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+            pc++;
+            switch ((OpCode)opCode)
+            {
+            case OpCode.Invalid:
+                throw new InvalidOperationException($"Invalid interpreter opcode at {instructionPc}.");
+            case OpCode.Stop:
+                if (TMode.HasTryBlocks)
+                {
+                    // A finally block entered because of an exception ends here, for example the one closing a stack
+                    // allocation.
+                    if (ctx.CurrentException != null && IsInsideFinally(ctx.TryCatchFinallyBlocks, instructionPc))
+                    {
+                        state.EscapingException = ctx.CurrentException;
+                        pcRef = pc;
+                        return;
+                    }
+
+                    if (!state.PendingStop)
+                    {
+                        var finallyPc = pc;
+                        if (EnterNextFinallyForStop(ref ctx, ref finallyPc, instructionPc,
+                                ref state.PendingFinallyBlockIndex))
+                        {
+                            state.PendingStop = true;
+                            state.PendingStopPc = instructionPc;
+                            pc = finallyPc;
+                            continue;
+                        }
+                    }
+                }
+
+                pcRef = pc;
+                return;
+            case OpCode.SetBoolResultFalse:
+                ctx.BoolResult = false;
+                break;
+            case OpCode.SetBoolResultTrue:
+                ctx.BoolResult = true;
+                break;
+            case OpCode.SetParam1ObjectConst:
+                var index = ReadVUInt64(ref ctx, ref pc);
+                Unsafe.As<byte, object?>(ref ctx.Param1) = ctx.ObjectConstants[(int)index];
+                break;
+            case OpCode.SetParam2ObjectConst:
+                index = ReadVUInt64(ref ctx, ref pc);
+                Unsafe.As<byte, object?>(ref ctx.Param2) = ctx.ObjectConstants[(int)index];
+                break;
+            case OpCode.SetParam1Const:
+                var offset = ReadVUInt64(ref ctx, ref pc);
+                ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)offset);
+                break;
+            case OpCode.SetParam2Const:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)offset);
+                break;
+            case OpCode.EqualString:
+                ctx.BoolResult = Unsafe.As<byte, string?>(ref ctx.Param1) ==
+                                 Unsafe.As<byte, string?>(ref ctx.Param2);
+                break;
+            case OpCode.EqualDateTime:
+                ctx.BoolResult = Unsafe.As<byte, DateTime>(ref ctx.Param1) ==
+                                 Unsafe.As<byte, DateTime>(ref ctx.Param2);
+                break;
+            case OpCode.LessString:
+                ctx.BoolResult = string.CompareOrdinal(Unsafe.As<byte, string?>(ref ctx.Param1),
+                    Unsafe.As<byte, string?>(ref ctx.Param2)) < 0;
+                break;
+            case OpCode.EqualByte:
+                ctx.BoolResult = Unsafe.As<byte, byte>(ref ctx.Param1) == Unsafe.As<byte, byte>(ref ctx.Param2);
+                break;
+            case OpCode.LessByte:
+                ctx.BoolResult = Unsafe.As<byte, byte>(ref ctx.Param1) < Unsafe.As<byte, byte>(ref ctx.Param2);
+                break;
+            case OpCode.EqualSByte:
+                ctx.BoolResult = Unsafe.As<byte, sbyte>(ref ctx.Param1) == Unsafe.As<byte, sbyte>(ref ctx.Param2);
+                break;
+            case OpCode.LessSByte:
+                ctx.BoolResult = Unsafe.As<byte, sbyte>(ref ctx.Param1) < Unsafe.As<byte, sbyte>(ref ctx.Param2);
+                break;
+            case OpCode.EqualUInt16:
+                ctx.BoolResult = Unsafe.As<byte, ushort>(ref ctx.Param1) == Unsafe.As<byte, ushort>(ref ctx.Param2);
+                break;
+            case OpCode.LessUInt16:
+                ctx.BoolResult = Unsafe.As<byte, ushort>(ref ctx.Param1) < Unsafe.As<byte, ushort>(ref ctx.Param2);
+                break;
+            case OpCode.EqualInt16:
+                ctx.BoolResult = Unsafe.As<byte, short>(ref ctx.Param1) == Unsafe.As<byte, short>(ref ctx.Param2);
+                break;
+            case OpCode.LessInt16:
+                ctx.BoolResult = Unsafe.As<byte, short>(ref ctx.Param1) < Unsafe.As<byte, short>(ref ctx.Param2);
+                break;
+            case OpCode.EqualUInt32:
+                ctx.BoolResult = Unsafe.As<byte, uint>(ref ctx.Param1) == Unsafe.As<byte, uint>(ref ctx.Param2);
+                break;
+            case OpCode.LessUInt32:
+                ctx.BoolResult = Unsafe.As<byte, uint>(ref ctx.Param1) < Unsafe.As<byte, uint>(ref ctx.Param2);
+                break;
+            case OpCode.EqualInt32:
+                ctx.BoolResult = Unsafe.As<byte, int>(ref ctx.Param1) == Unsafe.As<byte, int>(ref ctx.Param2);
+                break;
+            case OpCode.LessInt32:
+                ctx.BoolResult = Unsafe.As<byte, int>(ref ctx.Param1) < Unsafe.As<byte, int>(ref ctx.Param2);
+                break;
+            case OpCode.EqualUInt64:
+                ctx.BoolResult = Unsafe.As<byte, ulong>(ref ctx.Param1) == Unsafe.As<byte, ulong>(ref ctx.Param2);
+                break;
+            case OpCode.LessUInt64:
+                ctx.BoolResult = Unsafe.As<byte, ulong>(ref ctx.Param1) < Unsafe.As<byte, ulong>(ref ctx.Param2);
+                break;
+            case OpCode.EqualInt64:
+                ctx.BoolResult = Unsafe.As<byte, long>(ref ctx.Param1) == Unsafe.As<byte, long>(ref ctx.Param2);
+                break;
+            case OpCode.LessInt64:
+                ctx.BoolResult = Unsafe.As<byte, long>(ref ctx.Param1) < Unsafe.As<byte, long>(ref ctx.Param2);
+                break;
+            case OpCode.EqualHalf:
+                ctx.BoolResult = Unsafe.As<byte, Half>(ref ctx.Param1) == Unsafe.As<byte, Half>(ref ctx.Param2);
+                break;
+            case OpCode.LessHalf:
+                ctx.BoolResult = Unsafe.As<byte, Half>(ref ctx.Param1) < Unsafe.As<byte, Half>(ref ctx.Param2);
+                break;
+            case OpCode.EqualFloat:
+                ctx.BoolResult = Unsafe.As<byte, float>(ref ctx.Param1) == Unsafe.As<byte, float>(ref ctx.Param2);
+                break;
+            case OpCode.LessFloat:
+                ctx.BoolResult = Unsafe.As<byte, float>(ref ctx.Param1) < Unsafe.As<byte, float>(ref ctx.Param2);
+                break;
+            case OpCode.EqualDouble:
+                ctx.BoolResult = Unsafe.As<byte, double>(ref ctx.Param1) == Unsafe.As<byte, double>(ref ctx.Param2);
+                break;
+            case OpCode.LessDouble:
+                ctx.BoolResult = Unsafe.As<byte, double>(ref ctx.Param1) < Unsafe.As<byte, double>(ref ctx.Param2);
+                break;
+            case OpCode.AddByte:
+                Add<byte>(ref ctx);
+                break;
+            case OpCode.SubByte:
+                Sub<byte>(ref ctx);
+                break;
+            case OpCode.MulByte:
+                Mul<byte>(ref ctx);
+                break;
+            case OpCode.DivByte:
+                Div<byte>(ref ctx);
+                break;
+            case OpCode.AddSByte:
+                Add<sbyte>(ref ctx);
+                break;
+            case OpCode.SubSByte:
+                Sub<sbyte>(ref ctx);
+                break;
+            case OpCode.MulSByte:
+                Mul<sbyte>(ref ctx);
+                break;
+            case OpCode.DivSByte:
+                Div<sbyte>(ref ctx);
+                break;
+            case OpCode.AddUInt16:
+                Add<ushort>(ref ctx);
+                break;
+            case OpCode.SubUInt16:
+                Sub<ushort>(ref ctx);
+                break;
+            case OpCode.MulUInt16:
+                Mul<ushort>(ref ctx);
+                break;
+            case OpCode.DivUInt16:
+                Div<ushort>(ref ctx);
+                break;
+            case OpCode.AddInt16:
+                Add<short>(ref ctx);
+                break;
+            case OpCode.SubInt16:
+                Sub<short>(ref ctx);
+                break;
+            case OpCode.MulInt16:
+                Mul<short>(ref ctx);
+                break;
+            case OpCode.DivInt16:
+                Div<short>(ref ctx);
+                break;
+            case OpCode.AddUInt32:
+                Add<uint>(ref ctx);
+                break;
+            case OpCode.SubUInt32:
+                Sub<uint>(ref ctx);
+                break;
+            case OpCode.MulUInt32:
+                Mul<uint>(ref ctx);
+                break;
+            case OpCode.DivUInt32:
+                Div<uint>(ref ctx);
+                break;
+            case OpCode.AddInt32:
+                Add<int>(ref ctx);
+                break;
+            case OpCode.SubInt32:
+                Sub<int>(ref ctx);
+                break;
+            case OpCode.MulInt32:
+                Mul<int>(ref ctx);
+                break;
+            case OpCode.DivInt32:
+                Div<int>(ref ctx);
+                break;
+            case OpCode.AddUInt64:
+                Add<ulong>(ref ctx);
+                break;
+            case OpCode.SubUInt64:
+                Sub<ulong>(ref ctx);
+                break;
+            case OpCode.MulUInt64:
+                Mul<ulong>(ref ctx);
+                break;
+            case OpCode.DivUInt64:
+                Div<ulong>(ref ctx);
+                break;
+            case OpCode.AddInt64:
+                Add<long>(ref ctx);
+                break;
+            case OpCode.SubInt64:
+                Sub<long>(ref ctx);
+                break;
+            case OpCode.MulInt64:
+                Mul<long>(ref ctx);
+                break;
+            case OpCode.DivInt64:
+                Div<long>(ref ctx);
+                break;
+            case OpCode.AddHalf:
+                Add<Half>(ref ctx);
+                break;
+            case OpCode.SubHalf:
+                Sub<Half>(ref ctx);
+                break;
+            case OpCode.MulHalf:
+                Mul<Half>(ref ctx);
+                break;
+            case OpCode.DivHalf:
+                Div<Half>(ref ctx);
+                break;
+            case OpCode.AddFloat:
+                Add<float>(ref ctx);
+                break;
+            case OpCode.SubFloat:
+                Sub<float>(ref ctx);
+                break;
+            case OpCode.MulFloat:
+                Mul<float>(ref ctx);
+                break;
+            case OpCode.DivFloat:
+                Div<float>(ref ctx);
+                break;
+            case OpCode.AddDouble:
+                Add<double>(ref ctx);
+                break;
+            case OpCode.SubDouble:
+                Sub<double>(ref ctx);
+                break;
+            case OpCode.MulDouble:
+                Mul<double>(ref ctx);
+                break;
+            case OpCode.DivDouble:
+                Div<double>(ref ctx);
+                break;
+            case OpCode.BinaryAndByte:
+                BinaryAnd<byte>(ref ctx);
+                break;
+            case OpCode.BinaryOrByte:
+                BinaryOr<byte>(ref ctx);
+                break;
+            case OpCode.BinaryXorByte:
+                BinaryXor<byte>(ref ctx);
+                break;
+            case OpCode.BinaryNotByte:
+                BinaryNot<byte>(ref ctx);
+                break;
+            case OpCode.BinaryAndUInt16:
+                BinaryAnd<ushort>(ref ctx);
+                break;
+            case OpCode.BinaryOrUInt16:
+                BinaryOr<ushort>(ref ctx);
+                break;
+            case OpCode.BinaryXorUInt16:
+                BinaryXor<ushort>(ref ctx);
+                break;
+            case OpCode.BinaryNotUInt16:
+                BinaryNot<ushort>(ref ctx);
+                break;
+            case OpCode.BinaryAndUInt32:
+                BinaryAnd<uint>(ref ctx);
+                break;
+            case OpCode.BinaryOrUInt32:
+                BinaryOr<uint>(ref ctx);
+                break;
+            case OpCode.BinaryXorUInt32:
+                BinaryXor<uint>(ref ctx);
+                break;
+            case OpCode.BinaryNotUInt32:
+                BinaryNot<uint>(ref ctx);
+                break;
+            case OpCode.BinaryAndUInt64:
+                BinaryAnd<ulong>(ref ctx);
+                break;
+            case OpCode.BinaryOrUInt64:
+                BinaryOr<ulong>(ref ctx);
+                break;
+            case OpCode.BinaryXorUInt64:
+                BinaryXor<ulong>(ref ctx);
+                break;
+            case OpCode.BinaryNotUInt64:
+                BinaryNot<ulong>(ref ctx);
+                break;
+            case OpCode.NegByte:
+                Neg<byte>(ref ctx);
+                break;
+            case OpCode.NegSByte:
+                Neg<sbyte>(ref ctx);
+                break;
+            case OpCode.NegUInt16:
+                Neg<ushort>(ref ctx);
+                break;
+            case OpCode.NegInt16:
+                Neg<short>(ref ctx);
+                break;
+            case OpCode.NegUInt32:
+                Neg<uint>(ref ctx);
+                break;
+            case OpCode.NegInt32:
+                Neg<int>(ref ctx);
+                break;
+            case OpCode.NegUInt64:
+                Neg<ulong>(ref ctx);
+                break;
+            case OpCode.NegInt64:
+                Neg<long>(ref ctx);
+                break;
+            case OpCode.NegHalf:
+                Neg<Half>(ref ctx);
+                break;
+            case OpCode.NegFloat:
+                Neg<float>(ref ctx);
+                break;
+            case OpCode.NegDouble:
+                Neg<double>(ref ctx);
+                break;
+            case OpCode.NegateBoolResult:
+                ctx.BoolResult = !ctx.BoolResult;
+                break;
+            case OpCode.Jmp:
+                pc = ReadJumpTarget(ref ctx, ref pc);
+                break;
+            case OpCode.JmpIfTrue:
+                var target = ReadJumpTarget(ref ctx, ref pc);
+                if (ctx.BoolResult)
+                    pc = target;
+                break;
+            case OpCode.JmpIfFalse:
+                target = ReadJumpTarget(ref ctx, ref pc);
+                if (!ctx.BoolResult)
+                    pc = target;
+                break;
+            case OpCode.PushStack:
+                var size = (uint)ReadVUInt64(ref ctx, ref pc);
+                EnsureStackSize(ref ctx, ctx.SP + size);
+                ctx.SP += size;
+                break;
+            case OpCode.PopStack:
+                ctx.SP -= (uint)ReadVUInt64(ref ctx, ref pc);
+                break;
+            case OpCode.SetResultBySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                ctx.Result = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
+                break;
+            case OpCode.SetParam1BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                ctx.Param1 = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
+                break;
+            case OpCode.SetParam2BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                ctx.Param2 = ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset));
+                break;
+            case OpCode.StoreResultBySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
+                        (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Result);
+                }
+                break;
+            case OpCode.StoreParam1BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
+                        (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Param1);
+                }
+                break;
+            case OpCode.StoreParam2BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, nint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack),
+                        (nint)(ctx.SP - offset))) = (nint)Unsafe.AsPointer(ref ctx.Param2);
+                }
+                break;
+            case OpCode.LoadResultBySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    ctx.Result = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
+                        ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
+                }
+                break;
+            case OpCode.LoadParam1BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    ctx.Param1 = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
+                        ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
+                }
+                break;
+            case OpCode.LoadParam2BySP:
+                offset = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    ctx.Param2 = ref Unsafe.AsRef<byte>((void*)Unsafe.As<byte, nint>(
+                        ref Unsafe.Add(ref MemoryMarshal.GetReference(ctx.Stack), (nint)(ctx.SP - offset))));
+                }
+                break;
+            case OpCode.IncrementRefResult:
+                ctx.Result = ref Unsafe.AddByteOffset(ref ctx.Result, (nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.DecrementRefResult:
+                ctx.Result = ref Unsafe.AddByteOffset(ref ctx.Result, -(nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.IncrementRefParam1:
+                ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.Param1, (nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.DecrementRefParam1:
+                ctx.Param1 = ref Unsafe.AddByteOffset(ref ctx.Param1, -(nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.IncrementRefParam2:
+                ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.Param2, (nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.DecrementRefParam2:
+                ctx.Param2 = ref Unsafe.AddByteOffset(ref ctx.Param2, -(nint)ReadVUInt64(ref ctx, ref pc));
+                break;
+            case OpCode.SwapRefResultParam1:
+                unsafe
+                {
+                    var result = Unsafe.AsPointer(ref ctx.Result);
+                    ctx.Result = ref ctx.Param1;
+                    ctx.Param1 = ref Unsafe.AsRef<byte>(result);
+                }
+                break;
+            case OpCode.SwapRefParam1Param2:
+                unsafe
+                {
+                    var param1 = Unsafe.AsPointer(ref ctx.Param1);
+                    ctx.Param1 = ref ctx.Param2;
+                    ctx.Param2 = ref Unsafe.AsRef<byte>(param1);
+                }
+                break;
+            case OpCode.SwapRefResultParam2:
+                unsafe
+                {
+                    var result = Unsafe.AsPointer(ref ctx.Result);
+                    ctx.Result = ref ctx.Param2;
+                    ctx.Param2 = ref Unsafe.AsRef<byte>(result);
+                }
+                break;
+            case OpCode.AllocObjectToResult:
+                index = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, object?>(ref ctx.Result) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
+                        .Creator();
+                }
+                break;
+            case OpCode.AllocObjectToParam1:
+                index = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, object?>(ref ctx.Param1) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
+                        .Creator();
+                }
+                break;
+            case OpCode.AllocObjectToParam2:
+                index = ReadVUInt64(ref ctx, ref pc);
+                unsafe
+                {
+                    Unsafe.As<byte, object?>(ref ctx.Param2) = ((ClassMetadata)ctx.ObjectConstants[(int)index]!)
+                        .Creator();
+                }
+                break;
+            case OpCode.DerefObjectResult:
+                ctx.Result = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Result));
+                break;
+            case OpCode.DerefObjectParam1:
+                ctx.Param1 = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Param1));
+                break;
+            case OpCode.DerefObjectParam2:
+                ctx.Param2 = ref RawData.Ref(Unsafe.As<byte, object?>(ref ctx.Param2));
+                break;
+            case OpCode.AssignRefResultParam1:
+                ctx.Result = ref ctx.Param1;
+                break;
+            case OpCode.AssignRefResultParam2:
+                ctx.Result = ref ctx.Param2;
+                break;
+            case OpCode.AssignRefParam1Result:
+                ctx.Param1 = ref ctx.Result;
+                break;
+            case OpCode.AssignRefParam1Param2:
+                ctx.Param1 = ref ctx.Param2;
+                break;
+            case OpCode.AssignRefParam2Result:
+                ctx.Param2 = ref ctx.Result;
+                break;
+            case OpCode.AssignRefParam2Param1:
+                ctx.Param2 = ref ctx.Param1;
+                break;
+            case OpCode.StackAllocObject:
+                var count = ReadVUInt64(ref ctx, ref pc);
+                var nestedPc = pc;
+                StackAllocObject(ref ctx, ref nestedPc, count);
+                pc = nestedPc;
+                break;
+            case OpCode.StackBytesAlloc:
+                var bytesSize = ReadVUInt64(ref ctx, ref pc);
+                nestedPc = pc;
+                StackBytesAlloc(ref ctx, ref nestedPc, bytesSize);
+                pc = nestedPc;
+                break;
+            case OpCode.StackStructAlloc:
+                unsafe
+                {
+                    var allocator =
+                        (delegate*<ref byte, ref nint, delegate*<ref byte, void>, void>)(nint)ReadVUInt64(
+                            ref ctx, ref pc);
+                    nestedPc = pc;
+                    StackStructAlloc(ref ctx, ref nestedPc, allocator);
+                    pc = nestedPc;
+                }
+
+                break;
+            case OpCode.CallGetter:
+                unsafe
+                {
+                    var accessor = (delegate*<object, ref byte, void>)Unsafe.As<byte, nint>(
+                        ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)ReadVUInt64(ref ctx, ref pc)));
+                    accessor(Unsafe.As<byte, object>(ref ctx.Param1), ref ctx.Result);
+                }
+
+                break;
+            case OpCode.CallSetter:
+                unsafe
+                {
+                    var accessor = (delegate*<object, ref byte, void>)Unsafe.As<byte, nint>(
+                        ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)ReadVUInt64(ref ctx, ref pc)));
+                    accessor(Unsafe.As<byte, object>(ref ctx.Param1), ref ctx.Param2);
+                }
+
+                break;
+            case OpCode.ConvertParam1ToResult:
+                index = ReadVUInt64(ref ctx, ref pc);
+                ((Converter)ctx.ObjectConstants[(int)index]!)(ref ctx.Param1, ref ctx.Result);
+                break;
+            case OpCode.CodeOps:
+                var codeOp = (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+                pc++;
+                RunCodeOp(codeOp, ref ctx.Param1, ref ctx.Param2, ref ctx.Result);
+                break;
+            case OpCode.ThrowException:
+                ThrowExceptionFromParam1(ref ctx);
+                break;
+            case OpCode.Rethrow:
+                nestedPc = pc;
+                Rethrow(ref ctx, ref nestedPc, instructionPc);
+                pc = nestedPc;
+                break;
+            case OpCode.EndOfFinally:
+                if (ctx.CurrentException != null)
+                {
+                    nestedPc = pc;
+                    PropagateCurrentException(ref ctx, ref nestedPc, instructionPc);
+                    pc = nestedPc;
+                }
+                else if (TMode.HasTryBlocks && state.PendingStop)
+                {
+                    nestedPc = pc;
+                    if (EnterNextFinallyForStop(ref ctx, ref nestedPc, state.PendingStopPc,
+                            ref state.PendingFinallyBlockIndex))
+                    {
+                        pc = nestedPc;
+                        continue;
+                    }
+
+                    pcRef = pc;
+                    return;
+                }
+
+                break;
+            case OpCode.CatchedException:
+                nestedPc = pc;
+                CatchedException(ref ctx, ref nestedPc, instructionPc);
+                pc = nestedPc;
+                break;
+            case OpCode.JmpFinally:
+                nestedPc = pc;
+                pc = ReadFinallyTarget(ref ctx, ref nestedPc);
+                break;
+            case OpCode.ReadKeyToFrame:
+                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.As<MemReader, byte>(ref ctx.KeyReader), ref Unsafe.NullRef<byte>(),
+                    ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.ReadKeyToObject:
+                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.As<MemReader, byte>(ref ctx.KeyReader), ref Unsafe.NullRef<byte>(),
+                    ref ObjectSlot(ref ctx, ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.ReadValueToFrame:
+                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.As<MemReader, byte>(ref ctx.ValueReader), ref Unsafe.NullRef<byte>(),
+                    ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.ReadValueToObject:
+                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.As<MemReader, byte>(ref ctx.ValueReader), ref Unsafe.NullRef<byte>(),
+                    ref ObjectSlot(ref ctx, ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.SkipKey:
+                SkipFields(ref ctx.KeyReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ReadUInt16(ref ctx, pc + 1));
+                pc += 3;
+                break;
+            case OpCode.SkipValue:
+                SkipFields(ref ctx.ValueReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ReadUInt16(ref ctx, pc + 1));
+                pc += 3;
+                break;
+            case OpCode.JmpIfFrameConst:
+                pc = CompareFrameConst(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 8) : pc + 12;
+                break;
+            case OpCode.JmpIfNotFrameConst:
+                pc = CompareFrameConst(ref ctx, pc) ? pc + 12 : ReadUInt32(ref ctx, pc + 8);
+                break;
+            case OpCode.JmpIfStringConst:
+                pc = CompareStringConst(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 7) : pc + 11;
+                break;
+            case OpCode.JmpIfNotStringConst:
+                pc = CompareStringConst(ref ctx, pc) ? pc + 11 : ReadUInt32(ref ctx, pc + 7);
+                break;
+            case OpCode.ConvertSlot:
+                ConvertSlot(ref ctx, pc);
+                pc += 10;
+                break;
+            default:
+                throw new InvalidOperationException("Unknown interpreter opcode.");
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static ushort ReadUInt16(ref InterpreterCtx ctx, uint offset)
+    {
+        return Unsafe.ReadUnaligned<ushort>(ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)offset));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static uint ReadUInt32(ref InterpreterCtx ctx, uint offset)
+    {
+        return Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)offset));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static ref byte ObjectSlot(ref InterpreterCtx ctx, ushort index)
+    {
+        return ref Unsafe.As<object?, byte>(ref Unsafe.Add(ref ctx.Objects, index));
+    }
+
+    static ref byte Slot(ref InterpreterCtx ctx, QuerySlotKind kind, ushort index)
+    {
+        if (kind == QuerySlotKind.Object) return ref ObjectSlot(ref ctx, index);
+        return ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)index);
+    }
+
+    static void SkipFields(ref MemReader reader, CodeOp codeOp, ushort count)
+    {
+        for (var i = 0; i < count; i++)
+            RunCodeOp(codeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(),
+                ref Unsafe.NullRef<byte>());
+    }
+
+    static void ConvertSlot(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        ref var from = ref Slot(ref ctx, (QuerySlotKind)operands,
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1)));
+        ref var to = ref Slot(ref ctx, (QuerySlotKind)Unsafe.Add(ref operands, 3),
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 4)));
+        ((Converter)ctx.ObjectConstants[(int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 6))]!)(
+            ref from, ref to);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool CompareFrameConst(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        ref var value = ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 2)));
+        ref var constant = ref Unsafe.AddByteOffset(ref ctx.BeginConstants,
+            (nint)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 4)));
+        return CompareValues((QueryValueType)operands, (QueryCompare)Unsafe.Add(ref operands, 1), ref value,
+            ref constant);
+    }
+
+    static bool CompareValues(QueryValueType type, QueryCompare compare, ref byte left, ref byte right)
+    {
+        return type switch
+        {
+            QueryValueType.UInt8 => Compare<byte>(compare, ref left, ref right),
+            QueryValueType.Int8 => Compare<sbyte>(compare, ref left, ref right),
+            QueryValueType.UInt16 => Compare<ushort>(compare, ref left, ref right),
+            QueryValueType.Int16 => Compare<short>(compare, ref left, ref right),
+            QueryValueType.UInt32 => Compare<uint>(compare, ref left, ref right),
+            QueryValueType.Int32 => Compare<int>(compare, ref left, ref right),
+            QueryValueType.UInt64 => Compare<ulong>(compare, ref left, ref right),
+            QueryValueType.Int64 => Compare<long>(compare, ref left, ref right),
+            QueryValueType.Half => Compare<Half>(compare, ref left, ref right),
+            QueryValueType.Single => Compare<float>(compare, ref left, ref right),
+            QueryValueType.Double => Compare<double>(compare, ref left, ref right),
+            QueryValueType.DateTime => CompareDateTime(compare, Unsafe.ReadUnaligned<DateTime>(ref left),
+                Unsafe.ReadUnaligned<DateTime>(ref right)),
+            _ => throw new InvalidOperationException($"Unknown query value type {type}.")
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool Compare<T>(QueryCompare compare, ref byte left, ref byte right)
+        where T : unmanaged, IComparisonOperators<T, T, bool>
+    {
+        var l = Unsafe.ReadUnaligned<T>(ref left);
+        var r = Unsafe.ReadUnaligned<T>(ref right);
+        return compare switch
+        {
+            QueryCompare.Equal => l == r,
+            QueryCompare.NotEqual => l != r,
+            QueryCompare.Less => l < r,
+            QueryCompare.LessOrEqual => l <= r,
+            QueryCompare.Greater => l > r,
+            QueryCompare.GreaterOrEqual => l >= r,
+            _ => throw new InvalidOperationException($"Unknown query comparison {compare}.")
+        };
+    }
+
+    // DateTime operators compare ticks and ignore Kind, like C#.
+    static bool CompareDateTime(QueryCompare compare, DateTime l, DateTime r)
+    {
+        return compare switch
+        {
+            QueryCompare.Equal => l == r,
+            QueryCompare.NotEqual => l != r,
+            QueryCompare.Less => l < r,
+            QueryCompare.LessOrEqual => l <= r,
+            QueryCompare.Greater => l > r,
+            QueryCompare.GreaterOrEqual => l >= r,
+            _ => throw new InvalidOperationException($"Unknown query comparison {compare}.")
+        };
+    }
+
+    static bool CompareStringConst(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var value = Unsafe.As<byte, string?>(ref ObjectSlot(ref ctx,
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1))));
+        var constant = (string?)ctx.ObjectConstants[(int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 3))];
+        return (QueryCompare)operands switch
+        {
+            QueryCompare.Equal => string.Equals(value, constant),
+            QueryCompare.NotEqual => !string.Equals(value, constant),
+            QueryCompare.Less => string.CompareOrdinal(value, constant) < 0,
+            QueryCompare.LessOrEqual => string.CompareOrdinal(value, constant) <= 0,
+            QueryCompare.Greater => string.CompareOrdinal(value, constant) > 0,
+            QueryCompare.GreaterOrEqual => string.CompareOrdinal(value, constant) >= 0,
+            _ => throw new InvalidOperationException($"Unknown query comparison {(QueryCompare)operands}.")
+        };
     }
 
     static bool IsInsideFinally(ReadOnlySpan<uint> blocks, uint instructionPc)
@@ -1581,6 +2038,7 @@ static class Interpreter
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static uint ReadJumpTarget(ref InterpreterCtx ctx, ref uint pc)
     {
         var labelIndex = ReadVUInt64(ref ctx, ref pc);
@@ -1597,6 +2055,7 @@ static class Interpreter
         return ctx.TryCatchFinallyBlocks[tableIndex];
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static ulong ReadVUInt64(ref InterpreterCtx ctx, ref uint pc)
     {
         ref var pcRef = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
@@ -1778,11 +2237,10 @@ static class Interpreter
         Unsafe.As<byte, T>(ref ctx.Result) = ~Unsafe.As<byte, T>(ref ctx.Param1);
     }
 
-    static void RunCodeOp(ref InterpreterCtx ctx, ref uint pc)
+    // Param1 is MemReader for reading code ops and MemWriter for writing ones.
+    static void RunCodeOp(CodeOp codeOp, ref byte param1, ref byte param2, ref byte result)
     {
-        var codeOp = (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
-        pc++;
-        ref var reader = ref Unsafe.As<byte, MemReader>(ref ctx.Param1);
+        ref var reader = ref Unsafe.As<byte, MemReader>(ref param1);
         switch (codeOp)
         {
             case CodeOp.Invalid:
@@ -1848,282 +2306,282 @@ static class Interpreter
                 reader.SkipStringValues();
                 break;
             case CodeOp.SkipBlock:
-                reader.SkipBlock(Unsafe.As<byte, uint>(ref ctx.Param2));
+                reader.SkipBlock(Unsafe.As<byte, uint>(ref param2));
                 break;
             case CodeOp.ReadUInt8:
-                Unsafe.As<byte, byte>(ref ctx.Result) = reader.ReadUInt8();
+                Unsafe.As<byte, byte>(ref result) = reader.ReadUInt8();
                 break;
             case CodeOp.ReadInt8:
-                Unsafe.As<byte, sbyte>(ref ctx.Result) = reader.ReadInt8();
+                Unsafe.As<byte, sbyte>(ref result) = reader.ReadInt8();
                 break;
             case CodeOp.ReadInt8Ordered:
-                Unsafe.As<byte, sbyte>(ref ctx.Result) = reader.ReadInt8Ordered();
+                Unsafe.As<byte, sbyte>(ref result) = reader.ReadInt8Ordered();
                 break;
             case CodeOp.ReadBool:
-                Unsafe.As<byte, bool>(ref ctx.Result) = reader.ReadBool();
+                Unsafe.As<byte, bool>(ref result) = reader.ReadBool();
                 break;
             case CodeOp.ReadUInt16LE:
-                Unsafe.As<byte, ushort>(ref ctx.Result) = reader.ReadUInt16LE();
+                Unsafe.As<byte, ushort>(ref result) = reader.ReadUInt16LE();
                 break;
             case CodeOp.ReadUInt16BE:
-                Unsafe.As<byte, ushort>(ref ctx.Result) = reader.ReadUInt16BE();
+                Unsafe.As<byte, ushort>(ref result) = reader.ReadUInt16BE();
                 break;
             case CodeOp.ReadInt16LE:
-                Unsafe.As<byte, short>(ref ctx.Result) = reader.ReadInt16LE();
+                Unsafe.As<byte, short>(ref result) = reader.ReadInt16LE();
                 break;
             case CodeOp.ReadInt16BE:
-                Unsafe.As<byte, short>(ref ctx.Result) = reader.ReadInt16BE();
+                Unsafe.As<byte, short>(ref result) = reader.ReadInt16BE();
                 break;
             case CodeOp.ReadHalf:
-                Unsafe.As<byte, Half>(ref ctx.Result) = reader.ReadHalf();
+                Unsafe.As<byte, Half>(ref result) = reader.ReadHalf();
                 break;
             case CodeOp.ReadUInt32LE:
-                Unsafe.As<byte, uint>(ref ctx.Result) = reader.ReadUInt32LE();
+                Unsafe.As<byte, uint>(ref result) = reader.ReadUInt32LE();
                 break;
             case CodeOp.ReadUInt32BE:
-                Unsafe.As<byte, uint>(ref ctx.Result) = reader.ReadUInt32BE();
+                Unsafe.As<byte, uint>(ref result) = reader.ReadUInt32BE();
                 break;
             case CodeOp.ReadInt32LE:
-                Unsafe.As<byte, int>(ref ctx.Result) = reader.ReadInt32LE();
+                Unsafe.As<byte, int>(ref result) = reader.ReadInt32LE();
                 break;
             case CodeOp.ReadInt32BE:
-                Unsafe.As<byte, int>(ref ctx.Result) = reader.ReadInt32BE();
+                Unsafe.As<byte, int>(ref result) = reader.ReadInt32BE();
                 break;
             case CodeOp.ReadSingle:
-                Unsafe.As<byte, float>(ref ctx.Result) = reader.ReadSingle();
+                Unsafe.As<byte, float>(ref result) = reader.ReadSingle();
                 break;
             case CodeOp.ReadUInt64LE:
-                Unsafe.As<byte, ulong>(ref ctx.Result) = reader.ReadUInt64LE();
+                Unsafe.As<byte, ulong>(ref result) = reader.ReadUInt64LE();
                 break;
             case CodeOp.ReadUInt64BE:
-                Unsafe.As<byte, ulong>(ref ctx.Result) = reader.ReadUInt64BE();
+                Unsafe.As<byte, ulong>(ref result) = reader.ReadUInt64BE();
                 break;
             case CodeOp.ReadInt64LE:
-                Unsafe.As<byte, long>(ref ctx.Result) = reader.ReadInt64LE();
+                Unsafe.As<byte, long>(ref result) = reader.ReadInt64LE();
                 break;
             case CodeOp.ReadInt64BE:
-                Unsafe.As<byte, long>(ref ctx.Result) = reader.ReadInt64BE();
+                Unsafe.As<byte, long>(ref result) = reader.ReadInt64BE();
                 break;
             case CodeOp.ReadDouble:
-                Unsafe.As<byte, double>(ref ctx.Result) = reader.ReadDouble();
+                Unsafe.As<byte, double>(ref result) = reader.ReadDouble();
                 break;
             case CodeOp.ReadDoubleOrdered:
-                Unsafe.As<byte, double>(ref ctx.Result) = reader.ReadDoubleOrdered();
+                Unsafe.As<byte, double>(ref result) = reader.ReadDoubleOrdered();
                 break;
             case CodeOp.ReadVInt16:
-                Unsafe.As<byte, short>(ref ctx.Result) = reader.ReadVInt16();
+                Unsafe.As<byte, short>(ref result) = reader.ReadVInt16();
                 break;
             case CodeOp.ReadVUInt16:
-                Unsafe.As<byte, ushort>(ref ctx.Result) = reader.ReadVUInt16();
+                Unsafe.As<byte, ushort>(ref result) = reader.ReadVUInt16();
                 break;
             case CodeOp.ReadVInt32:
-                Unsafe.As<byte, int>(ref ctx.Result) = reader.ReadVInt32();
+                Unsafe.As<byte, int>(ref result) = reader.ReadVInt32();
                 break;
             case CodeOp.ReadVUInt32:
-                Unsafe.As<byte, uint>(ref ctx.Result) = reader.ReadVUInt32();
+                Unsafe.As<byte, uint>(ref result) = reader.ReadVUInt32();
                 break;
             case CodeOp.ReadVInt64:
-                Unsafe.As<byte, long>(ref ctx.Result) = reader.ReadVInt64();
+                Unsafe.As<byte, long>(ref result) = reader.ReadVInt64();
                 break;
             case CodeOp.ReadVUInt64:
-                Unsafe.As<byte, ulong>(ref ctx.Result) = reader.ReadVUInt64();
+                Unsafe.As<byte, ulong>(ref result) = reader.ReadVUInt64();
                 break;
             case CodeOp.ReadDateTime:
-                Unsafe.As<byte, DateTime>(ref ctx.Result) = reader.ReadDateTime();
+                Unsafe.As<byte, DateTime>(ref result) = reader.ReadDateTime();
                 break;
             case CodeOp.ReadDateTimeOffset:
-                Unsafe.As<byte, DateTimeOffset>(ref ctx.Result) = reader.ReadDateTimeOffset();
+                Unsafe.As<byte, DateTimeOffset>(ref result) = reader.ReadDateTimeOffset();
                 break;
             case CodeOp.ReadTimeSpan:
-                Unsafe.As<byte, TimeSpan>(ref ctx.Result) = reader.ReadTimeSpan();
+                Unsafe.As<byte, TimeSpan>(ref result) = reader.ReadTimeSpan();
                 break;
             case CodeOp.ReadString:
-                Unsafe.As<byte, string?>(ref ctx.Result) = reader.ReadString();
+                Unsafe.As<byte, string?>(ref result) = reader.ReadString();
                 break;
             case CodeOp.ReadStringOrdered:
-                Unsafe.As<byte, string?>(ref ctx.Result) = reader.ReadStringOrdered();
+                Unsafe.As<byte, string?>(ref result) = reader.ReadStringOrdered();
                 break;
             case CodeOp.ReadStringInUtf8:
-                Unsafe.As<byte, string>(ref ctx.Result) = reader.ReadStringInUtf8();
+                Unsafe.As<byte, string>(ref result) = reader.ReadStringInUtf8();
                 break;
             case CodeOp.ReadGuid:
-                Unsafe.As<byte, Guid>(ref ctx.Result) = reader.ReadGuid();
+                Unsafe.As<byte, Guid>(ref result) = reader.ReadGuid();
                 break;
             case CodeOp.ReadDecimal:
-                Unsafe.As<byte, decimal>(ref ctx.Result) = reader.ReadDecimal();
+                Unsafe.As<byte, decimal>(ref result) = reader.ReadDecimal();
                 break;
             case CodeOp.ReadByteArray:
-                Unsafe.As<byte, byte[]?>(ref ctx.Result) = reader.ReadByteArray();
+                Unsafe.As<byte, byte[]?>(ref result) = reader.ReadByteArray();
                 break;
             case CodeOp.ReadByteArrayAsMemory:
-                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref ctx.Result) = reader.ReadByteArrayAsMemory();
+                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref result) = reader.ReadByteArrayAsMemory();
                 break;
             case CodeOp.ReadIPAddress:
-                Unsafe.As<byte, IPAddress?>(ref ctx.Result) = reader.ReadIPAddress();
+                Unsafe.As<byte, IPAddress?>(ref result) = reader.ReadIPAddress();
                 break;
             case CodeOp.ReadVersion:
-                Unsafe.As<byte, Version?>(ref ctx.Result) = reader.ReadVersion();
+                Unsafe.As<byte, Version?>(ref result) = reader.ReadVersion();
                 break;
             case CodeOp.ReadStringValues:
-                Unsafe.As<byte, StringValues>(ref ctx.Result) = reader.ReadStringValues();
+                Unsafe.As<byte, StringValues>(ref result) = reader.ReadStringValues();
                 break;
             case CodeOp.ReadPointer:
-                Unsafe.As<byte, nint>(ref ctx.Result) = reader.ReadPointer();
+                Unsafe.As<byte, nint>(ref result) = reader.ReadPointer();
                 break;
             case CodeOp.ReadBlock:
-                reader.ReadBlock(ref ctx.Result, Unsafe.As<byte, uint>(ref ctx.Param2));
+                reader.ReadBlock(ref result, Unsafe.As<byte, uint>(ref param2));
                 break;
             case CodeOp.ReadByteArrayRaw:
-                Unsafe.As<byte, byte[]>(ref ctx.Result) = reader.ReadByteArrayRaw((int)Unsafe.As<byte, uint>(ref ctx.Param2));
+                Unsafe.As<byte, byte[]>(ref result) = reader.ReadByteArrayRaw((int)Unsafe.As<byte, uint>(ref param2));
                 break;
             case CodeOp.ReadByteArrayRawTillEof:
-                Unsafe.As<byte, byte[]>(ref ctx.Result) = reader.ReadByteArrayRawTillEof();
+                Unsafe.As<byte, byte[]>(ref result) = reader.ReadByteArrayRawTillEof();
                 break;
             case CodeOp.ReadByteArrayRawTillEofAsMemory:
-                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref ctx.Result) = reader.ReadByteArrayRawTillEofAsMemory();
+                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref result) = reader.ReadByteArrayRawTillEofAsMemory();
                 break;
             case CodeOp.WriteByteZero:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteByteZero();
+                Unsafe.As<byte, MemWriter>(ref param1).WriteByteZero();
                 break;
             case CodeOp.WriteBool:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteBool(Unsafe.As<byte, bool>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteBool(Unsafe.As<byte, bool>(ref param2));
                 break;
             case CodeOp.WriteUInt8:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteUInt8(Unsafe.As<byte, byte>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteUInt8(Unsafe.As<byte, byte>(ref param2));
                 break;
             case CodeOp.WriteInt8:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt8(Unsafe.As<byte, sbyte>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt8(Unsafe.As<byte, sbyte>(ref param2));
                 break;
             case CodeOp.WriteInt8Ordered:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt8Ordered(Unsafe.As<byte, sbyte>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt8Ordered(Unsafe.As<byte, sbyte>(ref param2));
                 break;
             case CodeOp.WriteVInt16:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVInt16(Unsafe.As<byte, short>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVInt16(Unsafe.As<byte, short>(ref param2));
                 break;
             case CodeOp.WriteVUInt16:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVUInt16(Unsafe.As<byte, ushort>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVUInt16(Unsafe.As<byte, ushort>(ref param2));
                 break;
             case CodeOp.WriteVInt32:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVInt32(Unsafe.As<byte, int>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVInt32(Unsafe.As<byte, int>(ref param2));
                 break;
             case CodeOp.WriteVUInt32:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVUInt32(Unsafe.As<byte, uint>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVUInt32(Unsafe.As<byte, uint>(ref param2));
                 break;
             case CodeOp.WriteVInt64:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVInt64(Unsafe.As<byte, long>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVInt64(Unsafe.As<byte, long>(ref param2));
                 break;
             case CodeOp.WriteVUInt64:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVUInt64(Unsafe.As<byte, ulong>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVUInt64(Unsafe.As<byte, ulong>(ref param2));
                 break;
             case CodeOp.WriteInt64BE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt64BE(Unsafe.As<byte, long>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt64BE(Unsafe.As<byte, long>(ref param2));
                 break;
             case CodeOp.WriteInt64LE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt64LE(Unsafe.As<byte, long>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt64LE(Unsafe.As<byte, long>(ref param2));
                 break;
             case CodeOp.WriteUInt16LE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteUInt16LE(Unsafe.As<byte, ushort>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteUInt16LE(Unsafe.As<byte, ushort>(ref param2));
                 break;
             case CodeOp.WriteInt32BE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt32BE(Unsafe.As<byte, int>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt32BE(Unsafe.As<byte, int>(ref param2));
                 break;
             case CodeOp.WriteInt16BE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt16BE(Unsafe.As<byte, short>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt16BE(Unsafe.As<byte, short>(ref param2));
                 break;
             case CodeOp.WriteInt32LE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteInt32LE(Unsafe.As<byte, int>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteInt32LE(Unsafe.As<byte, int>(ref param2));
                 break;
             case CodeOp.WriteUInt32LE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteUInt32LE(Unsafe.As<byte, uint>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteUInt32LE(Unsafe.As<byte, uint>(ref param2));
                 break;
             case CodeOp.WriteUInt64LE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteUInt64LE(Unsafe.As<byte, ulong>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteUInt64LE(Unsafe.As<byte, ulong>(ref param2));
                 break;
             case CodeOp.WriteUInt64BE:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteUInt64BE(Unsafe.As<byte, ulong>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteUInt64BE(Unsafe.As<byte, ulong>(ref param2));
                 break;
             case CodeOp.WriteDateTime:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteDateTime(Unsafe.As<byte, DateTime>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteDateTime(Unsafe.As<byte, DateTime>(ref param2));
                 break;
             case CodeOp.WriteDateTimeForbidUnspecifiedKind:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1)
-                    .WriteDateTimeForbidUnspecifiedKind(Unsafe.As<byte, DateTime>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1)
+                    .WriteDateTimeForbidUnspecifiedKind(Unsafe.As<byte, DateTime>(ref param2));
                 break;
             case CodeOp.WriteDateTimeOffset:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1)
-                    .WriteDateTimeOffset(Unsafe.As<byte, DateTimeOffset>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1)
+                    .WriteDateTimeOffset(Unsafe.As<byte, DateTimeOffset>(ref param2));
                 break;
             case CodeOp.WriteTimeSpan:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteTimeSpan(Unsafe.As<byte, TimeSpan>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteTimeSpan(Unsafe.As<byte, TimeSpan>(ref param2));
                 break;
             case CodeOp.WriteString:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteString(Unsafe.As<byte, string?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteString(Unsafe.As<byte, string?>(ref param2));
                 break;
             case CodeOp.WriteStringOrdered:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteStringOrdered(Unsafe.As<byte, string?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteStringOrdered(Unsafe.As<byte, string?>(ref param2));
                 break;
             case CodeOp.WriteStringOrderedPrefix:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteStringOrderedPrefix(Unsafe.As<byte, string>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteStringOrderedPrefix(Unsafe.As<byte, string>(ref param2));
                 break;
             case CodeOp.WriteStringInUtf8:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteStringInUtf8(Unsafe.As<byte, string>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteStringInUtf8(Unsafe.As<byte, string>(ref param2));
                 break;
             case CodeOp.WriteGuid:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteGuid(Unsafe.As<byte, Guid>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteGuid(Unsafe.As<byte, Guid>(ref param2));
                 break;
             case CodeOp.WriteSingle:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteSingle(Unsafe.As<byte, float>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteSingle(Unsafe.As<byte, float>(ref param2));
                 break;
             case CodeOp.WriteDouble:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteDouble(Unsafe.As<byte, double>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteDouble(Unsafe.As<byte, double>(ref param2));
                 break;
             case CodeOp.WriteDoubleOrdered:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteDoubleOrdered(Unsafe.As<byte, double>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteDoubleOrdered(Unsafe.As<byte, double>(ref param2));
                 break;
             case CodeOp.WriteHalf:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteHalf(Unsafe.As<byte, Half>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteHalf(Unsafe.As<byte, Half>(ref param2));
                 break;
             case CodeOp.WriteDecimal:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteDecimal(Unsafe.As<byte, decimal>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteDecimal(Unsafe.As<byte, decimal>(ref param2));
                 break;
             case CodeOp.WriteByteArray:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteByteArray(Unsafe.As<byte, byte[]?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteByteArray(Unsafe.As<byte, byte[]?>(ref param2));
                 break;
             case CodeOp.WriteByteArrayFromByteBuffer:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteByteArray(Unsafe.As<byte, ByteBuffer>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteByteArray(Unsafe.As<byte, ByteBuffer>(ref param2));
                 break;
             case CodeOp.WriteByteArrayFromMemory:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1)
-                    .WriteByteArray(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1)
+                    .WriteByteArray(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref param2));
                 break;
             case CodeOp.WriteByteArrayLength:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1)
-                    .WriteByteArrayLength(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1)
+                    .WriteByteArrayLength(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref param2));
                 break;
             case CodeOp.WriteByteArrayRaw:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteByteArrayRaw(Unsafe.As<byte, byte[]?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteByteArrayRaw(Unsafe.As<byte, byte[]?>(ref param2));
                 break;
             case CodeOp.WriteBlockFromByteArray:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteBlock(Unsafe.As<byte, byte[]>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteBlock(Unsafe.As<byte, byte[]>(ref param2));
                 break;
             case CodeOp.WriteBlockFromByteBuffer:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteBlock(Unsafe.As<byte, ByteBuffer>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteBlock(Unsafe.As<byte, ByteBuffer>(ref param2));
                 break;
             case CodeOp.WriteBlockFromMemory:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1)
-                    .WriteBlock(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1)
+                    .WriteBlock(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref param2));
                 break;
             case CodeOp.WriteIPAddress:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteIPAddress(Unsafe.As<byte, IPAddress?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteIPAddress(Unsafe.As<byte, IPAddress?>(ref param2));
                 break;
             case CodeOp.WriteVersion:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteVersion(Unsafe.As<byte, Version?>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteVersion(Unsafe.As<byte, Version?>(ref param2));
                 break;
             case CodeOp.WriteStringValues:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WriteStringValues(Unsafe.As<byte, StringValues>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WriteStringValues(Unsafe.As<byte, StringValues>(ref param2));
                 break;
             case CodeOp.WritePointer:
-                Unsafe.As<byte, MemWriter>(ref ctx.Param1).WritePointer(Unsafe.As<byte, nint>(ref ctx.Param2));
+                Unsafe.As<byte, MemWriter>(ref param1).WritePointer(Unsafe.As<byte, nint>(ref param2));
                 break;
             default:
                 throw new InvalidOperationException("Unknown interpreter code opcode.");

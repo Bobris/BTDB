@@ -44,6 +44,13 @@ public class LsmObjectDbRelationQueryTest(ITestOutputHelper output) : ObjectDbRe
 }
 
 [Collection(LsmObjectDb.Name)]
+public class LsmObjectDbRelationQueryDifferentialTest(ITestOutputHelper output)
+    : ObjectDbRelationQueryDifferentialTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
 public class LsmObjectDbTableInKeyValueTest(ITestOutputHelper output) : ObjectDbTableInKeyValueTest(output)
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();

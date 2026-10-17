@@ -5,6 +5,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.FieldHandler;
 using BTDB.Interpreter;
 using BTDB.IL;
@@ -311,118 +312,145 @@ static class RelationQueryExecutionPlan
     public static IEnumerable<T> Create<T>(IInternalObjectDBTransaction transaction, RelationInfo relationInfo,
         RelationInfo.ItemLoaderInfo loaderInfo, QueryNode ast) where T : class
     {
-        var compiler = new RelationQueryPredicateCompiler<T>(transaction, relationInfo, ast);
-        return new RelationQueryEnumerator<T>(transaction, loaderInfo, compiler);
+        var plan = new RelationQueryCompiler(relationInfo, typeof(T)).Compile(transaction, ast);
+        return new RelationQueryEnumerator<T>(transaction, loaderInfo, plan);
     }
 }
 
-sealed class RelationQueryFieldSlot
+/// Compiled relation query: a cursor prefix plus interpreter programs evaluated on serialized key and value bytes.
+sealed class RelationQueryPlan
 {
-    public RelationQueryFieldSlot(Type type)
+    public RelationQueryPlan(byte[] cursorPrefix, bool neverMatches, RelationQueryProgram? keyProgram,
+        RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount)
+    {
+        CursorPrefix = cursorPrefix;
+        NeverMatches = neverMatches;
+        KeyProgram = keyProgram;
+        ValuePrograms = valuePrograms;
+        FrameSize = frameSize;
+        ObjectCount = objectCount;
+    }
+
+    public byte[] CursorPrefix { get; }
+
+    /// A conjunct folded to false, so no row can match.
+    public bool NeverMatches { get; }
+
+    /// Tests conjuncts using only primary key fields before the value is read. Null when there are none.
+    public RelationQueryProgram? KeyProgram { get; }
+
+    /// Indexed by persisted value version, tests the remaining conjuncts. Null when there are none. A null item is an
+    /// unknown version whose rows never match.
+    public RelationQueryProgram?[]? ValuePrograms { get; }
+
+    /// Size in bytes of the frame shared by all programs; a multiple of 8.
+    public int FrameSize { get; }
+
+    public int ObjectCount { get; }
+}
+
+sealed class RelationQueryProgram
+{
+    public RelationQueryProgram(InterpreterProgram? program, int keyStart, bool constantResult)
+    {
+        Program = program;
+        KeyStart = keyStart;
+        ConstantResult = constantResult;
+    }
+
+    /// Null when the conjuncts folded to a constant; ConstantResult is the result then.
+    public InterpreterProgram? Program { get; }
+
+    /// Byte offset in the key where the program starts reading primary key fields.
+    public int KeyStart { get; }
+
+    public bool ConstantResult { get; }
+}
+
+sealed class RelationQuerySlot
+{
+    public RelationQuerySlot(Type type, bool isObject, ushort index)
     {
         Type = type;
+        IsObject = isObject;
+        Index = index;
     }
 
     public Type Type { get; }
-    public uint ByteOffset { get; set; }
-    public uint ObjectIndex { get; set; }
-    public bool IsObject => Type == typeof(string);
+    public bool IsObject { get; }
 
-    public void EmitSetResult(InterpreterBuilder builder, ulong bytesPointerOffset, ulong objectsPointerOffset)
-    {
-        builder.AddInstruction(OpCode.LoadResultBySP);
-        builder.AddVUInt64(IsObject ? objectsPointerOffset : bytesPointerOffset);
-        var offset = IsObject ? ObjectIndex * (uint)Unsafe.SizeOf<nint>() : ByteOffset;
-        if (offset == 0) return;
-        builder.AddInstruction(OpCode.IncrementRefResult);
-        builder.AddVUInt64(offset);
-    }
-
-    public void EmitSetParam1(InterpreterBuilder builder, ulong bytesPointerOffset, ulong objectsPointerOffset)
-    {
-        builder.AddInstruction(OpCode.LoadParam1BySP);
-        builder.AddVUInt64(IsObject ? objectsPointerOffset : bytesPointerOffset);
-        var offset = IsObject ? ObjectIndex * (uint)Unsafe.SizeOf<nint>() : ByteOffset;
-        if (offset == 0) return;
-        builder.AddInstruction(OpCode.IncrementRefParam1);
-        builder.AddVUInt64(offset);
-    }
+    /// Frame byte offset, or object slot index when IsObject.
+    public ushort Index { get; }
 }
 
-sealed class RelationQueryPredicateCompiler<T> where T : class
+sealed class RelationQueryCompiler
 {
     readonly RelationInfo _relationInfo;
-    readonly Dictionary<string, RelationQueryFieldSlot> _fields = new();
-    readonly RelationQueryFieldSlot _version = new(typeof(uint));
-    uint _bytesSize;
-    uint _temporaryOffset;
-    uint _objectCount;
-    uint _stringScratch2;
+    readonly Type _itemType;
+    readonly ReadOnlyMemory<TableFieldInfo> _primaryKeyFields;
+    readonly Dictionary<string, RelationQuerySlot> _slots = new();
+    int _frameSize;
+    int _objectCount;
+    ushort _frameTemporary;
+    ushort _objectTemporary;
 
-    const ulong PointerStackCount = 4;
-    static readonly ulong PointerSize = (ulong)Unsafe.SizeOf<nint>();
-    static readonly ulong PointerStackSize = PointerStackCount * PointerSize;
-    static readonly ulong KeyReaderPointerOffset = PointerStackSize;
-    static readonly ulong ValueReaderPointerOffset = PointerStackSize - PointerSize;
-    static readonly ulong BytesPointerOffset = PointerStackSize - 2 * PointerSize;
-    static readonly ulong ObjectsPointerOffset = PointerStackSize - 3 * PointerSize;
-
-    public RelationQueryPredicateCompiler(IInternalObjectDBTransaction transaction, RelationInfo relationInfo,
-        QueryNode ast)
-        : this(relationInfo, ExtractPredicate(ast), true)
-    {
-        CursorPrefix = BuildCursorPrefix(transaction, relationInfo, ExtractPredicate(ast));
-    }
-
-    RelationQueryPredicateCompiler(RelationInfo relationInfo, QueryNode? predicate, bool splitKeyPredicate)
+    public RelationQueryCompiler(RelationInfo relationInfo, Type itemType)
     {
         _relationInfo = relationInfo;
-        CursorPrefix = relationInfo.Prefix;
-        if (splitKeyPredicate)
-        {
-            SplitKeyPredicate(predicate, relationInfo.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                out var keyPredicate, out predicate);
-            if (keyPredicate != null) KeyCompiler = new(relationInfo, keyPredicate, false);
-        }
-
-        HasPredicate = predicate != null;
-        CollectFields(predicate);
-        ConfigureSlots();
-        foreach (var field in relationInfo.ClientRelationVersionInfo.PrimaryKeyFields.Span)
-        {
-            if (!_fields.ContainsKey(field.Name)) continue;
-            HasKeyFields = true;
-            break;
-        }
-        foreach (var field in relationInfo.ClientRelationVersionInfo.Fields.Span)
-        {
-            if (!_fields.ContainsKey(field.Name)) continue;
-            HasValueFields = true;
-            break;
-        }
-        Program = BuildProgram(predicate);
+        _itemType = itemType;
+        _primaryKeyFields = relationInfo.ClientRelationVersionInfo.PrimaryKeyFields;
     }
 
-    public InterpreterProgram Program { get; }
-    public byte[] CursorPrefix { get; }
-    public bool HasKeyFields { get; }
-    public bool HasValueFields { get; }
-    public bool HasPredicate { get; }
-    public RelationQueryPredicateCompiler<T>? KeyCompiler { get; }
+    public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast)
+    {
+        var predicate = ExtractPredicate(ast);
+        CollectFields(predicate);
+        _frameTemporary = AllocFrameSlot();
+        _objectTemporary = AllocObjectSlot();
+
+        var conjuncts = new List<QueryNode>();
+        if (predicate != null) FlattenConjuncts(Simplify(predicate), conjuncts);
+        if (conjuncts.Exists(IsFalse)) return new(_relationInfo.Prefix, true, null, null, 0, 0);
+        conjuncts.RemoveAll(IsTrue);
+
+        // Equalities encoded in the cursor prefix are removed; every row under the prefix satisfies them.
+        var cursorPrefix = BuildCursorPrefix(transaction, conjuncts, out var prefixFieldCount);
+        var keyConjuncts = new List<QueryNode>();
+        var valueConjuncts = new List<QueryNode>();
+        foreach (var conjunct in conjuncts)
+            (UsesOnlyPrimaryKeyFields(conjunct) ? keyConjuncts : valueConjuncts).Add(conjunct);
+
+        var keyProgram = keyConjuncts.Count == 0
+            ? null
+            : BuildProgram(keyConjuncts, null, cursorPrefix.Length, prefixFieldCount);
+        RelationQueryProgram?[]? valuePrograms = null;
+        if (valueConjuncts.Count > 0)
+        {
+            var maxVersion = 0u;
+            foreach (var (version, _) in _relationInfo.RelationVersions) maxVersion = Math.Max(maxVersion, version);
+            valuePrograms = new RelationQueryProgram?[maxVersion + 1];
+            foreach (var (version, info) in _relationInfo.RelationVersions)
+                valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, cursorPrefix.Length,
+                    prefixFieldCount);
+        }
+
+        return new(cursorPrefix, false, keyProgram, valuePrograms, _frameSize, _objectCount);
+    }
 
     void CollectFields(QueryNode? node)
     {
-        if (node == null) return;
         switch (node)
         {
             case PropQueryNode prop:
-                if (_fields.ContainsKey(prop.Name)) return;
+                if (_slots.ContainsKey(prop.Name)) return;
                 var tableField = _relationInfo.ClientRelationVersionInfo[prop.Name] ??
-                                 throw new BTDBException($"Property {typeof(T).ToSimpleName()}.{prop.Name} was not found.");
+                                 throw new BTDBException($"Property {_itemType.ToSimpleName()}.{prop.Name} was not found.");
                 if (tableField.Computed)
-                    throw new NotSupportedException($"Computed property {typeof(T).ToSimpleName()}.{prop.Name} is not supported in relation query.");
+                    throw new NotSupportedException(
+                        $"Computed property {_itemType.ToSimpleName()}.{prop.Name} is not supported in relation query.");
                 EnsureSupportedType(prop.Type);
-                _fields.Add(prop.Name, new(prop.Type));
+                var isObject = prop.Type == typeof(string);
+                _slots.Add(prop.Name, new(prop.Type, isObject, isObject ? AllocObjectSlot() : AllocFrameSlot()));
                 break;
             case BoolAndQueryNode and:
                 CollectFields(and.Left);
@@ -439,29 +467,21 @@ sealed class RelationQueryPredicateCompiler<T> where T : class
         }
     }
 
-    void ConfigureSlots()
+    ushort AllocFrameSlot()
     {
-        _version.ByteOffset = 0;
-        var byteOffset = (uint)Unsafe.SizeOf<uint>();
-        foreach (var field in _fields.Values)
-        {
-            if (field.IsObject)
-            {
-                field.ObjectIndex = _objectCount++;
-                continue;
-            }
+        // Every frame slot has 8 bytes, so a narrower property can be read by truncating a wider stored integer.
+        if (_frameSize + 8 > ushort.MaxValue)
+            throw new NotSupportedException("Relation query references too many fields.");
+        var offset = (ushort)_frameSize;
+        _frameSize += 8;
+        return offset;
+    }
 
-            var size = SizeOf(field.Type);
-            byteOffset = AlignUp(byteOffset, Math.Min(size, 8));
-            field.ByteOffset = byteOffset;
-            byteOffset += size;
-        }
-
-        _temporaryOffset = AlignUp(byteOffset, 8);
-        _bytesSize = _temporaryOffset + 16;
-        _stringScratch2 = _objectCount++;
-        if (_objectCount > 16)
-            throw new NotSupportedException("Relation query supports at most 15 referenced object fields.");
+    ushort AllocObjectSlot()
+    {
+        if (_objectCount >= ushort.MaxValue)
+            throw new NotSupportedException("Relation query references too many fields.");
+        return (ushort)_objectCount++;
     }
 
     static void EnsureSupportedType(Type type)
@@ -473,139 +493,193 @@ sealed class RelationQueryPredicateCompiler<T> where T : class
         throw new NotSupportedException($"Relation query does not support fields of type {type.ToSimpleName()} yet.");
     }
 
-    static uint SizeOf(Type type)
+    RelationQueryProgram BuildProgram(List<QueryNode> conjuncts, ReadOnlyMemory<TableFieldInfo>? valueFields,
+        int cursorPrefixLength, int prefixFieldCount)
     {
-        if (type == typeof(bool) || type == typeof(byte) || type == typeof(sbyte)) return 1;
-        if (type == typeof(ushort) || type == typeof(short) || type == typeof(Half)) return 2;
-        if (type == typeof(uint) || type == typeof(int) || type == typeof(float)) return 4;
+        var keyFields = _primaryKeyFields.Span;
+        var specialized = new List<QueryNode>(conjuncts.Count);
+        foreach (var conjunct in conjuncts)
+        {
+            // Properties missing in this value version read as their default value.
+            var node = valueFields == null ? conjunct : Simplify(SubstituteMissing(conjunct, valueFields.Value.Span));
+            if (IsFalse(node)) return new(null, 0, false);
+            if (IsTrue(node)) continue;
+            specialized.Add(node);
+        }
+
+        if (specialized.Count == 0) return new(null, 0, true);
+
+        var names = new HashSet<string>();
+        foreach (var conjunct in specialized) CollectPropertyNames(conjunct, names);
+        var firstKeyField = int.MaxValue;
+        var lastKeyField = -1;
+        for (var i = 0; i < keyFields.Length; i++)
+        {
+            if (!names.Contains(keyFields[i].Name)) continue;
+            firstKeyField = Math.Min(firstKeyField, i);
+            lastKeyField = i;
+        }
+
+        // Fields encoded in the cursor prefix are skipped unless a remaining conjunct still needs them.
+        var startField = firstKeyField >= prefixFieldCount ? prefixFieldCount : 0;
+        var keyStart = startField == prefixFieldCount ? cursorPrefixLength : _relationInfo.Prefix.Length;
+
+        var builder = new InterpreterBuilder();
+        var falseLabel = builder.DeclareLabel("false");
+        var emitted = 0;
+        var skip = new SkipRun(OpCode.SkipKey);
+        for (var i = startField; i <= lastKeyField; i++)
+        {
+            var field = keyFields[i];
+            if (field.Computed) continue;
+            if (!names.Contains(field.Name))
+            {
+                skip.Add(builder, GetSkipCodeOp(field.Handler!));
+                continue;
+            }
+
+            skip.Flush(builder);
+            EmitRead(builder, true, field, _slots[field.Name]);
+            // The key program tests each conjunct as soon as the last key field it needs was read.
+            if (valueFields == null) emitted += EmitReadyConjuncts(builder, specialized, keyFields, i, falseLabel);
+        }
+
+        if (valueFields != null)
+        {
+            var fields = valueFields.Value.Span;
+            emitted += EmitReadyConjuncts(builder, specialized, fields, -1, falseLabel);
+            var lastValueField = -1;
+            for (var i = 0; i < fields.Length; i++)
+                if (names.Contains(fields[i].Name) && !fields[i].Computed) lastValueField = i;
+            skip = new(OpCode.SkipValue);
+            for (var i = 0; i <= lastValueField; i++)
+            {
+                var field = fields[i];
+                if (field.Computed) continue;
+                if (!names.Contains(field.Name))
+                {
+                    skip.Add(builder, GetSkipCodeOp(field.Handler!));
+                    continue;
+                }
+
+                skip.Flush(builder);
+                EmitRead(builder, false, field, _slots[field.Name]);
+                emitted += EmitReadyConjuncts(builder, specialized, fields, i, falseLabel);
+            }
+        }
+
+        if (emitted != specialized.Count)
+            throw new InvalidOperationException("Relation query compiler did not emit every conjunct.");
+
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        builder.MarkLabel(falseLabel);
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddInstruction(OpCode.Stop);
+        return new(builder.Materialize(), keyStart, false);
+    }
+
+    // Returns the number of emitted conjuncts.
+    int EmitReadyConjuncts(InterpreterBuilder builder, List<QueryNode> conjuncts, ReadOnlySpan<TableFieldInfo> fields,
+        int fieldIndex, uint falseLabel)
+    {
+        var emitted = 0;
+        var names = new HashSet<string>();
+        foreach (var conjunct in conjuncts)
+        {
+            names.Clear();
+            CollectPropertyNames(conjunct, names);
+            var lastField = -1;
+            for (var i = 0; i < fields.Length; i++)
+                if (names.Contains(fields[i].Name)) lastField = i;
+            if (lastField != fieldIndex) continue;
+            EmitBranch(builder, conjunct, falseLabel, false);
+            emitted++;
+        }
+
+        return emitted;
+    }
+
+    struct SkipRun
+    {
+        readonly OpCode _opCode;
+        CodeOp _codeOp;
+        ushort _count;
+
+        public SkipRun(OpCode opCode)
+        {
+            _opCode = opCode;
+        }
+
+        public void Add(InterpreterBuilder builder, CodeOp codeOp)
+        {
+            if (_count != 0 && (_codeOp != codeOp || _count == ushort.MaxValue)) Flush(builder);
+            _codeOp = codeOp;
+            _count++;
+        }
+
+        public void Flush(InterpreterBuilder builder)
+        {
+            if (_count == 0) return;
+            builder.AddInstruction(_opCode);
+            builder.AddUInt8((byte)_codeOp);
+            builder.AddUInt16(_count);
+            _count = 0;
+        }
+    }
+
+    void EmitRead(InterpreterBuilder builder, bool fromKey, TableFieldInfo field, RelationQuerySlot slot)
+    {
+        var handler = field.Handler!;
+        var codeOp = GetReadCodeOp(handler);
+        var sourceType = handler.HandledType()!;
+        if (sourceType == slot.Type || CanTruncate(sourceType, slot.Type))
+        {
+            EmitReadInto(builder, fromKey, codeOp, slot.IsObject, slot.Index);
+            return;
+        }
+
+        var sourceIsObject = !sourceType.IsValueType;
+        var temporary = sourceIsObject ? _objectTemporary : _frameTemporary;
+        EmitReadInto(builder, fromKey, codeOp, sourceIsObject, temporary);
+        builder.AddInstruction(OpCode.ConvertSlot);
+        builder.AddUInt8((byte)(sourceIsObject ? QuerySlotKind.Object : QuerySlotKind.Frame));
+        builder.AddUInt16(temporary);
+        builder.AddUInt8((byte)(slot.IsObject ? QuerySlotKind.Object : QuerySlotKind.Frame));
+        builder.AddUInt16(slot.Index);
+        builder.AddConverterIndex(_relationInfo.TypeConverterFactory, sourceType, slot.Type);
+    }
+
+    // The default converter narrows integers by unchecked casts, which on little endian is the same as reading the low
+    // bytes of the wider value from the 8 byte frame slot.
+    bool CanTruncate(Type sourceType, Type targetType)
+    {
+        return BitConverter.IsLittleEndian &&
+               _relationInfo.TypeConverterFactory.GetType() == typeof(DefaultTypeConverterFactory) &&
+               IsInteger(sourceType) && IsInteger(targetType) && SizeOf(sourceType) >= SizeOf(targetType);
+    }
+
+    static bool IsInteger(Type type)
+    {
+        return type == typeof(byte) || type == typeof(sbyte) || type == typeof(ushort) || type == typeof(short) ||
+               type == typeof(uint) || type == typeof(int) || type == typeof(ulong) || type == typeof(long);
+    }
+
+    static int SizeOf(Type type)
+    {
+        if (type == typeof(byte) || type == typeof(sbyte)) return 1;
+        if (type == typeof(ushort) || type == typeof(short)) return 2;
+        if (type == typeof(uint) || type == typeof(int)) return 4;
         return 8;
     }
 
-    static uint AlignUp(uint value, uint alignment) => (value + alignment - 1) / alignment * alignment;
-
-    InterpreterProgram BuildProgram(QueryNode? predicate)
+    static void EmitReadInto(InterpreterBuilder builder, bool fromKey, CodeOp codeOp, bool isObject, ushort index)
     {
-        var builder = new InterpreterBuilder();
-        builder.AddInstruction(OpCode.PushStack);
-        builder.AddVUInt64(PointerStackSize);
-        builder.AddInstruction(OpCode.StoreParam1BySP);
-        builder.AddVUInt64(KeyReaderPointerOffset);
-        builder.AddInstruction(OpCode.StoreParam2BySP);
-        builder.AddVUInt64(ValueReaderPointerOffset);
-
-        builder.AddInstruction(OpCode.StackBytesAlloc);
-        builder.AddVUInt64(_bytesSize);
-        builder.AddInstruction(OpCode.StoreParam2BySP);
-        builder.AddVUInt64(BytesPointerOffset);
-        builder.AddInstruction(OpCode.StackAllocObject);
-        builder.AddVUInt64(_objectCount);
-        builder.AddInstruction(OpCode.StoreParam2BySP);
-        builder.AddVUInt64(ObjectsPointerOffset);
-
-        if (HasKeyFields)
-        {
-            EmitSkipKeyPrefix(builder);
-            EmitReadFields(builder, _relationInfo.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                KeyReaderPointerOffset);
-        }
-
-        if (HasValueFields)
-        {
-            builder.AddInstruction(OpCode.LoadParam1BySP);
-            builder.AddVUInt64(ValueReaderPointerOffset);
-            _version.EmitSetResult(builder, BytesPointerOffset, ObjectsPointerOffset);
-            builder.AddInstruction(OpCode.CodeOps);
-            builder.AddCodeOp(CodeOp.ReadVUInt32);
-
-            var predicateLabel = builder.DeclareLabel("predicate");
-            foreach (var (version, info) in _relationInfo.RelationVersions)
-            {
-                var nextVersionLabel = builder.DeclareLabel($"notVersion{version}");
-                _version.EmitSetParam1(builder, BytesPointerOffset, ObjectsPointerOffset);
-                AddConstant(builder, version);
-                builder.AddInstruction(OpCode.EqualUInt32);
-                builder.AddInstruction(OpCode.JmpIfFalse);
-                builder.AddLabelParameter(nextVersionLabel);
-                EmitReadFields(builder, info.Fields.Span, ValueReaderPointerOffset);
-                builder.AddInstruction(OpCode.Jmp);
-                builder.AddLabelParameter(predicateLabel);
-                builder.MarkLabel(nextVersionLabel);
-            }
-
-            builder.AddInstruction(OpCode.SetBoolResultFalse);
-            builder.AddInstruction(OpCode.Jmp);
-            var finishLabel = builder.DeclareLabel("finish");
-            builder.AddLabelParameter(finishLabel);
-            builder.MarkLabel(predicateLabel);
-            EmitPredicateOrTrue(builder, predicate);
-            builder.MarkLabel(finishLabel);
-        }
-        else
-        {
-            EmitPredicateOrTrue(builder, predicate);
-        }
-
-        builder.AddInstruction(OpCode.PopStack);
-        builder.AddVUInt64(PointerStackSize);
-        builder.AddInstruction(OpCode.Stop);
-        builder.AddInstruction(OpCode.Stop);
-        builder.AddInstruction(OpCode.Stop);
-        return builder.Materialize();
-    }
-
-    void EmitPredicateOrTrue(InterpreterBuilder builder, QueryNode? predicate)
-    {
-        if (predicate == null)
-            builder.AddInstruction(OpCode.SetBoolResultTrue);
-        else
-            EmitPredicate(builder, predicate);
-    }
-
-    void EmitSkipKeyPrefix(InterpreterBuilder builder)
-    {
-        builder.AddInstruction(OpCode.LoadParam1BySP);
-        builder.AddVUInt64(KeyReaderPointerOffset);
-        AddConstant(builder, (uint)_relationInfo.Prefix.Length);
-        builder.AddInstruction(OpCode.CodeOps);
-        builder.AddCodeOp(CodeOp.SkipBlock);
-    }
-
-    void EmitReadFields(InterpreterBuilder builder, ReadOnlySpan<TableFieldInfo> fields, ulong readerPointerOffset)
-    {
-        var lastNeeded = -1;
-        for (var i = 0; i < fields.Length; i++)
-            if (_fields.ContainsKey(fields[i].Name)) lastNeeded = i;
-
-        for (var i = 0; i <= lastNeeded; i++)
-        {
-            var field = fields[i];
-            if (field.Computed) continue;
-            builder.AddInstruction(OpCode.LoadParam1BySP);
-            builder.AddVUInt64(readerPointerOffset);
-            if (!_fields.TryGetValue(field.Name, out var target))
-            {
-                builder.AddInstruction(OpCode.CodeOps);
-                builder.AddCodeOp(GetSkipCodeOp(field.Handler!));
-                continue;
-            }
-
-            var sourceType = field.Handler!.HandledType()!;
-            if (sourceType == target.Type)
-            {
-                target.EmitSetResult(builder, BytesPointerOffset, ObjectsPointerOffset);
-                builder.AddInstruction(OpCode.CodeOps);
-                builder.AddCodeOp(GetReadCodeOp(field.Handler));
-                continue;
-            }
-
-            EmitSetResultToBytes(builder, _temporaryOffset);
-            builder.AddInstruction(OpCode.CodeOps);
-            builder.AddCodeOp(GetReadCodeOp(field.Handler));
-            builder.AddInstruction(OpCode.AssignRefParam1Result);
-            target.EmitSetResult(builder, BytesPointerOffset, ObjectsPointerOffset);
-            builder.AddInstruction(OpCode.ConvertParam1ToResult);
-            builder.AddConverterParameter(_relationInfo.TypeConverterFactory, sourceType, target.Type);
-        }
+        builder.AddInstruction(fromKey
+            ? isObject ? OpCode.ReadKeyToObject : OpCode.ReadKeyToFrame
+            : isObject ? OpCode.ReadValueToObject : OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)codeOp);
+        builder.AddUInt16(index);
     }
 
     static CodeOp GetReadCodeOp(IFieldHandler handler)
@@ -651,191 +725,171 @@ sealed class RelationQueryPredicateCompiler<T> where T : class
         };
     }
 
-    static void EmitSetResultToBytes(InterpreterBuilder builder, uint offset)
-    {
-        builder.AddInstruction(OpCode.LoadResultBySP);
-        builder.AddVUInt64(BytesPointerOffset);
-        if (offset == 0) return;
-        builder.AddInstruction(OpCode.IncrementRefResult);
-        builder.AddVUInt64(offset);
-    }
-
-    void EmitPredicate(InterpreterBuilder builder, QueryNode node)
+    // Emits code jumping to label when node evaluates to jumpIfTrue and falling through otherwise.
+    void EmitBranch(InterpreterBuilder builder, QueryNode node, uint label, bool jumpIfTrue)
     {
         switch (node)
         {
             case ConstantQueryNode { Value: bool value }:
-                builder.AddInstruction(value ? OpCode.SetBoolResultTrue : OpCode.SetBoolResultFalse);
+                if (value != jumpIfTrue) return;
+                builder.AddInstruction(OpCode.Jmp);
+                builder.AddLabelParameter(label);
                 return;
             case BoolAndQueryNode and:
-            {
-                var falseLabel = builder.DeclareLabel("andFalse");
-                var endLabel = builder.DeclareLabel("andEnd");
-                EmitPredicate(builder, and.Left);
-                builder.AddInstruction(OpCode.JmpIfFalse);
-                builder.AddLabelParameter(falseLabel);
-                EmitPredicate(builder, and.Right);
-                builder.AddInstruction(OpCode.Jmp);
-                builder.AddLabelParameter(endLabel);
-                builder.MarkLabel(falseLabel);
-                builder.AddInstruction(OpCode.SetBoolResultFalse);
-                builder.MarkLabel(endLabel);
+                if (jumpIfTrue)
+                {
+                    var skipLabel = builder.DeclareLabel("andSkip");
+                    EmitBranch(builder, and.Left, skipLabel, false);
+                    EmitBranch(builder, and.Right, label, true);
+                    builder.MarkLabel(skipLabel);
+                }
+                else
+                {
+                    EmitBranch(builder, and.Left, label, false);
+                    EmitBranch(builder, and.Right, label, false);
+                }
+
                 return;
-            }
             case BoolOrQueryNode or:
-            {
-                var trueLabel = builder.DeclareLabel("orTrue");
-                var endLabel = builder.DeclareLabel("orEnd");
-                EmitPredicate(builder, or.Left);
-                builder.AddInstruction(OpCode.JmpIfTrue);
-                builder.AddLabelParameter(trueLabel);
-                EmitPredicate(builder, or.Right);
-                builder.AddInstruction(OpCode.Jmp);
-                builder.AddLabelParameter(endLabel);
-                builder.MarkLabel(trueLabel);
-                builder.AddInstruction(OpCode.SetBoolResultTrue);
-                builder.MarkLabel(endLabel);
+                if (jumpIfTrue)
+                {
+                    EmitBranch(builder, or.Left, label, true);
+                    EmitBranch(builder, or.Right, label, true);
+                }
+                else
+                {
+                    var skipLabel = builder.DeclareLabel("orSkip");
+                    EmitBranch(builder, or.Left, skipLabel, true);
+                    EmitBranch(builder, or.Right, label, false);
+                    builder.MarkLabel(skipLabel);
+                }
+
                 return;
-            }
             case EqualsQueryNode equals:
-                EmitEquals(builder, equals);
+                EmitEquals(builder, equals, label, jumpIfTrue);
                 return;
             default:
                 throw new NotSupportedException("Relation query predicate is not supported.");
         }
     }
 
-    void EmitEquals(InterpreterBuilder builder, EqualsQueryNode equals)
+    void EmitEquals(InterpreterBuilder builder, EqualsQueryNode equals, uint label, bool jumpIfTrue)
     {
-        var prop = equals.Left as PropQueryNode;
-        var constant = equals.Right as ConstantQueryNode;
-        if (prop == null || constant == null)
-        {
-            prop = equals.Right as PropQueryNode;
-            constant = equals.Left as ConstantQueryNode;
-        }
-
-        if (prop == null || constant == null)
+        if (!TrySplitPropertyConstant(equals, out var prop, out var constant))
             throw new NotSupportedException("Relation query equality supports a property and a constant only.");
-        var value = _fields[prop.Name];
-        value.EmitSetParam1(builder, BytesPointerOffset, ObjectsPointerOffset);
-        EmitConstantToParam2(builder, value.Type, constant.Value);
-        builder.AddInstruction(GetEqualOpCode(value.Type));
-    }
-
-    void EmitConstantToParam2(InterpreterBuilder builder, Type type, object? value)
-    {
-        if (type == typeof(string))
+        var slot = _slots[prop.Name];
+        if (slot.IsObject)
         {
-            if (value != null && value is not string)
+            if (constant.Value != null && constant.Value is not string)
                 throw new NotSupportedException("Relation query constant type does not match property type.");
-            builder.AddInstruction(OpCode.LoadParam2BySP);
-            builder.AddVUInt64(ObjectsPointerOffset);
-            if (_stringScratch2 != 0)
-            {
-                builder.AddInstruction(OpCode.IncrementRefParam2);
-                builder.AddVUInt64(_stringScratch2 * (uint)Unsafe.SizeOf<nint>());
-            }
-            builder.AddInstruction(OpCode.SetParam2ObjectConst);
-            builder.AddVUInt64((ulong)builder.AddObjectConstant(value));
+            builder.AddInstruction(jumpIfTrue ? OpCode.JmpIfStringConst : OpCode.JmpIfNotStringConst);
+            builder.AddUInt8((byte)QueryCompare.Equal);
+            builder.AddUInt16(slot.Index);
+            builder.AddUInt32((uint)builder.AddObjectConstant(constant.Value));
+            builder.AddLabelTarget(label);
             return;
         }
 
-        if (value == null || value.GetType() != type)
+        if (constant.Value == null || constant.Value.GetType() != slot.Type)
             throw new NotSupportedException("Relation query constant type does not match property type.");
-        if (type == typeof(bool)) AddConstant(builder, (bool)value);
-        else if (type == typeof(byte)) AddConstant(builder, (byte)value);
-        else if (type == typeof(sbyte)) AddConstant(builder, (sbyte)value);
-        else if (type == typeof(ushort)) AddConstant(builder, (ushort)value);
-        else if (type == typeof(short)) AddConstant(builder, (short)value);
-        else if (type == typeof(uint)) AddConstant(builder, (uint)value);
-        else if (type == typeof(int)) AddConstant(builder, (int)value);
-        else if (type == typeof(ulong)) AddConstant(builder, (ulong)value);
-        else if (type == typeof(long)) AddConstant(builder, (long)value);
-        else if (type == typeof(Half)) AddConstant(builder, (Half)value);
-        else if (type == typeof(float)) AddConstant(builder, (float)value);
-        else if (type == typeof(double)) AddConstant(builder, (double)value);
-        else if (type == typeof(DateTime)) AddConstant(builder, (DateTime)value);
-        else throw new NotSupportedException($"Relation query constants of type {type.ToSimpleName()} are not supported yet.");
+        var valueType = AddFrameConstant(builder, slot.Type, constant.Value, out var constantOffset);
+        builder.AddInstruction(jumpIfTrue ? OpCode.JmpIfFrameConst : OpCode.JmpIfNotFrameConst);
+        builder.AddUInt8((byte)valueType);
+        builder.AddUInt8((byte)QueryCompare.Equal);
+        builder.AddUInt16(slot.Index);
+        builder.AddUInt32(constantOffset);
+        builder.AddLabelTarget(label);
     }
 
-    static void AddConstant<TValue>(InterpreterBuilder builder, TValue value) where TValue : unmanaged
+    static QueryValueType AddFrameConstant(InterpreterBuilder builder, Type type, object value, out uint offset)
     {
-        var offset = builder.AllocAlignedConst((uint)Unsafe.SizeOf<TValue>());
-        builder.ConstSpan<TValue>(offset) = value;
-        builder.AddInstruction(OpCode.SetParam2Const);
-        builder.AddVUInt64(offset);
+        if (type == typeof(bool)) return Add(builder, (bool)value, QueryValueType.UInt8, out offset);
+        if (type == typeof(byte)) return Add(builder, (byte)value, QueryValueType.UInt8, out offset);
+        if (type == typeof(sbyte)) return Add(builder, (sbyte)value, QueryValueType.Int8, out offset);
+        if (type == typeof(ushort)) return Add(builder, (ushort)value, QueryValueType.UInt16, out offset);
+        if (type == typeof(short)) return Add(builder, (short)value, QueryValueType.Int16, out offset);
+        if (type == typeof(uint)) return Add(builder, (uint)value, QueryValueType.UInt32, out offset);
+        if (type == typeof(int)) return Add(builder, (int)value, QueryValueType.Int32, out offset);
+        if (type == typeof(ulong)) return Add(builder, (ulong)value, QueryValueType.UInt64, out offset);
+        if (type == typeof(long)) return Add(builder, (long)value, QueryValueType.Int64, out offset);
+        if (type == typeof(Half)) return Add(builder, (Half)value, QueryValueType.Half, out offset);
+        if (type == typeof(float)) return Add(builder, (float)value, QueryValueType.Single, out offset);
+        if (type == typeof(double)) return Add(builder, (double)value, QueryValueType.Double, out offset);
+        if (type == typeof(DateTime)) return Add(builder, (DateTime)value, QueryValueType.DateTime, out offset);
+        throw new NotSupportedException($"Relation query constants of type {type.ToSimpleName()} are not supported yet.");
+
+        static QueryValueType Add<TValue>(InterpreterBuilder builder, TValue value, QueryValueType valueType,
+            out uint offset) where TValue : unmanaged
+        {
+            offset = builder.AllocAlignedConst((uint)Unsafe.SizeOf<TValue>());
+            builder.ConstSpan<TValue>(offset) = value;
+            return valueType;
+        }
     }
 
-    static OpCode GetEqualOpCode(Type type)
+    static bool TrySplitPropertyConstant(EqualsQueryNode equals, out PropQueryNode prop,
+        out ConstantQueryNode constant)
     {
-        if (type == typeof(string)) return OpCode.EqualString;
-        if (type == typeof(bool) || type == typeof(byte)) return OpCode.EqualByte;
-        if (type == typeof(sbyte)) return OpCode.EqualSByte;
-        if (type == typeof(ushort)) return OpCode.EqualUInt16;
-        if (type == typeof(short)) return OpCode.EqualInt16;
-        if (type == typeof(uint)) return OpCode.EqualUInt32;
-        if (type == typeof(int)) return OpCode.EqualInt32;
-        if (type == typeof(ulong)) return OpCode.EqualUInt64;
-        if (type == typeof(long)) return OpCode.EqualInt64;
-        if (type == typeof(Half)) return OpCode.EqualHalf;
-        if (type == typeof(float)) return OpCode.EqualFloat;
-        if (type == typeof(double)) return OpCode.EqualDouble;
-        if (type == typeof(DateTime)) return OpCode.EqualDateTime;
-        throw new NotSupportedException($"Relation query equality for {type.ToSimpleName()} is not supported yet.");
+        if (equals.Left is PropQueryNode leftProp && equals.Right is ConstantQueryNode rightConstant)
+        {
+            prop = leftProp;
+            constant = rightConstant;
+            return true;
+        }
+
+        if (equals.Right is PropQueryNode rightProp && equals.Left is ConstantQueryNode leftConstant)
+        {
+            prop = rightProp;
+            constant = leftConstant;
+            return true;
+        }
+
+        prop = null!;
+        constant = null!;
+        return false;
     }
 
     [SkipLocalsInit]
-    static byte[] BuildCursorPrefix(IInternalObjectDBTransaction transaction, RelationInfo relationInfo,
-        QueryNode? predicate)
+    byte[] BuildCursorPrefix(IInternalObjectDBTransaction transaction, List<QueryNode> conjuncts,
+        out int prefixFieldCount)
     {
-        var primaryKeyFields = relationInfo.ClientRelationVersionInfo.PrimaryKeyFields.Span;
-        if (primaryKeyFields.Length == 0) return relationInfo.Prefix;
+        prefixFieldCount = 0;
+        var primaryKeyFields = _primaryKeyFields.Span;
+        if (primaryKeyFields.Length == 0) return _relationInfo.Prefix;
         var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
-        writer.WriteBlock(relationInfo.Prefix);
+        writer.WriteBlock(_relationInfo.Prefix);
         IWriterCtx? writerCtx = null;
-        var constrainedFields = 0;
         foreach (var field in primaryKeyFields)
         {
-            if (!TryFindExactProperty(predicate, field.Name, out var property, out var constant)) break;
+            var conjunctIndex = FindExactProperty(conjuncts, field.Name, out var property, out var constant);
+            if (conjunctIndex < 0) break;
             if (constant.Value == null && property.Type != typeof(string) ||
                 constant.Value != null && constant.Value.GetType() != property.Type)
                 break;
 
             if (field.Handler!.NeedsCtx()) writerCtx ??= new DBWriterCtx(transaction);
-            var saver = field.Handler.Save(property.Type, relationInfo.TypeConverterFactory);
+            var saver = field.Handler.Save(property.Type, _relationInfo.TypeConverterFactory);
             SaveConstant(saver, ref writer, writerCtx, property.Type, constant.Value);
-            constrainedFields++;
+            conjuncts.RemoveAt(conjunctIndex);
+            prefixFieldCount++;
         }
 
-        return constrainedFields == 0 ? relationInfo.Prefix : writer.GetSpan().ToArray();
+        return prefixFieldCount == 0 ? _relationInfo.Prefix : writer.GetSpan().ToArray();
     }
 
-    static bool TryFindExactProperty(QueryNode? node, string propertyName, out PropQueryNode property,
+    static int FindExactProperty(List<QueryNode> conjuncts, string propertyName, out PropQueryNode property,
         out ConstantQueryNode constant)
     {
-        if (node is BoolAndQueryNode and)
+        for (var i = 0; i < conjuncts.Count; i++)
         {
-            if (TryFindExactProperty(and.Left, propertyName, out property, out constant)) return true;
-            return TryFindExactProperty(and.Right, propertyName, out property, out constant);
-        }
-
-        if (node is EqualsQueryNode equals)
-        {
-            property = equals.Left as PropQueryNode;
-            constant = equals.Right as ConstantQueryNode;
-            if (property == null || constant == null)
-            {
-                property = equals.Right as PropQueryNode;
-                constant = equals.Left as ConstantQueryNode;
-            }
-
-            if (property != null && constant != null && property.Name == propertyName) return true;
+            if (conjuncts[i] is EqualsQueryNode equals && TrySplitPropertyConstant(equals, out property, out constant) &&
+                property.Name == propertyName)
+                return i;
         }
 
         property = null!;
         constant = null!;
-        return false;
+        return -1;
     }
 
     static void SaveConstant(FieldHandlerSave saver, ref MemWriter writer, IWriterCtx? writerCtx, Type type,
@@ -872,173 +926,303 @@ sealed class RelationQueryPredicateCompiler<T> where T : class
         return node switch
         {
             QueryByIdQueryNode => null,
-            WhereQueryNode where => Combine(ExtractPredicate(where.Source), where.Predicate),
+            WhereQueryNode where => ExtractPredicate(where.Source) is { } source
+                ? new BoolAndQueryNode(source, where.Predicate)
+                : where.Predicate,
             _ => throw new NotSupportedException("Relation query source is not supported.")
         };
     }
 
-    static void SplitKeyPredicate(QueryNode? node, ReadOnlySpan<TableFieldInfo> primaryKeyFields,
-        out QueryNode? keyPredicate, out QueryNode? remainingPredicate)
+    static void FlattenConjuncts(QueryNode node, List<QueryNode> conjuncts)
     {
-        if (node == null)
-        {
-            keyPredicate = null;
-            remainingPredicate = null;
-            return;
-        }
-
         if (node is BoolAndQueryNode and)
         {
-            SplitKeyPredicate(and.Left, primaryKeyFields, out var leftKey, out var leftRemaining);
-            SplitKeyPredicate(and.Right, primaryKeyFields, out var rightKey, out var rightRemaining);
-            keyPredicate = CombineNullable(leftKey, rightKey);
-            remainingPredicate = CombineNullable(leftRemaining, rightRemaining);
+            FlattenConjuncts(and.Left, conjuncts);
+            FlattenConjuncts(and.Right, conjuncts);
             return;
         }
 
-        if (UsesOnlyPrimaryKeyFields(node, primaryKeyFields) &&
-            ContainsPrimaryKeyField(node, primaryKeyFields))
+        conjuncts.Add(node);
+    }
+
+    static bool IsTrue(QueryNode node) => node is ConstantQueryNode { Value: true };
+    static bool IsFalse(QueryNode node) => node is ConstantQueryNode { Value: false };
+
+    static QueryNode Simplify(QueryNode node)
+    {
+        switch (node)
         {
-            keyPredicate = node;
-            remainingPredicate = null;
-        }
-        else
-        {
-            keyPredicate = null;
-            remainingPredicate = node;
+            case BoolAndQueryNode and:
+            {
+                var left = Simplify(and.Left);
+                var right = Simplify(and.Right);
+                if (IsFalse(left) || IsFalse(right)) return new ConstantQueryNode(false, typeof(bool));
+                if (IsTrue(left)) return right;
+                if (IsTrue(right)) return left;
+                return ReferenceEquals(left, and.Left) && ReferenceEquals(right, and.Right)
+                    ? and
+                    : new BoolAndQueryNode(left, right);
+            }
+            case BoolOrQueryNode or:
+            {
+                var left = Simplify(or.Left);
+                var right = Simplify(or.Right);
+                if (IsTrue(left) || IsTrue(right)) return new ConstantQueryNode(true, typeof(bool));
+                if (IsFalse(left)) return right;
+                if (IsFalse(right)) return left;
+                return ReferenceEquals(left, or.Left) && ReferenceEquals(right, or.Right)
+                    ? or
+                    : new BoolOrQueryNode(left, right);
+            }
+            case EqualsQueryNode { Left: ConstantQueryNode left, Right: ConstantQueryNode right }:
+                return new ConstantQueryNode(ConstantsEqual(left.Value, right.Value), typeof(bool));
+            default:
+                return node;
         }
     }
 
-    static bool UsesOnlyPrimaryKeyFields(QueryNode node, ReadOnlySpan<TableFieldInfo> primaryKeyFields)
+    // C# == semantics for the supported constant types; object.Equals differs only for NaN.
+    static bool ConstantsEqual(object? left, object? right)
+    {
+        if (left is double leftDouble && right is double rightDouble) return leftDouble == rightDouble;
+        if (left is float leftFloat && right is float rightFloat) return leftFloat == rightFloat;
+        if (left is Half leftHalf && right is Half rightHalf) return leftHalf == rightHalf;
+        return Equals(left, right);
+    }
+
+    QueryNode SubstituteMissing(QueryNode node, ReadOnlySpan<TableFieldInfo> valueFields)
     {
         switch (node)
         {
             case PropQueryNode prop:
-                foreach (var field in primaryKeyFields)
-                    if (field.Name == prop.Name) return true;
-                return false;
+                if (IsPrimaryKeyField(prop.Name)) return prop;
+                foreach (var field in valueFields)
+                    if (field.Name == prop.Name && !field.Computed) return prop;
+                return new ConstantQueryNode(DefaultValue(prop.Type), prop.Type);
             case BoolAndQueryNode and:
-                return UsesOnlyPrimaryKeyFields(and.Left, primaryKeyFields) &&
-                       UsesOnlyPrimaryKeyFields(and.Right, primaryKeyFields);
+                return new BoolAndQueryNode(SubstituteMissing(and.Left, valueFields),
+                    SubstituteMissing(and.Right, valueFields));
             case BoolOrQueryNode or:
-                return UsesOnlyPrimaryKeyFields(or.Left, primaryKeyFields) &&
-                       UsesOnlyPrimaryKeyFields(or.Right, primaryKeyFields);
+                return new BoolOrQueryNode(SubstituteMissing(or.Left, valueFields),
+                    SubstituteMissing(or.Right, valueFields));
             case EqualsQueryNode equals:
-                return UsesOnlyPrimaryKeyFields(equals.Left, primaryKeyFields) &&
-                       UsesOnlyPrimaryKeyFields(equals.Right, primaryKeyFields);
-            case ConstantQueryNode:
-                return true;
+                return new EqualsQueryNode(SubstituteMissing(equals.Left, valueFields),
+                    SubstituteMissing(equals.Right, valueFields));
             default:
-                return false;
+                return node;
         }
     }
 
-    static bool ContainsPrimaryKeyField(QueryNode node, ReadOnlySpan<TableFieldInfo> primaryKeyFields)
+    static object? DefaultValue(Type type)
+    {
+        if (type == typeof(string)) return null;
+        if (type == typeof(bool)) return false;
+        if (type == typeof(byte)) return (byte)0;
+        if (type == typeof(sbyte)) return (sbyte)0;
+        if (type == typeof(ushort)) return (ushort)0;
+        if (type == typeof(short)) return (short)0;
+        if (type == typeof(uint)) return 0u;
+        if (type == typeof(int)) return 0;
+        if (type == typeof(ulong)) return 0ul;
+        if (type == typeof(long)) return 0L;
+        if (type == typeof(Half)) return Half.Zero;
+        if (type == typeof(float)) return 0f;
+        if (type == typeof(double)) return 0d;
+        if (type == typeof(DateTime)) return default(DateTime);
+        throw new NotSupportedException($"Relation query does not support fields of type {type.ToSimpleName()} yet.");
+    }
+
+    bool IsPrimaryKeyField(string name)
+    {
+        foreach (var field in _primaryKeyFields.Span)
+            if (field.Name == name) return true;
+        return false;
+    }
+
+    bool UsesOnlyPrimaryKeyFields(QueryNode node)
+    {
+        var names = new HashSet<string>();
+        CollectPropertyNames(node, names);
+        foreach (var name in names)
+            if (!IsPrimaryKeyField(name)) return false;
+        return true;
+    }
+
+    static void CollectPropertyNames(QueryNode node, HashSet<string> names)
     {
         switch (node)
         {
             case PropQueryNode prop:
-                foreach (var field in primaryKeyFields)
-                    if (field.Name == prop.Name) return true;
-                return false;
+                names.Add(prop.Name);
+                break;
             case BoolAndQueryNode and:
-                return ContainsPrimaryKeyField(and.Left, primaryKeyFields) ||
-                       ContainsPrimaryKeyField(and.Right, primaryKeyFields);
+                CollectPropertyNames(and.Left, names);
+                CollectPropertyNames(and.Right, names);
+                break;
             case BoolOrQueryNode or:
-                return ContainsPrimaryKeyField(or.Left, primaryKeyFields) ||
-                       ContainsPrimaryKeyField(or.Right, primaryKeyFields);
+                CollectPropertyNames(or.Left, names);
+                CollectPropertyNames(or.Right, names);
+                break;
             case EqualsQueryNode equals:
-                return ContainsPrimaryKeyField(equals.Left, primaryKeyFields) ||
-                       ContainsPrimaryKeyField(equals.Right, primaryKeyFields);
-            default:
-                return false;
+                CollectPropertyNames(equals.Left, names);
+                CollectPropertyNames(equals.Right, names);
+                break;
         }
-    }
-
-    static QueryNode? CombineNullable(QueryNode? left, QueryNode? right)
-    {
-        if (left == null) return right;
-        return right == null ? left : new BoolAndQueryNode(left, right);
-    }
-
-    static QueryNode Combine(QueryNode? left, QueryNode right)
-    {
-        return left == null ? right : new BoolAndQueryNode(left, right);
     }
 }
 
 sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T : class
 {
+    const int ValueBufferSize = 4096;
+
     readonly IInternalObjectDBTransaction _transaction;
     readonly RelationInfo.ItemLoaderInfo _loaderInfo;
-    readonly RelationQueryPredicateCompiler<T> _compiler;
+    readonly RelationQueryPlan _plan;
+    readonly CursorIterateCallback _testRow;
+    readonly long[] _frame;
+    readonly object?[] _objects;
+    readonly byte[]? _valueBuffer;
     IKeyValueDBCursor? _cursor;
     bool _first = true;
+    bool _afterEnd;
+    bool _matched;
+    bool _skipCurrentRow;
     bool _hasCurrent;
     T? _current;
-    Memory<byte> _keyBuffer;
-    Memory<byte> _valueBuffer;
 
     public RelationQueryEnumerator(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
-        RelationQueryPredicateCompiler<T> compiler)
+        RelationQueryPlan plan)
     {
         _transaction = transaction;
         _loaderInfo = loaderInfo;
-        _compiler = compiler;
+        _plan = plan;
+        _testRow = TestRow;
+        _frame = new long[plan.FrameSize / sizeof(long)];
+        _objects = new object?[plan.ObjectCount];
+        if (plan.ValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
         _cursor = transaction.KeyValueDBTransaction.CreateCursor();
     }
 
+    [SkipLocalsInit]
     public bool MoveNext()
     {
         ObjectDisposedException.ThrowIf(_cursor == null, this);
         _transaction.ThrowIfDisposed();
         _hasCurrent = false;
         _current = null;
-        while (MoveCursor())
+        if (_afterEnd) return false;
+        var prefix = _plan.CursorPrefix;
+        var hasPredicate = _plan.KeyProgram != null || _plan.ValuePrograms != null;
+        if (_first)
         {
-            var needsKey = _compiler.KeyCompiler != null ||
-                           _compiler.HasPredicate && _compiler.HasKeyFields;
-            var key = needsKey ? _cursor!.GetKeyMemory(ref _keyBuffer) : default;
-            if (_compiler.KeyCompiler != null)
-            {
-                var keyReader = MemReader.CreateFromReadOnlyMemory(key);
-                try
-                {
-                    var unusedValueReader = default(MemReader);
-                    if (!EvaluatePredicate(_compiler.KeyCompiler, ref keyReader, ref unusedValueReader)) continue;
-                }
-                finally
-                {
-                    keyReader.Dispose();
-                }
-            }
+            _first = false;
+            if (_plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return AfterEnd();
+            _skipCurrentRow = false;
+        }
+        else if (!hasPredicate)
+        {
+            if (!_cursor.FindNextKey(prefix)) return AfterEnd();
+        }
+        else if (_cursor.IsValid())
+        {
+            // FastIterate continues from the previously matched row, which is cheaper than moving the cursor; that row
+            // itself is skipped.
+            _skipCurrentRow = true;
+        }
+        else
+        {
+            // The previously matched row was removed, FindNextKey moves to its next sibling.
+            if (!_cursor.FindNextKey(prefix)) return AfterEnd();
+            _skipCurrentRow = false;
+        }
 
-            if (_compiler.HasPredicate)
-            {
-                var keyReader = _compiler.HasKeyFields ? MemReader.CreateFromReadOnlyMemory(key) : default;
-                var valueReader = _compiler.HasValueFields
-                    ? MemReader.CreateFromReadOnlyMemory(_cursor.GetValueMemory(ref _valueBuffer))
-                    : default;
-                try
-                {
-                    if (!EvaluatePredicate(_compiler, ref keyReader, ref valueReader)) continue;
-                }
-                finally
-                {
-                    valueReader.Dispose();
-                    keyReader.Dispose();
-                }
-            }
-
+        if (!hasPredicate)
+        {
             _hasCurrent = true;
             return true;
         }
 
+        // Tests rows starting at the cursor position without moving the cursor per row; iteration stops on the first
+        // matching row or the first key outside the prefix.
+        _matched = false;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        if (_plan.ValuePrograms == null)
+            _cursor.FastIterateNoCursor(ref keyBuffer, _testRow);
+        else
+            _cursor.FastIterate(ref keyBuffer, _testRow);
+        if (!_matched) return AfterEnd();
+        _hasCurrent = true;
+        return true;
+    }
+
+    bool AfterEnd()
+    {
+        _afterEnd = true;
         return false;
+    }
+
+    bool TestRow(long keyIndex, ReadOnlySpan<byte> key)
+    {
+        if (_skipCurrentRow)
+        {
+            _skipCurrentRow = false;
+            return false;
+        }
+
+        if (!key.StartsWith(_plan.CursorPrefix)) return true;
+        if (!Evaluate(key)) return false;
+        _matched = true;
+        return true;
+    }
+
+    unsafe bool Evaluate(ReadOnlySpan<byte> key)
+    {
+        ref var frame = ref Unsafe.As<long, byte>(ref MemoryMarshal.GetArrayDataReference(_frame));
+        ref var objects = ref MemoryMarshal.GetArrayDataReference(_objects);
+        var keyReader = new MemReader();
+        var valueReader = new MemReader();
+        fixed (byte* keyPointer = key)
+        {
+            var keyProgram = _plan.KeyProgram;
+            if (keyProgram != null)
+            {
+                if (keyProgram.Program == null)
+                {
+                    if (!keyProgram.ConstantResult) return false;
+                }
+                else
+                {
+                    keyReader = new(keyPointer + keyProgram.KeyStart, key.Length - keyProgram.KeyStart);
+                    var ctx = new InterpreterCtx(keyProgram.Program, ref frame, ref objects, ref keyReader,
+                        ref valueReader);
+                    BTDB.Interpreter.Interpreter.Run(ref ctx);
+                    if (!ctx.BoolResult) return false;
+                }
+            }
+
+            var valuePrograms = _plan.ValuePrograms;
+            if (valuePrograms == null) return true;
+            Span<byte> valueBuffer = _valueBuffer;
+            var value = _cursor!.GetValueSpan(ref valueBuffer);
+            fixed (byte* valuePointer = value)
+            {
+                valueReader = new(valuePointer, value.Length);
+                var version = valueReader.ReadVUInt32();
+                if (version >= (uint)valuePrograms.Length) return false;
+                var program = valuePrograms[version];
+                if (program == null) return false;
+                if (program.Program == null) return program.ConstantResult;
+                keyReader = new(keyPointer + program.KeyStart, key.Length - program.KeyStart);
+                var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
+                BTDB.Interpreter.Interpreter.Run(ref ctx);
+                return ctx.BoolResult;
+            }
+        }
     }
 
     public T Current
     {
+        [SkipLocalsInit]
         get
         {
             if (!_hasCurrent) throw new InvalidOperationException("Enumerator is not positioned on a row.");
@@ -1051,32 +1235,12 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
 
     object IEnumerator.Current => Current;
 
-    static bool EvaluatePredicate(RelationQueryPredicateCompiler<T> compiler, ref MemReader keyReader,
-        ref MemReader valueReader)
-    {
-        Span<byte> stack = stackalloc byte[4 * Unsafe.SizeOf<nint>()];
-        var ctx = new InterpreterCtx(ref Unsafe.NullRef<byte>(), ref Unsafe.As<MemReader, byte>(ref keyReader),
-            ref Unsafe.As<MemReader, byte>(ref valueReader), stack, compiler.Program);
-        BTDB.Interpreter.Interpreter.Run(ref ctx);
-        return ctx.BoolResult;
-    }
-
-    bool MoveCursor()
-    {
-        if (_first)
-        {
-            _first = false;
-            return _cursor!.FindFirstKey(_compiler.CursorPrefix);
-        }
-
-        return _cursor!.FindNextKey(_compiler.CursorPrefix);
-    }
-
     public void Reset()
     {
         ObjectDisposedException.ThrowIf(_cursor == null, this);
         _cursor.Invalidate();
         _first = true;
+        _afterEnd = false;
         _hasCurrent = false;
         _current = null;
     }
@@ -1085,6 +1249,7 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
     {
         _cursor?.Dispose();
         _cursor = null;
+        Array.Clear(_objects);
     }
 
     public IEnumerator<T> GetEnumerator() => this;

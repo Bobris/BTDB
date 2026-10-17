@@ -7,6 +7,24 @@
 - `LsmKeyValueDBOptions.MaxTransactionMemory` (256 MiB by default) bounds the memtable bytes one `LsmKeyValueDB`
   writing transaction adds. A transaction above it throws `BTDBException` on its next modification or commit and can
   only be rolled back, so memtable memory stays bounded.
+- The low-level interpreter has frame opcodes (`OpCode` 152–162): reading key or value fields straight into frame or
+  object slots, repeated field skips, typed compare-and-jump against constants (`QueryValueType`, `QueryCompare`),
+  string compare-and-jump, and slot conversion (`QuerySlotKind`). They use fixed-width operands; `InterpreterCtx` gains
+  `Frame`, `Objects`, `KeyReader` and `ValueReader` refs for them.
+
+### Changed
+
+- `IRelation.Query<T>()` predicates evaluate 2–4× faster per scanned row:
+  - one interpreter program per stored value version;
+  - fields are read only up to the last one a conjunct needs, and each conjunct is tested right after its last field
+    is read;
+  - equalities already guaranteed by the primary-key cursor prefix are not re-checked;
+  - rows are tested with `FastIterate`;
+  - row loaders are cached per type.
+
+  Selective queries are now faster than enumerating the relation and filtering with LINQ.
+- The interpreter runs programs without try blocks in an instruction loop without exception bookkeeping, and no longer
+  enters a try block per instruction for programs that have them.
 
 ### Fixed
 

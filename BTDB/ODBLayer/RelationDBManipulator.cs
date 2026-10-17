@@ -1047,8 +1047,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         if (ReflectionMetadata.FindByType(typeof(TAs)) == null)
             throw new BTDBException($"Type {typeof(TAs).ToSimpleName()} does not have registered metadata.");
-        var loaderInfo = new RelationInfo.ItemLoaderInfo(_relationInfo, typeof(TAs));
-        return new RelationQuery<TAs>(_transaction, _relationInfo, loaderInfo);
+        return new RelationQuery<TAs>(_transaction, _relationInfo, _relationInfo.GetQueryItemLoaderInfo(typeof(TAs)));
     }
 
     public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)

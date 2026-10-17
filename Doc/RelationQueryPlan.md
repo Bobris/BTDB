@@ -141,6 +141,76 @@ What this means for Phase 1:
   read the value in the callback. Use pinned spans instead of `MemReader.CreateFromReadOnlyMemory` per row.
 - **Target:** at least 2× faster on the Phase 0 predicate benchmarks and zero allocations per rejected row.
 
+#### Phase 1 status: done
+
+What was built, and where it differs from the plan above:
+
+- **Loop split.** `Interpreter.Run` picks a loop by program:
+  - Programs without try blocks, which includes every query program, run a loop with no exception bookkeeping.
+  - Programs with try blocks wrap the same generic loop (`Loop<TMode>`) in one try that re-enters it after
+    `HandleException`. There is no longer a try around each instruction.
+  - `pc` lives in a local; cold instructions get a temporary copy, so the local itself is never address exposed.
+- **Frame model.** As planned, except `Params`, which is deferred to plan caching (design decision 3).
+  - The enumerator owns a `long[]` frame (8-byte slots) and an `object?[]` for strings.
+  - Query programs use no stack allocation and no try blocks.
+- **Opcodes.** Direct `OpCode` values 152–162, not a second-level page: only 11 were needed and 104 values were free,
+  so the extra dispatch was not worth it. They are:
+  - `ReadKeyToFrame`, `ReadKeyToObject`, `ReadValueToFrame`, `ReadValueToObject`;
+  - `SkipKey` and `SkipValue`, with a repeat count;
+  - `JmpIf[Not]FrameConst`, typed by `QueryValueType` and compared by `QueryCompare`;
+  - `JmpIf[Not]StringConst`;
+  - `ConvertSlot`.
+  Operands are fixed width. Jump targets are absolute `u32` values that `Materialize` patches from labels
+  (`AddLabelTarget`).
+  - `CmpSlotSlotBr` moves to Phase 2 together with property-to-property comparisons.
+  - `MatchEncodedConstBr` moves to Phase 2 together with encoded-equality planning.
+- **Narrowing reads.** An integer stored wider than its property, for example `Signed` → `int`, is read into the 8-byte
+  slot and compared at the narrower width. On little endian this is exactly the default converter's unchecked cast, so
+  there is no converter call per row. Other type differences use `ConvertSlot`.
+- **Older value versions.** Properties missing in an older value version are substituted with their default value and
+  constant-folded per version, so a version can compile to a constant result.
+- **Removing covered conjuncts.** Equalities encoded in the cursor prefix are removed from the programs.
+  - The key reader starts after the cursor prefix unless a remaining conjunct still needs a prefix field.
+  - Conjuncts folding to `false` make the whole query return nothing without seeking.
+- **Cursor driver.** `FastIterate` (or `FastIterateNoCursor` for key-only predicates) tests rows without moving the
+  cursor per row.
+  - After a match it continues from the matched row instead of calling `FindNextKey`.
+  - When that row was removed in the meantime, it falls back to `FindNextKey`.
+  - Plain cursor stepping measured 10–15 % slower for selective queries and 5 % faster for non-selective ones.
+- **Also fixed:**
+  - `Query<T>()` no longer builds a new `ItemLoaderInfo` on every call; loaders are cached per type in `RelationInfo`.
+  - The enumerator's per-row `stackalloc` buffers (2 KB in `Current`, 512 B in `MoveNext`) are no longer zeroed
+    (`[SkipLocalsInit]`). This alone was 45 ns per row.
+
+Results (same machine and settings as the Phase 0 baseline, per scanned row):
+
+| Scenario                         | Phase 0 | Phase 1 | Comparison                    |
+|----------------------------------|--------:|--------:|-------------------------------|
+| Value, selective (1.25 %)        | 306 ns  | 85 ns   | LINQ 136 ns                   |
+| Value, non-selective (50 %)      | 393 ns  | 184 ns  | LINQ 136 ns                   |
+| String equality (5 %)            | 288 ns  | 85 ns   | LINQ 133 ns                   |
+| PK prefix (whole tenant matches) | 372 ns  | 127 ns  | `FindById` 128 ns             |
+| PK prefix + value                | 489 ns  | 86 ns   | `FindById` + LINQ 131 ns      |
+| Empty result, cost per query     | –       | 1.0 µs, 2.3 KB | `FindById` 83 ns, 96 B |
+
+| Engine case                  | Phase 0 interpreter | Phase 1 interpreter | Closure tree | Hand-written |
+|------------------------------|--------------------:|--------------------:|-------------:|-------------:|
+| `Age == 35 && Active`        | 256 ns              | 57 ns               | 43 ns        | 37 ns        |
+| `Age == 35 && City == "..."` | 230 ns              | 49 ns               | 47 ns        | 38 ns        |
+
+What this means:
+
+- **Design decision 1 holds.** The interpreter is within 1.0–1.3× of the closure-tree prototype, so we keep it.
+- **Selective predicates** now beat materializing every row in LINQ by about 1.6×.
+- **Non-selective predicates** are still slower than LINQ. Every matched row pays for evaluation and materialization,
+  so cheaper evaluation (Phase 2 encoded matching) is the lever there.
+- **Allocations on rejected rows:**
+  - numeric predicates allocate nothing;
+  - string predicates still allocate one string per decoded value (37 B), which Phase 2 `MatchEncodedConstBr`
+    removes.
+- **Per-query cost** is about 1 µs and 2.3 KB (expression parsing and program building). Plan caching
+  (design decision 3) is the fix if short queries matter.
+
 ### Phase 2: Predicate breadth
 
 - Comparisons `!=`, `<`, `<=`, `>`, `>=` and `!` (normalized with De Morgan's laws). A bare `bool` member counts as a

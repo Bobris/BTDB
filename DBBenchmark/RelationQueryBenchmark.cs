@@ -143,6 +143,15 @@ public class RelationQueryBenchmark
     public int PkPrefixAndValueFindById() =>
         _table.FindById(QueryBenchData.SelectedTenant).Count(p => p.Age == QueryBenchData.SelectiveAge);
 
+    /// Fixed cost of one query: expression parsing, planning, program building and the first seek.
+    [BenchmarkCategory("EmptyResult"), Benchmark(Baseline = true)]
+    public int EmptyResultQuery() => Count(_table.Query<QueryBenchRow>().Where(p => p.TenantId == MissingTenant));
+
+    [BenchmarkCategory("EmptyResult"), Benchmark]
+    public int EmptyResultFindById() => Count(_table.FindById(MissingTenant));
+
+    const ulong MissingTenant = QueryBenchData.TenantCount + 1;
+
     // Reads Current for every row so all variants pay for row materialization.
     static int Count(IEnumerable<QueryBenchRow> rows)
     {

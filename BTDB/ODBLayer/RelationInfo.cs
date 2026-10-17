@@ -79,6 +79,13 @@ public class RelationInfo
     public bool ClientVersionNeedsCtx;
 
     internal StructList<ItemLoaderInfo> ItemLoaderInfos;
+    readonly ConcurrentDictionary<Type, ItemLoaderInfo> _queryItemLoaderInfos = new();
+
+    /// Loader for relation queries; building one is expensive, so it is shared by all queries of the same type.
+    internal ItemLoaderInfo GetQueryItemLoaderInfo(Type itemType)
+    {
+        return _queryItemLoaderInfos.GetOrAdd(itemType, static (type, owner) => new(owner, type), this);
+    }
 
     ref struct FieldSaverCtx
     {
