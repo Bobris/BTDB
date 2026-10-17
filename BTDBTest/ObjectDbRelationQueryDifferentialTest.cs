@@ -323,6 +323,23 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
 
     public record DiffRecord(string Code, long Score);
 
+    [Generate]
+    public class DiffValuesDto
+    {
+        public decimal Price { get; set; }
+        public DateTime Created { get; set; }
+        public Guid Token { get; set; }
+        public short Delta { get; set; }
+        public byte Level { get; set; }
+        public DiffKind Kind { get; set; }
+        public bool Active { get; set; }
+        public long Score { get; set; }
+        public DateTimeOffset Seen { get; set; }
+
+        public override string ToString() =>
+            $"DiffValuesDto {Price} {Created:O} {Token} {Delta} {Level} {Kind} {Active} {Score} {Seen:O}";
+    }
+
     [Theory]
     [MemberData(nameof(Seeds))]
     public void ProjectionsMatchLinqToObjects(int seed)
@@ -409,6 +426,15 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         ("tuple literal", (q, t) => t.Run(q.Select(r => new ValueTuple<string?, Guid>(r.Name, r.Token)))),
         ("dto", (q, t) => t.Run(q.Select(r => new DiffDto { Code = r.Code, Age = r.Age, Kind = r.Kind, Bonus = r.Bonus }))),
         ("record", (q, t) => t.Run(q.Select(r => new DiffRecord(r.Code, r.Score)))),
+        ("anonymous values", (q, t) => t.Run(q.Select(r => new
+        {
+            r.Price, r.Duration, r.Bonus, r.Ratio, r.Rank, Kind = (DiffKind?)r.Kind, r.Active
+        }))),
+        ("dto values", (q, t) => t.Run(q.Select(r => new DiffValuesDto
+        {
+            Price = r.Price, Created = r.Created, Token = r.Token, Delta = r.Delta, Level = r.Level, Kind = r.Kind,
+            Active = r.Active, Score = r.Score, Seen = r.Seen
+        }))),
         ("Sum(Select(Age))", (q, _) => q.Select(r => r.Age).Sum()),
         ("Average(Select(Ratio))", (q, _) => q.Select(r => r.Ratio).Average()),
         ("Max(Select(Created))", (q, _) => q.Select(r => r.Created).Max()),

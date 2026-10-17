@@ -1434,6 +1434,9 @@ sealed class RelationQueryPlan
 
     public int ObjectCount { get; internal set; }
 
+    /// Frame byte the scanner sets to 1, the HasValue of results which are non-nullable fields; -1 when unused.
+    public int OneSlot { get; internal set; } = -1;
+
     /// Where the last program of a matching row stores the selector value; null without a selector.
     public RelationQueryResult? Result { get; }
 
@@ -1493,14 +1496,19 @@ sealed class RelationQuerySecondaryKey
 /// Frame location of a selector value computed for each matching row.
 sealed class RelationQueryResult
 {
-    public RelationQueryResult(Type type, Type storageType, QueryValueType valueType, ushort slot, ushort hasValueSlot)
+    public RelationQueryResult(Type type, Type storageType, QueryValueType valueType, ushort slot, ushort hasValueSlot,
+        bool isField = false)
     {
         Type = type;
         StorageType = storageType;
         ValueType = valueType;
         Slot = slot;
         HasValueSlot = hasValueSlot;
+        IsField = isField;
     }
+
+    /// The slots are those of the selected property, which programs read without copying.
+    public bool IsField { get; }
 
     /// A string property, which its program stores into an object slot.
     public RelationQueryResult(ushort objectSlot)
@@ -1706,6 +1714,7 @@ sealed class RelationQueryCompiler
         }
         plan.FrameSize = _frameSize;
         plan.ObjectCount = _objectCount;
+        plan.OneSlot = _oneSlot ?? -1;
         return plan;
     }
 
@@ -1741,6 +1750,13 @@ sealed class RelationQueryCompiler
         if (selector is PropQueryNode { Type: var type } && type == typeof(string))
         {
             result = new(AllocObjectSlot());
+        }
+        else if (selector is PropQueryNode prop)
+        {
+            // A property is read into its field slot, which then holds the result; no program copies it.
+            var field = _fields[prop.Name];
+            result = new(selector.Type, field.StorageType, field.ValueType, field.Slot,
+                field.IsNullable ? field.HasValueSlot : _oneSlot ??= AllocFrame(8), true);
         }
         else
         {
@@ -2147,6 +2163,8 @@ sealed class RelationQueryCompiler
         ForEachChild(node, CollectFields);
     }
 
+    ushort? _oneSlot;
+
     ushort AllocFrame(int size)
     {
         if (_frameSize + size > ushort.MaxValue)
@@ -2310,6 +2328,8 @@ sealed class RelationQueryCompiler
     // Stores the selector value and its HasValue into the result slot.
     void EmitSelector(QueryNode selector, RelationQueryResult result)
     {
+        // The property was read into the result slots; a missing property is still stored as its constant.
+        if (result.IsField && selector is PropQueryNode) return;
         var operand = CompileValue(selector);
         if (operand.StorageType != result.StorageType)
             throw new NotSupportedException("Relation query selector type does not match its result.");
@@ -3662,6 +3682,7 @@ sealed class RelationQueryScanner : IDisposable
         _aggregateIndex = AggregateIndex;
         _frame = new long[plan.FrameSize / sizeof(long)];
         _objects = new object?[plan.ObjectCount];
+        if (plan.OneSlot >= 0) FrameBytes[plan.OneSlot] = 1;
         if (plan.ValuePrograms != null || plan.ProjectionValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
         _cursor = transaction.KeyValueDBTransaction.CreateCursor();
     }
@@ -3794,7 +3815,8 @@ sealed class RelationQueryScanner : IDisposable
 
             if (!Plan.HasPrograms)
             {
-                if (range.Contains(cursor.GetKeySpan(ref keyBuffer))) return true;
+                // The cursor stays within the prefix, so only bounds need checking.
+                if (range.IsWholePrefix || range.Contains(cursor.GetKeySpan(ref keyBuffer))) return true;
                 NextRange();
                 continue;
             }
@@ -3808,7 +3830,7 @@ sealed class RelationQueryScanner : IDisposable
                 while (true)
                 {
                     var key = cursor.GetKeySpan(ref keyBuffer);
-                    if (!range.Contains(key))
+                    if (!range.IsWholePrefix && !range.Contains(key))
                     {
                         leftRange = true;
                         break;
@@ -4520,12 +4542,15 @@ sealed class RelationQueryProjectedEnumerator<TRow, TElement> : IEnumerator<TEle
     {
         _window = window;
         _projection = projection;
+        _typed = projection.IsTypedValue<TElement>();
     }
+
+    readonly bool _typed;
 
     public bool MoveNext()
     {
         _hasCurrent = _window.MoveNext();
-        if (_hasCurrent) _current = _projection.Build<TElement>(_window.Scanner);
+        if (_hasCurrent) _current = _projection.Build<TElement>(_window.Scanner, _typed);
         return _hasCurrent;
     }
 
@@ -4544,7 +4569,7 @@ sealed class RelationQueryProjection<TRow> where TRow : class
 {
     readonly IInternalObjectDBTransaction _transaction;
     readonly RelationInfo.ItemLoaderInfo _loaderInfo;
-    readonly List<(bool IsRow, int Selector, Type Type)> _arguments = [];
+    readonly List<ProjectionArgument> _arguments = [];
     readonly List<QueryNode> _selectors = [];
     readonly NewExpression? _new;
     readonly List<(MemberInfo Member, int Argument, FieldMetadata? Field)>? _bindings;
@@ -4579,7 +4604,10 @@ sealed class RelationQueryProjection<TRow> where TRow : class
                             if (candidate.Name == assignment.Member.Name) field = candidate;
                         unsafe
                         {
-                            if (field?.PropRefSetter == null) field = null;
+                            // A generated setter, or the offset of an auto-property backing field of the same type.
+                            if (field != null && field.PropRefSetter == null &&
+                                (field.ByteOffset == null || field.Type != assignment.Expression.Type))
+                                field = null;
                         }
                     }
 
@@ -4596,7 +4624,20 @@ sealed class RelationQueryProjection<TRow> where TRow : class
                 AddArgument(lambda.Body, parameter, query);
                 break;
         }
+
+        _argumentCount = _new?.Arguments.Count ?? _arguments.Count;
+        unsafe
+        {
+            _useCreator = _bindings != null && _argumentCount == 0 && _metadata?.Creator != null &&
+                          !_new!.Type.IsValueType;
+        }
     }
+
+    /// Constructor or factory arguments; member bindings follow them in _arguments.
+    readonly int _argumentCount;
+
+    /// Member bindings of a parameterless class are set on an instance from its generated creator.
+    readonly bool _useCreator;
 
     /// ValueTuple.Create or Tuple.Create.
     readonly MethodInfo? _factory;
@@ -4622,7 +4663,7 @@ sealed class RelationQueryProjection<TRow> where TRow : class
     {
         if (expression == parameter)
         {
-            _arguments.Add((true, -1, expression.Type));
+            _arguments.Add(new(true, -1, expression.Type));
             return _arguments.Count - 1;
         }
 
@@ -4633,22 +4674,89 @@ sealed class RelationQueryProjection<TRow> where TRow : class
             throw new NotSupportedException(
                 $"Relation query does not support selecting '{expression}' of type {expression.Type.ToSimpleName()}.");
         _selectors.Add(node);
-        _arguments.Add((false, _selectors.Count - 1, expression.Type));
+        _arguments.Add(new(false, _selectors.Count - 1, expression.Type));
         return _arguments.Count - 1;
     }
 
-    /// Builds the result without boxing for single values whose type is their storage.
-    public TElement Build<TElement>(RelationQueryScanner scanner)
+    /// A constructor, factory or member argument, or the single selected value.
+    sealed class ProjectionArgument
     {
-        if (_selectors.Count > 0 && !_eager) scanner.ComputeProjection();
-        if (_new == null && _factory == null && !_arguments[0].IsRow && typeof(TElement).IsValueType &&
-            Nullable.GetUnderlyingType(typeof(TElement)) == null)
+        public ProjectionArgument(bool isRow, int selector, Type type)
         {
-            var result = _results[0];
-            if (!result.IsString && Unsafe.SizeOf<TElement>() == RelationQueryTypes.ValueSize(result.StorageType))
-                return Unsafe.ReadUnaligned<TElement>(ref scanner.FrameBytes[result.Slot]);
+            IsRow = isRow;
+            Selector = selector;
+            Type = type;
+            var target = Nullable.GetUnderlyingType(type) ?? type;
+            EnumType = target.IsEnum ? target : null;
+            IsNullable = target != type;
+            if (!isRow && type.IsValueType && RelationQueryTypes.TryGetStorage(type, out var storage, out _, out _) &&
+                (target == storage || EnumType != null))
+            {
+                StorageSize = RelationQueryTypes.ValueSize(storage);
+                if (IsNullable) NullableValueOffset = GetNullableValueOffset(storage);
+            }
         }
 
+        public readonly bool IsRow;
+        public readonly int Selector;
+        public readonly Type Type;
+        public readonly Type? EnumType;
+        public readonly bool IsNullable;
+
+        /// Size of the value in the frame when its bytes are the bytes of Type (or of its underlying type), else 0.
+        public readonly int StorageSize;
+
+        /// Offset of the value within a Nullable of Type, after its HasValue.
+        public readonly int NullableValueOffset;
+
+        /// Box reused for every row; parameters and members of value types copy the value out of it.
+        public object? Box;
+    }
+
+    static int GetNullableValueOffset(Type storage)
+    {
+        if (storage == typeof(bool)) return NullableValueOffset<bool>();
+        if (storage == typeof(byte)) return NullableValueOffset<byte>();
+        if (storage == typeof(sbyte)) return NullableValueOffset<sbyte>();
+        if (storage == typeof(ushort)) return NullableValueOffset<ushort>();
+        if (storage == typeof(short)) return NullableValueOffset<short>();
+        if (storage == typeof(uint)) return NullableValueOffset<uint>();
+        if (storage == typeof(int)) return NullableValueOffset<int>();
+        if (storage == typeof(ulong)) return NullableValueOffset<ulong>();
+        if (storage == typeof(long)) return NullableValueOffset<long>();
+        if (storage == typeof(Half)) return NullableValueOffset<Half>();
+        if (storage == typeof(float)) return NullableValueOffset<float>();
+        if (storage == typeof(double)) return NullableValueOffset<double>();
+        if (storage == typeof(DateTime)) return NullableValueOffset<DateTime>();
+        if (storage == typeof(Guid)) return NullableValueOffset<Guid>();
+        if (storage == typeof(decimal)) return NullableValueOffset<decimal>();
+        if (storage == typeof(TimeSpan)) return NullableValueOffset<TimeSpan>();
+        if (storage == typeof(DateTimeOffset)) return NullableValueOffset<DateTimeOffset>();
+        throw new NotSupportedException($"Relation query cannot select nullable {storage.ToSimpleName()} values.");
+    }
+
+    static int NullableValueOffset<T>() where T : struct
+    {
+        T? nullable = default;
+        return (int)Unsafe.ByteOffset(ref Unsafe.As<T?, byte>(ref nullable),
+            ref Unsafe.As<T, byte>(ref Unsafe.AsRef(in Nullable.GetValueRefOrDefaultRef(in nullable))));
+    }
+
+    /// Whether a single value can be returned as TElement straight from its frame bytes, without boxing.
+    public bool IsTypedValue<TElement>()
+    {
+        if (_new != null || _factory != null || _arguments[0].IsRow || !typeof(TElement).IsValueType ||
+            Nullable.GetUnderlyingType(typeof(TElement)) != null)
+            return false;
+        var result = _results[0];
+        return !result.IsString && Unsafe.SizeOf<TElement>() == RelationQueryTypes.ValueSize(result.StorageType);
+    }
+
+    /// Builds the result; typed is IsTypedValue of TElement.
+    public TElement Build<TElement>(RelationQueryScanner scanner, bool typed)
+    {
+        if (_selectors.Count > 0 && !_eager) scanner.ComputeProjection();
+        if (typed) return Unsafe.ReadUnaligned<TElement>(ref scanner.FrameBytes[_results[0].Slot]);
         return (TElement)Construct(scanner)!;
     }
 
@@ -4660,14 +4768,15 @@ sealed class RelationQueryProjection<TRow> where TRow : class
 
     object? Construct(RelationQueryScanner scanner)
     {
-        if (_new == null && _factory == null) return ReadArgument(0, scanner);
-        var count = _new?.Arguments.Count ?? _arguments.Count;
+        // The single value is returned, so it cannot reuse a box.
+        if (_new == null && _factory == null) return ReadArgument(0, scanner, false);
+        var count = _argumentCount;
         object target;
         unsafe
         {
-            if (_bindings != null && count == 0 && _metadata?.Creator != null && !_new!.Type.IsValueType)
+            if (_useCreator)
             {
-                target = _metadata.Creator();
+                target = _metadata!.Creator();
             }
             else
             {
@@ -4677,11 +4786,12 @@ sealed class RelationQueryProjection<TRow> where TRow : class
                 target = count switch
                 {
                     0 => Invoke(),
-                    1 => Invoke(ReadArgument(0, scanner)),
-                    2 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner)),
-                    3 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner), ReadArgument(2, scanner)),
-                    4 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner), ReadArgument(2, scanner),
-                        ReadArgument(3, scanner)),
+                    1 => Invoke(ReadArgument(0, scanner, true)),
+                    2 => Invoke(ReadArgument(0, scanner, true), ReadArgument(1, scanner, true)),
+                    3 => Invoke(ReadArgument(0, scanner, true), ReadArgument(1, scanner, true),
+                        ReadArgument(2, scanner, true)),
+                    4 => Invoke(ReadArgument(0, scanner, true), ReadArgument(1, scanner, true),
+                        ReadArgument(2, scanner, true), ReadArgument(3, scanner, true)),
                     _ => InvokeMany(scanner, count)
                 };
             }
@@ -4690,8 +4800,11 @@ sealed class RelationQueryProjection<TRow> where TRow : class
         if (_bindings == null) return target;
         foreach (var (member, argument, field) in _bindings)
         {
-            var value = ReadArgument(argument, scanner);
-            if (field != null) SetField(field, target, value, member is PropertyInfo p ? p.PropertyType : ((FieldInfo)member).FieldType);
+            if (field != null && TrySetFromFrame(field, target, _arguments[argument], scanner)) continue;
+            var value = ReadArgument(argument, scanner, true);
+            if (field != null && HasSetter(field))
+                SetField(field, target, value,
+                    member is PropertyInfo p ? p.PropertyType : ((FieldInfo)member).FieldType);
             else if (member is PropertyInfo property) property.SetValue(target, value);
             else ((FieldInfo)member).SetValue(target, value);
         }
@@ -4715,18 +4828,71 @@ sealed class RelationQueryProjection<TRow> where TRow : class
     object InvokeMany(RelationQueryScanner scanner, int count)
     {
         var values = new object?[count];
-        for (var i = 0; i < count; i++) values[i] = ReadArgument(i, scanner);
+        for (var i = 0; i < count; i++) values[i] = ReadArgument(i, scanner, true);
         return _constructorInvoker?.Invoke(values) ?? _factoryInvoker!.Invoke(null, values)!;
     }
 
-    object? ReadArgument(int index, RelationQueryScanner scanner)
+    object? ReadArgument(int index, RelationQueryScanner scanner, bool reuseBox)
     {
-        var (isRow, selector, type) = _arguments[index];
-        if (isRow) return RelationQueryRows.Load<TRow>(_transaction, _loaderInfo, scanner.Cursor);
-        var value = scanner.ReadResult(_results[selector]);
-        var target = Nullable.GetUnderlyingType(type) ?? type;
-        return value != null && target.IsEnum ? Enum.ToObject(target, value) : value;
+        var argument = _arguments[index];
+        if (argument.IsRow) return RelationQueryRows.Load<TRow>(_transaction, _loaderInfo, scanner.Cursor);
+        var result = _results[argument.Selector];
+        if (reuseBox && argument.StorageSize != 0 && !result.IsString)
+        {
+            var frame = scanner.FrameBytes;
+            if (frame[result.HasValueSlot] == 0) return null;
+            if (argument.Box is { } box)
+            {
+                Unsafe.CopyBlockUnaligned(ref RawData.Ref(box, (uint)Unsafe.SizeOf<object>()), ref frame[result.Slot],
+                    (uint)argument.StorageSize);
+                return box;
+            }
+        }
+
+        var value = scanner.ReadResult(result);
+        if (value != null && argument.EnumType != null) value = Enum.ToObject(argument.EnumType, value);
+        if (reuseBox && argument.StorageSize != 0) argument.Box = value;
+        return value;
     }
+
+    /// Generated setters of non-nullable value members read the value straight from the frame; auto-property backing
+    /// fields are written in place, like generated deserializers do.
+    unsafe bool TrySetFromFrame(FieldMetadata field, object target, ProjectionArgument argument,
+        RelationQueryScanner scanner)
+    {
+        if (argument.IsRow) return false;
+        var result = _results[argument.Selector];
+        var frame = scanner.FrameBytes;
+        if (field.PropRefSetter != null)
+        {
+            if (argument.StorageSize == 0 || argument.IsNullable || result.IsString ||
+                frame[result.HasValueSlot] == 0) return false;
+            field.PropRefSetter(target, ref frame[result.Slot]);
+            return true;
+        }
+
+        ref var member = ref RawData.Ref(target, field.ByteOffset!.Value);
+        if (result.IsString)
+        {
+            Unsafe.As<byte, object?>(ref member) = scanner.ReadResult(result);
+            return true;
+        }
+
+        var size = (uint)argument.StorageSize;
+        if (size == 0) return false;
+        var hasValue = frame[result.HasValueSlot] != 0;
+        if (argument.IsNullable)
+        {
+            member = hasValue ? (byte)1 : (byte)0;
+            member = ref Unsafe.Add(ref member, argument.NullableValueOffset);
+        }
+
+        if (hasValue) Unsafe.CopyBlockUnaligned(ref member, ref frame[result.Slot], size);
+        else Unsafe.InitBlockUnaligned(ref member, 0, size);
+        return true;
+    }
+
+    static unsafe bool HasSetter(FieldMetadata field) => field.PropRefSetter != null;
 
     // Generated setters take a reference to the value, so the boxed value is unboxed into its storage type; enums
     // unbox to their underlying type.
@@ -5043,6 +5209,7 @@ sealed class RelationQueryRange
         ExcludeStart = excludeStart;
         Stop = stop;
         StopInclusive = stopInclusive;
+        IsWholePrefix = stop == null && !excludeStart && start.Length == prefix.Length;
     }
 
     public byte[] Prefix { get; }
@@ -5059,7 +5226,7 @@ sealed class RelationQueryRange
     public bool StopInclusive { get; }
 
     /// The range is all keys with Prefix, so its size is a difference of key indexes.
-    public bool IsWholePrefix => Stop == null && !ExcludeStart && Start.Length == Prefix.Length;
+    public bool IsWholePrefix { get; }
 
     public bool Contains(ReadOnlySpan<byte> key)
     {

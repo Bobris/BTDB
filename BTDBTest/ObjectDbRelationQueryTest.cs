@@ -595,6 +595,14 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public int Age { get; set; }
     }
 
+    [Generate]
+    public class PersonWithName
+    {
+        public Person? Row { get; set; }
+        public string? Name { get; set; }
+        public int Age { get; set; }
+    }
+
     [Fact]
     public void QueryProjectsWithSelect()
     {
@@ -612,6 +620,11 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         // A type without generated metadata is filled through reflection.
         var plain = query.OrderBy(p => p.Name).Select(p => new PlainNameAge { Name = p.Name, Age = p.Age }).Skip(1).First();
         Assert.Equal(("Ada", 41), (plain.Name, plain.Age));
+        // Generated metadata fills the backing fields in place; the row itself is set like any other reference.
+        var generated = query.Where(p => p.Age < 40).Select(p => new PersonWithName { Row = p, Name = p.Name, Age = p.Age })
+            .ToArray();
+        Assert.Equal([("bob@example.com", "Bob", 35), ("c@example.com", (string?)null, 28)],
+            generated.Select(g => (g.Row!.Email, g.Name, g.Age)));
         Assert.Equal(76, query.Where(p => p.TenantId == 1).Select(p => p.Age).Sum());
         Assert.Equal(2, query.Select(p => p.Email).Skip(1).Take(2).Count());
     }

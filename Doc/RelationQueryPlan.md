@@ -555,7 +555,35 @@ Results (same machine and settings as before):
 | `Select(new { Id, City })` of all rows, per row                | 152 ns  | 137 ns                 |
 | `OrderByDescending(Score).Select(Id).Take(10)` of 100 000 rows | 16 ms   | 26 ms                  |
 
-An unfiltered full projection is near parity because every row is decoded either way.
+**Unfiltered projections.** They read only the fields they need, but fetching each row's value bytes costs the same as
+in LINQ: a key-only `Select(Id)` took 52 ns per row, `Select(Score)` 107 ns and materializing whole rows 124 ns. A
+profile showed the remaining gap was not decoding:
+
+- **Selector copies.** A selected property is now read straight into its field slot, which is the result slot. Programs
+  no longer copy it and set its HasValue; non-nullable fields share one frame byte that the scanner sets to 1.
+- **Interpreter dispatch.** `ReadKeyToFrame`/`ReadValueToFrame` decode `VInt64`/`VUInt64` inline, and skips and
+  captures of strings and variable-length integers bypass the `RunCodeOp` switch.
+- **Scanner bookkeeping.** Whole-prefix ranges no longer copy and re-check keys that `FindNextKey` keeps within the
+  prefix.
+- **Construction.** Value arguments are passed in boxes reused for every row and overwritten in place, which is safe
+  because constructor parameters and members of value types copy them. Shape checks run once per query instead of per
+  row. `[Generate]` classes have their auto-property backing fields written in place at their metadata `ByteOffset`
+  (`RawData`), like generated deserializers do, instead of through `PropertyInfo.SetValue`.
+
+Per row over 100 000 rows, each case timed in its own process (best of 10 runs after a 1.5 s warm-up):
+
+| Scenario                                         | Before  | After   | LINQ over the relation |
+|--------------------------------------------------|--------:|--------:|-----------------------:|
+| `Query()` rows                                   | 141 ns  | 127 ns  | 120 ns                 |
+| `Select(Score)`                                  | 107 ns  | 93 ns   |                        |
+| `Select(new { Id, City })`                       | 148 ns  | 128 ns  | 128 ns                 |
+| `Select(new { Id, City, Age, Score })`           | 195 ns  | 158 ns  | 125 ns                 |
+| `Select(new Dto { Id, City, Age, Score })`       | 231 ns  | 151 ns  | 132 ns                 |
+| `Sum(Score)`                                     | 85 ns   | 73 ns   |                        |
+| `Where(Age == a).Select(Score)`, per scanned row | 84 ns   | 79 ns   |                        |
+
+The remaining gap of wide projections is interpreter dispatch, about 2 ns per instruction, and `ConstructorInvoker`
+for types without generated metadata, such as anonymous types.
 
 ## Out of scope for now
 

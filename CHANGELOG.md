@@ -48,7 +48,8 @@
 - `IRelation.Query<T>()` supports `Select` after `Where` and ordering, followed by `Skip`, `Take`, enumeration or
   terminal operators:
   - single values, anonymous types, constructors, `ValueTuple` / `Tuple`, records and member initializers;
-    `[Generate]` classes use generated setters;
+    `[Generate]` classes are filled through generated setters or by writing auto-property backing fields in place,
+    and value arguments are not boxed per row;
   - only the selected fields are read, and only for returned rows;
   - `Min`, `Max`, `Sum` and `Average` without a selector aggregate projected values.
 
@@ -78,6 +79,10 @@
   Selective queries are now faster than enumerating the relation and filtering with LINQ.
 - The interpreter runs programs without try blocks in an instruction loop without exception bookkeeping, and no longer
   enters a try block per instruction for programs that have them.
+- `IRelation.Query<T>()` scans are 5–15 % faster:
+  - selected properties are read straight into their result slots;
+  - common integer fields are decoded, and common fields skipped, without the generic `RunCodeOp` dispatch;
+  - whole-prefix scans no longer re-check their keys.
 
 ### Fixed
 

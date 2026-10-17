@@ -2156,8 +2156,7 @@ static class Interpreter
                 pc = ReadFinallyTarget(ref ctx, ref nestedPc);
                 break;
             case OpCode.ReadKeyToFrame:
-                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
-                    ref Unsafe.As<MemReader, byte>(ref ctx.KeyReader), ref Unsafe.NullRef<byte>(),
+                ReadField(ref ctx.KeyReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
                     ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
                 pc += 3;
                 break;
@@ -2168,8 +2167,7 @@ static class Interpreter
                 pc += 3;
                 break;
             case OpCode.ReadValueToFrame:
-                RunCodeOp((CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
-                    ref Unsafe.As<MemReader, byte>(ref ctx.ValueReader), ref Unsafe.NullRef<byte>(),
+                ReadField(ref ctx.ValueReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
                     ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
                 pc += 3;
                 break;
@@ -2323,9 +2321,26 @@ static class Interpreter
 
     static void SkipFields(ref MemReader reader, CodeOp codeOp, ushort count)
     {
-        for (var i = 0; i < count; i++)
-            RunCodeOp(codeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(),
-                ref Unsafe.NullRef<byte>());
+        for (var i = 0; i < count; i++) SkipField(ref reader, codeOp);
+    }
+
+    // The most common field encodings are decoded without the RunCodeOp switch.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static void ReadField(ref MemReader reader, CodeOp codeOp, ref byte target)
+    {
+        if (codeOp == CodeOp.ReadVInt64) Unsafe.As<byte, long>(ref target) = reader.ReadVInt64();
+        else if (codeOp == CodeOp.ReadVUInt64) Unsafe.As<byte, ulong>(ref target) = reader.ReadVUInt64();
+        else RunCodeOp(codeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(), ref target);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static void SkipField(ref MemReader reader, CodeOp codeOp)
+    {
+        if (codeOp == CodeOp.SkipString) reader.SkipString();
+        else if (codeOp == CodeOp.SkipVUInt64) reader.SkipVUInt64();
+        else if (codeOp == CodeOp.SkipVInt64) reader.SkipVInt64();
+        else RunCodeOp(codeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(),
+            ref Unsafe.NullRef<byte>());
     }
 
     static void ConvertSlot(ref InterpreterCtx ctx, uint pc)
@@ -2561,8 +2576,7 @@ static class Interpreter
     static void Capture(ref MemReader reader, CodeOp skipCodeOp, ref byte slot)
     {
         var start = reader.Current;
-        RunCodeOp(skipCodeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(),
-            ref Unsafe.NullRef<byte>());
+        SkipField(ref reader, skipCodeOp);
         Unsafe.WriteUnaligned(ref slot, start);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref slot, 8), (int)(reader.Current - start));
     }

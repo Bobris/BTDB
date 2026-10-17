@@ -157,6 +157,13 @@ static class Program
             var dtoExpected = all.First(p => p.Age == 33);
             Check("select dto", $"{dtoExpected.Email}/{dtoExpected.Age}/{dtoExpected.Level}/{dtoExpected.Bonus}",
                 $"{dto.Email}/{dto.Age}/{dto.Level}/{dto.Bonus}");
+            Check("select dtos", string.Join(",", all.Where(p => p.Age > 40).Select(p => $"{p.Email}/{p.Level}/{p.Bonus}")),
+                string.Join(",", query.Where(p => p.Age > 40)
+                    .Select(p => new SmokeDto { Email = p.Email, Level = p.Level, Bonus = p.Bonus })
+                    .AsEnumerable().Select(p => $"{p.Email}/{p.Level}/{p.Bonus}")));
+            Check("select values", string.Join(",", all.Where(p => p.Age > 40).Select(p => $"{p.Bonus}/{p.Price}/{p.Created:O}")),
+                string.Join(",", query.Where(p => p.Age > 40).Select(p => new { p.Bonus, p.Price, p.Created })
+                    .AsEnumerable().Select(p => $"{p.Bonus}/{p.Price}/{p.Created:O}")));
             Check("select sum and page", $"{all.Select(p => p.Age).Sum()}/{string.Join(",", all.OrderByDescending(p => p.Price).Select(p => p.Email).Take(2))}",
                 $"{query.Select(p => p.Age).Sum()}/{string.Join(",", query.OrderByDescending(p => p.Price).Select(p => p.Email).Take(2))}");
             Check("materialized row", "user025@example.com",
