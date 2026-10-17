@@ -111,6 +111,16 @@ static class Program
             Check("string set", all.Count(p => new[] { "Name1", "Name2", null }.Contains(p.Name)),
                 table.Query<SmokePerson>().Where(p => new[] { "Name1", "Name2", null }.Contains(p.Name)).AsEnumerable()
                     .Count());
+            var query = table.Query<SmokePerson>();
+            Check("count", all.Count(p => p.TenantId == tenant), query.Count(p => p.TenantId == tenant));
+            Check("count all", all.Count, query.Count());
+            Check("any and all", "True/False", $"{query.Any(p => p.Age > 40)}/{query.All(p => p.Active)}");
+            Check("first and last", $"{all.First(p => p.Age == 30).Email}/{all.Last().Email}",
+                $"{query.First(p => p.Age == 30).Email}/{query.Last().Email}");
+            Check("sum and average", $"{all.Sum(p => p.Price)}/{all.Average(p => p.Bonus)}",
+                $"{query.Sum(p => p.Price)}/{query.Average(p => p.Bonus)}");
+            Check("min and max", $"{all.Min(p => p.Created)}/{all.Max(p => p.Level)}",
+                $"{query.Min(p => p.Created)}/{query.Max(p => p.Level)}");
             Check("materialized row", "user025@example.com",
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1 && p.Email == "user025@example.com")
                     .AsEnumerable().Single().Email);

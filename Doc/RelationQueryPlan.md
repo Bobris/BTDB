@@ -324,6 +324,56 @@ need `[DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(de
   - `Count` over a pure key range uses key indexes (`CountWithPrefix` / `GetKeyIndex`) in O(log n);
   - `Any` is a single `FindFirstKey`.
 
+#### Phase 3 status: done
+
+What was built, and where it differs from the plan above:
+
+- **`IQueryProvider.Execute`** handles:
+  - `Count`, `LongCount`, `Any` and `All`, the last as `!Any(!predicate)`, which tests the same rows;
+  - `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last` and `LastOrDefault`, with predicate and
+    default-value overloads;
+  - `Min`, `Max`, `Sum` and `Average` with a selector.
+- **Scanner.** `RelationQueryScanner` replaces the enumerator internals. It offers:
+  - `MoveNext` (FastIterate to the next match);
+  - `MoveLast` (backwards with `FindLastKey` / `FindPreviousKey`);
+  - `Count`;
+  - `Aggregate`, which passes every matching row's frame to an aggregator inside one FastIterate, without stopping.
+  The enumerator materializes rows on top of it.
+- **Selectors** compile into the last program a row runs: the value programs when there are value conjuncts or the
+  selector needs value fields, otherwise the key program. They are specialized per value version like conjuncts and
+  copied into a result slot by the new `CopyToFrame` opcode (183).
+- **`Count` without programs** (no predicate, or only prefix equalities) uses `FindFirstKey` / `FindLastKey` key
+  indexes in O(log n). `Any` without programs is a single `FindFirstKey`.
+- **Aggregates follow `Enumerable` exactly:**
+  - checked `int` and `long` sums;
+  - `float` summed as `double`;
+  - `Average` of integers as checked `long` divided as `double`;
+  - `Min` / `Max` through `Comparer<T>.Default`, so NaN is the smallest double;
+  - nulls skipped;
+  - an empty non-nullable `Min`, `Max` or `Average` throws, while nullable ones return null;
+  - enum results are boxed as the enum.
+- **`Last` follows LINQ-to-Objects over a list.** It searches backwards and stops at the first match from the end.
+  The exception is `Last(predicate)` after `Where`: LINQ's `Where` iterator is not an `IList`, so it tests every row
+  forwards. The difference decides which rows can throw, and the differential test found both cases.
+- **Tests.**
+  - A second differential test applies 42 terminal operators to random filtered sources, comparing values and
+    exception types and messages with LINQ-to-Objects. Selectors use real C# lambdas.
+  - Mutation checks catch an off-by-one key-index count, swapped `Min` / `Max` and a missing second-match check in
+    `Single`. A `float` sum accumulated as `float` is caught by a focused test with values only `double` keeps.
+
+Results (same machine and settings as before):
+
+| Scenario                               | Query          | Comparison                                   |
+|----------------------------------------|---------------:|----------------------------------------------|
+| `Count()` of the relation, per call    | 0.85 µs        | relation `Count` 0.21 µs                     |
+| `Count(p => p.TenantId == x)`, per call | 1.8 µs        | `FindById(x).Count()` 67 µs (10 000 rows)    |
+| `Count(p => p.Active)`, per row        | 88 ns, 0 B     | LINQ 127 ns, 149 B                           |
+| `Sum(p => p.Score)`, per row           | 84 ns, 0 B     | LINQ 123 ns, 149 B                           |
+| Empty result, per query                | 1.4 µs, 3.9 KB | `FindById` 92 ns                             |
+
+What this means: per-row work is fast. The fixed per-query cost of about 1 µs (parsing, planning and building
+programs) now dominates `Count` and `Any` on key ranges. Plan caching (design decision 3) would remove most of it.
+
 ### Phase 4: Access paths (seek planning)
 
 - Ranges on the primary key: an equality prefix followed by one range field gives start and end bounds. Only handlers

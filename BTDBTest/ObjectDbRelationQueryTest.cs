@@ -108,6 +108,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public Guid Token { get; set; }
         public decimal Price { get; set; }
         public byte Small { get; set; }
+        public float Weight { get; set; }
     }
 
     public interface IQueryTypesTable : IRelation<QueryTypesRow>
@@ -466,6 +467,95 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         Assert.Throws<InvalidOperationException>(() => Ids(rows.Where(p => p.Bonus!.Value > 0)));
     }
 
+    [Fact]
+    public void QueryCountsWithoutMaterializingRows()
+    {
+        FillPersonData();
+        Person.UploadedSetterCalls = 0;
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        Assert.Equal(4, table.Query<Person>().Count());
+        Assert.Equal(2, table.Query<Person>().Count(p => p.TenantId == 1));
+        Assert.Equal(2L, table.Query<Person>().Where(p => p.TenantId == 2).LongCount());
+        Assert.Equal(1, table.Query<Person>().Count(p => p.Age == 41 && p.TenantId == 2));
+        Assert.Equal(0, table.Query<Person>().Count(p => p.TenantId == 3));
+        Assert.True(table.Query<Person>().Any());
+        Assert.False(table.Query<Person>().Any(p => p.Age > 100));
+        Assert.True(table.Query<Person>().All(p => p.Age > 20));
+        Assert.False(table.Query<Person>().Where(p => p.TenantId == 1).All(p => p.Age == 41));
+        Assert.Equal(0, Person.UploadedSetterCalls);
+
+        Assert.True(table.RemoveById(1, "ada@example.com"));
+        Assert.Equal(3, table.Query<Person>().Count());
+        Assert.Equal(1, table.Query<Person>().Count(p => p.TenantId == 1));
+    }
+
+    [Fact]
+    public void QueryElementOperatorsBehaveLikeLinq()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+        var query = table.Query<Person>();
+        var fallback = new Person { Name = "fallback" };
+
+        Assert.Equal("Ada", query.First().Name);
+        Assert.Equal("Bob", query.First(p => p.Age == 35).Name);
+        Assert.Equal("Dana", query.Last().Name);
+        Assert.Equal("Dana", query.Where(p => p.Age > 30).Last(p => p.TenantId == 2).Name);
+        Assert.Equal("Bob", query.Single(p => p.Age == 35).Name);
+        Assert.Null(query.SingleOrDefault(p => p.Age == 99));
+        Assert.Null(query.FirstOrDefault(p => p.Age == 99));
+        Assert.Same(fallback, query.FirstOrDefault(p => p.Age == 99, fallback));
+        Assert.Same(fallback, query.Where(p => p.Age == 99).LastOrDefault(fallback));
+        Assert.Equal("Sequence contains no elements",
+            Assert.Throws<InvalidOperationException>(() => query.Where(p => p.Age == 99).First()).Message);
+        Assert.Equal("Sequence contains no matching element",
+            Assert.Throws<InvalidOperationException>(() => query.Last(p => p.Age == 99)).Message);
+        Assert.Equal("Sequence contains more than one element",
+            Assert.Throws<InvalidOperationException>(() => query.Where(p => p.Age == 41).Single()).Message);
+        Assert.Equal("Sequence contains more than one matching element",
+            Assert.Throws<InvalidOperationException>(() => query.SingleOrDefault(p => p.TenantId == 1)).Message);
+    }
+
+    [Fact]
+    public void QueryAggregatesBehaveLikeLinq()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IQueryTypesTable>();
+            table.Upsert(new() { Id = 1, Bonus = null, Level = QueryLevel.Low, Price = 1.5m, Weight = 16777216f });
+            table.Upsert(new() { Id = 2, Bonus = 3, Level = QueryLevel.High, Price = 2m, Weight = 1f });
+            table.Upsert(new() { Id = 3, Bonus = -1, Level = QueryLevel.Low, Price = -1m, Weight = 1f });
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartTransaction();
+        var rows = readTr.GetRelation<IQueryTypesTable>().Query<QueryTypesRow>();
+        var all = rows.AsEnumerable().ToList();
+
+        Assert.Equal(2.5m, rows.Sum(p => p.Price));
+        Assert.Equal(2, rows.Sum(p => p.Bonus));
+        // Floats are summed as double like Enumerable.Sum, which keeps the two small values.
+        Assert.Equal(all.Sum(p => p.Weight), rows.Sum(p => p.Weight));
+        Assert.Equal(1.0, rows.Average(p => p.Bonus));
+        Assert.Equal(2.0, rows.Average(p => (int)p.Id));
+        Assert.Equal(-1, rows.Min(p => p.Bonus));
+        Assert.Equal(QueryLevel.High, rows.Max(p => p.Level));
+        Assert.Equal(-1m, rows.Min(p => p.Price));
+        Assert.Equal(3ul, rows.Max(p => p.Id));
+        Assert.Null(rows.Where(p => p.Id == 1).Average(p => p.Bonus));
+        Assert.Null(rows.Where(p => p.Id == 1).Min(p => p.Bonus));
+        Assert.Equal(0, rows.Where(p => p.Id > 5).Sum(p => p.Bonus));
+        Assert.Equal("Sequence contains no elements",
+            Assert.Throws<InvalidOperationException>(() => rows.Where(p => p.Id > 5).Max(p => p.Price)).Message);
+        Assert.Equal("Sequence contains no elements",
+            Assert.Throws<InvalidOperationException>(() => rows.Where(p => p.Id > 5).Average(p => p.Price)).Message);
+    }
+
     static string?[] Names(IQueryable<Person> query) => query.AsEnumerable().Select(p => p.Name).ToArray();
     static ulong[] Ids(IQueryable<QueryTypesRow> query) => query.AsEnumerable().Select(p => p.Id).ToArray();
 
@@ -507,7 +597,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         Assert.Throws<NotSupportedException>(() =>
             table.Query<Person>().Where(p => string.CompareOrdinal(p.Name, "B") == 1).ToArray());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => (object)p.Age == (object)35).ToArray());
-        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Any());
+        Assert.Throws<NotSupportedException>(() => table.Query<Person>().ElementAt(1));
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Select(p => p.Name));
     }
 

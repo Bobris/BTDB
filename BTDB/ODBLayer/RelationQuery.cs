@@ -4,6 +4,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -307,14 +308,123 @@ class RelationQuery<T> : IQueryable<T>, IQueryProvider where T : class
         return (IQueryable<TElement>)(object)new RelationQuery<T>(this, expression);
     }
 
-    public object? Execute(Expression expression)
-    {
-        throw new NotSupportedException("Relation query supports enumeration only.");
-    }
-
     public TResult Execute<TResult>(Expression expression)
     {
-        throw new NotSupportedException("Relation query supports enumeration only.");
+        return (TResult)Execute(expression)!;
+    }
+
+    /// Executes Queryable terminal operators on the stored rows; only returned elements are materialized.
+    public object? Execute(Expression expression)
+    {
+        if (expression is not MethodCallExpression call || call.Method.DeclaringType != typeof(Queryable))
+            throw new NotSupportedException("Relation query supports only Queryable operators.");
+        var arguments = call.Arguments;
+        var source = RelationQueryAstBuilder.Build(arguments[0], _queryNode);
+        var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
+        var name = call.Method.Name;
+        switch (name)
+        {
+            case nameof(Queryable.Count):
+            case nameof(Queryable.LongCount):
+            {
+                if (lambda != null) source = Where(source, lambda);
+                using var scanner = CreateScanner(source, null);
+                var count = scanner.Count();
+                if (name == nameof(Queryable.Count)) return checked((int)count);
+                return count;
+            }
+            case nameof(Queryable.Any):
+            {
+                if (lambda != null) source = Where(source, lambda);
+                using var scanner = CreateScanner(source, null);
+                return scanner.MoveNext();
+            }
+            case nameof(Queryable.All) when lambda != null:
+            {
+                // All stops at the first row failing the predicate, exactly like Any of its negation.
+                source = new WhereQueryNode(source,
+                    new NotQueryNode(RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode)));
+                using var scanner = CreateScanner(source, null);
+                return !scanner.MoveNext();
+            }
+            case nameof(Queryable.First):
+            case nameof(Queryable.FirstOrDefault):
+            case nameof(Queryable.Single):
+            case nameof(Queryable.SingleOrDefault):
+            case nameof(Queryable.Last):
+            case nameof(Queryable.LastOrDefault):
+                return ExecuteElement(name, call, source, lambda);
+            case nameof(Queryable.Min):
+            case nameof(Queryable.Max):
+            case nameof(Queryable.Sum):
+            case nameof(Queryable.Average):
+            {
+                if (lambda == null)
+                    throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
+                var selector = RelationQueryAstBuilder.BuildSelector(lambda, _queryNode);
+                using var scanner = CreateScanner(source, selector);
+                var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
+                scanner.Aggregate(aggregator);
+                return aggregator.Result();
+            }
+            default:
+                throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
+        }
+    }
+
+    object? ExecuteElement(string name, MethodCallExpression call, QueryNode source, LambdaExpression? lambda)
+    {
+        var hasPredicate = lambda != null;
+        var sourceHasWhere = source is WhereQueryNode;
+        if (hasPredicate) source = Where(source, lambda!);
+        var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
+        // FirstOrDefault(source, defaultValue) and FirstOrDefault(source, predicate, defaultValue).
+        var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
+            ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
+            : null;
+        using var scanner = CreateScanner(source, null);
+        if (name.StartsWith("Last", StringComparison.Ordinal))
+        {
+            // LINQ-to-Objects over a list searches backwards, except Last(predicate) after Where, which tests every row
+            // forwards; the choice decides which rows can throw.
+            if (hasPredicate && sourceHasWhere)
+            {
+                var lastIndex = -1L;
+                while (scanner.MoveNext()) lastIndex = scanner.Cursor.GetKeyIndex();
+                if (lastIndex < 0) return orDefault ? defaultValue : throw NoElements(true);
+                scanner.Cursor.FindKeyIndex(lastIndex);
+            }
+            else if (!scanner.MoveLast())
+            {
+                return orDefault ? defaultValue : throw NoElements(hasPredicate);
+            }
+
+            return RelationQueryRows.Load<T>(_transaction, _loaderInfo, scanner.Cursor);
+        }
+
+        if (!scanner.MoveNext()) return orDefault ? defaultValue : throw NoElements(hasPredicate);
+        var result = RelationQueryRows.Load<T>(_transaction, _loaderInfo, scanner.Cursor);
+        if (name.StartsWith("Single", StringComparison.Ordinal) && scanner.MoveNext())
+            throw new InvalidOperationException(hasPredicate
+                ? "Sequence contains more than one matching element"
+                : "Sequence contains more than one element");
+        return result;
+    }
+
+    static InvalidOperationException NoElements(bool hasPredicate)
+    {
+        return new(hasPredicate ? "Sequence contains no matching element" : "Sequence contains no elements");
+    }
+
+    WhereQueryNode Where(QueryNode source, LambdaExpression predicate)
+    {
+        return new(source, RelationQueryAstBuilder.BuildPredicate(predicate, _queryNode));
+    }
+
+    RelationQueryScanner CreateScanner(QueryNode source, QueryNode? selector)
+    {
+        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source, selector);
+        return new(_transaction, plan);
     }
 
     static void ValidateQueryExpression(Expression expression)
@@ -347,9 +457,21 @@ static class RelationQueryAstBuilder
         throw new NotSupportedException("Relation query supports only Queryable.Where.");
     }
 
+    public static LambdaExpression? TryGetLambda(Expression expression) => StripQuote(expression) as LambdaExpression;
+
+    public static QueryNode BuildPredicate(LambdaExpression lambda, QueryByIdQueryNode query)
+    {
+        return new ExpressionConverter(lambda.Parameters[0], query).ConvertPredicate(lambda.Body);
+    }
+
+    public static QueryNode BuildSelector(LambdaExpression lambda, QueryByIdQueryNode query)
+    {
+        return new ExpressionConverter(lambda.Parameters[0], query).ConvertValue(lambda.Body);
+    }
+
     static Expression StripQuote(Expression expression)
     {
-        // Queryable.Where receives Expression<Func<...>> as a quoted lambda argument.
+        // Queryable operators receive Expression<Func<...>> as a quoted lambda argument.
         while (expression.NodeType == ExpressionType.Quote)
             expression = ((UnaryExpression)expression).Operand;
         return expression;
@@ -367,6 +489,8 @@ static class RelationQueryAstBuilder
         }
 
         public QueryNode ConvertPredicate(Expression expression) => AsPredicate(Convert(expression), expression);
+
+        public QueryNode ConvertValue(Expression expression) => Convert(expression);
 
         QueryNode AsPredicate(QueryNode node, Expression expression)
         {
@@ -677,7 +801,7 @@ static class RelationQueryAstBuilder
         }
     }
 
-    static object? EvaluateConstant(Expression expression)
+    internal static object? EvaluateConstant(Expression expression)
     {
         return expression switch
         {
@@ -788,6 +912,16 @@ static class RelationQueryTypes
                storage == typeof(decimal);
     }
 
+    /// Size in bytes of a value of the storage type.
+    public static int ValueSize(Type storage)
+    {
+        if (storage == typeof(bool) || storage == typeof(byte) || storage == typeof(sbyte)) return 1;
+        if (storage == typeof(ushort) || storage == typeof(short) || storage == typeof(Half)) return 2;
+        if (storage == typeof(uint) || storage == typeof(int) || storage == typeof(float)) return 4;
+        if (storage == typeof(Guid) || storage == typeof(decimal) || storage == typeof(DateTimeOffset)) return 16;
+        return 8;
+    }
+
     public static int SlotSize(Type storage)
     {
         return storage == typeof(Guid) || storage == typeof(decimal) || storage == typeof(DateTimeOffset) ? 16 : 8;
@@ -892,7 +1026,7 @@ static class RelationQueryExecutionPlan
 sealed class RelationQueryPlan
 {
     public RelationQueryPlan(byte[] cursorPrefix, bool neverMatches, RelationQueryProgram? keyProgram,
-        RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount)
+        RelationQueryProgram?[]? valuePrograms, int frameSize, int objectCount, RelationQueryResult? result = null)
     {
         CursorPrefix = cursorPrefix;
         NeverMatches = neverMatches;
@@ -900,7 +1034,13 @@ sealed class RelationQueryPlan
         ValuePrograms = valuePrograms;
         FrameSize = frameSize;
         ObjectCount = objectCount;
+        Result = result;
     }
+
+    /// Where the last program of a matching row stores the selector value; null without a selector.
+    public RelationQueryResult? Result { get; }
+
+    public bool HasPrograms => KeyProgram != null || ValuePrograms != null;
 
     public byte[] CursorPrefix { get; }
 
@@ -918,6 +1058,27 @@ sealed class RelationQueryPlan
     public int FrameSize { get; }
 
     public int ObjectCount { get; }
+}
+
+/// Frame location of a selector value computed for each matching row.
+sealed class RelationQueryResult
+{
+    public RelationQueryResult(Type type, Type storageType, QueryValueType valueType, ushort slot, ushort hasValueSlot)
+    {
+        Type = type;
+        StorageType = storageType;
+        ValueType = valueType;
+        Slot = slot;
+        HasValueSlot = hasValueSlot;
+    }
+
+    /// Selector type, possibly nullable or an enum.
+    public Type Type { get; }
+
+    public Type StorageType { get; }
+    public QueryValueType ValueType { get; }
+    public ushort Slot { get; }
+    public ushort HasValueSlot { get; }
 }
 
 sealed class RelationQueryProgram
@@ -1017,6 +1178,8 @@ sealed class RelationQueryCompiler
     ushort _frameTemporary;
     ushort _objectTemporary;
 
+    RelationQueryResult? _result;
+
     // State of the program being built.
     InterpreterBuilder _builder = null!;
     readonly Dictionary<string, QueryStringEncoding> _encodings = new();
@@ -1030,10 +1193,25 @@ sealed class RelationQueryCompiler
 
     readonly record struct Conjunct(QueryNode Node, int Index, bool Throws);
 
-    public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast)
+    /// The optional selector is computed for every matching row into RelationQueryPlan.Result.
+    public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast,
+        QueryNode? selector = null)
     {
         var predicate = ExtractPredicate(ast);
         if (predicate != null) CollectFields(predicate);
+        RelationQueryResult? result = null;
+        if (selector != null)
+        {
+            if (!RelationQueryTypes.TryGetStorage(selector.Type, out var storage, out var valueType, out _))
+                throw new NotSupportedException(
+                    $"Relation query does not support selecting {selector.Type.ToSimpleName()} values yet.");
+            CollectFields(selector);
+            var size = RelationQueryTypes.SlotSize(storage);
+            var slot = AllocFrame(size + 8);
+            result = new(selector.Type, storage, valueType, slot, (ushort)(slot + size));
+        }
+
+        _result = result;
         _frameTemporary = AllocFrame(16);
         _objectTemporary = AllocObjectSlot();
 
@@ -1044,7 +1222,7 @@ sealed class RelationQueryCompiler
         foreach (var node in nodes)
         {
             // A false conjunct makes the query empty unless an earlier conjunct could throw first.
-            if (IsFalse(node) && !seenThrowing) return new(_relationInfo.Prefix, true, null, null, 0, 0);
+            if (IsFalse(node) && !seenThrowing) return new(_relationInfo.Prefix, true, null, null, 0, 0, result);
             if (IsTrue(node)) continue;
             var throws = CanThrow(node);
             conjuncts.Add(new(node, conjuncts.Count, throws));
@@ -1075,21 +1253,24 @@ sealed class RelationQueryCompiler
             barrier |= conjunct.Throws;
         }
 
-        var keyProgram = keyConjuncts.Count == 0
+        // The selector runs in the last program of a row: the value programs when they exist or it needs value
+        // fields, otherwise the key program.
+        var hasValueStage = valueConjuncts.Count > 0 || selector != null && !UsesOnlyPrimaryKeyFields(selector);
+        var keyProgram = keyConjuncts.Count == 0 && (selector == null || hasValueStage)
             ? null
-            : BuildProgram(keyConjuncts, null, cursorPrefix.Length, prefixFieldCount);
+            : BuildProgram(keyConjuncts, null, cursorPrefix.Length, prefixFieldCount, hasValueStage ? null : selector);
         RelationQueryProgram?[]? valuePrograms = null;
-        if (valueConjuncts.Count > 0)
+        if (hasValueStage)
         {
             var maxVersion = 0u;
             foreach (var (version, _) in _relationInfo.RelationVersions) maxVersion = Math.Max(maxVersion, version);
             valuePrograms = new RelationQueryProgram?[maxVersion + 1];
             foreach (var (version, info) in _relationInfo.RelationVersions)
                 valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, cursorPrefix.Length,
-                    prefixFieldCount);
+                    prefixFieldCount, selector);
         }
 
-        return new(cursorPrefix, false, keyProgram, valuePrograms, _frameSize, _objectCount);
+        return new(cursorPrefix, false, keyProgram, valuePrograms, _frameSize, _objectCount, result);
     }
 
     void CollectFields(QueryNode node)
@@ -1143,7 +1324,7 @@ sealed class RelationQueryCompiler
     }
 
     RelationQueryProgram BuildProgram(List<Conjunct> conjuncts, ReadOnlyMemory<TableFieldInfo>? valueFields,
-        int cursorPrefixLength, int prefixFieldCount)
+        int cursorPrefixLength, int prefixFieldCount, QueryNode? selector)
     {
         var keyFields = _primaryKeyFields.Span;
         var specialized = new List<Conjunct>(conjuncts.Count);
@@ -1161,10 +1342,13 @@ sealed class RelationQueryCompiler
             seenThrowing |= throws;
         }
 
-        if (specialized.Count == 0) return new(null, 0, true);
+        if (selector != null && valueFields != null)
+            selector = Simplify(SubstituteMissing(selector, valueFields.Value.Span));
+        if (specialized.Count == 0 && selector == null) return new(null, 0, true);
 
         var names = new HashSet<string>();
         foreach (var conjunct in specialized) CollectPropertyNames(conjunct.Node, names);
+        if (selector != null) CollectPropertyNames(selector, names);
         var firstKeyField = int.MaxValue;
         var lastKeyField = -1;
         for (var i = 0; i < keyFields.Length; i++)
@@ -1239,6 +1423,7 @@ sealed class RelationQueryCompiler
 
         if (emitted != specialized.Count)
             throw new InvalidOperationException("Relation query compiler did not emit every conjunct.");
+        if (selector != null) EmitSelector(selector, _result!);
         _builder.AddInstruction(OpCode.SetBoolResultTrue);
         _builder.AddInstruction(OpCode.Stop);
         _builder.MarkLabel(falseLabel);
@@ -1247,6 +1432,36 @@ sealed class RelationQueryCompiler
         var program = _builder.Materialize();
         _builder = null!;
         return new(program, keyStart, false);
+    }
+
+    // Stores the selector value and its HasValue into the result slot.
+    void EmitSelector(QueryNode selector, RelationQueryResult result)
+    {
+        var operand = CompileValue(selector);
+        if (operand.StorageType != result.StorageType)
+            throw new NotSupportedException("Relation query selector type does not match its result.");
+        if (operand.HasValue != QueryHasValue.Never)
+        {
+            _builder.AddInstruction(OpCode.CopyToFrame);
+            _builder.AddUInt8((byte)RelationQueryTypes.ValueSize(result.StorageType));
+            _builder.AddUInt16(result.Slot);
+            _builder.AddUInt8((byte)operand.Kind);
+            _builder.AddUInt32(operand.Offset);
+        }
+
+        if (operand.HasValue == QueryHasValue.Frame)
+        {
+            _builder.AddInstruction(OpCode.CopyToFrame);
+            _builder.AddUInt8(1);
+            _builder.AddUInt16(result.HasValueSlot);
+            _builder.AddUInt8((byte)QueryOperandKind.Frame);
+            _builder.AddUInt32(operand.HasValueSlot);
+            return;
+        }
+
+        _builder.AddInstruction(OpCode.SetFrameByte);
+        _builder.AddUInt16(result.HasValueSlot);
+        _builder.AddUInt8(operand.HasValue == QueryHasValue.Always ? (byte)1 : (byte)0);
     }
 
     void RememberEncoding(TableFieldInfo field)
@@ -2573,36 +2788,46 @@ sealed class RelationQueryCompiler
     }
 }
 
-sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T : class
+/// Moves a cursor over rows matching a compiled plan, testing rows on their stored bytes.
+sealed class RelationQueryScanner : IDisposable
 {
     const int ValueBufferSize = 4096;
 
     readonly IInternalObjectDBTransaction _transaction;
-    readonly RelationInfo.ItemLoaderInfo _loaderInfo;
-    readonly RelationQueryPlan _plan;
-    readonly CursorIterateCallback _testRow;
+    readonly CursorIterateCallback _stopAtMatch;
+    readonly CursorIterateCallback _aggregateMatches;
     readonly long[] _frame;
     readonly object?[] _objects;
     readonly byte[]? _valueBuffer;
     IKeyValueDBCursor? _cursor;
+    RelationQueryAggregator? _aggregator;
     bool _first = true;
     bool _afterEnd;
     bool _matched;
     bool _skipCurrentRow;
-    bool _hasCurrent;
-    T? _current;
 
-    public RelationQueryEnumerator(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
-        RelationQueryPlan plan)
+    public RelationQueryScanner(IInternalObjectDBTransaction transaction, RelationQueryPlan plan)
     {
         _transaction = transaction;
-        _loaderInfo = loaderInfo;
-        _plan = plan;
-        _testRow = TestRow;
+        Plan = plan;
+        _stopAtMatch = StopAtMatch;
+        _aggregateMatches = AggregateMatches;
         _frame = new long[plan.FrameSize / sizeof(long)];
         _objects = new object?[plan.ObjectCount];
         if (plan.ValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
         _cursor = transaction.KeyValueDBTransaction.CreateCursor();
+    }
+
+    public RelationQueryPlan Plan { get; }
+
+    /// Positioned on the matching row after MoveNext returned true.
+    public IKeyValueDBCursor Cursor
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_cursor == null, this);
+            return _cursor;
+        }
     }
 
     [SkipLocalsInit]
@@ -2610,18 +2835,15 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
     {
         ObjectDisposedException.ThrowIf(_cursor == null, this);
         _transaction.ThrowIfDisposed();
-        _hasCurrent = false;
-        _current = null;
         if (_afterEnd) return false;
-        var prefix = _plan.CursorPrefix;
-        var hasPredicate = _plan.KeyProgram != null || _plan.ValuePrograms != null;
+        var prefix = Plan.CursorPrefix;
         if (_first)
         {
             _first = false;
-            if (_plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return AfterEnd();
+            if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return AfterEnd();
             _skipCurrentRow = false;
         }
-        else if (!hasPredicate)
+        else if (!Plan.HasPrograms)
         {
             if (!_cursor.FindNextKey(prefix)) return AfterEnd();
         }
@@ -2638,23 +2860,17 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
             _skipCurrentRow = false;
         }
 
-        if (!hasPredicate)
-        {
-            _hasCurrent = true;
-            return true;
-        }
+        if (!Plan.HasPrograms) return true;
 
         // Tests rows starting at the cursor position without moving the cursor per row; iteration stops on the first
         // matching row or the first key outside the prefix.
         _matched = false;
         Span<byte> keyBuffer = stackalloc byte[512];
-        if (_plan.ValuePrograms == null)
-            _cursor.FastIterateNoCursor(ref keyBuffer, _testRow);
+        if (Plan.ValuePrograms == null)
+            _cursor.FastIterateNoCursor(ref keyBuffer, _stopAtMatch);
         else
-            _cursor.FastIterate(ref keyBuffer, _testRow);
-        if (!_matched) return AfterEnd();
-        _hasCurrent = true;
-        return true;
+            _cursor.FastIterate(ref keyBuffer, _stopAtMatch);
+        return _matched || AfterEnd();
     }
 
     bool AfterEnd()
@@ -2663,7 +2879,7 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
         return false;
     }
 
-    bool TestRow(long keyIndex, ReadOnlySpan<byte> key)
+    bool StopAtMatch(long keyIndex, ReadOnlySpan<byte> key)
     {
         if (_skipCurrentRow)
         {
@@ -2671,10 +2887,79 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
             return false;
         }
 
-        if (!key.StartsWith(_plan.CursorPrefix)) return true;
+        if (!key.StartsWith(Plan.CursorPrefix)) return true;
         if (!Evaluate(key)) return false;
         _matched = true;
         return true;
+    }
+
+    /// Positions the cursor on the last matching row by testing rows backwards from the end, like LINQ-to-Objects
+    /// does for Last over a list, so only rows after the last match are tested.
+    [SkipLocalsInit]
+    public bool MoveLast()
+    {
+        ObjectDisposedException.ThrowIf(_cursor == null, this);
+        _transaction.ThrowIfDisposed();
+        var prefix = Plan.CursorPrefix;
+        if (Plan.NeverMatches || !_cursor.FindLastKey(prefix)) return false;
+        if (!Plan.HasPrograms) return true;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        do
+        {
+            if (Evaluate(_cursor.GetKeySpan(ref keyBuffer))) return true;
+        } while (_cursor.FindPreviousKey(prefix));
+
+        return false;
+    }
+
+    /// Counts matching rows without materializing them; without a predicate it only computes key indexes.
+    public long Count()
+    {
+        ObjectDisposedException.ThrowIf(_cursor == null, this);
+        _transaction.ThrowIfDisposed();
+        if (Plan.HasPrograms)
+        {
+            var counter = new RelationQueryCounter();
+            Aggregate(counter);
+            return counter.Count;
+        }
+
+        var prefix = Plan.CursorPrefix;
+        if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return 0;
+        var firstIndex = _cursor.GetKeyIndex();
+        _cursor.FindLastKey(prefix);
+        return _cursor.GetKeyIndex() - firstIndex + 1;
+    }
+
+    /// Passes the frame of every matching row, with the selector value when the plan has one, to the aggregator.
+    [SkipLocalsInit]
+    public void Aggregate(RelationQueryAggregator aggregator)
+    {
+        ObjectDisposedException.ThrowIf(_cursor == null, this);
+        _transaction.ThrowIfDisposed();
+        var prefix = Plan.CursorPrefix;
+        if (Plan.NeverMatches || !_cursor.FindFirstKey(prefix)) return;
+        if (!Plan.HasPrograms)
+        {
+            do aggregator.Add(MemoryMarshal.AsBytes(_frame.AsSpan()));
+            while (_cursor.FindNextKey(prefix));
+            return;
+        }
+
+        _aggregator = aggregator;
+        Span<byte> keyBuffer = stackalloc byte[512];
+        if (Plan.ValuePrograms == null)
+            _cursor.FastIterateNoCursor(ref keyBuffer, _aggregateMatches);
+        else
+            _cursor.FastIterate(ref keyBuffer, _aggregateMatches);
+        _aggregator = null;
+    }
+
+    bool AggregateMatches(long keyIndex, ReadOnlySpan<byte> key)
+    {
+        if (!key.StartsWith(Plan.CursorPrefix)) return true;
+        if (Evaluate(key)) _aggregator!.Add(MemoryMarshal.AsBytes(_frame.AsSpan()));
+        return false;
     }
 
     unsafe bool Evaluate(ReadOnlySpan<byte> key)
@@ -2685,7 +2970,7 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
         var valueReader = new MemReader();
         fixed (byte* keyPointer = key)
         {
-            var keyProgram = _plan.KeyProgram;
+            var keyProgram = Plan.KeyProgram;
             if (keyProgram != null)
             {
                 if (keyProgram.Program == null)
@@ -2702,7 +2987,7 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
                 }
             }
 
-            var valuePrograms = _plan.ValuePrograms;
+            var valuePrograms = Plan.ValuePrograms;
             if (valuePrograms == null) return true;
             Span<byte> valueBuffer = _valueBuffer;
             var value = _cursor!.GetValueSpan(ref valueBuffer);
@@ -2722,29 +3007,12 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
         }
     }
 
-    public T Current
-    {
-        [SkipLocalsInit]
-        get
-        {
-            if (!_hasCurrent) throw new InvalidOperationException("Enumerator is not positioned on a row.");
-            if (_current != null) return _current;
-            Span<byte> keyBuffer = stackalloc byte[2048];
-            var key = _cursor!.GetKeySpan(ref keyBuffer);
-            return _current = (T)_loaderInfo.CreateInstance(_transaction, _cursor, key);
-        }
-    }
-
-    object IEnumerator.Current => Current;
-
     public void Reset()
     {
         ObjectDisposedException.ThrowIf(_cursor == null, this);
         _cursor.Invalidate();
         _first = true;
         _afterEnd = false;
-        _hasCurrent = false;
-        _current = null;
     }
 
     public void Dispose()
@@ -2753,9 +3021,313 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
         _cursor = null;
         Array.Clear(_objects);
     }
+}
+
+sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T : class
+{
+    readonly IInternalObjectDBTransaction _transaction;
+    readonly RelationInfo.ItemLoaderInfo _loaderInfo;
+    readonly RelationQueryScanner _scanner;
+    bool _hasCurrent;
+    T? _current;
+
+    public RelationQueryEnumerator(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
+        RelationQueryPlan plan)
+    {
+        _transaction = transaction;
+        _loaderInfo = loaderInfo;
+        _scanner = new(transaction, plan);
+    }
+
+    public bool MoveNext()
+    {
+        _hasCurrent = false;
+        _current = null;
+        _hasCurrent = _scanner.MoveNext();
+        return _hasCurrent;
+    }
+
+    public T Current
+    {
+        get
+        {
+            if (!_hasCurrent) throw new InvalidOperationException("Enumerator is not positioned on a row.");
+            return _current ??= RelationQueryRows.Load<T>(_transaction, _loaderInfo, _scanner.Cursor);
+        }
+    }
+
+    object IEnumerator.Current => Current;
+
+    public void Reset()
+    {
+        _scanner.Reset();
+        _hasCurrent = false;
+        _current = null;
+    }
+
+    public void Dispose()
+    {
+        _scanner.Dispose();
+    }
 
     public IEnumerator<T> GetEnumerator() => this;
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+static class RelationQueryRows
+{
+    [SkipLocalsInit]
+    public static T Load<T>(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
+        IKeyValueDBCursor cursor) where T : class
+    {
+        Span<byte> keyBuffer = stackalloc byte[2048];
+        var key = cursor.GetKeySpan(ref keyBuffer);
+        return (T)loaderInfo.CreateInstance(transaction, cursor, key);
+    }
+}
+
+/// Accumulates the selector values of matching rows for Queryable aggregates with LINQ-to-Objects semantics.
+abstract class RelationQueryAggregator
+{
+    public abstract void Add(ReadOnlySpan<byte> frame);
+    public abstract object? Result();
+
+    public static RelationQueryAggregator Create(string operation, RelationQueryResult result)
+    {
+        var storage = result.StorageType;
+        var nullable = Nullable.GetUnderlyingType(result.Type) != null;
+        switch (operation)
+        {
+            case nameof(Queryable.Sum):
+                if (storage == typeof(int)) return new SumInt32Aggregator(result);
+                if (storage == typeof(long)) return new SumInt64Aggregator(result);
+                if (storage == typeof(float)) return new SumSingleAggregator(result);
+                if (storage == typeof(double)) return new SumDoubleAggregator(result);
+                if (storage == typeof(decimal)) return new SumDecimalAggregator(result);
+                break;
+            case nameof(Queryable.Average):
+                if (storage == typeof(int)) return new AverageInt64Aggregator<int>(result, nullable);
+                if (storage == typeof(long)) return new AverageInt64Aggregator<long>(result, nullable);
+                if (storage == typeof(float)) return new AverageSingleAggregator(result, nullable);
+                if (storage == typeof(double)) return new AverageDoubleAggregator(result, nullable);
+                if (storage == typeof(decimal)) return new AverageDecimalAggregator(result, nullable);
+                break;
+            case nameof(Queryable.Min):
+            case nameof(Queryable.Max):
+                return CreateMinMax(storage, result, operation == nameof(Queryable.Max), nullable);
+        }
+
+        throw new NotSupportedException(
+            $"Relation query does not support Queryable.{operation} of {result.Type.ToSimpleName()}.");
+    }
+
+    static RelationQueryAggregator CreateMinMax(Type storage, RelationQueryResult result, bool max, bool nullable)
+    {
+        if (storage == typeof(bool)) return new MinMaxAggregator<bool>(result, max, nullable);
+        if (storage == typeof(byte)) return new MinMaxAggregator<byte>(result, max, nullable);
+        if (storage == typeof(sbyte)) return new MinMaxAggregator<sbyte>(result, max, nullable);
+        if (storage == typeof(ushort)) return new MinMaxAggregator<ushort>(result, max, nullable);
+        if (storage == typeof(short)) return new MinMaxAggregator<short>(result, max, nullable);
+        if (storage == typeof(uint)) return new MinMaxAggregator<uint>(result, max, nullable);
+        if (storage == typeof(int)) return new MinMaxAggregator<int>(result, max, nullable);
+        if (storage == typeof(ulong)) return new MinMaxAggregator<ulong>(result, max, nullable);
+        if (storage == typeof(long)) return new MinMaxAggregator<long>(result, max, nullable);
+        if (storage == typeof(Half)) return new MinMaxAggregator<Half>(result, max, nullable);
+        if (storage == typeof(float)) return new MinMaxAggregator<float>(result, max, nullable);
+        if (storage == typeof(double)) return new MinMaxAggregator<double>(result, max, nullable);
+        if (storage == typeof(DateTime)) return new MinMaxAggregator<DateTime>(result, max, nullable);
+        if (storage == typeof(Guid)) return new MinMaxAggregator<Guid>(result, max, nullable);
+        if (storage == typeof(decimal)) return new MinMaxAggregator<decimal>(result, max, nullable);
+        if (storage == typeof(TimeSpan)) return new MinMaxAggregator<TimeSpan>(result, max, nullable);
+        if (storage == typeof(DateTimeOffset)) return new MinMaxAggregator<DateTimeOffset>(result, max, nullable);
+        throw new NotSupportedException($"Relation query does not support Min or Max of {storage.ToSimpleName()}.");
+    }
+
+    protected static InvalidOperationException NoElements() => new("Sequence contains no elements");
+}
+
+sealed class RelationQueryCounter : RelationQueryAggregator
+{
+    public long Count;
+
+    public override void Add(ReadOnlySpan<byte> frame) => Count++;
+    public override object Result() => Count;
+}
+
+/// Reads the selector value of a matching row; null values are skipped by every aggregate.
+abstract class RelationQueryValueAggregator<T> : RelationQueryAggregator where T : unmanaged
+{
+    readonly int _slot;
+    readonly int _hasValueSlot;
+
+    protected RelationQueryValueAggregator(RelationQueryResult result)
+    {
+        _slot = result.Slot;
+        _hasValueSlot = result.HasValueSlot;
+    }
+
+    public override void Add(ReadOnlySpan<byte> frame)
+    {
+        if (frame[_hasValueSlot] == 0) return;
+        Add(MemoryMarshal.Read<T>(frame[_slot..]));
+    }
+
+    protected abstract void Add(T value);
+}
+
+sealed class SumInt32Aggregator(RelationQueryResult result) : RelationQueryValueAggregator<int>(result)
+{
+    int _sum;
+
+    protected override void Add(int value) => _sum = checked(_sum + value);
+    public override object Result() => _sum;
+}
+
+sealed class SumInt64Aggregator(RelationQueryResult result) : RelationQueryValueAggregator<long>(result)
+{
+    long _sum;
+
+    protected override void Add(long value) => _sum = checked(_sum + value);
+    public override object Result() => _sum;
+}
+
+// Like Enumerable.Sum, floats are summed as double.
+sealed class SumSingleAggregator(RelationQueryResult result) : RelationQueryValueAggregator<float>(result)
+{
+    double _sum;
+
+    protected override void Add(float value) => _sum += value;
+    public override object Result() => (float)_sum;
+}
+
+sealed class SumDoubleAggregator(RelationQueryResult result) : RelationQueryValueAggregator<double>(result)
+{
+    double _sum;
+
+    protected override void Add(double value) => _sum += value;
+    public override object Result() => _sum;
+}
+
+sealed class SumDecimalAggregator(RelationQueryResult result) : RelationQueryValueAggregator<decimal>(result)
+{
+    decimal _sum;
+
+    protected override void Add(decimal value) => _sum += value;
+    public override object Result() => _sum;
+}
+
+// Like Enumerable.Average, integers are summed as checked long and the result is double.
+sealed class AverageInt64Aggregator<T>(RelationQueryResult result, bool nullable)
+    : RelationQueryValueAggregator<T>(result) where T : unmanaged, IBinaryInteger<T>
+{
+    long _sum;
+    long _count;
+
+    protected override void Add(T value)
+    {
+        _sum = checked(_sum + long.CreateTruncating(value));
+        _count++;
+    }
+
+    public override object? Result()
+    {
+        if (_count == 0) return nullable ? null : throw NoElements();
+        return (double)_sum / _count;
+    }
+}
+
+sealed class AverageSingleAggregator(RelationQueryResult result, bool nullable)
+    : RelationQueryValueAggregator<float>(result)
+{
+    double _sum;
+    long _count;
+
+    protected override void Add(float value)
+    {
+        _sum += value;
+        _count++;
+    }
+
+    public override object? Result()
+    {
+        if (_count == 0) return nullable ? null : throw NoElements();
+        return (float)(_sum / _count);
+    }
+}
+
+sealed class AverageDoubleAggregator(RelationQueryResult result, bool nullable)
+    : RelationQueryValueAggregator<double>(result)
+{
+    double _sum;
+    long _count;
+
+    protected override void Add(double value)
+    {
+        _sum += value;
+        _count++;
+    }
+
+    public override object? Result()
+    {
+        if (_count == 0) return nullable ? null : throw NoElements();
+        return _sum / _count;
+    }
+}
+
+sealed class AverageDecimalAggregator(RelationQueryResult result, bool nullable)
+    : RelationQueryValueAggregator<decimal>(result)
+{
+    decimal _sum;
+    long _count;
+
+    protected override void Add(decimal value)
+    {
+        _sum += value;
+        _count++;
+    }
+
+    public override object? Result()
+    {
+        if (_count == 0) return nullable ? null : throw NoElements();
+        return _sum / _count;
+    }
+}
+
+// Like Enumerable.Min and Max with a selector: Comparer<T>.Default, so NaN is the smallest double; an empty sequence
+// returns null for nullable selectors and throws otherwise.
+sealed class MinMaxAggregator<T> : RelationQueryValueAggregator<T> where T : unmanaged
+{
+    readonly bool _max;
+    readonly bool _nullable;
+    readonly Type? _enumType;
+    bool _any;
+    T _value;
+
+    public MinMaxAggregator(RelationQueryResult result, bool max, bool nullable) : base(result)
+    {
+        _max = max;
+        _nullable = nullable;
+        var type = Nullable.GetUnderlyingType(result.Type) ?? result.Type;
+        if (type.IsEnum) _enumType = type;
+    }
+
+    protected override void Add(T value)
+    {
+        if (_any)
+        {
+            var order = Comparer<T>.Default.Compare(value, _value);
+            if (_max ? order <= 0 : order >= 0) return;
+        }
+
+        _value = value;
+        _any = true;
+    }
+
+    public override object? Result()
+    {
+        if (!_any) return _nullable ? null : throw NoElements();
+        return _enumType != null ? Enum.ToObject(_enumType, _value) : _value;
+    }
 }
 
 static class RelationQueryPropertyName

@@ -281,7 +281,10 @@ public enum OpCode : byte
     SkipKeyByHandler = 181,
 
     /// Same as SkipKeyByHandler for ValueReader.
-    SkipValueByHandler = 182
+    SkipValueByHandler = 182,
+
+    /// Operands: size u8, destination frame offset u16, source QueryOperandKind u8, source offset u32.
+    CopyToFrame = 183
 }
 
 public enum QueryValueType : byte
@@ -1049,6 +1052,12 @@ class InterpreterBuilder
                 case OpCode.ThrowQueryException:
                     sb.Append(' ').Append((QueryException)program[offset]);
                     offset += 1;
+                    break;
+                case OpCode.CopyToFrame:
+                    sb.Append(' ').Append(program[offset]).Append(" bytes frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] = ");
+                    AppendOperand(sb, (QueryOperandKind)program[offset + 3], MemoryMarshal.Read<uint>(program[(offset + 4)..]));
+                    offset += 8;
                     break;
                 case OpCode.SkipKeyByHandler:
                 case OpCode.SkipValueByHandler:
@@ -2250,6 +2259,12 @@ static class Interpreter
             case OpCode.SkipValueByHandler:
                 ((IFieldHandler)ctx.ObjectConstants[(int)ReadUInt32(ref ctx, pc)]!).Skip(ref ctx.ValueReader, null);
                 pc += 4;
+                break;
+            case OpCode.CopyToFrame:
+                Unsafe.CopyBlockUnaligned(ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)),
+                    ref Operand(ref ctx, (QueryOperandKind)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc + 3),
+                        ReadUInt32(ref ctx, pc + 4)), Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc));
+                pc += 8;
                 break;
             default:
                 throw new InvalidOperationException("Unknown interpreter opcode.");

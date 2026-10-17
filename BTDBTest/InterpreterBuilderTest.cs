@@ -2639,6 +2639,32 @@ TryEnd
         Assert.Contains("JmpIfStringOp Contains Ordinal objects[0] length frame[32]", asm);
     }
 
+    [Fact]
+    public void CopyToFrameCopiesFrameAndConstantBytes()
+    {
+        var builder = new InterpreterBuilder();
+        var constant = builder.AllocAlignedConst(16);
+        builder.ConstSpan<decimal>(constant) = 12.5m;
+        builder.AddInstruction(OpCode.CopyToFrame);
+        builder.AddUInt8(16);
+        builder.AddUInt16(16);
+        builder.AddUInt8((byte)QueryOperandKind.Constant);
+        builder.AddUInt32(constant);
+        builder.AddInstruction(OpCode.CopyToFrame);
+        builder.AddUInt8(4);
+        builder.AddUInt16(8);
+        builder.AddUInt8((byte)QueryOperandKind.Frame);
+        builder.AddUInt32(0);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[4];
+        frame[0] = 0x1122334455667788;
+
+        RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+
+        Assert.Equal(0x55667788, frame[1]);
+        Assert.Equal(12.5m, Unsafe.As<long, decimal>(ref frame[2]));
+    }
+
     static byte[] Encode(QueryStringEncoding encoding, string? value)
     {
         var writer = new MemWriter();

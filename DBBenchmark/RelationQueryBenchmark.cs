@@ -143,6 +143,32 @@ public class RelationQueryBenchmark
     public int PkPrefixAndValueFindById() =>
         _table.FindById(QueryBenchData.SelectedTenant).Count(p => p.Age == QueryBenchData.SelectiveAge);
 
+    /// Without a predicate Count only computes key indexes, so it is measured per call.
+    [BenchmarkCategory("CountAll"), Benchmark(Baseline = true)]
+    public int CountAllQuery() => _table.Query<QueryBenchRow>().Count();
+
+    [BenchmarkCategory("CountAll"), Benchmark]
+    public int CountAllRelation() => _table.Count;
+
+    [BenchmarkCategory("CountTenant"), Benchmark(Baseline = true)]
+    public int CountTenantQuery() =>
+        _table.Query<QueryBenchRow>().Count(p => p.TenantId == QueryBenchData.SelectedTenant);
+
+    [BenchmarkCategory("CountTenant"), Benchmark]
+    public int CountTenantFindById() => _table.FindById(QueryBenchData.SelectedTenant).Count();
+
+    [BenchmarkCategory("CountPredicate"), Benchmark(Baseline = true, OperationsPerInvoke = QueryBenchData.RowCount)]
+    public int CountPredicateQuery() => _table.Query<QueryBenchRow>().Count(p => p.Active);
+
+    [BenchmarkCategory("CountPredicate"), Benchmark(OperationsPerInvoke = QueryBenchData.RowCount)]
+    public int CountPredicateLinq() => _table.Count(p => p.Active);
+
+    [BenchmarkCategory("Sum"), Benchmark(Baseline = true, OperationsPerInvoke = QueryBenchData.RowCount)]
+    public long SumQuery() => _table.Query<QueryBenchRow>().Sum(p => p.Score);
+
+    [BenchmarkCategory("Sum"), Benchmark(OperationsPerInvoke = QueryBenchData.RowCount)]
+    public long SumLinq() => _table.Sum(p => p.Score);
+
     /// Fixed cost of one query: expression parsing, planning, program building and the first seek.
     [BenchmarkCategory("EmptyResult"), Benchmark(Baseline = true)]
     public int EmptyResultQuery() => Count(_table.Query<QueryBenchRow>().Where(p => p.TenantId == MissingTenant));

@@ -23,12 +23,22 @@
 
   String values are tested without allocating. Predicates keep C# short-circuit exception semantics. See
   [Doc/Relations.md](Doc/Relations.md#query).
-- The low-level interpreter has expression opcodes (`OpCode` 163–182):
+- `IRelation.Query<T>()` supports terminal operators:
+  - `Count` and `LongCount`, which never materialize rows and use key indexes in O(log n) without a residual
+    predicate;
+  - `Any` and `All`;
+  - `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last` and `LastOrDefault`, which materialize only the
+    returned row;
+  - `Min`, `Max`, `Sum` and `Average` with a selector, which read only the needed fields.
+
+  Results and exceptions match LINQ-to-Objects.
+- The low-level interpreter has expression opcodes (`OpCode` 163–183):
   - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
   - capturing raw field bytes, with encoded equality and `StartsWith`;
   - string decoding into reused buffers and string operations (`QueryStringEncoding`, `QueryStringOp`,
     `QueryStringSet`);
-  - set membership, query exceptions (`QueryException`) and skipping fields by field handler.
+  - set membership, query exceptions (`QueryException`) and skipping fields by field handler;
+  - copying selector results (`CopyToFrame`, 183).
 
   `QueryValueType` gains `Guid`, `Decimal`, `TimeSpan` and `DateTimeOffset`.
 

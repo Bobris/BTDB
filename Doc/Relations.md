@@ -447,8 +447,25 @@ Conditions are not always evaluated in the written order: cheaper and key-only c
 condition that can throw only runs after every condition written before it, so guards like
 `p.Name != null && p.Name.StartsWith("A")` work as in LINQ.
 
-Anything else throws `NotSupportedException` when the query is enumerated. Examples:
-- other LINQ operators;
+Terminal operators run on the stored rows too, with their predicate overloads:
+- `Count` and `LongCount` never materialize rows. Without a predicate, or when the predicate is only equalities on
+  leading primary key fields, they only compute key indexes in O(log n).
+- `Any` and `All` stop at the first deciding row.
+- `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last` and `LastOrDefault` materialize only the returned
+  row. The `OrDefault` overloads with a default value are supported.
+- `Min`, `Max`, `Sum` and `Average` take a selector, for example `table.Query<Person>().Sum(p => p.Age * 2)`. They
+  read only the fields the predicate and the selector need.
+
+Results, exceptions and which rows get tested are the same as LINQ-to-Objects over the materialized list:
+- checked `Sum` of integers;
+- floats summed as `double`;
+- null values skipped;
+- `InvalidOperationException` for an empty non-nullable `Min`, `Max` or `Average`;
+- `Last` searching backwards from the end, except `Last(predicate)` after `Where`, which tests every row.
+
+Anything else throws `NotSupportedException` when the query is enumerated or executed. Examples:
+- other LINQ operators, such as `Select`, `OrderBy` or `Skip`;
+- `Min`, `Max`, `Sum` and `Average` without a selector or over strings;
 - comparing two string properties;
 - string concatenation;
 - `string.Compare` with a culture.

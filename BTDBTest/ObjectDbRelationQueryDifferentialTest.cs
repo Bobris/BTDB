@@ -104,6 +104,104 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             $"{throwingPredicates} of {PredicatesPerSeed} predicates threw.");
     }
 
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void TerminalOperatorsMatchLinqToObjects(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var generator = new RelationQueryPredicateGenerator(random);
+        var terminals = Terminals();
+        for (var i = 0; i < PredicatesPerSeed; i++)
+        {
+            var source = random.Next(4) == 0 ? null : generator.Generate();
+            var argument = generator.Generate();
+            var (name, terminal) = terminals[random.Next(terminals.Count)];
+            var expected = RunTerminal(() => terminal(source == null ? rows.AsQueryable() : rows.AsQueryable().Where(source),
+                argument));
+            var actual = RunTerminal(() => terminal(source == null
+                ? table.Query<DiffRow>()
+                : generator.ApplyAsWhereChain(table.Query<DiffRow>(), source), argument));
+            if (actual.Exception is NotSupportedException notSupported)
+                throw new InvalidOperationException($"Seed {seed}, #{i} {name} is not supported: {source} / {argument}",
+                    notSupported);
+            if (expected.Value == actual.Value && expected.Exception?.GetType() == actual.Exception?.GetType() &&
+                expected.Exception?.Message == actual.Exception?.Message)
+                continue;
+            Assert.Fail($"Seed {seed}, #{i} {name}: {source} / {argument}\n" +
+                        $"expected {expected.Value} {expected.Exception?.GetType().Name}: {expected.Exception?.Message}\n" +
+                        $"actual {actual.Value} {actual.Exception?.GetType().Name}: {actual.Exception?.Message}\n" +
+                        $"{actual.Exception}");
+        }
+    }
+
+    static readonly DiffRow DefaultRow = new() { Code = "default" };
+
+    // Each terminal gets the source and a predicate it may use as its argument.
+    static List<(string, Func<IQueryable<DiffRow>, Expression<Func<DiffRow, bool>>, object?>)> Terminals() =>
+    [
+        ("Count", (q, _) => q.Count()),
+        ("Count(p)", (q, p) => q.Count(p)),
+        ("LongCount(p)", (q, p) => q.LongCount(p)),
+        ("Any", (q, _) => q.Any()),
+        ("Any(p)", (q, p) => q.Any(p)),
+        ("All(p)", (q, p) => q.All(p)),
+        ("First", (q, _) => q.First()),
+        ("First(p)", (q, p) => q.First(p)),
+        ("FirstOrDefault", (q, _) => q.FirstOrDefault()),
+        ("FirstOrDefault(p, d)", (q, p) => q.FirstOrDefault(p, DefaultRow)),
+        ("Single", (q, _) => q.Single()),
+        ("Single(p)", (q, p) => q.Single(p)),
+        ("SingleOrDefault(p)", (q, p) => q.SingleOrDefault(p)),
+        ("Last", (q, _) => q.Last()),
+        ("Last(p)", (q, p) => q.Last(p)),
+        ("LastOrDefault(d)", (q, _) => q.LastOrDefault(DefaultRow)),
+        ("Sum(Age)", (q, _) => q.Sum(r => r.Age)),
+        ("Sum(Score)", (q, _) => q.Sum(r => r.Score)),
+        ("Sum(Ratio)", (q, _) => q.Sum(r => r.Ratio)),
+        ("Sum(Price)", (q, _) => q.Sum(r => r.Price)),
+        ("Sum(Bonus)", (q, _) => q.Sum(r => r.Bonus)),
+        ("Sum(float)", (q, _) => q.Sum(r => (float)r.Ratio)),
+        ("Sum(Level)", (q, _) => q.Sum(r => r.Level)),
+        ("Average(Age)", (q, _) => q.Average(r => r.Age)),
+        ("Average(Score)", (q, _) => q.Average(r => r.Score)),
+        ("Average(Ratio)", (q, _) => q.Average(r => r.Ratio)),
+        ("Average(Price)", (q, _) => q.Average(r => r.Price)),
+        ("Average(Bonus)", (q, _) => q.Average(r => r.Bonus)),
+        ("Average(float)", (q, _) => q.Average(r => (float?)r.Ratio)),
+        ("Min(Age)", (q, _) => q.Min(r => r.Age)),
+        ("Max(Score * 2)", (q, _) => q.Max(r => r.Score * 2)),
+        ("Min(Created)", (q, _) => q.Min(r => r.Created)),
+        ("Max(Kind)", (q, _) => q.Max(r => r.Kind)),
+        ("Min(Bonus)", (q, _) => q.Min(r => r.Bonus)),
+        ("Max(Bonus)", (q, _) => q.Max(r => r.Bonus)),
+        ("Max(Token)", (q, _) => q.Max(r => r.Token)),
+        ("Min(Seen)", (q, _) => q.Min(r => r.Seen)),
+        ("Max(Duration)", (q, _) => q.Max(r => r.Duration)),
+        ("Min(Price)", (q, _) => q.Min(r => r.Price)),
+        ("Max(Ratio)", (q, _) => q.Max(r => r.Ratio)),
+        ("Min(Active)", (q, _) => q.Min(r => r.Active)),
+        ("Max(Tenant)", (q, _) => q.Max(r => r.Tenant)),
+    ];
+
+    static (string? Value, Exception? Exception) RunTerminal(Func<object?> terminal)
+    {
+        try
+        {
+            var value = terminal();
+            return (value is DiffRow row ? Describe(row) : value is null ? "null" : $"{value.GetType().Name}:{value}",
+                null);
+        }
+        catch (Exception exception)
+        {
+            return (null, exception);
+        }
+    }
+
     static (List<string> Rows, Exception? Exception) Run(Func<IEnumerable<DiffRow>> query)
     {
         var result = new List<string>();
