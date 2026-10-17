@@ -585,8 +585,18 @@ Per row over 100 000 rows, each case timed in its own process (best of 10 runs a
 | `Sum(Score)`                                     | 85 ns   | 73 ns   |                        |
 | `Where(Age == a).Select(Score)`, per scanned row | 84 ns   | 79 ns   |                        |
 
-The remaining gap of wide projections is interpreter dispatch, about 2 ns per instruction, and `ConstructorInvoker`
-for types without generated metadata, such as anonymous types.
+**Fused field runs, tried and dropped.** Consecutive reads, skips and captures from one reader were emitted as one
+`ReadKeyFields`/`ReadValueFields` instruction, with a per-field action, code op and operand. It cut the 4-property
+anonymous projection from 9 to 4 dispatches, but measured no faster (161 ns before, 161–169 ns after, inlined or not),
+and filtered `Select(Score)` got slower (79 → 82–85 ns). The per-field switch inside the fused instruction costs as much
+as the outer dispatch it replaces; the time goes into decoding the fields (`SkipString`, `ReadVInt64`, `ReadString`),
+which LINQ pays too.
+
+The remaining gap of wide projections (about 35 ns per row for 4 properties) is spread out:
+- fetching and copying value bytes, as in LINQ;
+- about 10 ns of scanner bookkeeping per returned row;
+- `ConstructorInvoker` for types without generated metadata, such as anonymous types;
+- the enumerator layers (projected enumerator, window, scanner).
 
 ## Out of scope for now
 
