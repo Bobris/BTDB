@@ -234,6 +234,86 @@ What this means:
 - Planner cleanup: constant folding, dropping `&& true` and `|| false`, and ordering conjuncts by key-before-value,
   then field position, then estimated cost.
 
+#### Phase 2 status: done
+
+What was built, and where it differs from the plan above:
+
+- **Expressions.** The AST builder now converts:
+  - comparisons, `!`, bool members, numeric, enum and nullable conversions, and arithmetic, including `checked`
+    and decimal operators;
+  - `HasValue`, `.Value` and string `Length`;
+  - string `StartsWith`, `EndsWith`, `Contains` and `Equals` with an optional `StringComparison`, plus
+    `string.IsNullOrEmpty` and `string.CompareOrdinal(...)` compared to `0`;
+  - `Contains` on constant collections.
+  It accepts `Enumerable.Contains`, `MemoryExtensions.Contains` and instance `Contains`. C# 14 binds
+  `array.Contains(x)` inside expression trees to the span overload with a `null` comparer argument.
+
+  Constants independent of the row that are not plain members or conversions are evaluated once with
+  `LambdaExpression.Compile(preferInterpretation: true)`. NativeAOT reports no warnings for it.
+- **New types:** enums, `Nullable<T>`, `Guid`, `decimal`, `TimeSpan` and `DateTimeOffset`.
+  - Frame slots are 8 or 16 bytes, plus 8 for a nullable HasValue byte.
+  - Enum fields read through the enum handler's signedness, because `EnumFieldHandler.HandledType()` builds a type
+    with Reflection.Emit.
+  - Fields the query does not use but that cannot be skipped by a code op are skipped by their field handler
+    (`Skip*ByHandler`), unless the handler needs a reader context.
+- **New opcodes (163–182):**
+  - `JmpIf[Not]FrameFrame`, `Arithmetic` and `ConvertNumber`, which follow C# rules: decimal conversions are always
+    checked, and `checked` operations throw `OverflowException`;
+  - `CaptureKey` / `CaptureValue`, `JmpIf[Not]EncodedEqual`, `JmpIf[Not]EncodedStartsWith`;
+  - `DecodeString`, `JmpIf[Not]StringOp`, `StringLength`, `JmpIf[Not]FrameInSet`;
+  - `SetFrameByte`, `ThrowQueryException`, `Skip*ByHandler`.
+- **Strings never allocate.**
+  - Every string field is captured as a pointer and length into the pinned key or value bytes.
+  - Equality, static ordinal `Equals` and ordinal `StartsWith` compare encoded bytes. Both string formats keep the
+    prefix property, except when a prefix ends with a high surrogate; then the string is decoded.
+  - Other string operations decode into a reused `char[]` per field and use span APIs. Culture comparisons use the
+    current culture at evaluation time, like LINQ.
+  - The ordered key format is decoded by a dedicated loop. `MemReader.ReadStringOrderedAsSpan` returns copies, which
+    made the first version grow its buffer on every row.
+- **Encoded equality covers strings only.**
+  - For numbers it saves only about 5 ns, decoding being cheap.
+  - It also differs from C# for integer fields stored wider than their property: an old `long` field read as `int`
+    is truncated in C#, but would not be in a byte comparison.
+- **`IN` lists use `FrozenSet<T>`.**
+  - This matches the default equality `Enumerable.Contains` uses, for example NaN is found.
+  - Strings use the `ReadOnlySpan<char>` alternate lookup.
+  - A `HashSet` with a custom comparer is not supported.
+- **Exception semantics.** `Simplify` folds constants without dropping conjuncts that can throw. Planning also keeps
+  C# short-circuit exceptions:
+  - A conjunct that can throw waits for every conjunct written before it, and later conjuncts wait for it.
+  - Only conjuncts before the first throwing one can become the cursor prefix or move into the key program.
+  - Between such barriers, conjuncts are ordered by the field they need and then by estimated cost.
+- **Tests.**
+  - The differential test covers every shape above, with exceptions: the query must throw the same exception type
+    after returning the same rows.
+  - Non-ASCII ordered keys are included.
+  - Mutation checks catch broken comparison mirroring, broken lifted null comparisons, disabled exception barriers
+    and a wrong `StartsWith` prefix.
+
+Results (same machine and settings as before, per scanned row):
+
+| Scenario                  | Phase 1      | Phase 2            |
+|---------------------------|-------------:|-------------------:|
+| String equality (5 %)     | 85 ns, 45 B  | 76 ns, 8 B         |
+| Engine, string equality   | 49 ns, 37 B  | 44 ns, 0 B         |
+| Engine, numeric           | 57 ns        | 59 ns              |
+| Empty result, per query   | 1.0 µs, 2.3 KB | 1.3 µs, 3.8 KB   |
+
+The string engine case is now faster than the closure-tree prototype (50 ns) and close to hand-written decoding
+(39 ns). The remaining 8 B per scanned row in the string scenario is the materialization of matching rows.
+
+The AOT smoke app now also covers ranges, captured arithmetic, enums, enum `Contains`, nullables, `decimal`, `!`,
+string methods and string sets.
+- It reports 0 warnings in the query path and 218 elsewhere. The extra warning comes from `DBObjectFieldHandler` for
+  the new field types.
+- `run.sh` now cleans before publishing: an up-to-date publish skipped the NativeAOT compiler, reported no warnings,
+  and made the warning count fail.
+
+NativeAOT caveat found by the smoke app: the C# compiler builds `decimal` comparisons in expression trees without
+operator metadata, so System.Linq.Expressions looks the operators up by reflection, and trimming removes them. Apps
+need `[DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(decimal))]`. This is documented in
+[Relations.md](Relations.md#query).
+
 ### Phase 3: Terminal operators (`Execute`)
 
 - `Count`, `LongCount`, `Any`, `All`, `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last`, `LastOrDefault`,

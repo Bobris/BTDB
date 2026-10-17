@@ -2378,6 +2378,408 @@ TryEnd
         }
     }
 
+    [Fact]
+    public void JmpIfFrameFrameComparesTwoFrameValues()
+    {
+        Assert.True(RunFrameFrameCompare(QueryCompare.Less, -5L, 3L));
+        Assert.False(RunFrameFrameCompare(QueryCompare.Greater, -5L, 3L));
+        Assert.True(RunFrameFrameCompare(QueryCompare.Equal, 7L, 7L));
+    }
+
+    [Fact]
+    public void ArithmeticComputesFromFrameAndConstantOperands()
+    {
+        Assert.Equal(42, RunArithmetic(QueryValueType.Int32, QueryArithmetic.Add, 40, 2));
+        Assert.Equal(-38, RunArithmetic(QueryValueType.Int32, QueryArithmetic.Subtract, 2, 40));
+        Assert.Equal(int.MinValue, RunArithmetic(QueryValueType.Int32, QueryArithmetic.Add, int.MaxValue, 1));
+        Assert.Equal(-40, RunArithmetic(QueryValueType.Int32, QueryArithmetic.Negate, 40, 0));
+        Assert.Equal(2.5m, RunArithmetic(QueryValueType.Decimal, QueryArithmetic.Multiply, 1.25m, 2m));
+        Assert.Equal(3.5, RunArithmetic(QueryValueType.Double, QueryArithmetic.Divide, 7.0, 2.0));
+        Assert.Throws<DivideByZeroException>(() => RunArithmetic(QueryValueType.Int32, QueryArithmetic.Divide, 1, 0));
+        Assert.Throws<OverflowException>(() =>
+            RunArithmetic(QueryValueType.Int64, QueryArithmetic.AddChecked, long.MaxValue, 1L));
+    }
+
+    [Fact]
+    public void ConvertNumberConvertsLikeCSharpCasts()
+    {
+        Assert.Equal(250, RunConvert<byte, int>(QueryValueType.UInt8, QueryValueType.Int32, 250, false));
+        Assert.Equal(unchecked((byte)300), RunConvert<int, byte>(QueryValueType.Int32, QueryValueType.UInt8, 300, false));
+        Assert.Equal(-7, RunConvert<double, int>(QueryValueType.Double, QueryValueType.Int32, -7.9, false));
+        Assert.Equal(1.5m, RunConvert<double, decimal>(QueryValueType.Double, QueryValueType.Decimal, 1.5, false));
+        Assert.Throws<OverflowException>(() =>
+            RunConvert<int, byte>(QueryValueType.Int32, QueryValueType.UInt8, 300, true));
+        // Conversions from decimal are checked even in unchecked context.
+        Assert.Throws<OverflowException>(() =>
+            RunConvert<decimal, int>(QueryValueType.Decimal, QueryValueType.Int32, 1e20m, false));
+    }
+
+    [Theory]
+    [InlineData(QueryStringEncoding.String, "abc", "abc", true)]
+    [InlineData(QueryStringEncoding.String, "abc", "abd", false)]
+    [InlineData(QueryStringEncoding.String, null, null, true)]
+    [InlineData(QueryStringEncoding.String, "", null, false)]
+    [InlineData(QueryStringEncoding.StringOrdered, "ž😀", "ž😀", true)]
+    [InlineData(QueryStringEncoding.StringOrdered, null, "", false)]
+    public void JmpIfEncodedEqualComparesCapturedEncoding(QueryStringEncoding encoding, string? value,
+        string? constant, bool expected)
+    {
+        var builder = new InterpreterBuilder();
+        var equalLabel = builder.DeclareLabel("equal");
+        EmitCaptureValue(builder, encoding, 0);
+        var bytes = Encode(encoding, constant);
+        builder.AddInstruction(OpCode.JmpIfEncodedEqual);
+        builder.AddUInt16(0);
+        builder.AddUInt32(builder.AddConstantBytes(bytes));
+        builder.AddUInt32((uint)bytes.Length);
+        builder.AddLabelTarget(equalLabel);
+        EmitBoolResultEnd(builder, equalLabel);
+
+        Assert.Equal(expected, RunFrameProgram(builder.Materialize(), new long[2], [], [], Encode(encoding, value),
+            out _, out var valueEof));
+        Assert.True(valueEof);
+    }
+
+    [Theory]
+    [InlineData(QueryStringEncoding.String, "hello", "he", true)]
+    [InlineData(QueryStringEncoding.String, "hello", "", true)]
+    [InlineData(QueryStringEncoding.String, "hello", "hel😀", false)]
+    [InlineData(QueryStringEncoding.String, "😀x", "😀", true)]
+    [InlineData(QueryStringEncoding.StringOrdered, "hello", "he", true)]
+    [InlineData(QueryStringEncoding.StringOrdered, "hello", "hello!", false)]
+    [InlineData(QueryStringEncoding.StringOrdered, "žluť", "žl", true)]
+    public void JmpIfEncodedStartsWithComparesEncodedPrefix(QueryStringEncoding encoding, string value, string prefix,
+        bool expected)
+    {
+        Assert.Equal(expected, RunEncodedStartsWith(encoding, value, prefix));
+    }
+
+    [Theory]
+    [InlineData(QueryStringEncoding.String)]
+    [InlineData(QueryStringEncoding.StringOrdered)]
+    public void JmpIfEncodedStartsWithThrowsForNull(QueryStringEncoding encoding)
+    {
+        Assert.Throws<NullReferenceException>(() => RunEncodedStartsWith(encoding, null, "a"));
+    }
+
+    [Theory]
+    [InlineData(QueryStringEncoding.String)]
+    [InlineData(QueryStringEncoding.StringOrdered)]
+    public void DecodeStringDecodesIntoReusedCharBuffer(QueryStringEncoding encoding)
+    {
+        var builder = new InterpreterBuilder();
+        EmitCaptureValue(builder, encoding, 0);
+        builder.AddInstruction(OpCode.DecodeString);
+        builder.AddUInt8((byte)encoding);
+        builder.AddUInt16(0);
+        builder.AddUInt16(0);
+        builder.AddUInt16(16);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        var frame = new long[3];
+        var objects = new object?[1];
+
+        RunFrameProgram(program, frame, objects, [], Encode(encoding, "a😀ž"), out _, out _);
+        var buffer = (char[])objects[0]!;
+        Assert.Equal("a😀ž", new string(buffer, 0, (int)frame[2]));
+
+        RunFrameProgram(program, frame, objects, [], Encode(encoding, "xy"), out _, out _);
+        Assert.Same(buffer, objects[0]);
+        Assert.Equal("xy", new string(buffer, 0, (int)frame[2]));
+
+        RunFrameProgram(program, frame, objects, [], Encode(encoding, null), out _, out _);
+        Assert.Equal(-1, (int)frame[2]);
+    }
+
+    [Theory]
+    [InlineData(QueryStringOp.Equals, (byte)StringComparison.Ordinal, "abc", "abc", true)]
+    [InlineData(QueryStringOp.Equals, (byte)StringComparison.Ordinal, null, null, true)]
+    [InlineData(QueryStringOp.Equals, (byte)StringComparison.OrdinalIgnoreCase, "ABC", "abc", true)]
+    [InlineData(QueryStringOp.InstanceEquals, (byte)StringComparison.Ordinal, "abc", null, false)]
+    [InlineData(QueryStringOp.StartsWith, (byte)StringComparison.Ordinal, "abc", "ab", true)]
+    [InlineData(QueryStringOp.EndsWith, (byte)StringComparison.OrdinalIgnoreCase, "abc", "BC", true)]
+    [InlineData(QueryStringOp.Contains, (byte)StringComparison.Ordinal, "abc", "x", false)]
+    [InlineData(QueryStringOp.CompareOrdinal, (byte)QueryCompare.Less, "B", "a", true)]
+    [InlineData(QueryStringOp.CompareOrdinal, (byte)QueryCompare.Greater, "a", null, true)]
+    [InlineData(QueryStringOp.CompareOrdinal, (byte)QueryCompare.Equal, null, null, true)]
+    public void JmpIfStringOpEvaluatesStringOperations(QueryStringOp operation, byte argument, string? value,
+        string? constant, bool expected)
+    {
+        Assert.Equal(expected, RunStringOp(operation, argument, value, constant));
+    }
+
+    [Fact]
+    public void JmpIfStringOpSupportsCharsSetsAndThrowsForNullReceiver()
+    {
+        Assert.True(RunStringOp(QueryStringOp.StartsWith, (byte)StringComparison.Ordinal, "abc", 'a'));
+        Assert.True(RunStringOp(QueryStringOp.Contains, (byte)StringComparison.Ordinal, "a😀c", "😀"[1]));
+        var set = new QueryStringSet(["x", null]);
+        Assert.True(RunStringOp(QueryStringOp.InSet, 0, "x", set));
+        Assert.True(RunStringOp(QueryStringOp.InSet, 0, null, set));
+        Assert.False(RunStringOp(QueryStringOp.InSet, 0, "y", set));
+        Assert.Throws<NullReferenceException>(() =>
+            RunStringOp(QueryStringOp.StartsWith, (byte)StringComparison.Ordinal, null, "a"));
+        Assert.Throws<ArgumentNullException>(() =>
+            RunStringOp(QueryStringOp.Contains, (byte)StringComparison.Ordinal, "a", null));
+    }
+
+    [Fact]
+    public void StringLengthReadsLengthFromEncodingHeader()
+    {
+        var builder = new InterpreterBuilder();
+        EmitCaptureValue(builder, QueryStringEncoding.String, 0);
+        builder.AddInstruction(OpCode.StringLength);
+        builder.AddUInt16(0);
+        builder.AddUInt16(16);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        var frame = new long[3];
+
+        RunFrameProgram(program, frame, [], [], Encode(QueryStringEncoding.String, "a😀"), out _, out _);
+        Assert.Equal(3, (int)frame[2]);
+        RunFrameProgram(program, frame, [], [], Encode(QueryStringEncoding.String, null), out _, out _);
+        Assert.Equal(-1, (int)frame[2]);
+    }
+
+    [Fact]
+    public void JmpIfFrameInSetUsesDefaultEqualityOfTheSet()
+    {
+        Assert.True(RunFrameInSet(QueryValueType.Int32, 5, System.Collections.Frozen.FrozenSet.ToFrozenSet([1, 5])));
+        Assert.False(RunFrameInSet(QueryValueType.Int32, 4, System.Collections.Frozen.FrozenSet.ToFrozenSet([1, 5])));
+        // Enumerable.Contains finds NaN, unlike the == operator.
+        Assert.True(RunFrameInSet(QueryValueType.Double, double.NaN,
+            System.Collections.Frozen.FrozenSet.ToFrozenSet([double.NaN])));
+    }
+
+    [Fact]
+    public void SetFrameByteAndThrowQueryException()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.SetFrameByte);
+        builder.AddUInt16(3);
+        builder.AddUInt8(7);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[1];
+        RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+        Assert.Equal(7L << 24, frame[0]);
+
+        builder = new();
+        builder.AddInstruction(OpCode.ThrowQueryException);
+        builder.AddUInt8((byte)QueryException.NullableHasNoValue);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        Assert.Contains("Nullable object must have a value",
+            Assert.Throws<InvalidOperationException>(() => RunFrameProgram(program, [], [], [], [], out _, out _))
+                .Message);
+    }
+
+    [Fact]
+    public void SkipValueByHandlerSkipsFieldWithFieldHandler()
+    {
+        var handler = Array.Find(BTDB.FieldHandler.BasicSerializersFactory.FieldHandlers, h => h.Name == "String")!;
+        var writer = new MemWriter();
+        writer.WriteString("skipped");
+        writer.WriteVInt64(-3);
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.SkipValueByHandler);
+        builder.AddUInt32((uint)builder.AddObjectConstant(handler));
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadVInt64);
+        builder.AddUInt16(0);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[1];
+
+        RunFrameProgram(builder.Materialize(), frame, [], [], writer.GetSpan(), out _, out var valueEof);
+
+        Assert.Equal(-3, frame[0]);
+        Assert.True(valueEof);
+    }
+
+    [Fact]
+    public void DumpAsmIncludesExpressionOps()
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("target");
+        var constant = builder.AllocAlignedConst(sizeof(int));
+        builder.ConstSpan<int>(constant) = 5;
+        builder.AddInstruction(OpCode.Arithmetic);
+        builder.AddUInt8((byte)QueryValueType.Int32);
+        builder.AddUInt8((byte)QueryArithmetic.Add);
+        builder.AddUInt16(8);
+        builder.AddUInt8((byte)QueryOperandKind.Frame);
+        builder.AddUInt32(0);
+        builder.AddUInt8((byte)QueryOperandKind.Constant);
+        builder.AddUInt32(constant);
+        builder.AddInstruction(OpCode.CaptureValue);
+        builder.AddUInt8((byte)CodeOp.SkipString);
+        builder.AddUInt16(16);
+        builder.AddInstruction(OpCode.JmpIfNotEncodedEqual);
+        builder.AddUInt16(16);
+        builder.AddUInt32(builder.AddConstantBytes([2, 0x61]));
+        builder.AddUInt32(2);
+        builder.AddLabelTarget(label);
+        builder.AddInstruction(OpCode.JmpIfStringOp);
+        builder.AddUInt8((byte)QueryStringOp.Contains);
+        builder.AddUInt8((byte)StringComparison.Ordinal);
+        builder.AddUInt16(0);
+        builder.AddUInt16(32);
+        builder.AddUInt32((uint)builder.AddObjectConstant("x"));
+        builder.AddLabelTarget(label);
+        builder.MarkLabel(label);
+        builder.AddInstruction(OpCode.Stop);
+
+        var sb = new StringBuilder();
+        builder.DumpAsm(sb);
+        var asm = sb.ToString();
+
+        Assert.Contains("Arithmetic Int32 Add frame[8] = frame[0], const[" + constant + "] ; 5", asm);
+        Assert.Contains("CaptureValue SkipString frame[16]", asm);
+        Assert.Contains("JmpIfNotEncodedEqual frame[16] const[", asm);
+        Assert.Contains("] 0x0261 -> target", asm);
+        Assert.Contains("JmpIfStringOp Contains Ordinal objects[0] length frame[32]", asm);
+    }
+
+    static byte[] Encode(QueryStringEncoding encoding, string? value)
+    {
+        var writer = new MemWriter();
+        if (encoding == QueryStringEncoding.String) writer.WriteString(value);
+        else writer.WriteStringOrdered(value);
+        return writer.GetSpan().ToArray();
+    }
+
+    static void EmitCaptureValue(InterpreterBuilder builder, QueryStringEncoding encoding, ushort slot)
+    {
+        builder.AddInstruction(OpCode.CaptureValue);
+        builder.AddUInt8((byte)(encoding == QueryStringEncoding.String ? CodeOp.SkipString : CodeOp.SkipStringOrdered));
+        builder.AddUInt16(slot);
+    }
+
+    static void EmitBoolResultEnd(InterpreterBuilder builder, uint trueLabel)
+    {
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddInstruction(OpCode.Stop);
+        builder.MarkLabel(trueLabel);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+    }
+
+    static bool RunFrameFrameCompare(QueryCompare compare, long left, long right)
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("true");
+        builder.AddInstruction(OpCode.JmpIfFrameFrame);
+        builder.AddUInt8((byte)QueryValueType.Int64);
+        builder.AddUInt8((byte)compare);
+        builder.AddUInt16(0);
+        builder.AddUInt16(8);
+        builder.AddLabelTarget(label);
+        EmitBoolResultEnd(builder, label);
+        return RunFrameProgram(builder.Materialize(), [left, right], [], [], [], out _, out _);
+    }
+
+    static T RunArithmetic<T>(QueryValueType type, QueryArithmetic operation, T left, T right) where T : unmanaged
+    {
+        var builder = new InterpreterBuilder();
+        var constant = builder.AllocAlignedConst((uint)Unsafe.SizeOf<T>());
+        builder.ConstSpan<T>(constant) = right;
+        builder.AddInstruction(OpCode.Arithmetic);
+        builder.AddUInt8((byte)type);
+        builder.AddUInt8((byte)operation);
+        builder.AddUInt16(16);
+        builder.AddUInt8((byte)QueryOperandKind.Frame);
+        builder.AddUInt32(0);
+        builder.AddUInt8((byte)QueryOperandKind.Constant);
+        builder.AddUInt32(constant);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[4];
+        Unsafe.As<long, T>(ref frame[0]) = left;
+        RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+        return Unsafe.As<long, T>(ref frame[2]);
+    }
+
+    static TTo RunConvert<TFrom, TTo>(QueryValueType from, QueryValueType to, TFrom value, bool isChecked)
+        where TFrom : unmanaged where TTo : unmanaged
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.ConvertNumber);
+        builder.AddUInt8((byte)from);
+        builder.AddUInt8((byte)to);
+        builder.AddUInt8(isChecked ? (byte)1 : (byte)0);
+        builder.AddUInt16(16);
+        builder.AddUInt8((byte)QueryOperandKind.Frame);
+        builder.AddUInt32(0);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[4];
+        Unsafe.As<long, TFrom>(ref frame[0]) = value;
+        RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+        return Unsafe.As<long, TTo>(ref frame[2]);
+    }
+
+    static bool RunEncodedStartsWith(QueryStringEncoding encoding, string? value, string prefix)
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("true");
+        EmitCaptureValue(builder, encoding, 0);
+        var writer = new MemWriter();
+        var skip = 0;
+        if (encoding == QueryStringEncoding.String)
+        {
+            writer.WriteString(prefix);
+            skip = (int)BTDB.Buffer.PackUnpack.LengthVUInt((uint)prefix.Length + 1);
+        }
+        else
+        {
+            writer.WriteStringOrderedPrefix(prefix);
+        }
+
+        var bytes = writer.GetSpan()[skip..];
+        builder.AddInstruction(OpCode.JmpIfEncodedStartsWith);
+        builder.AddUInt8((byte)encoding);
+        builder.AddUInt16(0);
+        builder.AddUInt32(builder.AddConstantBytes(bytes));
+        builder.AddUInt32((uint)bytes.Length);
+        builder.AddLabelTarget(label);
+        EmitBoolResultEnd(builder, label);
+        return RunFrameProgram(builder.Materialize(), new long[2], [], [], Encode(encoding, value), out _, out _);
+    }
+
+    static bool RunStringOp(QueryStringOp operation, byte argument, string? value, object? constant)
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("true");
+        EmitCaptureValue(builder, QueryStringEncoding.String, 0);
+        builder.AddInstruction(OpCode.DecodeString);
+        builder.AddUInt8((byte)QueryStringEncoding.String);
+        builder.AddUInt16(0);
+        builder.AddUInt16(0);
+        builder.AddUInt16(16);
+        builder.AddInstruction(OpCode.JmpIfStringOp);
+        builder.AddUInt8((byte)operation);
+        builder.AddUInt8(argument);
+        builder.AddUInt16(0);
+        builder.AddUInt16(16);
+        builder.AddUInt32((uint)builder.AddObjectConstant(constant));
+        builder.AddLabelTarget(label);
+        EmitBoolResultEnd(builder, label);
+        return RunFrameProgram(builder.Materialize(), new long[3], new object?[1], [],
+            Encode(QueryStringEncoding.String, value), out _, out _);
+    }
+
+    static bool RunFrameInSet<T>(QueryValueType type, T value, object set) where T : unmanaged
+    {
+        var builder = new InterpreterBuilder();
+        var label = builder.DeclareLabel("true");
+        builder.AddInstruction(OpCode.JmpIfFrameInSet);
+        builder.AddUInt8((byte)type);
+        builder.AddUInt16(0);
+        builder.AddUInt32((uint)builder.AddObjectConstant(set));
+        builder.AddLabelTarget(label);
+        EmitBoolResultEnd(builder, label);
+        var frame = new long[1];
+        Unsafe.As<long, T>(ref frame[0]) = value;
+        return RunFrameProgram(builder.Materialize(), frame, [], [], [], out _, out _);
+    }
+
     class TestTypeConverterFactory : DefaultTypeConverterFactory
     {
     }

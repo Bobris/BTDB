@@ -1,5 +1,7 @@
 using System;
 using System.Buffers;
+using System.IO;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Net;
 using System.Numerics;
@@ -8,6 +10,7 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
 using Microsoft.Extensions.Primitives;
@@ -206,7 +209,79 @@ public enum OpCode : byte
 
     /// Operands: from QuerySlotKind u8, from slot u16, to QuerySlotKind u8, to slot u16, converter object constant
     /// index u32.
-    ConvertSlot = 162
+    ConvertSlot = 162,
+
+    /// Operands: QueryValueType u8, QueryCompare u8, left frame offset u16, right frame offset u16, target pc u32.
+    /// Jumps when the comparison of the two frame values is true.
+    JmpIfFrameFrame = 163,
+
+    /// Same operands as JmpIfFrameFrame; jumps when the comparison is false.
+    JmpIfNotFrameFrame = 164,
+
+    /// Operands: QueryValueType u8, QueryArithmetic u8, destination frame offset u16, left QueryOperandKind u8,
+    /// left offset u32, right QueryOperandKind u8, right offset u32. Negations ignore the right operand.
+    Arithmetic = 165,
+
+    /// Operands: from QueryValueType u8, to QueryValueType u8, checked u8, destination frame offset u16, source
+    /// QueryOperandKind u8, source offset u32. Converts like C# numeric casts.
+    ConvertNumber = 166,
+
+    /// Operands: skipping CodeOp u8, frame offset u16. Stores the pointer (nint) and length (int) of the next field's
+    /// encoding in KeyReader into the 16 byte frame slot, then skips the field.
+    CaptureKey = 167,
+
+    /// Same as CaptureKey for ValueReader.
+    CaptureValue = 168,
+
+    /// Operands: captured frame offset u16, constant offset u32, constant length u32, target pc u32.
+    /// Jumps when the captured encoding equals the constant bytes.
+    JmpIfEncodedEqual = 169,
+
+    /// Same operands as JmpIfEncodedEqual; jumps when the bytes differ.
+    JmpIfNotEncodedEqual = 170,
+
+    /// Operands: QueryStringEncoding u8, captured frame offset u16, constant offset u32, constant length u32, target
+    /// pc u32. Jumps when the captured string starts with the encoded characters (ordinal); throws
+    /// NullReferenceException for a null string.
+    JmpIfEncodedStartsWith = 171,
+
+    /// Same operands as JmpIfEncodedStartsWith; jumps when the string does not start with the prefix.
+    JmpIfNotEncodedStartsWith = 172,
+
+    /// Operands: QueryStringEncoding u8, captured frame offset u16, char[] object slot u16, length frame offset u16.
+    /// Decodes the captured string into the reused char buffer and stores its length as int, -1 for null.
+    DecodeString = 173,
+
+    /// Operands: QueryStringOp u8, StringComparison or QueryCompare u8, char[] object slot u16, length frame offset
+    /// u16, object constant index u32, target pc u32. Jumps when the string operation on decoded chars is true.
+    JmpIfStringOp = 174,
+
+    /// Same operands as JmpIfStringOp; jumps when the operation is false.
+    JmpIfNotStringOp = 175,
+
+    /// Operands: captured frame offset u16 of a QueryStringEncoding.String field, destination frame offset u16.
+    /// Stores the string length as int, -1 for null, without decoding.
+    StringLength = 176,
+
+    /// Operands: QueryValueType u8, frame offset u16, object constant index u32 of IReadOnlySet, target pc u32.
+    /// Jumps when the set contains the frame value.
+    JmpIfFrameInSet = 177,
+
+    /// Same operands as JmpIfFrameInSet; jumps when the set does not contain the value.
+    JmpIfNotFrameInSet = 178,
+
+    /// Operands: frame offset u16, value u8.
+    SetFrameByte = 179,
+
+    /// Operands: QueryException u8.
+    ThrowQueryException = 180,
+
+    /// Operands: IFieldHandler object constant index u32. Skips one field in KeyReader with the handler, which must
+    /// not need a reader context.
+    SkipKeyByHandler = 181,
+
+    /// Same as SkipKeyByHandler for ValueReader.
+    SkipValueByHandler = 182
 }
 
 public enum QueryValueType : byte
@@ -222,7 +297,84 @@ public enum QueryValueType : byte
     Half = 8,
     Single = 9,
     Double = 10,
-    DateTime = 11
+    DateTime = 11,
+    Guid = 12,
+    Decimal = 13,
+    TimeSpan = 14,
+    DateTimeOffset = 15
+}
+
+public enum QueryArithmetic : byte
+{
+    Add = 0,
+    Subtract = 1,
+    Multiply = 2,
+    Divide = 3,
+    Modulo = 4,
+    AddChecked = 5,
+    SubtractChecked = 6,
+    MultiplyChecked = 7,
+    Negate = 8,
+    NegateChecked = 9
+}
+
+public enum QueryOperandKind : byte
+{
+    Frame = 0,
+    Constant = 1
+}
+
+public enum QueryStringEncoding : byte
+{
+    String = 0,
+    StringOrdered = 1
+}
+
+public enum QueryStringOp : byte
+{
+    /// Static string.Equals; null equals null. The operand byte is StringComparison.
+    Equals = 0,
+
+    /// Instance string.Equals; throws NullReferenceException for a null string. The operand byte is StringComparison.
+    InstanceEquals = 1,
+
+    /// The constant is a string or a char; throws for a null string. The operand byte is StringComparison.
+    StartsWith = 2,
+    EndsWith = 3,
+    Contains = 4,
+
+    /// string.CompareOrdinal(value, constant) compared to zero; the operand byte is QueryCompare.
+    CompareOrdinal = 5,
+
+    /// The constant is a QueryStringSet.
+    InSet = 6
+}
+
+public enum QueryException : byte
+{
+    NullReference = 0,
+    NullableHasNoValue = 1
+}
+
+/// Constant of OpCode.JmpIfStringOp with QueryStringOp.InSet.
+public sealed class QueryStringSet
+{
+    public QueryStringSet(IEnumerable<string?> values)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in values)
+        {
+            if (value == null) ContainsNull = true;
+            else set.Add(value);
+        }
+
+        Lookup = set.ToFrozenSet(StringComparer.Ordinal).GetAlternateLookup<ReadOnlySpan<char>>();
+    }
+
+    public FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> Lookup { get; }
+    public bool ContainsNull { get; }
+
+    public override string ToString() => $"[{string.Join(", ", Lookup.Set)}{(ContainsNull ? ", null" : "")}]";
 }
 
 public enum QueryCompare : byte
@@ -452,6 +604,18 @@ class InterpreterBuilder
         var advance = checked((int)(offset + size - written));
         _constants.GetSpan(advance)[..advance].Clear();
         _constants.Advance(advance);
+        return offset;
+    }
+
+    /// Copies bytes into the constants and returns their offset; empty bytes return 0 without allocating.
+    public uint AddConstantBytes(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.IsEmpty) return 0;
+        var offset = AllocAlignedConst((uint)bytes.Length, 1);
+        bytes.CopyTo(_constants.WrittenSpan.Length >= offset + bytes.Length
+            ? MemoryMarshal.CreateSpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(_constants.WrittenSpan), (nint)offset),
+                bytes.Length)
+            : throw new InvalidOperationException());
         return offset;
     }
 
@@ -791,6 +955,108 @@ class InterpreterBuilder
                     AppendLabelTarget(sb, (uint)offset + 7);
                     offset += 11;
                     break;
+                case OpCode.JmpIfFrameFrame:
+                case OpCode.JmpIfNotFrameFrame:
+                    sb.Append(' ').Append((QueryValueType)program[offset]).Append(' ')
+                        .Append((QueryCompare)program[offset + 1]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 2)..])).Append("] frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 4)..])).Append("] -> ");
+                    AppendLabelTarget(sb, (uint)offset + 6);
+                    offset += 10;
+                    break;
+                case OpCode.Arithmetic:
+                    sb.Append(' ').Append((QueryValueType)program[offset]).Append(' ')
+                        .Append((QueryArithmetic)program[offset + 1]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 2)..])).Append("] = ");
+                    AppendOperand(sb, (QueryOperandKind)program[offset + 4], MemoryMarshal.Read<uint>(program[(offset + 5)..]));
+                    sb.Append(", ");
+                    AppendOperand(sb, (QueryOperandKind)program[offset + 9],
+                        MemoryMarshal.Read<uint>(program[(offset + 10)..]));
+                    offset += 14;
+                    break;
+                case OpCode.ConvertNumber:
+                    sb.Append(' ').Append((QueryValueType)program[offset]).Append(" -> ")
+                        .Append((QueryValueType)program[offset + 1]).Append(program[offset + 2] != 0 ? " checked" : "")
+                        .Append(" frame[").Append(MemoryMarshal.Read<ushort>(program[(offset + 3)..])).Append("] = ");
+                    AppendOperand(sb, (QueryOperandKind)program[offset + 5], MemoryMarshal.Read<uint>(program[(offset + 6)..]));
+                    offset += 10;
+                    break;
+                case OpCode.CaptureKey:
+                case OpCode.CaptureValue:
+                    sb.Append(' ').Append((CodeOp)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append(']');
+                    offset += 3;
+                    break;
+                case OpCode.JmpIfEncodedEqual:
+                case OpCode.JmpIfNotEncodedEqual:
+                    sb.Append(" frame[").Append(MemoryMarshal.Read<ushort>(program[offset..])).Append("] ");
+                    AppendConstantBytes(sb, MemoryMarshal.Read<uint>(program[(offset + 2)..]),
+                        MemoryMarshal.Read<uint>(program[(offset + 6)..]));
+                    sb.Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 10);
+                    offset += 14;
+                    break;
+                case OpCode.JmpIfEncodedStartsWith:
+                case OpCode.JmpIfNotEncodedStartsWith:
+                    sb.Append(' ').Append((QueryStringEncoding)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] ");
+                    AppendConstantBytes(sb, MemoryMarshal.Read<uint>(program[(offset + 3)..]),
+                        MemoryMarshal.Read<uint>(program[(offset + 7)..]));
+                    sb.Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 11);
+                    offset += 15;
+                    break;
+                case OpCode.DecodeString:
+                    sb.Append(' ').Append((QueryStringEncoding)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] -> objects[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 3)..])).Append("] length frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 5)..])).Append(']');
+                    offset += 7;
+                    break;
+                case OpCode.JmpIfStringOp:
+                case OpCode.JmpIfNotStringOp:
+                    var stringOp = (QueryStringOp)program[offset];
+                    sb.Append(' ').Append(stringOp).Append(' ');
+                    if (stringOp == QueryStringOp.CompareOrdinal) sb.Append((QueryCompare)program[offset + 1]);
+                    else if (stringOp != QueryStringOp.InSet) sb.Append((StringComparison)program[offset + 1]);
+                    var stringConstant = MemoryMarshal.Read<uint>(program[(offset + 6)..]);
+                    sb.Append(" objects[").Append(MemoryMarshal.Read<ushort>(program[(offset + 2)..]))
+                        .Append("] length frame[").Append(MemoryMarshal.Read<ushort>(program[(offset + 4)..]))
+                        .Append("] ").Append(stringConstant).Append(" ; ")
+                        .Append(_objectConstants[(int)stringConstant]?.ToString() ?? "null").Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 10);
+                    offset += 14;
+                    break;
+                case OpCode.StringLength:
+                    sb.Append(" frame[").Append(MemoryMarshal.Read<ushort>(program[offset..])).Append("] -> frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 2)..])).Append(']');
+                    offset += 4;
+                    break;
+                case OpCode.JmpIfFrameInSet:
+                case OpCode.JmpIfNotFrameInSet:
+                    var setConstant = MemoryMarshal.Read<uint>(program[(offset + 3)..]);
+                    sb.Append(' ').Append((QueryValueType)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] ").Append(setConstant)
+                        .Append(" -> ");
+                    AppendLabelTarget(sb, (uint)offset + 7);
+                    offset += 11;
+                    break;
+                case OpCode.SetFrameByte:
+                    sb.Append(" frame[").Append(MemoryMarshal.Read<ushort>(program[offset..])).Append("] = ")
+                        .Append(program[offset + 2]);
+                    offset += 3;
+                    break;
+                case OpCode.ThrowQueryException:
+                    sb.Append(' ').Append((QueryException)program[offset]);
+                    offset += 1;
+                    break;
+                case OpCode.SkipKeyByHandler:
+                case OpCode.SkipValueByHandler:
+                    var handlerConstant = MemoryMarshal.Read<uint>(program[offset..]);
+                    sb.Append(' ').Append(handlerConstant).Append(" ; ")
+                        .Append((_objectConstants[(int)handlerConstant] as IFieldHandler)?.Name);
+                    offset += 4;
+                    break;
                 case OpCode.ConvertSlot:
                     sb.Append(' ').Append((QuerySlotKind)program[offset]).Append('[')
                         .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] -> ")
@@ -1079,6 +1345,25 @@ class InterpreterBuilder
             sb.Append(GetLabelName(label.Offset));
             sb.Append(":\n");
         }
+    }
+
+    void AppendOperand(StringBuilder sb, QueryOperandKind kind, uint offset)
+    {
+        if (kind == QueryOperandKind.Frame)
+        {
+            sb.Append("frame[").Append(offset).Append(']');
+            return;
+        }
+
+        sb.Append("const[").Append(offset).Append(']');
+        AppendInlineConstantValue(sb, offset);
+    }
+
+    void AppendConstantBytes(StringBuilder sb, uint offset, uint length)
+    {
+        sb.Append("const[").Append(offset).Append("] 0x");
+        foreach (var b in _constants.WrittenSpan.Slice((int)offset, (int)length))
+            sb.Append(b.ToString("x2"));
     }
 
     void AppendLabelTarget(StringBuilder sb, uint programOffset)
@@ -1894,6 +2179,78 @@ static class Interpreter
                 ConvertSlot(ref ctx, pc);
                 pc += 10;
                 break;
+            case OpCode.JmpIfFrameFrame:
+                pc = CompareFrameFrame(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 6) : pc + 10;
+                break;
+            case OpCode.JmpIfNotFrameFrame:
+                pc = CompareFrameFrame(ref ctx, pc) ? pc + 10 : ReadUInt32(ref ctx, pc + 6);
+                break;
+            case OpCode.Arithmetic:
+                Arithmetic(ref ctx, pc);
+                pc += 14;
+                break;
+            case OpCode.ConvertNumber:
+                ConvertNumber(ref ctx, pc);
+                pc += 10;
+                break;
+            case OpCode.CaptureKey:
+                Capture(ref ctx.KeyReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.CaptureValue:
+                Capture(ref ctx.ValueReader, (CodeOp)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc),
+                    ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)));
+                pc += 3;
+                break;
+            case OpCode.JmpIfEncodedEqual:
+                pc = EncodedEqual(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 10) : pc + 14;
+                break;
+            case OpCode.JmpIfNotEncodedEqual:
+                pc = EncodedEqual(ref ctx, pc) ? pc + 14 : ReadUInt32(ref ctx, pc + 10);
+                break;
+            case OpCode.JmpIfEncodedStartsWith:
+                pc = EncodedStartsWith(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 11) : pc + 15;
+                break;
+            case OpCode.JmpIfNotEncodedStartsWith:
+                pc = EncodedStartsWith(ref ctx, pc) ? pc + 15 : ReadUInt32(ref ctx, pc + 11);
+                break;
+            case OpCode.DecodeString:
+                DecodeString(ref ctx, pc);
+                pc += 7;
+                break;
+            case OpCode.JmpIfStringOp:
+                pc = StringOp(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 10) : pc + 14;
+                break;
+            case OpCode.JmpIfNotStringOp:
+                pc = StringOp(ref ctx, pc) ? pc + 14 : ReadUInt32(ref ctx, pc + 10);
+                break;
+            case OpCode.StringLength:
+                StringLength(ref ctx, pc);
+                pc += 4;
+                break;
+            case OpCode.JmpIfFrameInSet:
+                pc = FrameInSet(ref ctx, pc) ? ReadUInt32(ref ctx, pc + 7) : pc + 11;
+                break;
+            case OpCode.JmpIfNotFrameInSet:
+                pc = FrameInSet(ref ctx, pc) ? pc + 11 : ReadUInt32(ref ctx, pc + 7);
+                break;
+            case OpCode.SetFrameByte:
+                Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc)) =
+                    Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc + 2);
+                pc += 3;
+                break;
+            case OpCode.ThrowQueryException:
+                ThrowQueryException((QueryException)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc));
+                break;
+            case OpCode.SkipKeyByHandler:
+                ((IFieldHandler)ctx.ObjectConstants[(int)ReadUInt32(ref ctx, pc)]!).Skip(ref ctx.KeyReader, null);
+                pc += 4;
+                break;
+            case OpCode.SkipValueByHandler:
+                ((IFieldHandler)ctx.ObjectConstants[(int)ReadUInt32(ref ctx, pc)]!).Skip(ref ctx.ValueReader, null);
+                pc += 4;
+                break;
             default:
                 throw new InvalidOperationException("Unknown interpreter opcode.");
             }
@@ -1971,6 +2328,11 @@ static class Interpreter
             QueryValueType.Double => Compare<double>(compare, ref left, ref right),
             QueryValueType.DateTime => CompareDateTime(compare, Unsafe.ReadUnaligned<DateTime>(ref left),
                 Unsafe.ReadUnaligned<DateTime>(ref right)),
+            QueryValueType.Guid => CompareComparable<Guid>(compare, ref left, ref right),
+            QueryValueType.Decimal => Compare<decimal>(compare, ref left, ref right),
+            QueryValueType.TimeSpan => CompareComparable<TimeSpan>(compare, ref left, ref right),
+            QueryValueType.DateTimeOffset => CompareDateTimeOffset(compare,
+                Unsafe.ReadUnaligned<DateTimeOffset>(ref left), Unsafe.ReadUnaligned<DateTimeOffset>(ref right)),
             _ => throw new InvalidOperationException($"Unknown query value type {type}.")
         };
     }
@@ -2005,6 +2367,397 @@ static class Interpreter
             QueryCompare.Greater => l > r,
             QueryCompare.GreaterOrEqual => l >= r,
             _ => throw new InvalidOperationException($"Unknown query comparison {compare}.")
+        };
+    }
+
+    static bool CompareComparable<T>(QueryCompare compare, ref byte left, ref byte right)
+        where T : unmanaged, IComparable<T>
+    {
+        return CompareOrder(compare, Unsafe.ReadUnaligned<T>(ref left).CompareTo(Unsafe.ReadUnaligned<T>(ref right)));
+    }
+
+    // DateTimeOffset operators compare UTC instants and ignore the offset, like C#.
+    static bool CompareDateTimeOffset(QueryCompare compare, DateTimeOffset l, DateTimeOffset r)
+    {
+        return compare switch
+        {
+            QueryCompare.Equal => l == r,
+            QueryCompare.NotEqual => l != r,
+            QueryCompare.Less => l < r,
+            QueryCompare.LessOrEqual => l <= r,
+            QueryCompare.Greater => l > r,
+            QueryCompare.GreaterOrEqual => l >= r,
+            _ => throw new InvalidOperationException($"Unknown query comparison {compare}.")
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool CompareFrameFrame(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        return CompareValues((QueryValueType)operands, (QueryCompare)Unsafe.Add(ref operands, 1),
+            ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 2))),
+            ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 4))));
+    }
+
+    static ref byte Operand(ref InterpreterCtx ctx, QueryOperandKind kind, uint offset)
+    {
+        if (kind == QueryOperandKind.Constant) return ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)offset);
+        return ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)offset);
+    }
+
+    static void Arithmetic(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var type = (QueryValueType)operands;
+        var operation = (QueryArithmetic)Unsafe.Add(ref operands, 1);
+        ref var destination = ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 2)));
+        ref var left = ref Operand(ref ctx, (QueryOperandKind)Unsafe.Add(ref operands, 4),
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 5)));
+        ref var right = ref Operand(ref ctx, (QueryOperandKind)Unsafe.Add(ref operands, 9),
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 10)));
+        switch (type)
+        {
+            case QueryValueType.UInt8: Arithmetic<byte>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Int8: Arithmetic<sbyte>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.UInt16: Arithmetic<ushort>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Int16: Arithmetic<short>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.UInt32: Arithmetic<uint>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Int32: Arithmetic<int>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.UInt64: Arithmetic<ulong>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Int64: Arithmetic<long>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Half: Arithmetic<Half>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Single: Arithmetic<float>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Double: Arithmetic<double>(operation, ref destination, ref left, ref right); break;
+            case QueryValueType.Decimal: Arithmetic<decimal>(operation, ref destination, ref left, ref right); break;
+            default: throw new InvalidOperationException($"Query arithmetic does not support {type}.");
+        }
+    }
+
+    static void Arithmetic<T>(QueryArithmetic operation, ref byte destination, ref byte left, ref byte right)
+        where T : unmanaged, INumber<T>
+    {
+        var l = Unsafe.ReadUnaligned<T>(ref left);
+        if (operation is QueryArithmetic.Negate or QueryArithmetic.NegateChecked)
+        {
+            Unsafe.WriteUnaligned(ref destination, operation == QueryArithmetic.Negate ? -l : checked(-l));
+            return;
+        }
+
+        var r = Unsafe.ReadUnaligned<T>(ref right);
+        Unsafe.WriteUnaligned(ref destination, operation switch
+        {
+            QueryArithmetic.Add => l + r,
+            QueryArithmetic.Subtract => l - r,
+            QueryArithmetic.Multiply => l * r,
+            QueryArithmetic.Divide => l / r,
+            QueryArithmetic.Modulo => l % r,
+            QueryArithmetic.AddChecked => checked(l + r),
+            QueryArithmetic.SubtractChecked => checked(l - r),
+            QueryArithmetic.MultiplyChecked => checked(l * r),
+            _ => throw new InvalidOperationException($"Unknown query arithmetic {operation}.")
+        });
+    }
+
+    static void ConvertNumber(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var from = (QueryValueType)operands;
+        var to = (QueryValueType)Unsafe.Add(ref operands, 1);
+        // Like C#, conversions from and to decimal are always checked.
+        var isChecked = Unsafe.Add(ref operands, 2) != 0 || from == QueryValueType.Decimal ||
+                        to == QueryValueType.Decimal;
+        ref var destination = ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 3)));
+        ref var source = ref Operand(ref ctx, (QueryOperandKind)Unsafe.Add(ref operands, 5),
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 6)));
+        switch (from)
+        {
+            case QueryValueType.UInt8: ConvertNumberFrom<byte>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Int8: ConvertNumberFrom<sbyte>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.UInt16: ConvertNumberFrom<ushort>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Int16: ConvertNumberFrom<short>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.UInt32: ConvertNumberFrom<uint>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Int32: ConvertNumberFrom<int>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.UInt64: ConvertNumberFrom<ulong>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Int64: ConvertNumberFrom<long>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Half: ConvertNumberFrom<Half>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Single: ConvertNumberFrom<float>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Double: ConvertNumberFrom<double>(to, isChecked, ref source, ref destination); break;
+            case QueryValueType.Decimal: ConvertNumberFrom<decimal>(to, isChecked, ref source, ref destination); break;
+            default: throw new InvalidOperationException($"Query conversion does not support {from}.");
+        }
+    }
+
+    static void ConvertNumberFrom<TFrom>(QueryValueType to, bool isChecked, ref byte source, ref byte destination)
+        where TFrom : unmanaged, INumberBase<TFrom>
+    {
+        var value = Unsafe.ReadUnaligned<TFrom>(ref source);
+        switch (to)
+        {
+            case QueryValueType.UInt8: Store<byte>(value, isChecked, ref destination); break;
+            case QueryValueType.Int8: Store<sbyte>(value, isChecked, ref destination); break;
+            case QueryValueType.UInt16: Store<ushort>(value, isChecked, ref destination); break;
+            case QueryValueType.Int16: Store<short>(value, isChecked, ref destination); break;
+            case QueryValueType.UInt32: Store<uint>(value, isChecked, ref destination); break;
+            case QueryValueType.Int32: Store<int>(value, isChecked, ref destination); break;
+            case QueryValueType.UInt64: Store<ulong>(value, isChecked, ref destination); break;
+            case QueryValueType.Int64: Store<long>(value, isChecked, ref destination); break;
+            case QueryValueType.Half: Store<Half>(value, isChecked, ref destination); break;
+            case QueryValueType.Single: Store<float>(value, isChecked, ref destination); break;
+            case QueryValueType.Double: Store<double>(value, isChecked, ref destination); break;
+            case QueryValueType.Decimal: Store<decimal>(value, isChecked, ref destination); break;
+            default: throw new InvalidOperationException($"Query conversion does not support {to}.");
+        }
+
+        static void Store<TTo>(TFrom value, bool isChecked, ref byte destination) where TTo : unmanaged, INumberBase<TTo>
+        {
+            Unsafe.WriteUnaligned(ref destination,
+                isChecked ? TTo.CreateChecked(value) : TTo.CreateTruncating(value));
+        }
+    }
+
+    static void Capture(ref MemReader reader, CodeOp skipCodeOp, ref byte slot)
+    {
+        var start = reader.Current;
+        RunCodeOp(skipCodeOp, ref Unsafe.As<MemReader, byte>(ref reader), ref Unsafe.NullRef<byte>(),
+            ref Unsafe.NullRef<byte>());
+        Unsafe.WriteUnaligned(ref slot, start);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref slot, 8), (int)(reader.Current - start));
+    }
+
+    static unsafe ReadOnlySpan<byte> Captured(ref InterpreterCtx ctx, ushort offset)
+    {
+        ref var slot = ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)offset);
+        return new((void*)Unsafe.ReadUnaligned<nint>(ref slot), Unsafe.ReadUnaligned<int>(ref Unsafe.Add(ref slot, 8)));
+    }
+
+    static ReadOnlySpan<byte> ConstantBytes(ref InterpreterCtx ctx, ref byte operands)
+    {
+        return MemoryMarshal.CreateReadOnlySpan(
+            ref Unsafe.AddByteOffset(ref ctx.BeginConstants, (nint)Unsafe.ReadUnaligned<uint>(ref operands)),
+            (int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 4)));
+    }
+
+    static bool EncodedEqual(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        return Captured(ref ctx, Unsafe.ReadUnaligned<ushort>(ref operands))
+            .SequenceEqual(ConstantBytes(ref ctx, ref Unsafe.Add(ref operands, 2)));
+    }
+
+    static unsafe bool EncodedStartsWith(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var captured = Captured(ref ctx, Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1)));
+        fixed (byte* pointer = captured)
+        {
+            var reader = new MemReader(pointer, captured.Length);
+            if ((QueryStringEncoding)operands == QueryStringEncoding.String)
+            {
+                if (reader.ReadVUInt64() == 0) throw new NullReferenceException();
+                captured = captured[(int)reader.GetCurrentPositionWithoutController()..];
+            }
+            else if (reader.ReadVUInt32() == OrderedNullMarker)
+            {
+                throw new NullReferenceException();
+            }
+        }
+
+        return captured.StartsWith(ConstantBytes(ref ctx, ref Unsafe.Add(ref operands, 3)));
+    }
+
+    // MemWriter.WriteStringOrdered writes null as this VUInt32.
+    const uint OrderedNullMarker = 0x110001;
+
+    static unsafe void DecodeString(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var captured = Captured(ref ctx, Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1)));
+        ref var buffer = ref Unsafe.As<byte, char[]?>(ref ObjectSlot(ref ctx,
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 3))));
+        int length;
+        fixed (byte* pointer = captured)
+        {
+            var reader = new MemReader(pointer, captured.Length);
+            length = (QueryStringEncoding)operands == QueryStringEncoding.String
+                ? DecodeStringChars(ref reader, ref buffer)
+                : DecodeOrderedStringChars(ref reader, ref buffer);
+        }
+
+        Unsafe.WriteUnaligned(ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 5))), length);
+    }
+
+    // Mirrors MemReader.ReadString without allocating a string; the buffer is reused across rows.
+    static int DecodeStringChars(ref MemReader reader, ref char[]? buffer)
+    {
+        var header = reader.ReadVUInt64();
+        if (header == 0) return -1;
+        if (header - 1 > int.MaxValue) throw new InvalidDataException($"Reading String length overflowed with {header}");
+        var length = (int)(header - 1);
+        if (buffer == null || buffer.Length < length) buffer = new char[Math.Max(length, (buffer?.Length ?? 8) * 2)];
+        var i = 0;
+        while (i < length)
+        {
+            var c = reader.ReadVUInt64();
+            if (c > 0xffff)
+            {
+                if (c > 0x10ffff) throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                c -= 0x10000;
+                buffer[i++] = (char)((c >> 10) + 0xD800);
+                buffer[i++] = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                buffer[i++] = (char)c;
+            }
+        }
+
+        return length;
+    }
+
+    // Mirrors MemReader.ReadStringOrdered without allocating: each char is a VUInt32 of its code point + 1, a zero
+    // ends the string and null is a single OrderedNullMarker.
+    static int DecodeOrderedStringChars(ref MemReader reader, ref char[]? buffer)
+    {
+        buffer ??= new char[16];
+        var length = 0;
+        while (true)
+        {
+            var c = reader.ReadVUInt32();
+            if (c == 0) return length;
+            if (c == OrderedNullMarker && length == 0) return -1;
+            c--;
+            if (buffer.Length < length + 2) Array.Resize(ref buffer, buffer.Length * 2);
+            if (c > 0xffff)
+            {
+                if (c > 0x10ffff) throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                c -= 0x10000;
+                buffer[length++] = (char)((c >> 10) + 0xD800);
+                buffer[length++] = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                buffer[length++] = (char)c;
+            }
+        }
+    }
+
+    static bool StringOp(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var operation = (QueryStringOp)operands;
+        var argument = Unsafe.Add(ref operands, 1);
+        var buffer = Unsafe.As<byte, char[]?>(ref ObjectSlot(ref ctx,
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 2))));
+        var length = Unsafe.ReadUnaligned<int>(ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 4))));
+        var constant = ctx.ObjectConstants[(int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 6))];
+        var isNull = length < 0;
+        var value = isNull ? default : new ReadOnlySpan<char>(buffer, 0, length);
+        var comparison = (StringComparison)argument;
+        switch (operation)
+        {
+            case QueryStringOp.Equals:
+                if (isNull || constant == null) return isNull && constant == null;
+                return value.Equals((string)constant, comparison);
+            case QueryStringOp.InstanceEquals:
+                if (isNull) throw new NullReferenceException();
+                return constant != null && value.Equals((string)constant, comparison);
+            case QueryStringOp.StartsWith:
+                if (isNull) throw new NullReferenceException();
+                if (constant is char startChar) return value.Length != 0 && value[0] == startChar;
+                return value.StartsWith((string?)constant ?? throw new ArgumentNullException("value"), comparison);
+            case QueryStringOp.EndsWith:
+                if (isNull) throw new NullReferenceException();
+                if (constant is char endChar) return value.Length != 0 && value[^1] == endChar;
+                return value.EndsWith((string?)constant ?? throw new ArgumentNullException("value"), comparison);
+            case QueryStringOp.Contains:
+                if (isNull) throw new NullReferenceException();
+                if (constant is char containedChar) return value.Contains(containedChar);
+                return value.Contains((string?)constant ?? throw new ArgumentNullException("value"), comparison);
+            case QueryStringOp.CompareOrdinal:
+                var order = isNull
+                    ? constant == null ? 0 : -1
+                    : constant == null ? 1 : value.SequenceCompareTo((string)constant);
+                return CompareOrder((QueryCompare)argument, order);
+            case QueryStringOp.InSet:
+                var set = (QueryStringSet)constant!;
+                return isNull ? set.ContainsNull : set.Lookup.Contains(value);
+            default:
+                throw new InvalidOperationException($"Unknown query string operation {operation}.");
+        }
+    }
+
+    static bool CompareOrder(QueryCompare compare, int order)
+    {
+        return compare switch
+        {
+            QueryCompare.Equal => order == 0,
+            QueryCompare.NotEqual => order != 0,
+            QueryCompare.Less => order < 0,
+            QueryCompare.LessOrEqual => order <= 0,
+            QueryCompare.Greater => order > 0,
+            QueryCompare.GreaterOrEqual => order >= 0,
+            _ => throw new InvalidOperationException($"Unknown query comparison {compare}.")
+        };
+    }
+
+    static unsafe void StringLength(ref InterpreterCtx ctx, uint pc)
+    {
+        var captured = Captured(ref ctx, ReadUInt16(ref ctx, pc));
+        int length;
+        fixed (byte* pointer = captured)
+        {
+            var reader = new MemReader(pointer, captured.Length);
+            length = (int)reader.ReadVUInt64() - 1;
+        }
+
+        Unsafe.WriteUnaligned(ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 2)), length);
+    }
+
+    static bool FrameInSet(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        ref var value = ref Unsafe.AddByteOffset(ref ctx.Frame,
+            (nint)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1)));
+        var set = ctx.ObjectConstants[(int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 3))]!;
+        return (QueryValueType)operands switch
+        {
+            QueryValueType.UInt8 => InSet<byte>(set, ref value),
+            QueryValueType.Int8 => InSet<sbyte>(set, ref value),
+            QueryValueType.UInt16 => InSet<ushort>(set, ref value),
+            QueryValueType.Int16 => InSet<short>(set, ref value),
+            QueryValueType.UInt32 => InSet<uint>(set, ref value),
+            QueryValueType.Int32 => InSet<int>(set, ref value),
+            QueryValueType.UInt64 => InSet<ulong>(set, ref value),
+            QueryValueType.Int64 => InSet<long>(set, ref value),
+            QueryValueType.Half => InSet<Half>(set, ref value),
+            QueryValueType.Single => InSet<float>(set, ref value),
+            QueryValueType.Double => InSet<double>(set, ref value),
+            QueryValueType.DateTime => InSet<DateTime>(set, ref value),
+            QueryValueType.Guid => InSet<Guid>(set, ref value),
+            QueryValueType.Decimal => InSet<decimal>(set, ref value),
+            QueryValueType.TimeSpan => InSet<TimeSpan>(set, ref value),
+            QueryValueType.DateTimeOffset => InSet<DateTimeOffset>(set, ref value),
+            _ => throw new InvalidOperationException($"Unknown query value type {(QueryValueType)operands}.")
+        };
+
+        static bool InSet<T>(object set, ref byte value) where T : unmanaged
+        {
+            return ((IReadOnlySet<T>)set).Contains(Unsafe.ReadUnaligned<T>(ref value));
+        }
+    }
+
+    static void ThrowQueryException(QueryException exception)
+    {
+        throw exception switch
+        {
+            QueryException.NullReference => new NullReferenceException(),
+            QueryException.NullableHasNoValue => new InvalidOperationException("Nullable object must have a value."),
+            _ => new InvalidOperationException($"Unknown query exception {exception}.")
         };
     }
 

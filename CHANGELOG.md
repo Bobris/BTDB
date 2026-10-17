@@ -12,6 +12,26 @@
   string compare-and-jump, and slot conversion (`QuerySlotKind`). They use fixed-width operands; `InterpreterCtx` gains
   `Frame`, `Objects`, `KeyReader` and `ValueReader` refs for them.
 
+- `IRelation.Query<T>()` `Where` predicates now support:
+  - comparisons, `!`, bool members and comparisons between properties;
+  - arithmetic, numeric and enum casts;
+  - nullable values with lifted C# semantics;
+  - `Guid`, `decimal`, `TimeSpan`, `DateTimeOffset` and enum fields;
+  - string `StartsWith`, `EndsWith`, `Contains`, `Equals`, `Length`, `string.IsNullOrEmpty` and
+    `string.CompareOrdinal`;
+  - `Contains` on constant collections.
+
+  String values are tested without allocating. Predicates keep C# short-circuit exception semantics. See
+  [Doc/Relations.md](Doc/Relations.md#query).
+- The low-level interpreter has expression opcodes (`OpCode` 163–182):
+  - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
+  - capturing raw field bytes, with encoded equality and `StartsWith`;
+  - string decoding into reused buffers and string operations (`QueryStringEncoding`, `QueryStringOp`,
+    `QueryStringSet`);
+  - set membership, query exceptions (`QueryException`) and skipping fields by field handler.
+
+  `QueryValueType` gains `Guid`, `Decimal`, `TimeSpan` and `DateTimeOffset`.
+
 ### Changed
 
 - `IRelation.Query<T>()` predicates evaluate 2–4× faster per scanned row:

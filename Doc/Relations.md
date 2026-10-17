@@ -402,6 +402,64 @@ Enumerates all items sorted by primary key. Must be Disposed.
 All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code -
 after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`.
 
+### Query
+
+```C#
+    var adults = table.Query<Person>()
+        .Where(p => p.TenantId == tenantId && p.Age >= 18 && p.Name != null && p.Name.StartsWith("A"))
+        .ToList();
+```
+
+`Query<T>()` returns an `IQueryable<T>`. `T` is the item type or a registered projection of it. `Where` predicates are
+compiled to interpreter programs and tested directly on the stored bytes. Only matching rows are materialized, so
+selective queries are faster than enumerating the relation and filtering with LINQ. Everything works without
+`Reflection.Emit`, so it is usable with NativeAOT.
+
+Rows are returned in primary key order. Equalities on leading primary key fields become a cursor prefix, so only that
+part of the relation is scanned.
+
+Supported in `Where`:
+
+- **Logic:** `&&`, `||`, `!`, and `bool` properties used directly, such as `p.Active` or `!p.Active`.
+- **Comparisons:** `==`, `!=`, `<`, `<=`, `>`, `>=`.
+  - A property can be compared with a constant, a captured variable or another property.
+  - Arithmetic is allowed in comparisons: `+`, `-`, `*`, `/`, `%`, unary minus, and the `checked` variants.
+  - So are numeric casts, enum-to-number casts and casts to or from nullable types.
+- **Field types:** `string`, `bool`, all integer types, `Half`, `float`, `double`, `decimal`, `DateTime`,
+  `DateTimeOffset`, `TimeSpan`, `Guid` and enums.
+- **Nullable values:** `== null`, `HasValue`, `.Value`, and lifted comparisons and arithmetic with C# semantics.
+- **Strings:**
+  - `==`, `!=` and `string.Equals`, with an optional `StringComparison`;
+  - `StartsWith`, `EndsWith` and `Contains`, with a constant `string` or `char` argument and an optional
+    `StringComparison`;
+  - `Length`, `string.IsNullOrEmpty`, and `string.CompareOrdinal(...)` compared to `0`.
+  - String values are compared without allocating. Equality and ordinal `StartsWith` compare encoded bytes and do not
+    decode the string at all.
+- **`Contains` on constant collections:** arrays, `List<T>` and `HashSet<T>` with the default comparer, for example
+  `ids.Contains(p.Id)`.
+
+Predicates keep C# semantics, including exceptions:
+- Calling a string method on a null string throws `NullReferenceException`.
+- `.Value` of a null nullable throws `InvalidOperationException`.
+- Integer division by zero throws `DivideByZeroException`.
+
+Conditions are not always evaluated in the written order: cheaper and key-only conditions may run first. Even so, a
+condition that can throw only runs after every condition written before it, so guards like
+`p.Name != null && p.Name.StartsWith("A")` work as in LINQ.
+
+Anything else throws `NotSupportedException` when the query is enumerated. Examples:
+- other LINQ operators;
+- comparing two string properties;
+- string concatenation;
+- `string.Compare` with a culture.
+
+Use `AsEnumerable()` to continue in memory.
+
+With NativeAOT, keep the operators of `decimal` (for example
+`[DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(decimal))]`) when predicates compare or
+compute with `decimal`. The C# compiler builds those expression trees without operator metadata, and
+System.Linq.Expressions looks the operators up by reflection.
+
 ## Primary Key
 
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in

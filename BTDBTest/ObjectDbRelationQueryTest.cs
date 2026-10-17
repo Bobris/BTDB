@@ -92,6 +92,28 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public double Ratio { get; set; }
     }
 
+    public enum QueryLevel
+    {
+        Low,
+        High
+    }
+
+    [Generate]
+    public class QueryTypesRow
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public bool Active { get; set; }
+        public int? Bonus { get; set; }
+        public QueryLevel Level { get; set; }
+        public Guid Token { get; set; }
+        public decimal Price { get; set; }
+        public byte Small { get; set; }
+    }
+
+    public interface IQueryTypesTable : IRelation<QueryTypesRow>
+    {
+    }
+
     [PersistedName("RelationQueryVersions")]
     public interface IQueryVersion1Table : IRelation<QueryVersion1>
     {
@@ -347,6 +369,107 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
     }
 
     [Fact]
+    public void QueryWhereSupportsComparisonsAndNot()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        Assert.Equal(["Ada", "Dana"], Names(table.Query<Person>().Where(p => p.Age > 35 && p.Age <= 41)));
+        Assert.Equal(["Bob", null], Names(table.Query<Person>().Where(p => !(p.Age == 41))));
+        Assert.Equal(["Ada", "Bob"], Names(table.Query<Person>().Where(p => p.Uploaded < new DateTime(2025, 2, 3,
+            0, 0, 0, DateTimeKind.Utc))));
+        Assert.Equal(["Bob", null], Names(table.Query<Person>().Where(p => (long)p.Age * 2 < 80L)));
+    }
+
+    [Fact]
+    public void QueryWhereSupportsContainsOnConstantCollections()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+        var ages = new[] { 28, 35 };
+        var names = new List<string?> { "Dana", null };
+        var tenants = new HashSet<ulong> { 2 };
+
+        // C# 14 binds array.Contains inside expression trees to MemoryExtensions.Contains.
+        Assert.Equal(["Bob", null], Names(table.Query<Person>().Where(p => ages.Contains(p.Age))));
+        Assert.Equal([null, "Dana"], Names(table.Query<Person>().Where(p => names.Contains(p.Name))));
+        Assert.Equal([null, "Dana"], Names(table.Query<Person>().Where(p => tenants.Contains(p.TenantId))));
+        Assert.Equal(["Ada"], Names(table.Query<Person>().Where(p => new[] { "ada@example.com" }.Contains(p.Email))));
+    }
+
+    [Fact]
+    public void QueryWhereSupportsStringMethods()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        Assert.Equal(["Bob"], Names(table.Query<Person>().Where(p => p.Email.StartsWith("bo", StringComparison.Ordinal))));
+        Assert.Equal(["Ada", "Dana"], Names(table.Query<Person>().Where(p => p.Name != null && p.Name.EndsWith("a"))));
+        Assert.Equal(["Dana"], Names(table.Query<Person>().Where(p => p.Email.Contains("an"))));
+        Assert.Equal(["Ada"], Names(table.Query<Person>()
+            .Where(p => string.Equals(p.Name, "ADA", StringComparison.OrdinalIgnoreCase))));
+        Assert.Equal([null], Names(table.Query<Person>().Where(p => string.IsNullOrEmpty(p.Name))));
+        Assert.Equal(["Dana"], Names(table.Query<Person>().Where(p => p.Name != null && p.Name.Length == 4)));
+        Assert.Equal(["Ada", "Bob"], Names(table.Query<Person>()
+            .Where(p => string.CompareOrdinal(p.Email, "c") < 0)));
+    }
+
+    [Fact]
+    public void QueryKeepsExceptionsOfConjunctsWrittenBeforeOthers()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        // Tenant 2 contains a person without a name; the tenant filter written first avoids it.
+        Assert.Equal(["Ada", "Bob"], Names(table.Query<Person>()
+            .Where(p => p.TenantId == 1 && p.Name!.Length > 2)));
+        // Written first, the throwing conjunct must see that row like LINQ does, despite the key prefix.
+        Assert.Throws<NullReferenceException>(() => Names(table.Query<Person>()
+            .Where(p => p.Name!.Length > 2 && p.TenantId == 1)));
+    }
+
+    [Fact]
+    public void QueryWhereSupportsBoolsNullablesEnumsAndOtherTypes()
+    {
+        var token = Guid.NewGuid();
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IQueryTypesTable>();
+            table.Upsert(new() { Id = 1, Active = true, Bonus = null, Level = QueryLevel.High, Token = token, Price = 1.5m, Small = 200 });
+            table.Upsert(new() { Id = 2, Active = false, Bonus = 3, Level = QueryLevel.Low, Price = 2m, Small = 5 });
+            table.Upsert(new() { Id = 3, Active = true, Bonus = -1, Level = QueryLevel.Low, Price = -1m, Small = 5 });
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartTransaction();
+        var rows = readTr.GetRelation<IQueryTypesTable>().Query<QueryTypesRow>();
+
+        Assert.Equal([1ul, 3], Ids(rows.Where(p => p.Active)));
+        Assert.Equal([2ul], Ids(rows.Where(p => !p.Active)));
+        Assert.Equal([1ul], Ids(rows.Where(p => p.Bonus == null)));
+        Assert.Equal([2ul], Ids(rows.Where(p => p.Bonus > 0)));
+        Assert.Equal([1ul, 3], Ids(rows.Where(p => !(p.Bonus > 0))));
+        Assert.Equal([2ul, 3], Ids(rows.Where(p => p.Bonus.HasValue)));
+        Assert.Equal([1ul], Ids(rows.Where(p => p.Level == QueryLevel.High)));
+        Assert.Equal([2ul, 3], Ids(rows.Where(p => new[] { QueryLevel.Low }.Contains(p.Level))));
+        Assert.Equal([1ul], Ids(rows.Where(p => p.Token == token)));
+        Assert.Equal([1ul, 2], Ids(rows.Where(p => p.Price * 2 >= 3m)));
+        Assert.Equal([1ul], Ids(rows.Where(p => p.Small > 100)));
+        Assert.Throws<InvalidOperationException>(() => Ids(rows.Where(p => p.Bonus!.Value > 0)));
+    }
+
+    static string?[] Names(IQueryable<Person> query) => query.AsEnumerable().Select(p => p.Name).ToArray();
+    static ulong[] Ids(IQueryable<QueryTypesRow> query) => query.AsEnumerable().Select(p => p.Id).ToArray();
+
+    [Fact]
     public void QueryCanLoadRegisteredProjection()
     {
         FillPersonData();
@@ -379,8 +502,10 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var table = tr.GetRelation<IPersonTable>();
 
-        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => p.Age > 30).ToArray());
-        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => (long)p.Age == 35).ToArray());
+        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => p.Name == p.Email).ToArray());
+        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => p.Name + "x" == "Bobx").ToArray());
+        Assert.Throws<NotSupportedException>(() =>
+            table.Query<Person>().Where(p => string.CompareOrdinal(p.Name, "B") == 1).ToArray());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => (object)p.Age == (object)35).ToArray());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Any());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Select(p => p.Name));

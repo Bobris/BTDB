@@ -55,6 +55,8 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
 
     public static string HandlerName => "Nullable";
 
+    internal IFieldHandler ItemHandler => _itemHandler;
+
     public string Name => HandlerName;
 
     public byte[]? Configuration { get; }

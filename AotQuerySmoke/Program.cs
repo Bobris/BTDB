@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BTDB;
 using BTDB.KVDBLayer;
@@ -15,6 +16,16 @@ public class SmokePerson
     public int Age { get; set; }
     public bool Active { get; set; }
     public DateTime Created { get; set; }
+    public SmokeLevel Level { get; set; }
+    public int? Bonus { get; set; }
+    public decimal Price { get; set; }
+}
+
+public enum SmokeLevel
+{
+    Low,
+    Middle,
+    High
 }
 
 public interface ISmokePersonTable : IRelation<SmokePerson>
@@ -26,6 +37,9 @@ static class Program
 {
     static int _failures;
 
+    // The C# compiler builds decimal comparisons in expression trees without their MethodInfo, so
+    // System.Linq.Expressions looks the operators up by reflection, which trimming must keep.
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(decimal))]
     static int Main()
     {
         using var fileCollection = new InMemoryFileCollection();
@@ -45,7 +59,10 @@ static class Program
                     Name = i % 10 == 0 ? null : $"Name{i % 7}",
                     Age = 20 + i % 30,
                     Active = i % 3 == 0,
-                    Created = created.AddDays(i % 5)
+                    Created = created.AddDays(i % 5),
+                    Level = (SmokeLevel)(i % 3),
+                    Bonus = i % 4 == 0 ? null : i % 4,
+                    Price = i * 0.5m
                 });
             }
 
@@ -72,6 +89,27 @@ static class Program
                     .Count());
             Check("chained where", all.Count(p => p.TenantId == 1 && p.Age == 21),
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1).Where(p => p.Age == 21).AsEnumerable()
+                    .Count());
+            var levels = new[] { SmokeLevel.Low, SmokeLevel.High };
+            var minimum = 30;
+            Check("range", all.Count(p => p.Age >= 25 && p.Age < 31),
+                table.Query<SmokePerson>().Where(p => p.Age >= 25 && p.Age < 31).AsEnumerable().Count());
+            Check("captured arithmetic", all.Count(p => p.Age + 5 > minimum + 1),
+                table.Query<SmokePerson>().Where(p => p.Age + 5 > minimum + 1).AsEnumerable().Count());
+            Check("enum", all.Count(p => p.Level == SmokeLevel.Middle),
+                table.Query<SmokePerson>().Where(p => p.Level == SmokeLevel.Middle).AsEnumerable().Count());
+            Check("enum contains", all.Count(p => levels.Contains(p.Level)),
+                table.Query<SmokePerson>().Where(p => levels.Contains(p.Level)).AsEnumerable().Count());
+            Check("nullable", all.Count(p => p.Bonus > 1 || p.Bonus == null),
+                table.Query<SmokePerson>().Where(p => p.Bonus > 1 || p.Bonus == null).AsEnumerable().Count());
+            Check("decimal and not", all.Count(p => !(p.Price < 10m)),
+                table.Query<SmokePerson>().Where(p => !(p.Price < 10m)).AsEnumerable().Count());
+            Check("string methods", all.Count(p => p.Email.StartsWith("user01", StringComparison.Ordinal) ||
+                                                    p.Name != null && p.Name.Contains('3')),
+                table.Query<SmokePerson>().Where(p => p.Email.StartsWith("user01", StringComparison.Ordinal) ||
+                                                      p.Name != null && p.Name.Contains('3')).AsEnumerable().Count());
+            Check("string set", all.Count(p => new[] { "Name1", "Name2", null }.Contains(p.Name)),
+                table.Query<SmokePerson>().Where(p => new[] { "Name1", "Name2", null }.Contains(p.Name)).AsEnumerable()
                     .Count());
             Check("materialized row", "user025@example.com",
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1 && p.Email == "user025@example.com")

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using BTDB;
 using BTDB.ODBLayer;
 using Xunit;
@@ -10,17 +11,28 @@ using Xunit.Abstractions;
 namespace BTDBTest;
 
 /// Generates random rows and random predicates and checks that relation queries return the same rows, in the same
-/// order, as LINQ-to-Objects over the materialized relation. Extend `RelationQueryPredicateGenerator` whenever the
-/// query layer learns a new expression shape or field type.
+/// order, as LINQ-to-Objects over the materialized relation, including throwing the same exception at the same row.
+/// Extend `RelationQueryPredicateGenerator` whenever the query layer learns a new expression shape or field type.
 [Collection("IFieldHandler.UseNoEmitForRelations")]
 public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
 {
     const int RowCount = 400;
-    const int PredicatesPerSeed = 150;
+    const int PredicatesPerSeed = 200;
     static readonly DateTime BaseDate = new(2025, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+    static readonly Guid[] Tokens = [Guid.Empty, new("6f9619ff-8b86-d011-b42d-00cf4fc964ff"), new("00000000-0000-0000-0000-000000000001")];
+    static readonly string?[] Names = ["n0", "n1", "n2", "Ádám", "😀x", null];
+    static readonly string?[] Notes = ["", "abc", "Abc", "x😀", "žluť", "hello world", null];
 
     public ObjectDbRelationQueryDifferentialTest(ITestOutputHelper output) : base(output)
     {
+    }
+
+    public enum DiffKind
+    {
+        A,
+        B,
+        C,
+        D
     }
 
     [Generate]
@@ -35,6 +47,16 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         public bool Active { get; set; }
         public DateTime Created { get; set; }
         public double Ratio { get; set; }
+        public byte Level { get; set; }
+        public short Delta { get; set; }
+        public DiffKind Kind { get; set; }
+        public int? Bonus { get; set; }
+        public bool? Flag { get; set; }
+        public Guid Token { get; set; }
+        public decimal Price { get; set; }
+        public TimeSpan Duration { get; set; }
+        public DateTimeOffset Seen { get; set; }
+        public string? Note { get; set; }
     }
 
     public interface IDiffRowTable : IRelation<DiffRow>
@@ -56,31 +78,44 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         var rows = table.ToList();
         var generator = new RelationQueryPredicateGenerator(random);
         var selectivePredicates = 0;
+        var throwingPredicates = 0;
         for (var i = 0; i < PredicatesPerSeed; i++)
         {
             var predicate = generator.Generate();
-            var expected = rows.Where(predicate.Compile()).Select(Describe).ToList();
-            if (expected.Count > 0 && expected.Count < rows.Count) selectivePredicates++;
-            List<string> actual;
-            try
-            {
-                actual = generator.ApplyAsWhereChain(table.Query<DiffRow>(), predicate).AsEnumerable()
-                    .Select(Describe).ToList();
-            }
-            catch (Exception exception)
-            {
-                throw new InvalidOperationException($"Seed {seed}, predicate #{i} threw: {predicate}", exception);
-            }
-
-            if (expected.SequenceEqual(actual)) continue;
+            var expected = Run(() => rows.Where(predicate.Compile()));
+            if (expected.Exception != null) throwingPredicates++;
+            else if (expected.Rows.Count > 0 && expected.Rows.Count < rows.Count) selectivePredicates++;
+            var actual = Run(() => generator.ApplyAsWhereChain(table.Query<DiffRow>(), predicate).AsEnumerable());
+            if (actual.Exception is NotSupportedException notSupported)
+                throw new InvalidOperationException($"Seed {seed}, predicate #{i} is not supported: {predicate}",
+                    notSupported);
+            if (expected.Rows.SequenceEqual(actual.Rows) && expected.Exception?.GetType() == actual.Exception?.GetType())
+                continue;
             Assert.Fail($"Seed {seed}, predicate #{i}: {predicate}\n" +
-                        $"expected ({expected.Count}): {string.Join(", ", expected.Take(10))}\n" +
-                        $"actual ({actual.Count}): {string.Join(", ", actual.Take(10))}");
+                        $"expected ({expected.Rows.Count}, {expected.Exception?.GetType().Name}): {string.Join(", ", expected.Rows.Take(5))}\n" +
+                        $"actual ({actual.Rows.Count}, {actual.Exception?.GetType().Name}): {string.Join(", ", actual.Rows.Take(5))}\n" +
+                        $"{actual.Exception}");
         }
 
         // Guards the generator itself: predicates that match nothing or everything would hide query bugs.
         Assert.True(selectivePredicates >= PredicatesPerSeed / 4,
             $"Only {selectivePredicates} of {PredicatesPerSeed} predicates selected a proper subset of rows.");
+        Assert.True(throwingPredicates < PredicatesPerSeed / 2,
+            $"{throwingPredicates} of {PredicatesPerSeed} predicates threw.");
+    }
+
+    static (List<string> Rows, Exception? Exception) Run(Func<IEnumerable<DiffRow>> query)
+    {
+        var result = new List<string>();
+        try
+        {
+            foreach (var row in query()) result.Add(Describe(row));
+            return (result, null);
+        }
+        catch (Exception exception)
+        {
+            return (result, exception);
+        }
     }
 
     void FillRows(Random random)
@@ -92,14 +127,25 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             table.Insert(new()
             {
                 Tenant = (ulong)random.Next(4),
-                Code = $"c{i:D3}",
-                Name = random.Next(7) == 0 ? null : $"n{random.Next(6)}",
+                // Some keys are non-ASCII, so ordered string decoding sees multi-byte and surrogate chars.
+                Code = i % 9 == 0 ? $"ž{i:D3}😀" : $"c{i:D3}",
+                Name = Names[random.Next(Names.Length)],
                 Age = 20 + random.Next(10),
                 Score = random.Next(-5, 6),
                 Rank = (uint)random.Next(8),
                 Active = random.Next(2) == 0,
                 Created = BaseDate.AddDays(random.Next(5)),
-                Ratio = RelationQueryPredicateGenerator.Ratios[random.Next(RelationQueryPredicateGenerator.Ratios.Length - 1)]
+                Ratio = RelationQueryPredicateGenerator.Ratios[random.Next(RelationQueryPredicateGenerator.Ratios.Length - 1)],
+                Level = (byte)random.Next(250, 256),
+                Delta = (short)random.Next(-3, 4),
+                Kind = (DiffKind)random.Next(4),
+                Bonus = random.Next(3) == 0 ? null : random.Next(-2, 3),
+                Flag = random.Next(3) == 0 ? null : random.Next(2) == 0,
+                Token = Tokens[random.Next(Tokens.Length)],
+                Price = random.Next(-4, 5) * 1.25m,
+                Duration = TimeSpan.FromMinutes(random.Next(-2, 3)),
+                Seen = new(BaseDate.AddHours(random.Next(3)).Ticks, TimeSpan.FromHours(random.Next(-1, 2))),
+                Note = Notes[random.Next(Notes.Length)]
             });
         }
 
@@ -108,33 +154,13 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
 
     static string Describe(DiffRow row) =>
         $"{row.Tenant}/{row.Code}/{row.Name ?? "null"}/{row.Age}/{row.Score}/{row.Rank}/{row.Active}/" +
-        $"{row.Created:yyyy-MM-dd}/{row.Ratio}";
+        $"{row.Created:yyyy-MM-dd}/{row.Ratio}/{row.Level}/{row.Delta}/{row.Kind}/{row.Bonus}/{row.Flag}/" +
+        $"{row.Token}/{row.Price}/{row.Duration}/{row.Seen:O}/{row.Note ?? "null"}";
 
-    /// Captured variables, as the C# compiler produces them: a field access on a constant closure object.
-    sealed class Captured
+    /// Holds captured variables, as the C# compiler does: a field access on a constant closure object.
+    sealed class Captured<T>
     {
-        public ulong UInt64;
-        public string? String;
-        public int Int32;
-        public long Int64;
-        public uint UInt32;
-        public bool Boolean;
-        public DateTime DateTime;
-        public double Double;
-
-        public string Set(Type type, object? value)
-        {
-            if (type == typeof(ulong)) UInt64 = (ulong)value!;
-            else if (type == typeof(string)) String = (string?)value;
-            else if (type == typeof(int)) Int32 = (int)value!;
-            else if (type == typeof(long)) Int64 = (long)value!;
-            else if (type == typeof(uint)) UInt32 = (uint)value!;
-            else if (type == typeof(bool)) Boolean = (bool)value!;
-            else if (type == typeof(DateTime)) DateTime = (DateTime)value!;
-            else if (type == typeof(double)) Double = (double)value!;
-            else throw new NotSupportedException($"Captured {type.Name} is not supported.");
-            return type.Name;
-        }
+        public T Value = default!;
     }
 
     sealed class RelationQueryPredicateGenerator
@@ -142,26 +168,185 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         // The last ratio never appears in data, so it always produces a miss.
         public static readonly double[] Ratios = [-1.0, 0.5, 1.5, 2.25, 3.0];
 
+        static readonly QueryOperator[] AllComparisons =
+            [QueryOperator.Equal, QueryOperator.NotEqual, QueryOperator.Less, QueryOperator.LessOrEqual,
+                QueryOperator.Greater, QueryOperator.GreaterOrEqual];
+
+        static readonly QueryOperator[] Equalities = [QueryOperator.Equal, QueryOperator.NotEqual];
+
+        enum QueryOperator
+        {
+            Equal,
+            NotEqual,
+            Less,
+            LessOrEqual,
+            Greater,
+            GreaterOrEqual
+        }
+
         readonly Random _random;
         readonly ParameterExpression _parameter = Expression.Parameter(typeof(DiffRow), "p");
-        readonly (string Name, Func<Random, object?> Value)[] _fields;
+        readonly List<Func<Expression>> _leaves = [];
 
         public RelationQueryPredicateGenerator(Random random)
         {
             _random = random;
             // Constant domains are a bit wider than the generated data, so predicates also miss.
-            _fields =
-            [
-                (nameof(DiffRow.Tenant), r => (ulong)r.Next(5)),
-                (nameof(DiffRow.Code), r => $"c{r.Next(RowCount + 20):D3}"),
-                (nameof(DiffRow.Name), r => r.Next(5) == 0 ? null : $"n{r.Next(7)}"),
-                (nameof(DiffRow.Age), r => 19 + r.Next(12)),
-                (nameof(DiffRow.Score), r => (long)r.Next(-6, 7)),
-                (nameof(DiffRow.Rank), r => (uint)r.Next(9)),
-                (nameof(DiffRow.Active), r => r.Next(2) == 0),
-                (nameof(DiffRow.Created), r => BaseDate.AddDays(r.Next(6))),
-                (nameof(DiffRow.Ratio), r => Ratios[r.Next(Ratios.Length)])
-            ];
+            AddCompare(nameof(DiffRow.Tenant), () => (ulong)Pick(5), AllComparisons);
+            AddCompare(nameof(DiffRow.Code), () => $"c{Pick(RowCount + 20):D3}", Equalities);
+            AddCompare(nameof(DiffRow.Name), () => Names[Pick(Names.Length)], Equalities);
+            AddCompare(nameof(DiffRow.Note), () => Notes[Pick(Notes.Length)], Equalities);
+            AddCompare(nameof(DiffRow.Age), () => 19 + Pick(12), AllComparisons);
+            AddCompare(nameof(DiffRow.Score), () => (long)Pick(13) - 6, AllComparisons);
+            AddCompare(nameof(DiffRow.Rank), () => (uint)Pick(9), AllComparisons);
+            AddCompare(nameof(DiffRow.Active), () => Pick(2) == 0, Equalities);
+            AddCompare(nameof(DiffRow.Created), () => BaseDate.AddDays(Pick(6)), AllComparisons);
+            AddCompare(nameof(DiffRow.Ratio), () => Ratios[Pick(Ratios.Length)], AllComparisons);
+            AddCompare(nameof(DiffRow.Token), () => Tokens[Pick(Tokens.Length)], Equalities);
+            AddCompare(nameof(DiffRow.Price), () => (Pick(11) - 5) * 1.25m, AllComparisons);
+            AddCompare(nameof(DiffRow.Duration), () => TimeSpan.FromMinutes(Pick(5) - 2), AllComparisons);
+            AddCompare(nameof(DiffRow.Seen), () => new DateTimeOffset(BaseDate.AddHours(Pick(4)).Ticks,
+                TimeSpan.FromHours(Pick(3) - 1)), AllComparisons);
+            AddCompare(nameof(DiffRow.Bonus), () => Pick(4) == 0 ? null : (int?)(Pick(5) - 2), AllComparisons);
+            AddCompare(nameof(DiffRow.Flag), () => Pick(3) == 0 ? null : (bool?)(Pick(2) == 0), Equalities);
+            // C# compares byte, short and enum fields after converting them to int.
+            _leaves.Add(() => Compare(Expression.Convert(Property(nameof(DiffRow.Level)), typeof(int)),
+                Constant(250 + Pick(7)), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Convert(Property(nameof(DiffRow.Delta)), typeof(int)),
+                Constant(Pick(9) - 4), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Convert(Property(nameof(DiffRow.Kind)), typeof(int)),
+                Expression.Convert(Constant((DiffKind)Pick(5)), typeof(int)), PickOf(AllComparisons)));
+            // Comparing two fields.
+            _leaves.Add(() => Compare(Property(nameof(DiffRow.Score)),
+                Expression.Convert(Property(nameof(DiffRow.Delta)), typeof(long)), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Property(nameof(DiffRow.Bonus)),
+                Expression.Convert(Property(nameof(DiffRow.Delta)), typeof(int?)), PickOf(AllComparisons)));
+            // Both operands nullable: null equals only null.
+            _leaves.Add(() => Compare(Property(nameof(DiffRow.Bonus)),
+                Expression.Add(Property(nameof(DiffRow.Bonus)), Constant((int?)(Pick(3) - 1), typeof(int?))),
+                PickOf(AllComparisons)));
+            // Arithmetic, including division by zero and checked overflow.
+            _leaves.Add(() => Compare(Expression.Add(Property(nameof(DiffRow.Age)), Constant(Pick(5))),
+                Constant(20 + Pick(15)), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Multiply(Property(nameof(DiffRow.Price)), Constant(2m)),
+                Constant((Pick(11) - 5) * 2.5m), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Divide(Constant(12u), Property(nameof(DiffRow.Rank))),
+                Constant((uint)Pick(13)), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Subtract(Property(nameof(DiffRow.Ratio)), Constant(0.5)),
+                Constant(Ratios[Pick(Ratios.Length)]), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Add(Property(nameof(DiffRow.Bonus)), Constant((int?)1, typeof(int?))),
+                Constant((int?)(Pick(5) - 2), typeof(int?)), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.AddChecked(Property(nameof(DiffRow.Score)),
+                Constant(Pick(10) == 0 ? long.MaxValue : 1L)), Constant(0L), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Negate(Property(nameof(DiffRow.Score))), Constant((long)Pick(5) - 2),
+                PickOf(AllComparisons)));
+            // Bool members and nullable members.
+            _leaves.Add(() => Property(nameof(DiffRow.Active)));
+            _leaves.Add(() => Expression.Property(Property(nameof(DiffRow.Flag)), "HasValue"));
+            _leaves.Add(() => Expression.Property(Property(nameof(DiffRow.Bonus)), "HasValue"));
+            _leaves.Add(() => Expression.Property(Property(nameof(DiffRow.Flag)), "Value"));
+            _leaves.Add(() => Compare(Expression.Property(Property(nameof(DiffRow.Bonus)), "Value"),
+                Constant(Pick(5) - 2), PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Convert(Property(nameof(DiffRow.Bonus)), typeof(int)),
+                Constant(Pick(5) - 2), PickOf(AllComparisons)));
+            // Strings.
+            _leaves.Add(() => StringCall(nameof(string.StartsWith), StringProperty(), PickPrefix(),
+                StringComparison.Ordinal));
+            _leaves.Add(() => StringCall(nameof(string.StartsWith), StringProperty(), PickPrefix(), null));
+            _leaves.Add(() => StringCall(nameof(string.EndsWith), StringProperty(), PickSuffix(),
+                StringComparison.OrdinalIgnoreCase));
+            _leaves.Add(() => StringCall(nameof(string.Contains), StringProperty(), PickSuffix(), null));
+            _leaves.Add(() => Expression.Call(StringProperty(), typeof(string).GetMethod(nameof(string.Contains), [typeof(char)])!,
+                Constant("xaé😀"[Pick(3)])));
+            _leaves.Add(() => StringCall(nameof(string.Equals), StringProperty(), Notes[Pick(Notes.Length - 1)],
+                StringComparison.OrdinalIgnoreCase));
+            _leaves.Add(() => Expression.Call(typeof(string).GetMethod(nameof(string.Equals),
+                    [typeof(string), typeof(string), typeof(StringComparison)])!, StringProperty(),
+                Constant(Notes[Pick(Notes.Length)]), Constant(StringComparison.OrdinalIgnoreCase)));
+            _leaves.Add(() => Expression.Call(typeof(string).GetMethod(nameof(string.IsNullOrEmpty))!,
+                StringProperty()));
+            _leaves.Add(() => Compare(Expression.Property(StringProperty(), nameof(string.Length)), Constant(Pick(6)),
+                PickOf(AllComparisons)));
+            _leaves.Add(() => Compare(Expression.Call(typeof(string).GetMethod(nameof(string.CompareOrdinal),
+                        [typeof(string), typeof(string)])!, Property(nameof(DiffRow.Code)),
+                    Constant($"c{Pick(RowCount):D3}")), Constant(0), PickOf(AllComparisons)));
+            // Contains on constant collections.
+            _leaves.Add(() => Expression.Call(EnumerableContains<int>(), Constant(new[] { 19 + Pick(12), 19 + Pick(12) }),
+                Property(nameof(DiffRow.Age))));
+            _leaves.Add(() => Expression.Call(EnumerableContains<DiffKind>(),
+                Constant(new[] { (DiffKind)Pick(4), (DiffKind)Pick(4) }), Property(nameof(DiffRow.Kind))));
+            _leaves.Add(() => Expression.Call(EnumerableContains<string?>(),
+                Constant(new List<string?> { Names[Pick(Names.Length)], Names[Pick(Names.Length)] }),
+                Property(nameof(DiffRow.Name))));
+            _leaves.Add(() => Expression.Call(Constant(new HashSet<long> { Pick(13) - 6, Pick(13) - 6 }),
+                typeof(HashSet<long>).GetMethod(nameof(HashSet<long>.Contains))!, Property(nameof(DiffRow.Score))));
+            _leaves.Add(() => Expression.Call(EnumerableContains<Guid>(), Constant(new[] { Tokens[Pick(Tokens.Length)] }),
+                Property(nameof(DiffRow.Token))));
+        }
+
+        int Pick(int count) => _random.Next(count);
+        T PickOf<T>(T[] values) => values[_random.Next(values.Length)];
+
+        string PickPrefix() => PickOf(["", "c0", "c01", "C0", "n", "Á", "😀", "a", "x😀", "hello", "ž0", "ž"]);
+        string PickSuffix() => PickOf(["", "1", "x", "c", "😀", "ť", "BC", "world", "o w"]);
+
+        Expression StringProperty() =>
+            Property(PickOf([nameof(DiffRow.Code), nameof(DiffRow.Name), nameof(DiffRow.Note)]));
+
+        MemberExpression Property(string name) => Expression.Property(_parameter, name);
+
+        static MethodInfo EnumerableContains<T>() =>
+            new Func<IEnumerable<T>, T, bool>(Enumerable.Contains).Method;
+
+        void AddCompare<T>(string name, Func<T> value, QueryOperator[] operators)
+        {
+            _leaves.Add(() => Compare(Property(name), Constant(value()), PickOf(operators)));
+        }
+
+        Expression Constant<T>(T value) => Constant(value, typeof(T));
+
+        Expression Constant(object? value, Type type)
+        {
+            if (Pick(2) == 0) return Expression.Constant(value, type);
+            var capturedType = typeof(Captured<>).MakeGenericType(type);
+            var captured = Activator.CreateInstance(capturedType)!;
+            var field = capturedType.GetField(nameof(Captured<int>.Value))!;
+            field.SetValue(captured, value);
+            return Expression.Field(Expression.Constant(captured), field);
+        }
+
+        Expression StringCall(string method, Expression target, string argument, StringComparison? comparison)
+        {
+            return comparison == null
+                ? Expression.Call(target, typeof(string).GetMethod(method, [typeof(string)])!, Constant(argument))
+                : Expression.Call(target, typeof(string).GetMethod(method, [typeof(string), typeof(StringComparison)])!,
+                    Constant(argument), Expression.Constant(comparison.Value));
+        }
+
+        Expression Compare(Expression left, Expression right, QueryOperator op)
+        {
+            if (Pick(4) == 0)
+            {
+                (left, right) = (right, left);
+                op = op switch
+                {
+                    QueryOperator.Less => QueryOperator.Greater,
+                    QueryOperator.LessOrEqual => QueryOperator.GreaterOrEqual,
+                    QueryOperator.Greater => QueryOperator.Less,
+                    QueryOperator.GreaterOrEqual => QueryOperator.LessOrEqual,
+                    _ => op
+                };
+            }
+
+            return op switch
+            {
+                QueryOperator.Equal => Expression.Equal(left, right),
+                QueryOperator.NotEqual => Expression.NotEqual(left, right),
+                QueryOperator.Less => Expression.LessThan(left, right),
+                QueryOperator.LessOrEqual => Expression.LessThanOrEqual(left, right),
+                QueryOperator.Greater => Expression.GreaterThan(left, right),
+                _ => Expression.GreaterThanOrEqual(left, right)
+            };
         }
 
         public Expression<Func<DiffRow, bool>> Generate()
@@ -195,28 +380,17 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
 
         Expression GenerateNode(int depth)
         {
-            if (depth <= 1 || _random.Next(3) == 0) return GenerateLeaf();
+            if (depth <= 1 || _random.Next(3) == 0)
+            {
+                if (_random.Next(25) == 0) return Expression.Constant(_random.Next(2) == 0);
+                var leaf = _leaves[_random.Next(_leaves.Count)]();
+                return _random.Next(6) == 0 ? Expression.Not(leaf) : leaf;
+            }
+
             var left = GenerateNode(depth - 1);
             var right = GenerateNode(depth - 1);
-            return _random.Next(2) == 0 ? Expression.AndAlso(left, right) : Expression.OrElse(left, right);
-        }
-
-        Expression GenerateLeaf()
-        {
-            if (_random.Next(20) == 0) return Expression.Constant(_random.Next(2) == 0);
-            var (name, valueFactory) = _fields[_random.Next(_fields.Length)];
-            var property = Expression.Property(_parameter, name);
-            var constant = CreateConstant(property.Type, valueFactory(_random));
-            return _random.Next(4) == 0
-                ? Expression.Equal(constant, property)
-                : Expression.Equal(property, constant);
-        }
-
-        Expression CreateConstant(Type type, object? value)
-        {
-            if (_random.Next(2) == 0) return Expression.Constant(value, type);
-            var captured = new Captured();
-            return Expression.Field(Expression.Constant(captured), captured.Set(type, value));
+            var node = _random.Next(2) == 0 ? Expression.AndAlso(left, right) : Expression.OrElse(left, right);
+            return _random.Next(8) == 0 ? Expression.Not(node) : node;
         }
     }
 }
