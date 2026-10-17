@@ -13,6 +13,13 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "relation-query", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(RelationQueryBenchmark), typeof(RelationQueryEngineBenchmark)])
+                .Run(args[1..]);
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "transaction-batching", StringComparison.OrdinalIgnoreCase))
         {
             BenchmarkSwitcher.FromTypes([typeof(TransactionBatchingBenchmark)]).Run(args[1..]);
