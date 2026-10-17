@@ -4,6 +4,9 @@ Plan for extending `IRelation.Query<T>()` (`IQueryable<T>`) and making the bytec
 possible. Hard constraint: no `Reflection.Emit`, no `Expression.Compile()` code generation; everything must work under
 NativeAOT.
 
+**Status:** Phases 0–6 are done; each phase ends with a status section on what was built and measured. "Where it
+stands" below describes the starting point. The open questions at the end remain.
+
 ## Where it stands
 
 - [RelationQuery.cs](../BTDB/ODBLayer/RelationQuery.cs) supports only `Queryable.Where` with `==`, `&&`, `||`,

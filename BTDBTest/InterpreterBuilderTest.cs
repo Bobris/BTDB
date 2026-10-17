@@ -2665,6 +2665,108 @@ TryEnd
         Assert.Equal(12.5m, Unsafe.As<long, decimal>(ref frame[2]));
     }
 
+    [Theory]
+    [InlineData(QueryStringEncoding.String, "a😀ž")]
+    [InlineData(QueryStringEncoding.String, "")]
+    [InlineData(QueryStringEncoding.String, null)]
+    [InlineData(QueryStringEncoding.StringOrdered, "žluť")]
+    [InlineData(QueryStringEncoding.StringOrdered, "")]
+    [InlineData(QueryStringEncoding.StringOrdered, null)]
+    public void StringFromCapturedCreatesStringInObjectSlot(QueryStringEncoding encoding, string? value)
+    {
+        var builder = new InterpreterBuilder();
+        EmitCaptureValue(builder, encoding, 0);
+        builder.AddInstruction(OpCode.StringFromCaptured);
+        builder.AddUInt8((byte)encoding);
+        builder.AddUInt16(0);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.Stop);
+        var objects = new object?[] { null, "previous" };
+
+        RunFrameProgram(builder.Materialize(), new long[2], objects, [], Encode(encoding, value), out _,
+            out var valueEof);
+
+        Assert.Equal(value, objects[1]);
+        Assert.Null(objects[0]);
+        Assert.True(valueEof);
+    }
+
+    [Fact]
+    public void SetObjectNullClearsObjectSlot()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.SetObjectNull);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.Stop);
+        var objects = new object?[] { "kept", "cleared" };
+
+        RunFrameProgram(builder.Materialize(), [], objects, [], [], out _, out _);
+
+        Assert.Equal(["kept", null], objects);
+    }
+
+    [Fact]
+    public void DumpAsmShowsStringFromCapturedAndSetObjectNull()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.StringFromCaptured);
+        builder.AddUInt8((byte)QueryStringEncoding.StringOrdered);
+        builder.AddUInt16(16);
+        builder.AddUInt16(2);
+        builder.AddInstruction(OpCode.SetObjectNull);
+        builder.AddUInt16(3);
+        builder.AddInstruction(OpCode.Stop);
+        var sb = new StringBuilder();
+
+        builder.DumpAsm(sb);
+
+        var asm = sb.ToString();
+        Assert.Contains("StringFromCaptured StringOrdered frame[16] -> objects[2]", asm);
+        Assert.Contains("SetObjectNull objects[3]", asm);
+    }
+
+    // Variable-length integers and strings are decoded inline; other encodings go through the generic code ops.
+    [Fact]
+    public void ReadsAndSkipsMixInlineAndGenericFieldEncodings()
+    {
+        var valueWriter = new MemWriter();
+        valueWriter.WriteVUInt64(ulong.MaxValue);
+        valueWriter.WriteVUInt64(300);
+        valueWriter.WriteString("skipped");
+        valueWriter.WriteVInt64(long.MinValue);
+        valueWriter.WriteInt8Ordered(-5);
+        valueWriter.WriteVInt64(-7);
+        valueWriter.WriteVUInt64(1L << 40);
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.SkipValue);
+        builder.AddUInt8((byte)CodeOp.SkipVUInt64);
+        builder.AddUInt16(2);
+        builder.AddInstruction(OpCode.SkipValue);
+        builder.AddUInt8((byte)CodeOp.SkipString);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadVInt64);
+        builder.AddUInt16(0);
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadInt8Ordered);
+        builder.AddUInt16(8);
+        builder.AddInstruction(OpCode.SkipValue);
+        builder.AddUInt8((byte)CodeOp.SkipVInt64);
+        builder.AddUInt16(1);
+        builder.AddInstruction(OpCode.ReadValueToFrame);
+        builder.AddUInt8((byte)CodeOp.ReadVUInt64);
+        builder.AddUInt16(16);
+        builder.AddInstruction(OpCode.Stop);
+        var frame = new long[3];
+
+        RunFrameProgram(builder.Materialize(), frame, [], [], valueWriter.GetSpan(), out _, out var valueEof);
+
+        Assert.Equal(long.MinValue, frame[0]);
+        Assert.Equal(-5, (sbyte)frame[1]);
+        Assert.Equal(1L << 40, frame[2]);
+        Assert.True(valueEof);
+    }
+
     static byte[] Encode(QueryStringEncoding encoding, string? value)
     {
         var writer = new MemWriter();
