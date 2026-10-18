@@ -122,6 +122,9 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         }
         else
         {
+            // e.g. byte[] stored handler must be specialized to write ReadOnlyMemory<byte>
+            if (typeConvertorGenerator.GenerateConversion(realType, fieldHandler.HandledType()!) == null)
+                fieldHandler = fieldHandler.SpecializeSaveForType(realType);
             var dm = ILBuilder.Instance.NewMethod<RefWriterFun>(fieldHandler.Name + "Writer");
             var ilGenerator = dm.Generator;
             var miAs = typeof(Unsafe)
@@ -174,6 +177,9 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         }
         else
         {
+            // e.g. byte[] stored handler must be specialized to read ReadOnlyMemory<byte>
+            if (typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType()!, realType) == null)
+                fieldHandler = fieldHandler.SpecializeLoadForType(realType, null, null);
             var dm = ILBuilder.Instance.NewMethod<RefReaderFun>(fieldHandler.Name + "Reader");
             var ilGenerator = dm.Generator;
             var localValue = ilGenerator.DeclareLocal(realType);

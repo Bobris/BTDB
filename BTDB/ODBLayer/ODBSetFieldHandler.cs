@@ -16,7 +16,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     readonly ITypeConvertorGenerator _typeConvertGenerator;
     readonly byte[] _configuration;
     readonly IFieldHandler _keysHandler;
-    int _configurationId;
+    int _configurationId = -1;
     Type? _type;
 
     [SkipLocalsInit]
@@ -31,7 +31,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
         var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_keysHandler);
         _configuration = writer.GetSpan().ToArray();
-        CreateConfiguration();
+        HandledType();
     }
 
     public unsafe ODBSetFieldHandler(IObjectDB odb, byte[] configuration)
@@ -47,7 +47,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
                 FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
         }
 
-        CreateConfiguration();
+        HandledType();
     }
 
     ODBSetFieldHandler(IObjectDB odb, byte[] configuration, IFieldHandler specializedKeyHandler)
@@ -56,13 +56,19 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
         _typeConvertGenerator = odb.TypeConvertorGenerator;
         _configuration = configuration;
         _keysHandler = specializedKeyHandler;
-        CreateConfiguration();
+        HandledType();
     }
 
-    void CreateConfiguration()
+    // Created lazily, because handler built from stored configuration could have key type
+    // (e.g. Tuple<long,byte[]>) which is not registered in ReflectionMetadata and would fail in NoEmit mode
+    int GetOrCreateConfigurationId()
     {
-        HandledType();
-        _configurationId = GetConfigurationId(_type!, null);
+        if (_configurationId == -1)
+        {
+            _configurationId = GetConfigurationId(_type!, null);
+        }
+
+        return _configurationId;
     }
 
     int GetConfigurationId(Type type, ITypeConverterFactory? typeConverterFactory)
@@ -125,7 +131,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Do(pushCtx)
             .Castclass(typeof(IDBReaderCtx))
             .Callvirt(() => default(IDBReaderCtx).GetTransaction())
-            .LdcI4(_configurationId)
+            .LdcI4(GetOrCreateConfigurationId())
             .Call(() => ODBDictionaryConfiguration.Get(0))
             .Do(pushReader)
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
@@ -148,7 +154,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Do(pushReaderCtx)
             .Castclass(typeof(IDBReaderCtx))
             .Callvirt(() => default(IDBReaderCtx).GetTransaction())
-            .LdcI4(_configurationId)
+            .LdcI4(GetOrCreateConfigurationId())
             .Call(() => ODBDictionaryConfiguration.Get(0))
             .Newobj(constructorInfo!)
             .Castclass(_type);
@@ -156,7 +162,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
 
     public unsafe FieldHandlerInit Init()
     {
-        var configuration = ODBDictionaryConfiguration.Get(_configurationId);
+        var configuration = ODBDictionaryConfiguration.Get(GetOrCreateConfigurationId());
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(_type);
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
@@ -184,7 +190,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Do(pushWriter)
             .Do(pushCtx)
             .Do(pushValue)
-            .LdcI4(_configurationId)
+            .LdcI4(GetOrCreateConfigurationId())
             .Call(instanceType.GetMethod(nameof(ODBSet<int>.DoSave))!);
     }
 

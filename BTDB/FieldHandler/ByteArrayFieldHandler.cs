@@ -221,14 +221,15 @@ public class ByteArrayFieldHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
+        // Already specialized, nested handlers (List, Dictionary, ...) specialize items again in IL Load
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
@@ -304,14 +305,15 @@ public class ByteArrayFieldHandler : IFieldHandler
 
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
+        // Already specialized, nested handlers (List, Dictionary, ...) specialize items again in IL Load
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public bool DoesPreferLoadAsMemory() => true;

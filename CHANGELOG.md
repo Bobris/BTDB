@@ -110,6 +110,12 @@
   - `IOrderedDictionaryEnumerator` type arguments lost `global::` and failed to compile in namespaces like
     `Collections.Model`;
   - non-public `[OnSerialize]` / `[OnBeforeRemove]` methods in generic classes generated code that did not compile.
+- ObjectDB collections and field handlers:
+  - `IOrderedSet` and `IRoaringBitmap` enumerators restarted from the first item when `MoveNext` was called again
+    after the end;
+  - `IOrderedSet` with a tuple key such as `(int, byte[])` failed on reopening the database;
+  - IL emit: upgrading `byte[]` items to `ReadOnlyMemory<byte>` / `ByteBuffer` and `IOrderedDictionary` with
+    `ReadOnlyMemory<byte>` keys or values threw.
 - Key value DB:
   - `InMemoryKeyValueDB` cursors stayed valid after a failed `FindFirstKey`, `FindLastKey` or `Find`, `FindKeyIndex`
     with a prefix could return a key outside of the prefix, an invalid cursor did not start from the last key on

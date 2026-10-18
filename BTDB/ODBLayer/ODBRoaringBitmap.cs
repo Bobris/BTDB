@@ -394,6 +394,7 @@ public class ODBRoaringBitmap : IRoaringBitmap, IInternalODBRoaringBitmap, IAmLa
         readonly byte[] _prefix;
         readonly byte[] _valueBuffer;
         RoaringBitmaps.Enumerator _pageEnumerator;
+        bool _finished;
 
         internal RoaringBitmapEnumerator(IKeyValueDBCursor cursor, byte[] prefix)
         {
@@ -404,11 +405,17 @@ public class ODBRoaringBitmap : IRoaringBitmap, IInternalODBRoaringBitmap, IAmLa
 
         public bool MoveNext()
         {
+            // cursor would restart from first key after reaching end, so remember that enumeration finished
+            if (_finished) return false;
             Span<byte> keyBuffer = stackalloc byte[16];
             while (!_pageEnumerator.MoveNext())
             {
                 if (!_cursor.FindNextKey(_prefix))
+                {
+                    _finished = true;
                     return false;
+                }
+
                 var keySpan = _cursor.GetKeySpan(ref keyBuffer);
                 if (keySpan.Length == _prefix.Length)
                     continue;

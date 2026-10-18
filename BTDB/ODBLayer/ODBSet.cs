@@ -421,7 +421,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
         readonly ODBSet<TKey> _owner;
         readonly IKeyValueDBCursor? _startCursor;
         readonly IKeyValueDBCursor? _endCursor;
-        readonly IKeyValueDBCursor? _cursor;
+        IKeyValueDBCursor? _cursor;
         SeekState _seekState;
         readonly bool _ascending;
 
@@ -522,28 +522,24 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
                 {
                     if (!_cursor.FindNextKey(_owner._prefix))
                     {
-                        Current = default;
-                        return false;
+                        return Finish();
                     }
 
                     if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
                     {
-                        Current = default;
-                        return false;
+                        return Finish();
                     }
                 }
                 else
                 {
                     if (!_cursor.FindPreviousKey(_owner._prefix))
                     {
-                        Current = default;
-                        return false;
+                        return Finish();
                     }
 
                     if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
                     {
-                        Current = default;
-                        return false;
+                        return Finish();
                     }
                 }
             }
@@ -554,6 +550,15 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
 
             Current = _owner.CurrentToKey(_cursor);
             return true;
+        }
+
+        bool Finish()
+        {
+            // cursor would restart from beginning on next FindNext/PreviousKey, so release it to stay at end
+            Current = default;
+            _cursor!.Dispose();
+            _cursor = null;
+            return false;
         }
 
         public void Reset()
