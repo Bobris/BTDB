@@ -526,6 +526,20 @@ another transaction or thread, skips conversion and compilation. Captured variab
 
 The cache keeps at most 256 query shapes per relation.
 
+With BTDB.SourceGenerator, queries written as one chain starting at `Query<T>()`, with their lambdas inline, can skip
+most of the remaining per-query work: building the operators' expressions and finding the captured values. Opt in in
+the project file:
+
+```xml
+<PropertyGroup>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors</InterceptorsNamespaces>
+</PropertyGroup>
+```
+
+The generator then intercepts those `Queryable` calls (it needs a compiler from the .NET 9 SDK or newer). A point query
+takes about 1 µs instead of 2. Queries stored in variables and extended later, or with lambdas passed in, keep working
+the regular way. See [SourceGenerator.md](SourceGenerator.md#relation-query-interceptors).
+
 With NativeAOT, keep the operators of `decimal` (for example
 `[DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(decimal))]`) when predicates compare or
 compute with `decimal`. The C# compiler builds those expression trees without operator metadata, and

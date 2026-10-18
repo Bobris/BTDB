@@ -160,3 +160,36 @@ Lazy<T>
 T[]
 
 ```
+
+## Relation query interceptors
+
+`IRelation.Query<T>()` queries written as one chain, with their lambdas inline, are intercepted when the project opts
+in to the generator's interceptors:
+
+```xml
+<PropertyGroup>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors</InterceptorsNamespaces>
+</PropertyGroup>
+```
+
+```csharp
+// Intercepted: Where and FirstOrDefault run without building their expressions.
+var person = table.Query<Person>().Where(p => p.TenantId == tenant && p.Id == id).FirstOrDefault();
+
+// Not intercepted, but still correct: the query is in a variable, or the predicate is passed in.
+var query = table.Query<Person>();
+var count = query.Count(predicate);
+```
+
+Intercepted operators are `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Skip`,
+`Take`, `Count`, `LongCount`, `Any`, `All`, `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last`,
+`LastOrDefault`, `Min`, `Max`, `Sum` and `Average`, without comparers or element indexes. The generator emits one
+interceptor per call site into a file-local class in namespace `BTDB.Interceptors`. Each first asks BTDB to handle the
+call and otherwise calls the original `Queryable` method, so a source that is not a relation query behaves as before.
+
+At run time, intercepted operators build a chain of links instead of expressions. The first execution of a call site
+builds the full expression once and records where its captured values are; later executions read the values directly
+and reuse the cached plan. Queries passed to code which reads `Expression` still get the full expression.
+
+Interceptors need the `InterceptsLocation` support of the .NET 9 SDK compiler (Roslyn 4.12) or newer; with an older
+compiler, or without the opt-in, nothing is generated.

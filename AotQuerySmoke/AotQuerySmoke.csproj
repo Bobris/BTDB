@@ -8,6 +8,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors</InterceptorsNamespaces>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>

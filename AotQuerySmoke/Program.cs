@@ -138,6 +138,24 @@ static class Program
             }
 
             Check("cached captured", string.Join(" ", expectedCached), string.Join(" ", actualCached));
+            // Inline chains are intercepted by BTDB.SourceGenerator and replayed without building expressions.
+            var expectedIntercepted = new System.Collections.Generic.List<string>();
+            var actualIntercepted = new System.Collections.Generic.List<string>();
+            for (var round = 0ul; round < 6; round++)
+            {
+                var t = round % 4;
+                var minAge = 25 + (int)round * 3;
+                var skip = (int)round - 1;
+                expectedIntercepted.Add($"{all.Count(p => p.TenantId == t && p.Age > minAge)}:" + string.Join(",",
+                    all.Where(p => p.TenantId == t).OrderBy(p => p.Age).Skip(skip).Take(2).Select(p => p.Email)) +
+                    $":{all.FirstOrDefault(p => p.Age == minAge)?.Email}");
+                actualIntercepted.Add($"{table.Query<SmokePerson>().Count(p => p.TenantId == t && p.Age > minAge)}:" +
+                    string.Join(",", table.Query<SmokePerson>().Where(p => p.TenantId == t).OrderBy(p => p.Age)
+                        .Skip(skip).Take(2).Select(p => p.Email).ToList()) +
+                    $":{table.Query<SmokePerson>().FirstOrDefault(p => p.Age == minAge)?.Email}");
+            }
+
+            Check("intercepted", string.Join(" ", expectedIntercepted), string.Join(" ", actualIntercepted));
             Check("any and all", "True/False", $"{query.Any(p => p.Age > 40)}/{query.All(p => p.Active)}");
             Check("first and last", $"{all.First(p => p.Age == 30).Email}/{all.Last().Email}",
                 $"{query.First(p => p.Age == 30).Email}/{query.Last().Email}");

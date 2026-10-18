@@ -6,6 +6,7 @@
         <NoWarn>1701;1702;1720;CS0219;CS8714</NoWarn>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
         <Nullable>annotations</Nullable>
+        <InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors</InterceptorsNamespaces>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0"/>

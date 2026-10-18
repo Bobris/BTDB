@@ -61,6 +61,19 @@ sealed class RelationQueryParameterScope : IDisposable
     public static RelationQueryParameterScope? Enter(RelationQueryExecution execution) =>
         execution.Values == null ? null : new RelationQueryParameterScope(execution);
 
+    /// Leaves the current scope until disposed.
+    public static SuspendedScope Suspend()
+    {
+        var current = _current;
+        _current = null;
+        return new(current);
+    }
+
+    public readonly struct SuspendedScope(RelationQueryParameterScope? scope) : IDisposable
+    {
+        public void Dispose() => _current = scope;
+    }
+
     public IReadOnlyCollection<int> Baked => _baked;
 
     /// Values of the current scope, or null outside of one.
@@ -474,6 +487,9 @@ sealed class RelationQueryCache
     internal long Hits;
     internal long Misses;
 
+    /// Executions of intercepted call sites which read their values without building the expression.
+    internal long Replays;
+
     public RelationQueryExecution Start(Expression expression)
     {
         if (!RelationQueryShapeBuilder.TryBuild(expression, out var shape, out var parameters, out var values))
@@ -560,8 +576,9 @@ sealed class RelationQueryExecution
 {
     readonly RelationQueryCache? _cache;
     readonly RelationQueryTemplate? _template;
-    readonly Expression _expression;
-    readonly Expression[] _parameters;
+    Expression? _expression;
+    readonly Func<Expression>? _expressionFactory;
+    Expression[]? _parameters;
     Dictionary<Expression, int>? _rootIndexes;
     Dictionary<Expression, int>? _nodeIndexes;
 
@@ -575,8 +592,43 @@ sealed class RelationQueryExecution
         _parameters = parameters;
     }
 
+    /// An execution of an intercepted call site, whose values were read without the expression; the expression is
+    /// built only when something must be converted or compiled.
+    public RelationQueryExecution(RelationQueryCache cache, RelationQueryTemplate template, object?[] values,
+        Func<Expression> expressionFactory)
+    {
+        _cache = cache;
+        _template = template;
+        Values = values;
+        _expressionFactory = expressionFactory;
+    }
+
     /// Parameter values of this execution; null when it is not cached.
     public object?[]? Values { get; }
+
+    internal RelationQueryCache? Cache => _cache;
+    internal RelationQueryTemplate? Template => _template;
+
+    /// The whole query expression of this execution.
+    public Expression Expression => _expression ??= _expressionFactory!();
+
+    /// The parameter subtrees of Expression, in the order of Values.
+    public Expression[] Parameters
+    {
+        get
+        {
+            if (_parameters != null) return _parameters;
+            // Found outside of any scope, whose evaluations would ask for them again.
+            var expression = Expression;
+            Expression[] parameters;
+            bool built;
+            using (RelationQueryParameterScope.Suspend())
+                built = RelationQueryShapeBuilder.TryBuild(expression, out _, out parameters, out _);
+            if (!built || parameters.Length != Values!.Length)
+                throw new InvalidOperationException("Relation query call site built a different expression shape.");
+            return _parameters = parameters;
+        }
+    }
 
     /// Something this execution built could not be cached, so what depends on it is not cached either.
     bool _uncached;
@@ -589,7 +641,8 @@ sealed class RelationQueryExecution
         {
             if (_rootIndexes != null) return _rootIndexes;
             var result = new Dictionary<Expression, int>(ReferenceEqualityComparer.Instance);
-            for (var i = 0; i < _parameters.Length; i++) result.TryAdd(_parameters[i], i);
+            var parameters = Parameters;
+            for (var i = 0; i < parameters.Length; i++) result.TryAdd(parameters[i], i);
             return _rootIndexes = result;
         }
     }
@@ -600,7 +653,8 @@ sealed class RelationQueryExecution
         {
             if (_nodeIndexes != null) return _nodeIndexes;
             var result = new Dictionary<Expression, int>(ReferenceEqualityComparer.Instance);
-            for (var i = 0; i < _parameters.Length; i++) new NodeCollector(result, i).Visit(_parameters[i]);
+            var parameters = Parameters;
+            for (var i = 0; i < parameters.Length; i++) new NodeCollector(result, i).Visit(parameters[i]);
             return _nodeIndexes = result;
         }
     }

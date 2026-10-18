@@ -68,6 +68,48 @@ public class GeneratorTestsBase
         return Verifier.Verify(runResult);
     }
 
+    protected static CSharpParseOptions InterceptorParseOptions(bool optIn) =>
+        CSharpParseOptions.Default.WithFeatures(optIn
+            ? [new("InterceptorsNamespaces", RelationQueryInterceptorGenerator.InterceptorsNamespace)]
+            : []);
+
+    /// Runs the relation query interceptor generator with the project's opt-in, checks that the result compiles and
+    /// that a rerun is cached, and verifies the generated interceptors.
+    protected static Task VerifyInterceptorGenerator(string sourceCode)
+    {
+        var parseOptions = InterceptorParseOptions(true);
+        var driver = CSharpGeneratorDriver.Create([new RelationQueryInterceptorGenerator().AsSourceGenerator()],
+            parseOptions: parseOptions,
+            driverOptions: new GeneratorDriverOptions(default, trackIncrementalGeneratorSteps: true));
+        var compilation = CSharpCompilation.Create("test",
+            [CSharpSyntaxTree.ParseText(sourceCode, parseOptions)],
+            GetMetadataReferences(),
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+        var runResult = driver.RunGeneratorsAndUpdateCompilation(compilation, out var generatedCompilation, out _);
+        var compilationErrors = generatedCompilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Empty(compilationErrors);
+        compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy", parseOptions));
+        var result = runResult.RunGenerators(compilation).GetRunResult().Results.Single();
+        foreach (var output in result.TrackedOutputSteps.SelectMany(step => step.Value).SelectMany(o => o.Outputs))
+            Assert.Equal(IncrementalStepRunReason.Cached, output.Reason);
+        return Verifier.Verify(runResult);
+    }
+
+    protected static IReadOnlyList<GeneratedSourceResult> GetInterceptorSources(string sourceCode, bool optIn)
+    {
+        var parseOptions = InterceptorParseOptions(optIn);
+        var driver = CSharpGeneratorDriver.Create([new RelationQueryInterceptorGenerator().AsSourceGenerator()],
+            parseOptions: parseOptions);
+        var compilation = CSharpCompilation.Create("test",
+            [CSharpSyntaxTree.ParseText(sourceCode, parseOptions)],
+            GetMetadataReferences(),
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+        return driver.RunGenerators(compilation).GetRunResult().Results.SelectMany(r => r.GeneratedSources)
+            .ToArray();
+    }
+
     protected static Diagnostic[] GetGeneratedCompilationDiagnostics(string sourceCode,
         DiagnosticSeverity minimumSeverity)
     {

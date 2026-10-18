@@ -692,6 +692,95 @@ query, 0.7 µs for a point query and 1.8 µs with `Select`):
 Executing prebuilt expressions shows the cost left in BTDB: 0.88 µs for the point query (0.41 µs of it is the
 shape walk), 1.3 µs with `Select` and 0.77 µs for the count. Per-row scan speed is unchanged.
 
+### Phase 8: Source-generated interceptors
+
+With plans cached, a point query `Where(TenantId == 1 && Id == id).FirstOrDefault()` costs 2.1 µs:
+
+| Part                                                             | Time    |
+|------------------------------------------------------------------|--------:|
+| `Query<T>()`                                                     | 30 ns   |
+| the lambda's expression tree, built by the caller                | 400 ns  |
+| `Queryable.Where` building its call expression and query         | 270 ns  |
+| `Queryable.FirstOrDefault` building its call expression          | 500 ns  |
+| the shape walk                                                   | 400 ns  |
+| cache lookups, binding, scanning and loading the row             | 480 ns  |
+
+An interceptor cannot change what the caller builds for its arguments, so the lambda trees stay. Everything else in
+the first four rows after them can go: the call expressions of operators, and the shape walk, because a call site
+whose whole chain is written inline always builds the same shape.
+
+Design:
+
+- **Generator.** A second incremental generator in `BTDB.SourceGenerator` finds calls of `System.Linq.Queryable`
+  operators whose receiver is `IRelation.Query<T>()` or another such call, with lambdas written inline. It emits one
+  generic interceptor per call site in namespace `BTDB.Interceptors`, each with a static `RelationQueryCallSite`.
+  Interceptors need Roslyn 4.12 (`GetInterceptableLocation`, called through reflection so the generator still loads
+  on older compilers) and the project's opt-in `<InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors`,
+  which the generator reads from the parse options; without either, nothing is emitted.
+- **Fallback.** Every interceptor first asks the runtime (`RelationQueryInterception`) to handle the call; a source
+  that is not a BTDB relation query goes to the original `Queryable` method.
+- **Links.** Non-terminal operators (`Where`, `Select`, ordering, `Skip`, `Take`) return a query object holding a link
+  (call site, argument, previous query) instead of an expression. Its `Expression` is built on demand with a static
+  materializer lambda calling the real `Queryable` method, so non-intercepted code still works.
+- **Terminal calls and enumeration.** The call site of the terminal operator, or of the last link for enumeration,
+  identifies the shape. The first execution per relation and per shape variant builds the full expression (a capturing
+  provider records a terminal's call expression without running it), runs the regular cached path and records, for
+  every parameter, where it is: a path of child indexes inside a link's lambda, or a link's count or default value.
+  Variants differ in what the shape builder also distinguishes: which nullable or reference parameters are null, and
+  which `Skip` counts are zero or less.
+- **Fast path.** Later executions read the values along the recorded paths, pick the variant's template and run the
+  execution code from links, without any expression. Cache misses inside the template (another code path, a baked
+  value) build the expression lazily for that execution.
+- **Execution code.** `RelationQuery<T>` gets its source, `Select` lambda, terminal name, lambda and default value
+  from a request built either from an expression or from links.
+
+#### Phase 8 status: done
+
+What was built, and where it differs from the design above:
+
+- **Files.** `BTDB.SourceGenerator/RelationQueryInterceptorGenerator.cs` holds the generator;
+  `BTDB/ODBLayer/RelationQueryInterception.cs` holds `RelationQueryInterception` (the public entry points `TryLink`
+  and `TryExecute`), `RelationQueryCallSite`, the links, and `RelationQueryCapture`.
+- **Generator details.** Interceptable locations come from `CSharpExtensions.GetInterceptableLocation` through
+  reflection, and the attribute is written from the location's `Version` and `Data`. `GetInterceptsLocationAttributeSyntax`
+  is an extension method, not a member, so it cannot be found on the location object. Interceptors are generic like the
+  intercepted `Queryable` methods. Their materializer and capture lambdas are static, so they allocate nothing per
+  call. `ThenBy` materializers cast the previous query to `IOrderedQueryable`.
+- **Runtime.** `RelationQuery<T>` and `RelationQueryProjected<TRow, TElement>` implement `IRelationQueryChain`: a
+  query is either expression-based or made by a link and builds its expression on demand. `Append` creates the next
+  query, or returns null for shapes relation queries do not support (for example `OrderBy` after `Select`), and then
+  the original `Queryable` method runs exactly as without interception. A link is replayable only when its chain
+  reaches the query of `Query<T>()` through links.
+- **Call sites.** A call site keeps, per relation cache, up to 16 variants (Skip mask, null mask, template, recipes).
+  A recipe is a link or terminal argument, or a path of child indexes inside its lambda, checked against the recorded
+  node types when read. An execution of the fast path builds its expression lazily (`RelationQueryExecution` with an
+  expression factory), outside of any parameter scope.
+- **Smaller fixes on the way.** `Where` with an element index throws `NotSupportedException` instead of failing while
+  converting its lambda.
+- **Tests.**
+  - Generator tests verify the interceptors of a sample with chains and with calls that must not be intercepted:
+    predicate and query variables, indexed `Where`, a non-relation source. They check the result compiles and is cached
+    on rerun, and that nothing is generated without the opt-in.
+  - `BTDBTest` opts in, so every inline chain in its tests runs intercepted. A differential test runs 25 inline chains
+    for 8 rounds against LINQ-to-Objects and checks that each call site replays.
+  - Mutation checks catch reading values without paths, ignoring null variants and losing a terminal's default value.
+  - The AOT smoke app runs intercepted chains with changing values.
+
+Results per query, each case timed in its own process (best of 10 runs of 10 000 queries after a 1.5 s warm-up), with
+expression trees of lambdas still built by the caller:
+
+| Query                                                  | Regular        | Intercepted    |
+|--------------------------------------------------------|---------------:|---------------:|
+| `Where(TenantId == missing)`, empty                    | 1.24 µs, 2.9 KB | 0.68 µs, 2.6 KB |
+| `Where(TenantId == 1 && Id == id).FirstOrDefault()`    | 2.14 µs, 3.8 KB | 0.96 µs, 3.1 KB |
+| same with captured `t`, `id + 20000`                   | 2.46 µs, 4.0 KB | 1.08 µs, 3.3 KB |
+| `Count(TenantId == t)`                                 | 1.98 µs, 2.9 KB | 0.88 µs, 2.6 KB |
+| `Where(TenantId == t && Age == a).Count()`             | 2.38 µs, 3.7 KB | 0.89 µs, 3.0 KB |
+| point query with `Select(new { Name, Age })`           | 4.45 µs, 6.6 KB | 2.97 µs, 5.5 KB |
+
+Building the lambdas' expression trees is now the largest part: about 0.4 µs for a point query's predicate and 1.8
+µs for a predicate plus an anonymous type projection.
+
 ## Out of scope for now
 
 `GroupBy`, `Join`, `Distinct` (except possibly `Distinct` over a single projected field), async enumeration, and

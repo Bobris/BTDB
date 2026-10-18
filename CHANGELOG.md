@@ -54,6 +54,11 @@
   - `Min`, `Max`, `Sum` and `Average` without a selector aggregate projected values.
 
   `Query<T>()` now returns `IOrderedQueryable<T>`. Selector calls and exceptions match LINQ-to-Objects.
+- BTDB.SourceGenerator intercepts `IRelation.Query<T>()` query chains written inline (`Where`, `Select`, ordering,
+  `Skip`, `Take` and terminal operators) when a project adds `BTDB.Interceptors` to `InterceptorsNamespaces`, with a
+  .NET 9 SDK compiler or newer. Intercepted operators skip building their expressions, and repeated executions read
+  captured values directly instead of walking the expression: a point query takes 0.96 µs instead of 2.1 µs. See
+  [Doc/SourceGenerator.md](Doc/SourceGenerator.md#relation-query-interceptors).
 - The low-level interpreter has expression opcodes (`OpCode` 163–185):
   - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
   - capturing raw field bytes, with encoded equality and `StartsWith`;
@@ -79,6 +84,7 @@
   Selective queries are now faster than enumerating the relation and filtering with LINQ.
 - The interpreter runs programs without try blocks in an instruction loop without exception bookkeeping, and no longer
   enters a try block per instruction for programs that have them.
+- `IRelation.Query<T>()` throws `NotSupportedException` for `Where` with an element index.
 - `IRelation.Query<T>()` caches compiled queries per relation by expression shape, with captured values and
   `Skip`/`Take` counts as parameters bound for each execution. The cache is bounded to 256 shapes per relation.
   Repeated queries skip expression conversion and compilation: a point query takes 2.1 µs instead of 3.3 µs and

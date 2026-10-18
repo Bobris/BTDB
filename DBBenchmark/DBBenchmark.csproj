@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>default</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <InterceptorsNamespaces>$(InterceptorsNamespaces);BTDB.Interceptors</InterceptorsNamespaces>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="..\BTDB.SourceGenerator\BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>

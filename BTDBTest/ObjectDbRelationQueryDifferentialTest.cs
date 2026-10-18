@@ -412,6 +412,128 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         Assert.Empty(failures);
     }
 
+    // The chains below are written inline, so BTDB.SourceGenerator intercepts them; LINQ-to-Objects runs the same
+    // operators over the rows.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void InterceptedCallSitesMatchLinq(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+        var sharedAges = new List<int>();
+        var replays = new Dictionary<string, int>();
+        for (var round = 0; round < 8; round++)
+        {
+            using var tr = _db.StartReadOnlyTransaction();
+            var table = tr.GetRelation<IDiffRowTable>();
+            var cache = ((IRelationDbManipulator)table).RelationInfo.QueryCache;
+            var rows = table.ToList();
+            var t = (ulong)random.Next(5);
+            var lo = (ulong)random.Next(4);
+            var hi = lo + (ulong)random.Next(3);
+            var b = (ulong)random.Next(4);
+            var code = random.Next(3) == 0 ? "missing" : $"c{random.Next(RowCount):D3}";
+            var age = 19 + random.Next(12);
+            var ageTo = age + random.Next(4);
+            var price = random.Next(-5, 6) * 1.25m;
+            var kind = (DiffKind)random.Next(4);
+            int? bonus = random.Next(3) == 0 ? null : random.Next(-2, 3);
+            var name = Names[random.Next(Names.Length)];
+            var prefix = random.Next(2) == 0 ? "c0" : "ž";
+            var skip = random.Next(-1, 15);
+            var take = random.Next(10);
+            var add = random.Next(100);
+            var factor = (long)random.Next(1, 4);
+            var fallback = rows[random.Next(rows.Count)];
+            sharedAges.Clear();
+            for (var i = random.Next(4); i > 0; i--) sharedAges.Add(20 + random.Next(10));
+
+            void Check(string caseName, Func<object?> expected, Func<object?> actual)
+            {
+                var expectedText = Format(expected);
+                var before = cache.Replays;
+                var actualText = Format(actual);
+                replays[caseName] = replays.GetValueOrDefault(caseName) + (cache.Replays > before ? 1 : 0);
+                Assert.True(expectedText == actualText,
+                    $"Seed {seed}, round {round}, {caseName}:\nexpected {expectedText}\nactual {actualText}");
+            }
+
+            Check("tenant", () => rows.Where(p => p.Tenant == t).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t).ToList());
+            Check("tenant and code", () => rows.Where(p => p.Tenant == t && p.Code == code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t && p.Code == code).ToList());
+            Check("tenant range", () => rows.Where(p => p.Tenant > lo && p.Tenant <= hi).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant > lo && p.Tenant <= hi).Select(p => p.Code).ToList());
+            Check("tenant or", () => rows.Where(p => p.Tenant == t || p.Tenant == b).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t || p.Tenant == b).Select(p => p.Code).ToList());
+            Check("captured arithmetic", () => rows.Count(p => p.Tenant == lo + 1),
+                () => table.Query<DiffRow>().Count(p => p.Tenant == lo + 1));
+            Check("age index", () => rows.Where(p => p.Age == age).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Age == age).ToList());
+            Check("age bounds", () => rows.Where(p => p.Age >= age && p.Age < ageTo).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Age >= age && p.Age < ageTo).Select(p => p.Code).ToList());
+            Check("price", () => rows.Count(p => p.Price > price), () => table.Query<DiffRow>().Count(p => p.Price > price));
+            Check("kind", () => rows.Where(p => p.Kind == kind).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Kind == kind).Select(p => p.Code).ToList());
+            Check("bonus", () => rows.Where(p => p.Bonus == bonus).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Bonus == bonus).Select(p => p.Code).ToList());
+            Check("name", () => rows.Where(p => p.Name == name).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Name == name).Select(p => p.Code).ToList());
+            Check("starts with",
+                () => rows.Count(p => p.Code != null && p.Code.StartsWith(prefix, StringComparison.Ordinal)),
+                () => table.Query<DiffRow>()
+                    .Count(p => p.Code != null && p.Code.StartsWith(prefix, StringComparison.Ordinal)));
+            Check("mutated list", () => rows.Where(p => sharedAges.Contains(p.Age)).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => sharedAges.Contains(p.Age)).Select(p => p.Code).ToList());
+            Check("page",
+                () => rows.OrderBy(p => p.Age).ThenBy(p => p.Score).Skip(skip).Take(take).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().OrderBy(p => p.Age).ThenBy(p => p.Score).Skip(skip).Take(take)
+                    .Select(p => p.Code).ToList());
+            Check("key page", () => rows.Where(p => p.Tenant == t).Skip(skip).Take(5).Select(p => p.Code).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t).Skip(skip).Take(5).Select(p => p.Code).ToList());
+            Check("selected value", () => rows.Where(p => p.Tenant == 2).Select(p => p.Age + add).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == 2).Select(p => p.Age + add).ToList());
+            Check("anonymous", () => rows.Where(p => p.Tenant == t).Select(p => new { p.Code, X = p.Score * factor }).ToList(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t).Select(p => new { p.Code, X = p.Score * factor })
+                    .ToList());
+            Check("projected page", () => rows.Select(p => p.Age + add).Skip(skip).Take(take).ToList(),
+                () => table.Query<DiffRow>().Select(p => p.Age + add).Skip(skip).Take(take).ToList());
+            Check("sum", () => rows.Sum(p => p.Age * factor), () => table.Query<DiffRow>().Sum(p => p.Age * factor));
+            Check("first or default", () => rows.Where(p => p.Age == age).OrderBy(p => p.Score).FirstOrDefault(),
+                () => table.Query<DiffRow>().Where(p => p.Age == age).OrderBy(p => p.Score).FirstOrDefault());
+            Check("default value", () => rows.FirstOrDefault(p => p.Age == age && p.Tenant == t, fallback),
+                () => table.Query<DiffRow>().FirstOrDefault(p => p.Age == age && p.Tenant == t, fallback));
+            Check("any and all", () => $"{rows.Any(p => p.Age == age)}/{rows.All(p => p.Age < ageTo)}",
+                () => $"{table.Query<DiffRow>().Any(p => p.Age == age)}/{table.Query<DiffRow>().All(p => p.Age < ageTo)}");
+            Check("single", () => rows.Single(p => p.Tenant == t && p.Code == code),
+                () => table.Query<DiffRow>().Single(p => p.Tenant == t && p.Code == code));
+            Check("max of projection", () => rows.Where(p => p.Tenant == t).Select(p => p.Score + add).DefaultIfEmpty().Max(),
+                () => table.Query<DiffRow>().Where(p => p.Tenant == t).Select(p => p.Score + add).AsEnumerable()
+                    .DefaultIfEmpty().Max());
+        }
+
+        using var lastTr = _db.StartReadOnlyTransaction();
+        var query = lastTr.GetRelation<IDiffRowTable>().Query<DiffRow>().Where(p => p.Age > 1);
+        Assert.NotNull(((IRelationQueryChain)query).Link);
+        // Every call site reads its values without building the expression once its variants are known.
+        foreach (var (caseName, count) in replays) Assert.True(count >= 4, $"{caseName} replayed {count} times");
+    }
+
+    [Fact]
+    public void InterceptedChainsWhichRelationQueriesDoNotSupportFailLikeRegularOnes()
+    {
+        FillRows(new(6));
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        // A query in a variable is not intercepted, so it shows how regular Queryable calls fail.
+        var regular = table.Query<DiffRow>();
+        // OrderBy after Select is not a link, so Queryable builds it, exactly as without interception.
+        Assert.Equal(Record.Exception(() => regular.Select(p => p.Code).OrderBy(c => c).Take(3).ToList())?.GetType(),
+            Record.Exception(() => table.Query<DiffRow>().Select(p => p.Code).OrderBy(c => c).Take(3).ToList())
+                ?.GetType());
+        Assert.Throws<NotSupportedException>(() => table.Query<DiffRow>().Where((p, i) => i > 1).Count());
+    }
+
     [Fact]
     public void QueryCacheIsBounded()
     {

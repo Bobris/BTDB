@@ -256,13 +256,17 @@ sealed class ThrowQueryNode : QueryNode
     public QueryException Exception { get; }
 }
 
-class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
+class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider, IRelationQueryChain where T : class
 {
     readonly IInternalObjectDBTransaction _transaction;
     readonly RelationInfo _relationInfo;
     readonly RelationInfo.ItemLoaderInfo _loaderInfo;
-    readonly Expression _expression;
+    Expression? _expression;
     readonly QueryByIdQueryNode _queryNode;
+
+    // Set for a query made by an intercepted operator: its expression is built only when asked for.
+    readonly RelationQueryLink? _link;
+    readonly RelationQuery<T>? _root;
 
     public RelationQuery(IInternalObjectDBTransaction transaction, RelationInfo relationInfo,
         RelationInfo.ItemLoaderInfo loaderInfo)
@@ -283,10 +287,45 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         _expression = expression;
     }
 
+    RelationQuery(RelationQuery<T> root, RelationQueryLink link)
+    {
+        _transaction = root._transaction;
+        _relationInfo = root._relationInfo;
+        _loaderInfo = root._loaderInfo;
+        _queryNode = root._queryNode;
+        _link = link;
+        _root = root;
+    }
+
+    internal RelationInfo RelationInfo => _relationInfo;
+
+    RelationQueryLink? IRelationQueryChain.Link => _link;
+
+    public bool IsRoot => _link == null && _expression is ConstantExpression;
+
+    TQueryable? IRelationQueryChain.Append<TElement, TQueryable>(RelationQueryLink link) where TQueryable : class
+    {
+        var root = _root ?? this;
+        object result = typeof(TElement) == typeof(T)
+            ? new RelationQuery<T>(root, link)
+            : new RelationQueryProjected<T, TElement>(root, link);
+        return result as TQueryable;
+    }
+
+    object? IRelationQueryChain.ExecuteIntercepted(RelationQueryCallSite site, object? argument1, object? argument2,
+        Func<Expression> terminalExpression) =>
+        RelationQueryInterception.Execute(_root ?? this, _link, site, argument1, argument2, terminalExpression,
+            _link != null || IsRoot);
+
     public IEnumerator<T> GetEnumerator()
     {
-        var execution = Start(_expression);
-        var source = Source(execution, _expression);
+        if (_link != null) return RelationQueryInterception.Enumerate(_root!, _link, this);
+        return Enumerate(Start(_expression!), RelationQueryRequest.ForSource(_expression!));
+    }
+
+    internal IEnumerator<T> Enumerate(RelationQueryExecution execution, RelationQueryRequest request)
+    {
+        var source = Source(execution, request);
         if (source.HasOrdering || source.HasPaging) return CreateWindow(execution, source, null);
         return new RelationQueryEnumerator<T>(_transaction, _loaderInfo, CompilePlan(execution, source.Filter),
             execution.Values);
@@ -295,19 +334,19 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
     // Conversions and plans of an execution are memoized in the template of its expression shape, per relation.
     RelationQueryExecution Start(Expression expression) => _relationInfo.QueryCache.Start(expression);
 
-    RelationQuerySource Source(RelationQueryExecution execution, Expression expression)
+    RelationQuerySource Source(RelationQueryExecution execution, RelationQueryRequest request)
     {
         var source = execution.Memo("source", () =>
         {
-            // The Select lambda is taken from each execution's expression instead, so the cache neither converts the
+            // The Select lambda is taken from each execution's request instead, so the cache neither converts the
             // captured values of an earlier execution nor keeps them alive.
-            var built = RelationQueryAstBuilder.BuildSource(expression, _queryNode);
+            var built = RelationQueryAstBuilder.BuildSource(request.Source, _queryNode);
             built.HasProjection = built.Projection != null;
             built.Projection = null;
             return built;
         });
         var bound = source.Bind(execution.Values);
-        if (source.HasProjection) bound.Projection = RelationQueryAstBuilder.FindProjection(expression);
+        if (source.HasProjection) bound.Projection = request.Projection;
         return bound;
     }
 
@@ -397,8 +436,8 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
     }
 
     public Type ElementType => typeof(T);
-    public Expression Expression => _expression;
-    public IQueryProvider Provider => this;
+    public Expression Expression => _expression ??= _link!.Materialize();
+    public IQueryProvider Provider => _root ?? this;
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -413,11 +452,14 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         return new RelationQueryProjected<T, TElement>(this, expression);
     }
 
-    internal IEnumerator<TElement> EnumerateProjected<TElement>(Expression expression)
+    internal IEnumerator<TElement> EnumerateProjected<TElement>(Expression expression) =>
+        EnumerateProjected<TElement>(Start(expression), RelationQueryRequest.ForSource(expression));
+
+    internal IEnumerator<TElement> EnumerateProjected<TElement>(RelationQueryExecution execution,
+        RelationQueryRequest request)
     {
-        var execution = Start(expression);
-        var source = Source(execution, expression);
-        if (source.Projection == null) return (IEnumerator<TElement>)(object)GetEnumerator();
+        var source = Source(execution, request);
+        if (source.Projection == null) return (IEnumerator<TElement>)(object)Enumerate(execution, request);
         var projection = Projection(execution, source.Projection);
         return new RelationQueryProjectedEnumerator<T, TElement>(
             CreateWindow(execution, source, null, false, projection), projection);
@@ -434,14 +476,17 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
     {
         if (expression is not MethodCallExpression call || call.Method.DeclaringType != typeof(Queryable))
             throw new NotSupportedException("Relation query supports only Queryable operators.");
-        var arguments = call.Arguments;
-        var execution = Start(call);
-        var querySource = Source(execution, arguments[0]);
-        var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
-        var name = call.Method.Name;
-        if (querySource.Projection != null) return ExecuteProjected(execution, name, call, querySource, lambda);
+        return Execute(Start(call), RelationQueryRequest.ForTerminal(call));
+    }
+
+    internal object? Execute(RelationQueryExecution execution, RelationQueryRequest request)
+    {
+        var querySource = Source(execution, request);
+        var lambda = request.Lambda;
+        var name = request.Name;
+        if (querySource.Projection != null) return ExecuteProjected(execution, request, querySource);
         if (querySource.HasOrdering || querySource.HasPaging)
-            return ExecuteWindowed(execution, name, call, querySource, lambda);
+            return ExecuteWindowed(execution, request, querySource);
         var source = querySource.Filter;
         switch (name)
         {
@@ -475,7 +520,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.SingleOrDefault):
             case nameof(Queryable.Last):
             case nameof(Queryable.LastOrDefault):
-                return ExecuteElement(execution, name, call, source, lambda);
+                return ExecuteElement(execution, request, source);
             case nameof(Queryable.Min):
             case nameof(Queryable.Max):
             case nameof(Queryable.Sum):
@@ -489,9 +534,11 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
     }
 
     // Terminal operators after OrderBy, Skip or Take.
-    object? ExecuteWindowed(RelationQueryExecution execution, string name, MethodCallExpression call,
-        RelationQuerySource source, LambdaExpression? lambda)
+    object? ExecuteWindowed(RelationQueryExecution execution, RelationQueryRequest request,
+        RelationQuerySource source)
     {
+        var name = request.Name;
+        var lambda = request.Lambda;
         var isAggregate = name is nameof(Queryable.Min) or nameof(Queryable.Max) or nameof(Queryable.Sum)
             or nameof(Queryable.Average);
         if (lambda != null && !isAggregate)
@@ -532,9 +579,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             {
                 var hasPredicate = lambda != null;
                 var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
-                var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
-                    ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
-                    : null;
+                var defaultValue = orDefault ? request.DefaultValue : null;
                 using var window = CreateWindow(execution, source, null);
                 if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(hasPredicate);
                 if (name.StartsWith("Last", StringComparison.Ordinal))
@@ -587,9 +632,11 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
     }
 
     // Terminal operators after Select. Select values cannot throw, so counting ignores them.
-    object? ExecuteProjected(RelationQueryExecution execution, string name, MethodCallExpression call,
-        RelationQuerySource source, LambdaExpression? lambda)
+    object? ExecuteProjected(RelationQueryExecution execution, RelationQueryRequest request,
+        RelationQuerySource source)
     {
+        var name = request.Name;
+        var lambda = request.Lambda;
         if (lambda != null)
             throw new NotSupportedException($"Relation query does not support Queryable.{name} with a lambda after Select.");
         var projection = Projection(execution, source.Projection!);
@@ -635,9 +682,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             {
                 var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
                 // A null default of a value type becomes default(TResult) in Execute<TResult>.
-                var defaultValue = orDefault && call.Arguments.Count > 1
-                    ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
-                    : null;
+                var defaultValue = orDefault ? request.DefaultValue : null;
                 if (name.StartsWith("Last", StringComparison.Ordinal) && !source.HasOrdering && !source.HasPaging)
                 {
                     // LINQ's Where and Select over a list search for the last element backwards, like Last.
@@ -704,17 +749,16 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         return count;
     }
 
-    object? ExecuteElement(RelationQueryExecution execution, string name, MethodCallExpression call, QueryNode source,
-        LambdaExpression? lambda)
+    object? ExecuteElement(RelationQueryExecution execution, RelationQueryRequest request, QueryNode source)
     {
+        var name = request.Name;
+        var lambda = request.Lambda;
         var hasPredicate = lambda != null;
         var sourceHasWhere = source is WhereQueryNode;
         if (hasPredicate) source = Where(execution, source, lambda!);
         var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
         // FirstOrDefault(source, defaultValue) and FirstOrDefault(source, predicate, defaultValue).
-        var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
-            ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
-            : null;
+        var defaultValue = orDefault ? request.DefaultValue : null;
         using var scanner = CreateScanner(execution, source, null);
         if (name.StartsWith("Last", StringComparison.Ordinal))
         {
@@ -838,6 +882,52 @@ sealed class RelationQuerySource
     }
 }
 
+/// What executing a query needs from its expression, which an intercepted call site provides without building it: the
+/// source, its Select lambda, and the name, lambda and default value of a terminal operator.
+sealed class RelationQueryRequest
+{
+    readonly Func<Expression>? _sourceFactory;
+    Expression? _source;
+
+    RelationQueryRequest(Expression? source, Func<Expression>? sourceFactory)
+    {
+        _source = source;
+        _sourceFactory = sourceFactory;
+    }
+
+    /// The source expression, built for intercepted call sites only when a conversion is not cached.
+    public Expression Source => _source ??= _sourceFactory!();
+
+    public LambdaExpression? Projection { get; private init; }
+    public string Name { get; private init; } = "";
+    public LambdaExpression? Lambda { get; private init; }
+    public object? DefaultValue { get; private init; }
+
+    public static RelationQueryRequest ForSource(Expression source) =>
+        new(source, null) { Projection = RelationQueryAstBuilder.FindProjection(source) };
+
+    public static RelationQueryRequest ForTerminal(MethodCallExpression call)
+    {
+        var arguments = call.Arguments;
+        var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
+        // FirstOrDefault(source, defaultValue) and FirstOrDefault(source, predicate, defaultValue).
+        var hasDefault = arguments.Count > (lambda != null ? 2 : 1);
+        return new(arguments[0], null)
+        {
+            Projection = RelationQueryAstBuilder.FindProjection(arguments[0]), Name = call.Method.Name,
+            Lambda = lambda,
+            DefaultValue = hasDefault ? RelationQueryAstBuilder.EvaluateConstant(arguments[^1]) : null
+        };
+    }
+
+    public static RelationQueryRequest ForLinks(Func<Expression> source, LambdaExpression? projection) =>
+        new(null, source) { Projection = projection };
+
+    public static RelationQueryRequest ForLinks(Func<Expression> source, LambdaExpression? projection, string name,
+        LambdaExpression? lambda, object? defaultValue) =>
+        new(null, source) { Projection = projection, Name = name, Lambda = lambda, DefaultValue = defaultValue };
+}
+
 static class RelationQueryAstBuilder
 {
     /// Builds a source made only of Where calls.
@@ -868,6 +958,8 @@ static class RelationQueryAstBuilder
                 return source;
             }
             case nameof(Queryable.Where):
+                if (StripQuote(call.Arguments[1]) is not LambdaExpression { Parameters.Count: 1 })
+                    throw new NotSupportedException("Relation query does not support Where with an element index.");
                 if (source.HasOrdering || source.Paging.Count > 0 || source.Projection != null)
                     throw new NotSupportedException("Relation query supports Where only before OrderBy, Select, Skip and Take.");
                 source.Filter = new WhereQueryNode(source.Filter,
@@ -4722,21 +4814,46 @@ sealed class RelationQueryWindow<T> : IEnumerator<T>, IEnumerable<T> where T : c
 }
 
 /// Queryable after Select: element type differs from the row type, the root query provides everything.
-sealed class RelationQueryProjected<TRow, TElement> : IQueryable<TElement> where TRow : class
+sealed class RelationQueryProjected<TRow, TElement> : IQueryable<TElement>, IRelationQueryChain where TRow : class
 {
     readonly RelationQuery<TRow> _root;
+    Expression? _expression;
+    readonly RelationQueryLink? _link;
 
     public RelationQueryProjected(RelationQuery<TRow> root, Expression expression)
     {
         _root = root;
-        Expression = expression;
+        _expression = expression;
+    }
+
+    public RelationQueryProjected(RelationQuery<TRow> root, RelationQueryLink link)
+    {
+        _root = root;
+        _link = link;
     }
 
     public Type ElementType => typeof(TElement);
-    public Expression Expression { get; }
+    public Expression Expression => _expression ??= _link!.Materialize();
     public IQueryProvider Provider => _root;
-    public IEnumerator<TElement> GetEnumerator() => _root.EnumerateProjected<TElement>(Expression);
+
+    public IEnumerator<TElement> GetEnumerator() => _link != null
+        ? RelationQueryInterception.EnumerateProjected<TRow, TElement>(_root, _link, this)
+        : _root.EnumerateProjected<TElement>(Expression);
+
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    RelationQueryLink? IRelationQueryChain.Link => _link;
+
+    public bool IsRoot => false;
+
+    // After Select only paging keeps the element type; anything else is left to Queryable.
+    TQueryable? IRelationQueryChain.Append<TElementOut, TQueryable>(RelationQueryLink link) where TQueryable : class =>
+        typeof(TElementOut) == typeof(TElement) ? new RelationQueryProjected<TRow, TElement>(_root, link) as TQueryable : null;
+
+    object? IRelationQueryChain.ExecuteIntercepted(RelationQueryCallSite site, object? argument1, object? argument2,
+        Func<Expression> terminalExpression) =>
+        RelationQueryInterception.Execute(_root, _link, site, argument1, argument2, terminalExpression,
+            _link != null);
 }
 
 sealed class RelationQueryProjectedEnumerator<TRow, TElement> : IEnumerator<TElement> where TRow : class
