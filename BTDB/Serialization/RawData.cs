@@ -249,13 +249,8 @@ public sealed class RawData
 
         // from type make Array<type> because it has always ComponentSize
         var size = MethodTableOf(type.MakeArrayType()).ComponentSize;
-        var alignment = size;
-        if (alignment > 16) alignment = 16;
-        if (size == 16 && MethodTableOf(type).ContainsGCPointers)
-        {
-            alignment = 8;
-        }
-
+        // Nullable<T> stores its value right after HasValue at the alignment of T, and its size is a multiple of it
+        var alignment = (uint)(MethodTableOf(typeof(Nullable<>).MakeGenericType(type).MakeArrayType()).ComponentSize - size);
         return (size, alignment);
     }
 

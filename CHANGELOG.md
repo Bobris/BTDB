@@ -159,6 +159,10 @@
     `Utf16Utf8Dictionary` threw on lookup and `ByteStructs.Key32` read its last field from a wrong offset;
   - `FastBehaviourSubject.Subscribe` could deliver the current value twice when the observer re-entered the subject;
   - Snappy decompression of literals with a 4-byte length and compression of empty input were broken.
+- `RawData.GetSizeAndAlign` guessed the alignment of structs from their size, so `DateTimeOffset?` fields of relations,
+  objects and events (and nullables, value tuples and key value pairs of other structs whose size is not their
+  alignment) were saved and loaded at a wrong offset: they could not be read back, typically failing with "Offset must
+  be within plus or minus 14 hours". Values of such fields saved by earlier versions are not readable.
 - IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
   constructor in a dynamic type threw `MethodAccessException`.
 
