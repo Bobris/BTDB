@@ -98,6 +98,18 @@
 ### Fixed
 
 - Fix `LsmKeyValueDB.CompactorReadBytesPerSecondLimit` being ignored; it now paces the reads of compaction inputs.
+- Source generator:
+  - incremental generation compared only kind and name of a type, so edits (new properties, relation methods, moved
+    errors) kept stale generated code in IDEs or crashed the generator; `EquatableArray.Equals(object)` overflowed
+    the stack;
+  - `decimal` primary keys and `UpdateById` values, and `IList<string>` / `IList<ulong>` key parameters threw
+    `NotSupportedException` at runtime;
+  - `FindBy` returning `ICollection<T>` or `IReadOnlyCollection<T>` threw `InvalidCastException`;
+  - relation methods re-declared with `new` (e.g. `RemoveAll`, `UpsertRange`) threw `NotImplementedException`;
+  - a read-only property whose getter returns a backing field was treated as stored, so the relation failed to open;
+  - `IOrderedDictionaryEnumerator` type arguments lost `global::` and failed to compile in namespaces like
+    `Collections.Model`;
+  - non-public `[OnSerialize]` / `[OnBeforeRemove]` methods in generic classes generated code that did not compile.
 
 ## 35.12.0
 

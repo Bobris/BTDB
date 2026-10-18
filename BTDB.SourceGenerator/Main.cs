@@ -1891,7 +1891,9 @@ public class SourceGenerator : IIncrementalGenerator
                         backingName = getterName == null || setterName == null
                             ? $"<{p.Name}>k__BackingField"
                             : null;
-                        if (getterName != null && backingName == null)
+                        // Getter of computed (read-only) property must stay a getter even when it just returns a field,
+                        // because metadata without ByteOffset and setter is what marks the field as computed.
+                        if (getterName != null && backingName == null && !isReadOnly)
                         {
                             backingName = ExtractPropertyFromGetter(implementationProperty.GetMethod!.DeclaringSyntaxReferences, model);
                             if (backingName != null) getterName = null;
@@ -3712,7 +3714,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($"""
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                        extern static void OnSerialize{methodIndex}({nameWithGeneric} @this);
+                                        extern public static void OnSerialize{methodIndex}({nameWithGeneric} @this);
 
                                 """);
                         }
@@ -3818,7 +3820,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($"""
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                        extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+                                        extern public static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
                         }
@@ -4390,15 +4392,20 @@ public class SourceGenerator : IIncrementalGenerator
 
                 if (isPrefixBased)
                 {
+                    // FindByPrimaryKeyPrefix and FindBySecondaryKey enumerators implement only IEnumerable<T>,
+                    // collection return types need enumerators which implement also ICollection<T>.
+                    var returnsCollection = !IsIEnumerableType(method.ResultType);
                     if (indexName == "Id")
                     {
-                        declarations.Append(
-                            $"            return ({method.ResultType})base.FindByPrimaryKeyPrefix<{itemType}>(writer.GetSpan(), {loaderIndex});\n");
+                        declarations.Append(returnsCollection
+                            ? $"            return new global::BTDB.ODBLayer.RelationAdvancedEnumerator<{itemType}>(this, writer.GetSpan(), {loaderIndex});\n"
+                            : $"            return ({method.ResultType})base.FindByPrimaryKeyPrefix<{itemType}>(writer.GetSpan(), {loaderIndex});\n");
                     }
                     else
                     {
-                        declarations.Append(
-                            $"            return ({method.ResultType})base.FindBySecondaryKey<{itemType}>(remappedSecondaryKeyIndex, writer.GetSpan(), {loaderIndex});\n");
+                        declarations.Append(returnsCollection
+                            ? $"            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<{itemType}>(this, writer.GetSpan(), remappedSecondaryKeyIndex, {loaderIndex});\n"
+                            : $"            return ({method.ResultType})base.FindBySecondaryKey<{itemType}>(remappedSecondaryKeyIndex, writer.GetSpan(), {loaderIndex});\n");
                     }
                 }
                 else
@@ -4878,7 +4885,9 @@ public class SourceGenerator : IIncrementalGenerator
             }
             else
             {
-                declarations.Append("            throw new NotImplementedException();\n");
+                // Remaining methods passed validation by matching public method of RelationDBManipulator<T>.
+                declarations.Append(
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
             }
 
             // language=C#
@@ -5099,6 +5108,15 @@ public class SourceGenerator : IIncrementalGenerator
                normalized.StartsWith("System.Collections.Generic.IReadOnlyCollection<", StringComparison.Ordinal);
     }
 
+    static bool IsIEnumerableType(string? type)
+    {
+        if (type is null) return false;
+        var normalized = type.StartsWith("global::", StringComparison.Ordinal)
+            ? type.Substring("global::".Length)
+            : type;
+        return normalized.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
+    }
+
     static bool IsRemoveByCountReturnType(string? resultType)
     {
         if (resultType is null) return false;
@@ -5304,6 +5322,7 @@ public class SourceGenerator : IIncrementalGenerator
             case "System.Guid":
                 declarations.Append($"{indent}writer.WriteGuid({valueExpression});\n");
                 return;
+            case "decimal":
             case "System.Decimal":
                 declarations.Append($"{indent}writer.WriteDecimal({valueExpression});\n");
                 return;
@@ -5435,6 +5454,7 @@ public class SourceGenerator : IIncrementalGenerator
             case "System.Guid":
                 declarations.Append($"{indent}writer.WriteGuid({valueExpression});\n");
                 return;
+            case "decimal":
             case "System.Decimal":
                 declarations.Append($"{indent}writer.WriteDecimal({valueExpression});\n");
                 return;
@@ -5442,10 +5462,12 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"{indent}writer.WriteIPAddress({valueExpression});\n");
                 return;
             case "System.Collections.Generic.List<string>":
+            case "System.Collections.Generic.IList<string>":
                 declarations.Append(
                     $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var item in {valueExpression}) writer.WriteString(item); }}\n");
                 return;
             case "System.Collections.Generic.List<ulong>":
+            case "System.Collections.Generic.IList<ulong>":
                 declarations.Append(
                     $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var item in {valueExpression}) writer.WriteVUInt64(item); }}\n");
                 return;
@@ -5740,14 +5762,16 @@ public class SourceGenerator : IIncrementalGenerator
             return false;
         }
 
-        var start = normalized.IndexOf('<');
-        var end = normalized.LastIndexOf('>');
+        // Type arguments keep their global:: prefix, because they are emitted into generated code which lives in
+        // BTDB.GeneratedRelations namespace where not fully qualified names could bind to BTDB namespaces.
+        var start = type!.IndexOf('<');
+        var end = type!.LastIndexOf('>');
         if (start < 0 || end <= start)
         {
             return false;
         }
 
-        var args = normalized.Substring(start + 1, end - start - 1);
+        var args = type!.Substring(start + 1, end - start - 1);
         var split = SplitArguments(args);
         if (split.Length != 2)
         {
@@ -5829,10 +5853,28 @@ record GenerationInfo(
     {
         if (ReferenceEquals(this, other)) return true;
         if (other is null) return false;
+        // All members must be compared, otherwise incremental pipeline treats edited types (new fields, methods,
+        // moved error locations) as unchanged and keeps stale generated code.
         return GenType == other.GenType &&
                Namespace == other.Namespace &&
                Name == other.Name &&
-               FullName == other.FullName;
+               FullName == other.FullName &&
+               PersistedName == other.PersistedName &&
+               IsPartial == other.IsPartial &&
+               PrivateConstructor == other.PrivateConstructor &&
+               HasDefaultConstructor == other.HasDefaultConstructor &&
+               IsRelationItem == other.IsRelationItem &&
+               Equals(ConstructorParameters, other.ConstructorParameters) &&
+               Properties.Equals(other.Properties) &&
+               ParentDeclarations.Equals(other.ParentDeclarations) &&
+               Dispatchers.Equals(other.Dispatchers) &&
+               Fields.Equals(other.Fields) &&
+               Methods.Equals(other.Methods) &&
+               Implements.Equals(other.Implements) &&
+               CollectionInfos.Equals(other.CollectionInfos) &&
+               GenericParameters.Equals(other.GenericParameters) &&
+               Nested.Equals(other.Nested) &&
+               Equals(Location, other.Location);
     }
 
     public override int GetHashCode()

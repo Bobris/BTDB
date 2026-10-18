@@ -99,7 +99,12 @@ public class GeneratorTestsBase
 
     protected static IReadOnlyList<GeneratedSourceResult> GetInterceptorSources(string sourceCode, bool optIn)
     {
-        var parseOptions = InterceptorParseOptions(optIn);
+        return GetInterceptorSources(sourceCode, InterceptorParseOptions(optIn));
+    }
+
+    protected static IReadOnlyList<GeneratedSourceResult> GetInterceptorSources(string sourceCode,
+        CSharpParseOptions parseOptions)
+    {
         var driver = CSharpGeneratorDriver.Create([new RelationQueryInterceptorGenerator().AsSourceGenerator()],
             parseOptions: parseOptions);
         var compilation = CSharpCompilation.Create("test",
@@ -145,6 +150,70 @@ public class GeneratorTestsBase
             .Results
             .SelectMany(result => result.GeneratedSources)
             .ToArray();
+    }
+
+    protected static CSharpCompilation CreateCompilation(string sourceCode, bool includeBtdbReference = true)
+    {
+        var references = GetMetadataReferences();
+        if (!includeBtdbReference)
+        {
+            references = references.Where(reference =>
+                !Path.GetFileName(reference.Display ?? "").StartsWith("BTDB", StringComparison.Ordinal) &&
+                !Path.GetFileName(reference.Display ?? "").StartsWith("Sample3rdPartyLib", StringComparison.Ordinal));
+        }
+
+        return CSharpCompilation.Create("test",
+            [CSharpSyntaxTree.ParseText(sourceCode)],
+            references,
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+    }
+
+    /// Returns diagnostics reported by the generator itself (not compilation diagnostics of the generated code).
+    protected static Diagnostic[] GetGeneratorDiagnostics(string sourceCode, bool includeBtdbReference = true)
+    {
+        var driver = CSharpGeneratorDriver.Create([new SourceGenerator().AsSourceGenerator()]);
+        return driver.RunGenerators(CreateCompilation(sourceCode, includeBtdbReference)).GetRunResult().Diagnostics
+            .ToArray();
+    }
+
+    /// Asserts that the generator reports exactly one diagnostic with the given id and returns it.
+    protected static Diagnostic AssertSingleGeneratorDiagnostic(string sourceCode, string expectedId)
+    {
+        var diagnostics = GetGeneratorDiagnostics(sourceCode);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(expectedId, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        return diagnostic;
+    }
+
+    /// Runs the generator, asserts it reports no diagnostics, that the generated code compiles without errors and
+    /// that rerunning the generator is fully cached. Returns generated sources by hint name.
+    protected static IReadOnlyDictionary<string, string> GenerateAndCompile(string sourceCode)
+    {
+        var driver = CSharpGeneratorDriver.Create([new SourceGenerator().AsSourceGenerator()],
+            driverOptions: new GeneratorDriverOptions(default, trackIncrementalGeneratorSteps: true));
+        var compilation = CreateCompilation(sourceCode);
+        var runResult = driver.RunGeneratorsAndUpdateCompilation(compilation, out var generatedCompilation,
+            out var generatorDiagnostics);
+        Assert.Empty(generatorDiagnostics);
+        var compilationErrors = generatedCompilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Empty(compilationErrors);
+        compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy"));
+        var result = runResult.RunGenerators(compilation).GetRunResult().Results.Single();
+        foreach (var output in result.TrackedOutputSteps.SelectMany(step => step.Value).SelectMany(o => o.Outputs))
+            Assert.Equal(IncrementalStepRunReason.Cached, output.Reason);
+        return runResult.GetRunResult().Results.SelectMany(r => r.GeneratedSources)
+            .ToDictionary(s => s.HintName, s => s.SourceText.ToString());
+    }
+
+    /// Returns generated source with the given hint name, failing with list of generated hint names when missing.
+    protected static string GetSource(IReadOnlyDictionary<string, string> sources, string hintName)
+    {
+        Assert.True(sources.TryGetValue(hintName, out var source),
+            $"Missing {hintName}, generated: {string.Join(", ", sources.Keys)}");
+        return source!;
     }
 
     private static IEnumerable<MetadataReference> GetMetadataReferences()
