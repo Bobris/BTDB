@@ -319,7 +319,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                             Loader = handlerLoad,
                             Setter = propRefSetter,
                             Ctx = ctx,
-                            Reader = reader
+                            Reader = ref reader
                         };
 
                         stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
@@ -439,7 +439,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                             Saver = saver,
                             Getter = propRefGetter,
                             Ctx = ctx,
-                            Writer = writer
+                            Writer = ref writer
                         };
 
                         stackAllocator(ref Unsafe.As<FieldSaverCtx, byte>(ref fieldSaverCtx),
@@ -771,12 +771,17 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                 var idx = descriptor.FindFieldIndex(binder.Name);
-                return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
-                        typeof(DynamicObject).GetMethod(nameof(SetFieldByIdx))!,
-                        Expression.Constant(idx),
-                        Expression.Constant(binder.Name),
-                        Expression.Constant(descriptor),
-                        Expression.Convert(value.Expression, typeof(object))),
+                // C# binder expects value of assignment expression as result
+                var valueVariable = Expression.Variable(typeof(object), "value");
+                return new DynamicMetaObject(Expression.Block(new[] { valueVariable },
+                        Expression.Assign(valueVariable, Expression.Convert(value.Expression, typeof(object))),
+                        Expression.Call(Expression.Convert(Expression, LimitType),
+                            typeof(DynamicObject).GetMethod(nameof(SetFieldByIdx))!,
+                            Expression.Constant(idx),
+                            Expression.Constant(binder.Name),
+                            Expression.Constant(descriptor),
+                            valueVariable),
+                        valueVariable),
                     BindingRestrictions.GetTypeRestriction(Expression, LimitType));
             }
 

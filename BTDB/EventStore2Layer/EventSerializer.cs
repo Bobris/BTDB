@@ -186,7 +186,14 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                     ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
                         "GatherAllObjectsForTypeExtraction_" + descriptor.Name + "_For_" + type.ToSimpleName());
                 var il = method.Generator;
-                gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
+                gen.GenerateTypeIterator(il, ilgen =>
+                {
+                    ilgen.Ldarg(0);
+                    if (type.IsValueType)
+                    {
+                        ilgen.UnboxAny(type);
+                    }
+                }, ilgen => ilgen.Ldarg(1), type);
                 il.Ret();
                 res = method.Create();
             }
@@ -702,10 +709,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             }
             else if (info.Id > 0)
             {
-                if (typeDescriptor.Key is Type)
-                {
-                    _typeOrDescriptor2Info[typeDescriptor.Key] = _id2Info[info.Id];
-                }
+                // Remember both CLR types and foreign descriptors of IKnowDescriptor objects
+                // (otherwise StoreObject would not find them and serialization fails)
+                _typeOrDescriptor2Info[typeDescriptor.Key] = _id2Info[info.Id];
             }
         }
 

@@ -118,6 +118,23 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
+        if (targetType == typeof(object))
+        {
+            // Boxed nullable is either null or boxed underlying value
+            var boxedItemLoader = _itemDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                if (reader.ReadBool())
+                {
+                    boxedItemLoader(ref reader, ctx, ref value);
+                }
+                else
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                }
+            };
+        }
+
         var underlyingType = Nullable.GetUnderlyingType(targetType);
         if (underlyingType == null)
         {

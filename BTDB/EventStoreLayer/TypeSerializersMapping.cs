@@ -369,6 +369,9 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         readonly Dictionary<object, InfoForType> _typeOrDescriptor2InfoMap =
             new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
 
+        // Prevents infinite recursion on cyclic object graphs
+        readonly HashSet<object> _visited = new(ReferenceEqualityComparer<object>.Instance);
+
         public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping)
         {
             _typeSerializersMapping = typeSerializersMapping;
@@ -418,6 +421,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
         {
             if (obj == null) return this;
+            if (!_visited.Add(obj)) return this;
             InfoForType infoForType;
             var objType = obj.GetType();
             if (obj is IKnowDescriptor iKnowDescriptor)

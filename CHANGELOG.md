@@ -120,6 +120,14 @@
   - `KeyValueDBExportImporter.Import` / `ImportAsync` failed on streams returning fewer bytes than requested (e.g.
     `GZipStream`);
   - one `DiskChunkCache` file with a truncated header made the whole cache unloadable.
+- Event store:
+  - a cyclic object graph overflowed the stack in `TypeSerializers` and event store v1;
+  - struct properties bigger than 16 bytes (e.g. `decimal?`, `Guid?`) with a custom getter or setter threw
+    `NullReferenceException`;
+  - event store v2 could not store `System.Tuple<>`, tuples with enum items, or re-serialize dynamically loaded
+    objects, and in IL emit mode corrupted memory for value tuples with class items;
+  - reading tuples with unknown or unregistered item types and `decimal?` / `Guid?` / tuple nullables as dynamic
+    objects threw; setting a member of a dynamic object or tuple threw `InvalidCastException`.
 - IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
   constructor in a dynamic type threw `MethodAccessException`.
 

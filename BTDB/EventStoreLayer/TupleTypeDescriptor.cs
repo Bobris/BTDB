@@ -129,7 +129,8 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var i = 0;
             foreach (var descriptor in _itemDescriptors)
             {
-                _itemTypes[i++] = descriptor.GetPreferredType()!;
+                // LoadAsType resolves descriptors without CLR type (enums loaded from metadata, unknown types)
+                _itemTypes[i++] = _typeSerializers.LoadAsType(descriptor);
             }
         }
 
@@ -141,7 +142,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var targetItemTypes = targetType.GetGenericArguments();
         for (var i = 0; i < targetItemTypes.Length; i++)
         {
-            targetItemTypes[i] = _itemDescriptors[i].GetPreferredType(targetItemTypes[i]!)!;
+            targetItemTypes[i] = _typeSerializers.LoadAsType(_itemDescriptors[i], targetItemTypes[i]);
         }
 
         return targetType.IsValueType
@@ -164,7 +165,33 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
         if (!IsCompatibleWith(targetType))
+        {
+            if (targetType == typeof(object) && ReflectionMetadata.FindByType(GetPreferredType()!) == null)
+            {
+                // Preferred ValueTuple type (typically with unknown item types) is not registered,
+                // so load it the same way as IL generated loader does
+                var itemLoaders = new Layer2Loader[_itemDescriptors.Count];
+                for (var i = 0; i < itemLoaders.Length; i++)
+                {
+                    itemLoaders[i] = _itemDescriptors[i].GenerateLoadEx(typeof(object), typeConverterFactory);
+                }
+
+                return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+                {
+                    var tuple = new DynamicTuple(this);
+                    for (var i = 0; i < itemLoaders.Length; i++)
+                    {
+                        object? item = null;
+                        itemLoaders[i](ref reader, ctx, ref Unsafe.As<object?, byte>(ref item));
+                        tuple.SetFieldByIdxFast(i, item!);
+                    }
+
+                    Unsafe.As<byte, object>(ref value) = tuple;
+                };
+            }
+
             return this.BuildConvertingLoader(GetPreferredType()!, targetType, typeConverterFactory);
+        }
         var metadata = ReflectionMetadata.FindByType(targetType);
         if (metadata == null)
         {
@@ -255,7 +282,9 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
-        if (GetPreferredType() != targetType)
+        // Tuple and ValueTuple with same number of items have same binary representation
+        if (GetPreferredType() != targetType && (!IsCompatibleWith(targetType) ||
+                                                 targetType.GetGenericArguments().Length != _itemDescriptors.Count))
             return this.BuildConvertingSaver(targetType, GetPreferredType()!, typeConverterFactory);
         var metadata = ReflectionMetadata.FindByType(targetType);
         if (metadata == null)
@@ -495,7 +524,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             if (_ownerDescriptor == descriptor)
             {
-                if (idx < 0)
+                if ((uint)idx >= (uint)_fieldValues.Length)
                     ThrowMemberAccessException(fieldName);
                 _fieldValues[idx] = value;
                 return;
@@ -509,7 +538,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             if (_ownerDescriptor == descriptor)
             {
-                if (idx < 0)
+                if ((uint)idx >= (uint)_fieldValues.Length)
                     ThrowMemberAccessException(fieldName);
                 return _fieldValues[idx];
             }
@@ -534,12 +563,17 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var descriptor = ((DynamicTuple)Value)!._ownerDescriptor;
                 var idx = TupleFieldHandler.TupleFieldName.IndexOf(binder.Name);
-                return new(Expression.Call(Expression.Convert(Expression, LimitType),
-                        typeof(DynamicTuple).GetMethod(nameof(SetFieldByIdx))!,
-                        Expression.Constant(idx),
-                        Expression.Constant(binder.Name),
-                        Expression.Constant(descriptor),
-                        Expression.Convert(value.Expression, typeof(object))),
+                // C# binder expects value of assignment expression as result
+                var valueVariable = Expression.Variable(typeof(object), "value");
+                return new DynamicMetaObject(Expression.Block(new[] { valueVariable },
+                        Expression.Assign(valueVariable, Expression.Convert(value.Expression, typeof(object))),
+                        Expression.Call(Expression.Convert(Expression, LimitType),
+                            typeof(DynamicTuple).GetMethod(nameof(SetFieldByIdx))!,
+                            Expression.Constant(idx),
+                            Expression.Constant(binder.Name),
+                            Expression.Constant(descriptor),
+                            valueVariable),
+                        valueVariable),
                     BindingRestrictions.GetTypeRestriction(Expression, LimitType));
             }
 
