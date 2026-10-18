@@ -476,7 +476,8 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 infoPair.Value.FileType == DiskChunkFileType.Unknown)
             {
                 var fileId = infoPair.Key;
-                _fileCollection.GetFile(fileId).Remove();
+                // The file could be already removed from the collection by somebody else
+                _fileCollection.GetFile(fileId)?.Remove();
                 _fileInfos.TryRemove(fileId);
             }
         }

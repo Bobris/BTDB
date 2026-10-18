@@ -135,4 +135,19 @@ public class DiskChunkCacheCoverageTest
         foreach (var file in files.Enumerate().ToArray()) file.Remove();
         Assert.Equal(0, (await cache.Get(Hash(content))).Length);
     }
+
+    [Fact]
+    public void DisposeToleratesHashIndexFileRemovedFromCollection()
+    {
+        using var files = new InMemoryFileCollection();
+        var content = new byte[100];
+        new Random(4).NextBytes(content);
+        using (var cache = new DiskChunkCache(files, 20, 100000))
+            cache.Put(Hash(content), ByteBuffer.NewAsync(content));
+        // The reopened cache knows the hash index file written by the first one.
+        var reopened = new DiskChunkCache(files, 20, 100000);
+        foreach (var file in files.Enumerate().ToArray()) file.Remove();
+        reopened.Dispose();
+        Assert.Single(files.Enumerate());
+    }
 }
