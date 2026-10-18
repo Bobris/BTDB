@@ -101,6 +101,8 @@
 ### Fixed
 
 - Fix `LsmKeyValueDB.CompactorReadBytesPerSecondLimit` being ignored; it now paces the reads of compaction inputs.
+- `LsmKeyValueDB` compactor read and write limits counted time since the database opened (or up to 10 seconds of
+  idle time) as unused budget, so a compaction after idle time ran unpaced until it used up that credit.
 - Source generator:
   - incremental generation compared only kind and name of a type, so edits (new properties, relation methods, moved
     errors) kept stale generated code in IDEs or crashed the generator; `EquatableArray.Equals(object)` overflowed

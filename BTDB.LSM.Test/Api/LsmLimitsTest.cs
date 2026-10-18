@@ -119,4 +119,39 @@ public class LsmLimitsTest
         Assert.True(elapsed >= TimeSpan.FromSeconds(0.8 * read / limit), $"{read} bytes read in {elapsed}.");
         Assert.Equal(4000, Count(db));
     }
+
+    [Fact]
+    public async Task CompactorReadPacingDoesNotCreditIdleTime()
+    {
+        var storage = new TableReadCountingStorage(new InMemoryLsmStorage());
+        var options = new LsmKeyValueDBOptions
+        {
+            Storage = storage, AcquireWriterLeaseOnOpen = true, BackgroundCompaction = false, CompressBlocks = false,
+            Level0CompactionTrigger = 100, Level0StopWritesTrigger = 200
+        };
+        using var db = await LsmKeyValueDB.OpenAsync(options);
+        for (var table = 0; table < 4; table++)
+        {
+            using (var tr = await db.StartWritingTransaction())
+            {
+                using var cursor = tr.CreateCursor();
+                for (var i = 0; i < 1000; i++) cursor.CreateOrUpdateKeyValue(Key(table * 1000 + i), new byte[100]);
+                tr.Commit();
+            }
+
+            db.CreateKvi(default);
+        }
+
+        // Time before the limit applies must not let the compaction read faster than the limit afterwards.
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        const ulong limit = 512 * 1024;
+        db.CompactorReadBytesPerSecondLimit = limit;
+        var readBefore = storage.TableBytesRead;
+        var start = Stopwatch.GetTimestamp();
+        await db.Compact(default);
+        var elapsed = Stopwatch.GetElapsedTime(start);
+        var read = storage.TableBytesRead - readBefore;
+        Assert.True(read > 300 * 1024, $"Compaction read only {read} bytes.");
+        Assert.True(elapsed >= TimeSpan.FromSeconds(0.8 * read / limit), $"{read} bytes read in {elapsed}.");
+    }
 }

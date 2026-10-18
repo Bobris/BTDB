@@ -402,15 +402,17 @@ public sealed partial class LsmKeyValueDB
         public void Pace(long bytes, ulong limit)
         {
             if (limit == 0) return;
-            _bytes += bytes;
-            var due = TimeSpan.FromSeconds((double)_bytes / limit);
-            var elapsed = Stopwatch.GetElapsedTime(_start);
-            if (elapsed > TimeSpan.FromSeconds(10))
+            // Time when the paced work was idle or caught up is not credit for reading faster later.
+            if (Stopwatch.GetElapsedTime(_start) > TimeSpan.FromSeconds((double)_bytes / limit))
             {
                 _start = Stopwatch.GetTimestamp();
                 _bytes = 0;
             }
-            else if (due > elapsed) Thread.Sleep(due - elapsed);
+
+            _bytes += bytes;
+            var due = TimeSpan.FromSeconds((double)_bytes / limit);
+            var elapsed = Stopwatch.GetElapsedTime(_start);
+            if (due > elapsed) Thread.Sleep(due - elapsed);
         }
     }
 
