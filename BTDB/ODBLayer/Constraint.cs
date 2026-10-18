@@ -100,6 +100,11 @@ public abstract class Constraint<T> : IConstraint
         {
             Any = Unsafe.As<Constraint<T>>(new ConstraintGuidAny());
         }
+        else if (typeof(T) == typeof(byte) || typeof(T) == typeof(sbyte))
+        {
+            // byte and sbyte keys are stored in one byte (UInt8 and Int8Orderable field handlers)
+            Any = new ConstraintOneByteAny<T>();
+        }
         else if (SignedFieldHandler.IsCompatibleWith(typeof(T)))
         {
             Any = new ConstraintSignedAny<T>();
@@ -132,6 +137,10 @@ public abstract class Constraint<T> : IConstraint
             else if (ut == typeof(Guid))
             {
                 Any = new ConstraintNullableAny<T>(new ConstraintGuidAny());
+            }
+            else if (ut == typeof(byte) || ut == typeof(sbyte))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintOneByteAny<T>());
             }
             else if (SignedFieldHandler.IsCompatibleWith(ut))
             {
@@ -294,12 +303,13 @@ public static partial class Constraint
         }
 
         if (typeof(T) == typeof(sbyte))
-            return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, sbyte>(ref value)));
+            return Unsafe.As<Constraint<T>>(new ConstraintInt8Exact(Unsafe.As<T, sbyte>(ref value)));
         if (typeof(T) == typeof(sbyte?))
         {
             ref var val = ref Unsafe.As<T, sbyte?>(ref value);
-            if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
-            return new NullableExactNull<T>(new ConstraintSignedAny<sbyte>());
+            // Nullable item handler is created without Orderable option, so sbyte inside Nullable is stored raw
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintInt8Exact(val.Value, false));
+            return new NullableExactNull<T>(new ConstraintOneByteAny<sbyte>());
         }
 
         if (typeof(T) == typeof(short))
@@ -330,12 +340,12 @@ public static partial class Constraint
         }
 
         if (typeof(T) == typeof(byte))
-            return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, byte>(ref value)));
+            return Unsafe.As<Constraint<T>>(new ConstraintUInt8Exact(Unsafe.As<T, byte>(ref value)));
         if (typeof(T) == typeof(byte?))
         {
             ref var val = ref Unsafe.As<T, byte?>(ref value);
-            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
-            return new NullableExactNull<T>(new ConstraintUnsignedAny<byte>());
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUInt8Exact(val.Value));
+            return new NullableExactNull<T>(new ConstraintOneByteAny<byte>());
         }
 
         if (typeof(T) == typeof(ushort))
@@ -1394,6 +1404,57 @@ public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T : Enum
     protected override void Skip(ref MemReader reader)
     {
         reader.SkipVUInt64();
+    }
+}
+
+public class ConstraintOneByteAny<T> : ConstraintAny<T>
+{
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        reader.Skip1Byte();
+        return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintUInt8Exact : ConstraintExact<byte>
+{
+    readonly byte _value;
+
+    public ConstraintUInt8Exact(byte value) => _value = value;
+
+    protected override void WriteExactValue(ref MemWriter writer)
+    {
+        writer.WriteUInt8(_value);
+    }
+
+    protected override void Skip(ref MemReader reader)
+    {
+        reader.Skip1Byte();
+    }
+}
+
+public class ConstraintInt8Exact : ConstraintExact<sbyte>
+{
+    readonly sbyte _value;
+    readonly bool _ordered;
+
+    public ConstraintInt8Exact(sbyte value, bool ordered = true)
+    {
+        _value = value;
+        _ordered = ordered;
+    }
+
+    protected override void WriteExactValue(ref MemWriter writer)
+    {
+        if (_ordered)
+            writer.WriteInt8Ordered(_value);
+        else
+            writer.WriteInt8(_value);
+    }
+
+    protected override void Skip(ref MemReader reader)
+    {
+        reader.Skip1Byte();
     }
 }
 

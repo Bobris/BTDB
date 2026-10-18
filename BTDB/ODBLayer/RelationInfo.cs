@@ -360,7 +360,7 @@ public class RelationInfo
                                 Loader = handlerLoad,
                                 Setter = propRefSetter,
                                 Ctx = ctx,
-                                Reader = reader
+                                Reader = ref reader
                             };
 
                             stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
@@ -627,7 +627,7 @@ public class RelationInfo
                                 Loader = handlerLoad,
                                 Setter = propRefSetter,
                                 Ctx = ctx,
-                                Reader = reader
+                                Reader = ref reader
                             };
 
                             stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
@@ -2183,11 +2183,11 @@ public class RelationInfo
         }
 
         if (!hasBeforeRemove) return null;
-        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemove>(functionName);
+        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemoveWithContainer>(functionName);
         var ilGenerator = method.Generator;
         var clientTypeLoc = ilGenerator.DeclareLocal(ClientType);
         var resultLoc = ilGenerator.DeclareLocal(typeof(bool));
-        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 1, ClientType, (ushort)clientTypeLoc.Index);
+        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)clientTypeLoc.Index);
         ilGenerator
             .LdcI4(0)
             .Stloc(resultLoc);
@@ -2206,7 +2206,7 @@ public class RelationInfo
                                             methodInfo.Name + " requires container to resolve parameter " +
                                             parameter.Name + ".");
                 paramLocs[i] = ilGenerator.DeclareLocal(parameter.ParameterType);
-                ilGenerator.Ld(() => container);
+                ilGenerator.Ldarg(1);
                 ilGenerator.Ldstr(parameter.Name!);
                 ilGenerator.Ldtoken(parameter.ParameterType);
                 ilGenerator.Call(() => Type.GetTypeFromHandle(new()));
@@ -2247,7 +2247,8 @@ public class RelationInfo
         ilGenerator
             .Ldloc(resultLoc)
             .Ret();
-        return method.Create();
+        var withContainer = method.Create();
+        return (transaction, value) => withContainer(transaction, container, value);
     }
 
     unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)

@@ -678,6 +678,7 @@ public class RelationBuilder : IRelationBuilder
             .Ldarg(0) //manipulator
             .LdcI4(RegisterLoadType(itemType))
             .Ldloc(constraintsLocal)
+            .Ldnull() // target
             .Ldloc(orderersLocal)
             .LdcI4(hasOrDefault ? 1 : 0)
             .Callvirt(
@@ -728,6 +729,7 @@ public class RelationBuilder : IRelationBuilder
             .Ldarg(0) //manipulator
             .LdcI4(RegisterLoadType(itemType))
             .Ldloc(constraintsLocal)
+            .Ldnull() // target
             .Ldloc(orderersLocal)
             .LdcI4(hasOrDefault ? 1 : 0)
             .Callvirt(

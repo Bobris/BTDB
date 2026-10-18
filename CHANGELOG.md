@@ -110,6 +110,17 @@
   - `IOrderedDictionaryEnumerator` type arguments lost `global::` and failed to compile in namespaces like
     `Collections.Model`;
   - non-public `[OnSerialize]` / `[OnBeforeRemove]` methods in generic classes generated code that did not compile.
+- Relations:
+  - `RemoveById(prefix, AdvancedEnumeratorParam)` in descending order removed rows outside the requested range;
+  - `CountBy` / `AnyBy` with an excluded start skipped only one key when several rows shared the start prefix;
+  - `Constraint<byte>` / `Constraint<sbyte>` (`Any`, generic `Exact`, also nullable) used variable length encoding
+    although these keys are stored in one byte, so values ≥ 128 or negative were never found;
+  - `IOrderedDictionaryEnumerator.NextKey` restarted from the beginning after reaching the end, and `Count` /
+    `Position` reset to 0 there (setting `Position` back threw `NullReferenceException`);
+  - loading a value type bigger than 16 bytes through a property with a custom getter or setter threw
+    `NullReferenceException`;
+  - IL emit relations (`UseNoEmitForRelations = false`): `FirstById` / `LastById` with constraints threw
+    `InvalidProgramException` and `[OnBeforeRemove]` with container resolved parameters threw `ArgumentException`.
 - ObjectDB collections and field handlers:
   - `IOrderedSet` and `IRoaringBitmap` enumerators restarted from the first item when `MoveNext` was called again
     after the end;

@@ -956,6 +956,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     IKeyValueDBCursor? _cursor;
     bool _seekNeeded;
     readonly bool _ascending;
+    readonly uint _count;
     readonly byte[] _keyBytes;
     protected RefReaderFun? KeyReader;
 
@@ -1045,6 +1046,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         var startIndex = _startCursor.GetKeyIndex();
         var endIndex = _endCursor.GetKeyIndex();
         if (startIndex > endIndex) return;
+        _count = (uint)(endIndex - startIndex + 1);
         _cursor = _keyValueTr.CreateCursor();
         _cursor.FindKeyIndex(_ascending ? startIndex : endIndex);
 
@@ -1059,7 +1061,8 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         }
     }
 
-    public uint Count => _cursor == null ? 0u : (uint)(_endCursor!.GetKeyIndex() - _startCursor!.GetKeyIndex() + 1);
+    // _cursor is null also after reaching End, so Count cannot be derived from it
+    public uint Count => _count;
 
     protected virtual TValue CreateInstance(IKeyValueDBCursor cursor, in ReadOnlySpan<byte> keyBytes)
     {
@@ -1098,17 +1101,26 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                 return;
             }
 
+            _cursor ??= _keyValueTr.CreateCursor();
             if (_ascending)
             {
-                _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);
+                _cursor.FindKeyIndex(_startCursor!.GetKeyIndex() + value);
             }
             else
             {
-                _cursor!.FindKeyIndex(_endCursor!.GetKeyIndex() - value);
+                _cursor.FindKeyIndex(_endCursor!.GetKeyIndex() - value);
             }
 
             _seekNeeded = true;
         }
+    }
+
+    // Cursor which failed to move is invalidated and next move would restart from beginning, so stay at End instead
+    bool MoveToEnd()
+    {
+        _cursor!.Dispose();
+        _cursor = null;
+        return false;
     }
 
     [SkipLocalsInit]
@@ -1132,13 +1144,13 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                 if (!_cursor.FindNextKey(_keyBytes))
                 {
                     key = default;
-                    return false;
+                    return MoveToEnd();
                 }
 
                 if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
                 {
                     key = default;
-                    return false;
+                    return MoveToEnd();
                 }
             }
             else
@@ -1146,13 +1158,13 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                 if (!_cursor.FindPreviousKey(_keyBytes))
                 {
                     key = default;
-                    return false;
+                    return MoveToEnd();
                 }
 
                 if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
                 {
                     key = default;
-                    return false;
+                    return MoveToEnd();
                 }
             }
         }

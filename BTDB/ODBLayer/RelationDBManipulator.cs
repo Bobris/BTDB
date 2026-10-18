@@ -966,7 +966,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
         else
         {
-            switch (cursor.Find(startKeyBytes, (uint)prefixLen))
+            var realStartKeyBytes = startKeyBytes;
+            // Excluded start must skip all keys starting with startKeyBytes, not just one exactly equal key
+            if (startKeyProposition == KeyProposition.Excluded)
+                realStartKeyBytes = RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(startKeyBytes, cursor)
+                    .ToArray();
+            switch (cursor.Find(realStartKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
                     startIndex = cursor.GetKeyIndex() - prefixIndex;
@@ -998,14 +1003,18 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
     {
         var secondaryKeyWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
-        using var enumerator = new RelationAdvancedEnumerator<T>(this,
-            order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0).GetEnumerator();
+        var advancedEnumerator = new RelationAdvancedEnumerator<T>(this,
+            order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0);
+        // Range bound cursor could be invalidated by removing its own key (in descending order it then points before
+        // the range), so limit number of visited items by count computed before any removal.
+        var remaining = advancedEnumerator.Count;
+        using var enumerator = advancedEnumerator.GetEnumerator();
         var count = 0;
         using var tempCursor = _kvtr.CreateCursor();
         var cursor = ((RelationAdvancedEnumerator<T>)enumerator).Cursor;
         Span<byte> keyBufferScoped = stackalloc byte[1024];
         Span<byte> valueBuffer = stackalloc byte[1024];
-        while (enumerator.MoveNext())
+        while (remaining-- > 0 && enumerator.MoveNext())
         {
             var fullKeyBytes = cursor.GetKeySpan(ref keyBufferScoped);
             var beforeRemove = _relationInfo.BeforeRemove;
