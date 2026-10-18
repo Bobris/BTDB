@@ -159,6 +159,12 @@
     `Utf16Utf8Dictionary` threw on lookup and `ByteStructs.Key32` read its last field from a wrong offset;
   - `FastBehaviourSubject.Subscribe` could deliver the current value twice when the observer re-entered the subject;
   - Snappy decompression of literals with a 4-byte length and compression of empty input were broken.
+- `IRelation.Query<T>()` ignored the `StringComparison` of `string.Contains(char, StringComparison)`, so for example
+  `OrdinalIgnoreCase` did not match a differently cased character.
+- `IRelation.Query<T>()` threw `InvalidCastException` for `Contains` on a collection of `bool`.
+- `IRelation.Query<T>()` equality conditions on `decimal`, `DateTime` and `DateTimeOffset` primary or secondary key
+  fields searched for the exact stored key bytes, so values equal in C# but differing in decimal scale, `DateTime.Kind`
+  or offset (for example `0.250m` and `0.25m`) were not found; such conditions are now tested on every row.
 - `RawData.GetSizeAndAlign` guessed the alignment of structs from their size, so `DateTimeOffset?` fields of relations,
   objects and events (and nullables, value tuples and key value pairs of other structs whose size is not their
   alignment) were saved and loaded at a wrong offset: they could not be read back, typically failing with "Offset must

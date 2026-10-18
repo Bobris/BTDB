@@ -2744,7 +2744,9 @@ static class Interpreter
                 return value.EndsWith((string?)constant ?? throw new ArgumentNullException("value"), comparison);
             case QueryStringOp.Contains:
                 if (isNull) throw new NullReferenceException();
-                if (constant is char containedChar) return value.Contains(containedChar);
+                // Span Contains(char) is always ordinal, so the char is passed as a span to honor the comparison.
+                if (constant is char containedChar)
+                    return value.Contains(new ReadOnlySpan<char>(in containedChar), comparison);
                 return value.Contains((string?)constant ?? throw new ArgumentNullException("value"), comparison);
             case QueryStringOp.CompareOrdinal:
                 var order = isNull
@@ -2794,7 +2796,10 @@ static class Interpreter
         var set = ctx.ObjectConstants[(int)Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref operands, 3))]!;
         return (QueryValueType)operands switch
         {
-            QueryValueType.UInt8 => InSet<byte>(set, ref value),
+            // bool values are stored in frames as UInt8, but their sets stay sets of bool
+            QueryValueType.UInt8 => set is IReadOnlySet<bool> boolSet
+                ? boolSet.Contains(value != 0)
+                : InSet<byte>(set, ref value),
             QueryValueType.Int8 => InSet<sbyte>(set, ref value),
             QueryValueType.UInt16 => InSet<ushort>(set, ref value),
             QueryValueType.Int16 => InSet<short>(set, ref value),

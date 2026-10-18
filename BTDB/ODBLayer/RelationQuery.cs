@@ -2205,7 +2205,8 @@ sealed class RelationQueryCompiler
             var field = keyFields[fieldIndex];
             if (field.Computed) break;
             var values = FindEqualityValues(conjuncts, field.Name, out var conjunctIndex, out var propertyType);
-            if (values == null || !CanSaveConstant(propertyType) || rangeCount * values.Count > MaxRanges) break;
+            if (values == null || !CanSaveConstant(propertyType) || !HasValueEqualityOfKeyBytes(propertyType) ||
+                rangeCount * values.Count > MaxRanges) break;
             if (field.Handler!.NeedsCtx())
             {
                 builder.WriterCtx ??= new DBWriterCtx(transaction);
@@ -3565,6 +3566,15 @@ sealed class RelationQueryCompiler
         prop = null!;
         constant = null!;
         return false;
+    }
+
+    // Equal values must have equal key bytes to be found by a key seek. C# equality of decimal ignores scale, of
+    // DateTimeOffset the offset, of DateTime the Kind, and of floating point numbers treats 0 and -0 as equal and NaN as
+    // unequal, while their stored keys keep those differences, so such conditions are tested on every row instead.
+    static bool HasValueEqualityOfKeyBytes(Type type)
+    {
+        return type != typeof(decimal) && type != typeof(DateTimeOffset) && type != typeof(DateTime) &&
+               type != typeof(double) && type != typeof(float) && type != typeof(Half);
     }
 
     static bool CanSaveConstant(Type type)
