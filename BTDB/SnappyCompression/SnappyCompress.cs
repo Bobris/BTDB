@@ -154,7 +154,8 @@ public static class SnappyCompress
         EmitLength(dst, ref d, ref dL, sL);
         if (sL <= 4)
         {
-            if (!EmitLiteral(dst, ref d, ref dL, src, s, sL)) return -1;
+            // Empty input is encoded just by its zero length
+            if (sL > 0 && !EmitLiteral(dst, ref d, ref dL, src, s, sL)) return -1;
             return d;
         }
         var shift = 32 - 8;

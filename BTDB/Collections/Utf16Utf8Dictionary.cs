@@ -36,7 +36,8 @@ public class Utf16Utf8Dictionary<TValue>
 
     public Utf16Utf8Dictionary(int count, IEnumerable<string> keys)
     {
-        var bucketCount = HashHelpers.PowerOf2(count);
+        // At least one bucket, so lookups in empty dictionary are valid
+        var bucketCount = HashHelpers.PowerOf2(Math.Max(count, 1));
         _buckets = new BucketEntry[bucketCount];
         for (int i = 0; i < bucketCount; i++)
         {

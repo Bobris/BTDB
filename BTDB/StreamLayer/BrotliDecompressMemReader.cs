@@ -16,6 +16,7 @@ public class BrotliDecompressMemReader : IMemReader
     readonly byte[] _buf;
     uint _usedOfs;
     uint _usedLen;
+    bool _finished;
 
     public BrotliDecompressMemReader(in MemReader memReader)
     {
@@ -48,19 +49,19 @@ public class BrotliDecompressMemReader : IMemReader
     unsafe int ReadCore(Span<byte> buf)
     {
         var read = 0;
-        while (true)
+        while (!_finished)
         {
-            if (_source.Eof)
-            {
-                throw new InvalidDataException("Brotli premature eof");
-            }
-
-            _source.PeekUInt8();
+            // Decoder could have all input already consumed, but still have pending output, so it must be called
+            // even when source is at its end.
+            var sourceEof = _source.Eof;
+            if (!sourceEof) _source.PeekUInt8();
 
             var status =
                 _decoder.Decompress(
-                    new((void*)_source.Current, (int)Math.Min(_source.End - _source.Current, int.MaxValue)), buf,
-                    out var bytesConsumed, out var bytesWritten);
+                    sourceEof
+                        ? ReadOnlySpan<byte>.Empty
+                        : new((void*)_source.Current, (int)Math.Min(_source.End - _source.Current, int.MaxValue)),
+                    buf, out var bytesConsumed, out var bytesWritten);
             if (status == OperationStatus.InvalidData)
             {
                 throw new InvalidDataException("Brotli data corrupted");
@@ -69,9 +70,19 @@ public class BrotliDecompressMemReader : IMemReader
             PackUnpack.UnsafeAdvance(ref buf, bytesWritten);
             read += bytesWritten;
             _source.Current += bytesConsumed;
-            if (status == OperationStatus.NeedMoreData) continue;
-            return read;
+            if (status == OperationStatus.Done)
+            {
+                _finished = true;
+                return read;
+            }
+
+            if (status == OperationStatus.DestinationTooSmall) return read;
+            if (!sourceEof) continue;
+            if (read > 0) return read;
+            throw new InvalidDataException("Brotli premature eof");
         }
+
+        return read;
     }
 
     public unsafe void Init(ref MemReader reader)
@@ -116,7 +127,7 @@ public class BrotliDecompressMemReader : IMemReader
     {
         _usedOfs = (uint)(memReader.Current - memReader.Start);
         _usedLen = (uint)(memReader.End - memReader.Current);
-        return (long)_ofs - _usedLen + _usedOfs;
+        return (long)_ofs - _usedLen;
     }
 
     public unsafe void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length)
@@ -129,6 +140,7 @@ public class BrotliDecompressMemReader : IMemReader
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)memReader.Current), canRead)
                 .CopyTo(MemoryMarshal.CreateSpan(ref buffer, canRead));
             memReader.Current += canRead;
+            buffer = ref Unsafe.Add(ref buffer, canRead);
             length -= (uint)canRead;
         }
     }

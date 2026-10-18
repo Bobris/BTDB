@@ -75,6 +75,7 @@ public class ReadOnlySequenceMemReader : IMemReader, IDisposable
             Unsafe.CopyBlockUnaligned(ref buffer,
                 ref Unsafe.AsRef<byte>((void*)memReader.Current), (uint)canSkip);
             memReader.Current += canSkip;
+            buffer = ref Unsafe.Add(ref buffer, canSkip);
             length -= (uint)canSkip;
         }
     }

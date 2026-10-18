@@ -81,6 +81,7 @@ public class BrotliCompressMemWriter : IMemWriter
     {
         _ofs = (int)(memWriter.Current - memWriter.Start);
         WriteCore(_buffer.AsSpan(0, _ofs), false);
+        _totalPos += _ofs;
         _ofs = 0;
         Init(ref memWriter);
     }

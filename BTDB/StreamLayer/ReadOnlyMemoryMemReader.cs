@@ -70,6 +70,7 @@ public class ReadOnlyMemoryMemReader : IMemReader, IDisposable
         }
 
         result = _memory.Slice((int)(memReader.Current - memReader.Start), (int)length);
+        memReader.Current += (nint)length;
         return true;
     }
 

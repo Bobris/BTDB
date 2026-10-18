@@ -59,7 +59,7 @@ public static class ByteStructs
             V1 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset);
             V2 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 8);
             V3 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 16);
-            V4 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 23);
+            V4 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 24);
         }
 
         internal void FillBuffer(ByteBuffer buf)

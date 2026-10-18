@@ -566,6 +566,8 @@ public struct MemReader
                 {
                     if (c > 0x10ffff)
                         throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                    if (l - i < 2)
+                        throw new InvalidDataException("Reading String surrogate pair exceeds declared length");
                     c -= 0x10000;
                     res[i++] = (char)((c >> 10) + 0xD800);
                     res[i++] = (char)((c & 0x3FF) + 0xDC00);
@@ -898,6 +900,8 @@ public struct MemReader
                 if (c > 0x10ffff)
                     throw new InvalidDataException(
                         $"Skipping String unicode value overflowed with {c}");
+                if (len < 2)
+                    throw new InvalidDataException("Skipping String surrogate pair exceeds declared length");
                 len -= 2;
             }
             else
@@ -1215,12 +1219,12 @@ public struct MemReader
         if (End - Current < magic.Length)
         {
             if (Controller is not IMemReader) return false;
+            var pos = GetCurrentPosition();
             try
             {
                 if (FillBuf((uint)magic.Length))
                 {
                     Span<byte> buf = stackalloc byte[magic.Length];
-                    var pos = GetCurrentPosition();
                     ReadBlock(ref MemoryMarshal.GetReference(buf), (uint)magic.Length);
                     var res = buf.SequenceEqual(magic);
                     if (res == false) SetCurrentPosition(pos);
@@ -1229,6 +1233,8 @@ public struct MemReader
             }
             catch (EndOfStreamException)
             {
+                // Failed check must not consume any data, same as when magic does not match
+                SetCurrentPosition(pos);
                 return false;
             }
         }

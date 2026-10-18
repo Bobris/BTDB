@@ -111,8 +111,8 @@ public static class SnappyDecompress
                     {
                         if (sL < 4) return false;
                         len = src[s] + 0x100 * src[s + 1] + 0x10000 * src[s + 2] + 0x1000000 * src[s + 3] + 1;
-                        s += 3;
-                        sL -= 3;
+                        s += 4;
+                        sL -= 4;
                     }
 
                     if (len <= 0) return false;

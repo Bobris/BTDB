@@ -109,8 +109,10 @@ public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDis
         }
         IObserver<T> original;
         IObserver<T> nextState;
+        FastSubjectHelpers<T>.IHasValue? stateWithValue;
         do
         {
+            stateWithValue = null;
             original = _current;
             if (original == FastSubjectHelpers<T>.DisposedSubjectMarker) throw new ObjectDisposedException("");
             if (original == FastSubjectHelpers<T>.CompletedSubjectMarker)
@@ -130,7 +132,7 @@ public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDis
             else if (original is FastSubjectHelpers<T>.EmptySubjectWithValue)
             {
                 var o = (FastSubjectHelpers<T>.EmptySubjectWithValue)original;
-                observer.OnNext(o.Value);
+                stateWithValue = o;
                 nextState = new FastSubjectHelpers<T>.SingleSubjectWithValue(observer, o.Value);
             }
             else if (original is FastSubjectHelpers<T>.MultiSubject)
@@ -145,7 +147,7 @@ public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDis
             else if (original is FastSubjectHelpers<T>.MultiSubjectWithValue)
             {
                 var o = (FastSubjectHelpers<T>.MultiSubjectWithValue)original;
-                observer.OnNext(o.Value);
+                stateWithValue = o;
                 var originalArray = o.Array;
                 var originalCount = originalArray.Length;
                 var newArray = new IObserver<T>[originalCount + 1];
@@ -156,7 +158,7 @@ public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDis
             else if (original is FastSubjectHelpers<T>.SingleSubjectWithValue)
             {
                 var o = (FastSubjectHelpers<T>.SingleSubjectWithValue)original;
-                observer.OnNext(o.Value);
+                stateWithValue = o;
                 nextState = new FastSubjectHelpers<T>.MultiSubjectWithValue(new[] { o.Observer, observer }, o.Value);
             }
             else
@@ -164,6 +166,9 @@ public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDis
                 nextState = new FastSubjectHelpers<T>.MultiSubject(new[] { original, observer });
             }
         } while (Interlocked.CompareExchange(ref _current, nextState, original) != original);
+
+        // Deliver current value only once and only after successful subscription (OnNext could reenter this subject)
+        if (stateWithValue != null) observer.OnNext(stateWithValue.Value);
         return new FastSubjectHelpers<T>.Subscription(this, observer);
     }
 

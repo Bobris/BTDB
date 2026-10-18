@@ -257,7 +257,8 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
     public void Clear()
     {
         Array.Clear(_buckets);
-        Array.Clear(_entries, 0, _count);
+        // Used entries could be also after _count when some were removed
+        Array.Clear(_entries);
         _count = 0;
         _freeList = -1;
         _usageHead = -1;
@@ -348,11 +349,14 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                 _usedBytes = 0;
                 _freeBytes = 0;
                 var newBytes = new byte[_bytes.Length];
-                for (var i = 0; i <= _count; i++)
+                // Used entries could be anywhere in entries array when some were removed
+                var remaining = _count;
+                for (var i = 0; remaining > 0; i++)
                 {
                     ref var e = ref entries[i];
                     if (e.Next < -1)
                         continue;
+                    remaining--;
 
                     Array.Copy(_bytes, e.Offset, newBytes, _usedBytes, e.Length);
                     e.Offset = _usedBytes;
@@ -390,17 +394,20 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
     {
         if (newCapacity < _buckets.Length) return;
         newCapacity = HashHelpers.PowerOf2(newCapacity);
-        var count = _count;
 
         var entries = new Entry[newCapacity];
-        Array.Copy(_entries, 0, entries, 0, count);
+        // Copy all entries because removed entries forming free list could be before used ones
+        Array.Copy(_entries, 0, entries, 0, _entries.Length);
 
         var newBuckets = new int[entries.Length];
-        while (count-- > 0)
+        var remaining = _count;
+        for (var i = 0; remaining > 0; i++)
         {
-            var bucketIndex = entries[count].Hash & (newBuckets.Length - 1);
-            entries[count].Next = newBuckets[bucketIndex] - 1;
-            newBuckets[bucketIndex] = count + 1;
+            if (entries[i].Next < -1) continue; // part of free list
+            remaining--;
+            var bucketIndex = entries[i].Hash & (newBuckets.Length - 1);
+            entries[i].Next = newBuckets[bucketIndex] - 1;
+            newBuckets[bucketIndex] = i + 1;
         }
 
         _buckets = newBuckets;

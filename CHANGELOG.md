@@ -145,6 +145,20 @@
     objects, and in IL emit mode corrupted memory for value tuples with class items;
   - reading tuples with unknown or unregistered item types and `decimal?` / `Guid?` / tuple nullables as dynamic
     objects threw; setting a member of a dynamic object or tuple threw `InvalidCastException`.
+- Streams, collections and compression:
+  - `ReadOnlySequenceMemReader` read values split across segments wrongly and `ReadOnlyMemoryMemReader` did not
+    advance after `ReadByteArrayAsMemory`;
+  - `BrotliDecompressMemReader` reported wrong positions, overwrote reads bigger than 64 KiB and threw at the end of
+    a source without trailing data; `BrotliCompressMemWriter` reported wrong positions after 64 KiB;
+  - `MemWriter.WriteStringInUtf8` threw when a multi-byte character crossed a buffer boundary of a stream backed
+    writer; on corrupted data `ReadString` / `SkipString` could read past the string instead of throwing
+    `InvalidDataException`; `CheckMagic` consumed data on end of stream;
+  - `LruCache` and `SpanByteLruCache` lost entries after `IncreaseCapacity` or `Clear` following a `Remove`, and
+    `SpanByteLruCache` lost keys after compaction;
+  - `EquatableArray.Equals(object)` overflowed the stack, `StructList.AddUnique(null)` threw, an empty
+    `Utf16Utf8Dictionary` threw on lookup and `ByteStructs.Key32` read its last field from a wrong offset;
+  - `FastBehaviourSubject.Subscribe` could deliver the current value twice when the observer re-entered the subject;
+  - Snappy decompression of literals with a 4-byte length and compression of empty input were broken.
 - IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
   constructor in a dynamic type threw `MethodAccessException`.
 

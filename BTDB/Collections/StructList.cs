@@ -46,9 +46,10 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
     /// <param name="value"></param>
     public bool AddUnique(in T value)
     {
+        var comparer = EqualityComparer<T>.Default;
         for (var i = 0u; i < _count; i++)
         {
-            if (value!.Equals(_a![i]))
+            if (comparer.Equals(value, _a![i]))
             {
                 return false;
             }

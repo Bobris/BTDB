@@ -717,7 +717,8 @@ public struct MemWriter
                 if (completed) break;
                 charsPtr += charsUsed;
                 charLen -= charsUsed;
-                Resize1();
+                // One UTF-8 encoded character could need up to 4 bytes, Convert throws if it cannot fit at least one
+                if (End - Current < 4) Resize(4);
             } while (true);
         }
     }
