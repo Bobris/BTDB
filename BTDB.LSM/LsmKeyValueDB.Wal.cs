@@ -235,18 +235,20 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    /// Completes when the commit with transactionNumber is durable in the WAL.
-    public ValueTask WaitForDurabilityAsync(long transactionNumber, CancellationToken cancellation = default)
+    /// Completes when the commit with transactionNumber is durable in the WAL. When omitted or null, waits for the
+    /// latest transaction committed at the time of this call; later commits and uncommitted changes are not included.
+    public ValueTask WaitForDurabilityAsync(long? transactionNumber = null, CancellationToken cancellation = default)
     {
+        var target = transactionNumber ?? _state.TransactionNumber;
         TaskCompletionSource waiter;
         lock (_walLock)
         {
-            if (transactionNumber <= _durableTransaction) return ValueTask.CompletedTask;
+            if (target <= _durableTransaction) return ValueTask.CompletedTask;
             if (!_isWriter)
                 throw new BTDBException("This instance is not the writer; the commit was not made durable.");
             waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_durabilityWaiters.TryGetValue(transactionNumber, out var list))
-                _durabilityWaiters.Add(transactionNumber, list = []);
+            if (!_durabilityWaiters.TryGetValue(target, out var list))
+                _durabilityWaiters.Add(target, list = []);
             list.Add(waiter);
         }
 
@@ -256,7 +258,7 @@ public sealed partial class LsmKeyValueDB
 
     /// Makes every commit so far durable in the WAL.
     public ValueTask FlushAsync(CancellationToken cancellation = default) =>
-        WaitForDurabilityAsync(_state.TransactionNumber, cancellation);
+        WaitForDurabilityAsync(cancellation: cancellation);
 
     bool WalBacklogStalls() => Interlocked.Read(ref _walPendingBytes) > _options.MaxUnflushedWalBytes;
 }

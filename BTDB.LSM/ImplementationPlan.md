@@ -409,8 +409,10 @@ Each WAL chunk is one immutable object `wal/{chunk}`:
   memtable is updated. The durability window is about one flush interval plus upload latency.
 * `ILsmKeyValueDB.WaitForDurabilityAsync(transactionNumber, ct)` completes when that commit is durable, and throws if
   the instance lost the lease before that. It is the intended way to get durable commits without blocking a thread.
-  `FlushAsync(ct)` uploads the buffer immediately and waits for the last commit. The application event-ID pattern
-  (CommitUlong = event ID) also works: after a crash the application replays from the durable CommitUlong.
+  The transaction number is optional: omitted or null, it captures the latest committed transaction at the call and
+  waits for it, without including later commits or uncommitted changes. Rollback queues no WAL record and needs no
+  durability wait. `FlushAsync(ct)` has the same effect as waiting without a transaction number. The application
+  event-ID pattern (CommitUlong = event ID) also works: after a crash the application replays from the durable CommitUlong.
 * `DurableTransactions = true` remains supported for compatibility. `Commit()` then blocks until the chunk carrying the
   record is durable. That is at least one Put Blob round trip, about 9 ms at p50 and 20–30 ms at p99. The writer slot
   is released before the wait, so concurrent durable writers share uploads (Measurements.md, section 7).
@@ -665,7 +667,7 @@ storage are always injected, for deterministic tests.
 public interface ILsmKeyValueDB : IKeyValueDB
 {
     ValueTask FlushAsync(CancellationToken ct = default);
-    ValueTask WaitForDurabilityAsync(long transactionNumber, CancellationToken ct = default);
+    ValueTask WaitForDurabilityAsync(long? transactionNumber = null, CancellationToken ct = default);
     ValueTask AcquireWriterLeaseAsync(CancellationToken ct = default);
     bool HoldsWriterLease { get; }
     ValueTask<ulong> RefreshAsync(CancellationToken ct = default);
@@ -839,8 +841,8 @@ Implemented (`LsmKeyValueDB.Wal.cs`, `LsmKeyValueDB.Lease.cs`, `LsmKeyValueDB.Re
   * Durability advances only when a whole batch is created.
 * **Durability API:**
   * `DurableTransactions` and `NextCommitTemporaryCloseTransactionLog` make `Commit` wait.
-  * `WaitForDurabilityAsync(transactionNumber)` waits for one commit, and `FlushAsync` waits for everything committed
-    so far.
+  * `WaitForDurabilityAsync(transactionNumber)` waits for one commit. Omitting the number or passing null, like
+    `FlushAsync`, waits for everything committed at the time of the call; rollback does not write a WAL record.
   * `CreateKvi` seals and flushes the memtable to tables (a checkpoint).
 * **Manifest** records the writer epoch, the newest flushed generation and the first WAL chunk recovery needs. Chunks
   before it are deleted after the manifest is written.

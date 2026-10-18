@@ -92,13 +92,20 @@ wakes it, and commits that arrive during an upload are grouped into the next one
 ```csharp
 using var tr = await db.StartWritingTransaction();
 // ... writes ...
-var transactionNumber = tr.GetTransactionNumber();
 tr.Commit();
-await db.WaitForDurabilityAsync(transactionNumber);
+await db.WaitForDurabilityAsync();
 ```
 
-`FlushAsync` waits for everything committed so far. `DurableTransactions = true` makes every `Commit` wait. Readers in
-other processes see only durable commits.
+Without a transaction number (or with `null`), `WaitForDurabilityAsync` waits for the latest transaction committed at
+the time of the call. It does not wait for later commits or uncommitted changes. To wait for a specific commit, capture
+`tr.GetTransactionNumber()` after making changes and before `Commit`, and pass it to `WaitForDurabilityAsync`.
+Cancellation can be passed as `WaitForDurabilityAsync(cancellation: cancellationToken)`.
+
+`FlushAsync` has the same effect as `WaitForDurabilityAsync()` and waits for everything committed so far.
+`DurableTransactions = true` makes every `Commit` wait. Readers in other processes see only durable commits.
+
+Disposing a transaction without committing rolls it back. Uncommitted changes are never queued for WAL upload, so
+rollback writes no WAL record and needs no durability wait.
 
 ## Memory
 

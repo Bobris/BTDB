@@ -73,6 +73,9 @@
 
 ### Changed
 
+- `ILsmKeyValueDB.WaitForDurabilityAsync` and `LsmKeyValueDB.WaitForDurabilityAsync` accept an optional transaction
+  number. Omitting it or passing `null` waits for the latest transaction committed at the time of the call, without
+  including later commits or uncommitted changes.
 - `IRelation.Query<T>()` predicates evaluate 2–4× faster per scanned row:
   - one interpreter program per stored value version;
   - fields are read only up to the last one a conjunct needs, and each conjunct is tested right after its last field

@@ -132,8 +132,10 @@ public interface ILsmKeyValueDB : IKeyValueDB
     /// Makes every commit so far durable in the WAL.
     ValueTask FlushAsync(CancellationToken cancellation = default);
 
-    /// Completes when the commit with the given transaction number is durable in the WAL.
-    ValueTask WaitForDurabilityAsync(long transactionNumber, CancellationToken cancellation = default);
+    /// Completes when the commit with the given transaction number is durable in the WAL. When omitted or null,
+    /// waits for the latest transaction committed at the time of this call; later commits and uncommitted changes
+    /// are not included.
+    ValueTask WaitForDurabilityAsync(long? transactionNumber = null, CancellationToken cancellation = default);
 
     /// Becomes the writer: waits for the lease, fences the previous writer and catches up.
     ValueTask AcquireWriterLeaseAsync(CancellationToken cancellation = default);
