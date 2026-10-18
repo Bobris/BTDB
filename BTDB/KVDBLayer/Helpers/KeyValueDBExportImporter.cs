@@ -122,7 +122,7 @@ public static class KeyValueDBExportImporter
         if (!stream.CanRead) throw new ArgumentException("stream must be readable", nameof(stream));
         var tempBuf = new byte[4096];
         var tempBuf2 = new byte[4096];
-        if (await stream.ReadAsync(tempBuf.AsMemory(0, 16)) != 16) throw new EndOfStreamException();
+        if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 16)) != 16) throw new EndOfStreamException();
         if (!tempBuf.AsSpan()[..8].SequenceEqual("BTDBEXP2"u8))
         {
             throw new BTDBException("Invalid header (it should Start with BTDBEXP2)");
@@ -133,28 +133,28 @@ public static class KeyValueDBExportImporter
         if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");
         for (var kv = 0; kv < keyValuePairs; kv++)
         {
-            if (await stream.ReadAsync(tempBuf.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
+            if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
             var keySize = PackUnpack.UnpackInt32LE(tempBuf, 0);
             if (keySize < 0) throw new BTDBException("Negative key size");
             if (keySize > tempBuf.Length) tempBuf = new byte[keySize];
-            if (await stream.ReadAsync(tempBuf.AsMemory(0, keySize)) != keySize) throw new EndOfStreamException();
-            if (await stream.ReadAsync(tempBuf2.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
+            if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, keySize)) != keySize) throw new EndOfStreamException();
+            if (await ReadFullyAsync(stream, tempBuf2.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
             var valueSize = PackUnpack.UnpackInt32LE(tempBuf2, 0);
             if (valueSize < 0) throw new BTDBException("Negative value size");
             if (valueSize > tempBuf2.Length) tempBuf2 = new byte[valueSize];
-            if (await stream.ReadAsync(tempBuf2.AsMemory(0, valueSize)) != valueSize) throw new EndOfStreamException();
+            if (await ReadFullyAsync(stream, tempBuf2.AsMemory(0, valueSize)) != valueSize) throw new EndOfStreamException();
             cursor.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
 
-        if (await stream.ReadAsync(tempBuf.AsMemory(0, 8)) == 8)
+        if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 8)) == 8)
         {
             transaction.SetCommitUlong(PackUnpack.UnpackUInt64LE(tempBuf, 0));
-            if (await stream.ReadAsync(tempBuf.AsMemory(0, 4)) == 4)
+            if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 4)) == 4)
             {
                 var ulongCount = PackUnpack.UnpackUInt32LE(tempBuf, 0);
                 for (var i = 0u; i < ulongCount; i++)
                 {
-                    if (await stream.ReadAsync(tempBuf.AsMemory(0, 8)) != 8) throw new EndOfStreamException();
+                    if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 8)) != 8) throw new EndOfStreamException();
                     transaction.SetUlong(i, PackUnpack.UnpackUInt64LE(tempBuf, 0));
                 }
             }
@@ -173,7 +173,7 @@ public static class KeyValueDBExportImporter
         if (!stream.CanRead) throw new ArgumentException("stream must be readable", nameof(stream));
         var tempBuf = new byte[4096];
         var tempBuf2 = new byte[4096];
-        if (stream.Read(tempBuf, 0, 16) != 16) throw new EndOfStreamException();
+        if (ReadFully(stream, tempBuf.AsSpan(0, 16)) != 16) throw new EndOfStreamException();
         if (!tempBuf.AsSpan()[..8].SequenceEqual("BTDBEXP2"u8))
         {
             throw new BTDBException("Invalid header (it should Start with BTDBEXP2)");
@@ -184,31 +184,42 @@ public static class KeyValueDBExportImporter
         if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");
         for (var kv = 0; kv < keyValuePairs; kv++)
         {
-            if (stream.Read(tempBuf, 0, 4) != 4) throw new EndOfStreamException();
+            if (ReadFully(stream, tempBuf.AsSpan(0, 4)) != 4) throw new EndOfStreamException();
             var keySize = PackUnpack.UnpackInt32LE(tempBuf, 0);
             if (keySize < 0) throw new BTDBException("Negative key size");
             if (keySize > tempBuf.Length) tempBuf = new byte[keySize];
-            if (stream.Read(tempBuf, 0, keySize) != keySize) throw new EndOfStreamException();
-            if (stream.Read(tempBuf2, 0, 4) != 4) throw new EndOfStreamException();
+            if (ReadFully(stream, tempBuf.AsSpan(0, keySize)) != keySize) throw new EndOfStreamException();
+            if (ReadFully(stream, tempBuf2.AsSpan(0, 4)) != 4) throw new EndOfStreamException();
             var valueSize = PackUnpack.UnpackInt32LE(tempBuf2, 0);
             if (valueSize < 0) throw new BTDBException("Negative value size");
             if (valueSize > tempBuf2.Length) tempBuf2 = new byte[valueSize];
-            if (stream.Read(tempBuf2, 0, valueSize) != valueSize) throw new EndOfStreamException();
+            if (ReadFully(stream, tempBuf2.AsSpan(0, valueSize)) != valueSize) throw new EndOfStreamException();
             cursor.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
 
-        if (stream.Read(tempBuf, 0, 8) == 8)
+        if (ReadFully(stream, tempBuf.AsSpan(0, 8)) == 8)
         {
             transaction.SetCommitUlong(PackUnpack.UnpackUInt64LE(tempBuf, 0));
-            if (stream.Read(tempBuf, 0, 4) == 4)
+            if (ReadFully(stream, tempBuf.AsSpan(0, 4)) == 4)
             {
                 var ulongCount = PackUnpack.UnpackUInt32LE(tempBuf, 0);
                 for (var i = 0u; i < ulongCount; i++)
                 {
-                    if (stream.Read(tempBuf, 0, 8) != 8) throw new EndOfStreamException();
+                    if (ReadFully(stream, tempBuf.AsSpan(0, 8)) != 8) throw new EndOfStreamException();
                     transaction.SetUlong(i, PackUnpack.UnpackUInt64LE(tempBuf, 0));
                 }
             }
         }
+    }
+
+    // Stream.Read can return fewer bytes than requested even before end of stream
+    static int ReadFully(Stream stream, Span<byte> buffer)
+    {
+        return stream.ReadAtLeast(buffer, buffer.Length, false);
+    }
+
+    static ValueTask<int> ReadFullyAsync(Stream stream, Memory<byte> buffer)
+    {
+        return stream.ReadAtLeastAsync(buffer, buffer.Length, false);
     }
 }

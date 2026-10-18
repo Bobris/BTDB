@@ -110,6 +110,16 @@
   - `IOrderedDictionaryEnumerator` type arguments lost `global::` and failed to compile in namespaces like
     `Collections.Model`;
   - non-public `[OnSerialize]` / `[OnBeforeRemove]` methods in generic classes generated code that did not compile.
+- Key value DB:
+  - `InMemoryKeyValueDB` cursors stayed valid after a failed `FindFirstKey`, `FindLastKey` or `Find`, `FindKeyIndex`
+    with a prefix could return a key outside of the prefix, an invalid cursor did not start from the last key on
+    `FindPreviousKey` after another cursor wrote, and `FastIterate` threw after its last key was erased;
+  - `BTreeKeyValueDB` cursors restarted `FastIterate` from the first key, threw from `SetValue` and returned a wrong
+    `KeyHasPrefix` after another cursor of the same transaction wrote;
+  - `BTreeKeyValueDB.IsCorruptedValue` reported values written in the current transaction as corrupted;
+  - `KeyValueDBExportImporter.Import` / `ImportAsync` failed on streams returning fewer bytes than requested (e.g.
+    `GZipStream`);
+  - one `DiskChunkCache` file with a truncated header made the whole cache unloadable.
 - IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
   constructor in a dynamic type threw `MethodAccessException`.
 

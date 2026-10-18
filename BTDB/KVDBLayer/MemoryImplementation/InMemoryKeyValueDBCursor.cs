@@ -120,6 +120,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         if (_transaction!._btreeRoot!.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
             FindResult.NotFound)
         {
+            _keyIndex = -1;
+            _stack.Clear();
             return false;
         }
 
@@ -159,6 +161,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         _transaction._btreeRoot.FillStackByIndex(ref _stack, _keyIndex);
         if (!CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
         {
+            _keyIndex = -1;
             _stack.Clear();
             return false;
         }
@@ -227,7 +230,14 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
-        return _transaction!._btreeRoot!.FindKey(ref _stack, out _keyIndex, key, prefixLen);
+        var result = _transaction!._btreeRoot!.FindKey(ref _stack, out _keyIndex, key, prefixLen);
+        if (result == FindResult.NotFound)
+        {
+            _keyIndex = -1;
+            _stack.Clear();
+        }
+
+        return result;
     }
 
     public long GetKeyIndex()
@@ -247,6 +257,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         if (_transaction!._btreeRoot!.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
             FindResult.NotFound)
         {
+            _keyIndex = -1;
+            _stack.Clear();
             return false;
         }
 
@@ -259,6 +271,13 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         }
 
         _transaction._btreeRoot.FillStackByIndex(ref _stack, _keyIndex);
+        if (!CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
+        {
+            _keyIndex = -1;
+            _stack.Clear();
+            return false;
+        }
+
         return true;
     }
 
@@ -585,7 +604,15 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         _modificationForbidden = true;
         try
         {
-            if (_keyIndex < 0 && !FindFirstKey([]))
+            if (_modifiedFromLastFind && _keyIndex >= 0)
+            {
+                // Current key could be removed or moved by other cursor, continue from its index
+                if (!FindKeyIndex(_keyIndex))
+                {
+                    return;
+                }
+            }
+            else if (_keyIndex < 0 && !FindFirstKey([]))
             {
                 return;
             }
@@ -631,6 +658,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     public void PreNotifyUpsert()
     {
         if (_modificationForbidden) throw new BTDBException("DB cannot be modified during fast iteration");
+        if (_keyIndex == -1) return;
         _stack.Clear();
         if (!_modifiedFromLastFind)
         {

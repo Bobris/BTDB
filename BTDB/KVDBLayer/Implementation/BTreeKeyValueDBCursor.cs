@@ -290,6 +290,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
     {
+        RevalidateIfModified();
         return _cursor!.KeyHasPrefix(prefix);
     }
 
@@ -446,6 +447,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     [SkipLocalsInit]
     public void SetValue(in ReadOnlySpan<byte> value)
     {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        RevalidateIfModified();
         EnsureValidKey();
         _transaction!.MakeWritable();
         Span<byte> trueValue = stackalloc byte[12];
@@ -627,8 +630,17 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         try
         {
             if (!_cursor!.IsValid())
-                if (!FindFirstKey([]))
+            {
+                // Another cursor's write or erase of current key invalidated tree position, continue by key index
+                if (_modifiedFromLastFind && _keyIndex != -1)
+                {
+                    if (!FindKeyIndex(_keyIndex))
+                        return;
+                }
+                else if (!FindFirstKey([]))
                     return;
+            }
+
             if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
             _cursor!.FastIterate(ref buffer, ref _keyIndex, callback);
         }
@@ -645,8 +657,17 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         try
         {
             if (!_cursor!.IsValid())
-                if (!FindFirstKey([]))
+            {
+                // Another cursor's write or erase of current key invalidated tree position, continue by key index
+                if (_modifiedFromLastFind && _keyIndex != -1)
+                {
+                    if (!FindKeyIndex(_keyIndex))
+                        return;
+                }
+                else if (!FindFirstKey([]))
                     return;
+            }
+
             if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
             _cursor!.FastIterateNoCursor(ref buffer, ref _keyIndex, callback);
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -94,13 +95,22 @@ public class DiskChunkCache : IChunkCache, IDisposable
         {
             reader = new MemReader(collectionFile.GetExclusiveReader());
             if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
-            var fileType = (DiskChunkFileType)reader.ReadUInt8();
-            var fileInfo = fileType switch
+            IFileInfo fileInfo;
+            try
             {
-                DiskChunkFileType.HashIndex => new FileHashIndex(ref reader),
-                DiskChunkFileType.PureValues => new FilePureValues(ref reader),
-                _ => UnknownFile.Instance
-            };
+                var fileType = (DiskChunkFileType)reader.ReadUInt8();
+                fileInfo = fileType switch
+                {
+                    DiskChunkFileType.HashIndex => new FileHashIndex(ref reader),
+                    DiskChunkFileType.PureValues => new FilePureValues(ref reader),
+                    _ => UnknownFile.Instance
+                };
+            }
+            catch (EndOfStreamException)
+            {
+                // Incomplete header of one file must not make whole cache unloadable
+                fileInfo = UnknownFile.Instance;
+            }
             if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
             _fileInfos.TryAdd(collectionFile.Index, fileInfo);
         }

@@ -2823,7 +2823,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var file = FileCollection.GetFile(valueFileId);
         if (file == null)
             return true;
-        return valueOfs + (ulong)valueSize > file.GetSize();
+        if (valueOfs + (ulong)valueSize <= file.GetSize()) return false;
+        // Value written by current writing transaction could be still only in transaction log writer buffer
+        return valueFileId != _fileIdWithTransactionLog || _writerWithTransactionLog.Controller == null ||
+               valueOfs + (ulong)valueSize > (ulong)_writerWithTransactionLog.GetCurrentPosition();
     }
 
     public ReadOnlyMemory<byte> ReadValueMemory(ReadOnlySpan<byte> trueValue, ref Memory<byte> buffer, bool copy)
