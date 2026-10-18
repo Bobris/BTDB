@@ -1158,12 +1158,7 @@ public static class PackUnpack
         {
             if (ptr == 0) return (count + 1, true);
             if (ptr >= 0x80) return (count, false);
-            if (targetBuf.Length <= targetOfs)
-            {
-                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(targetBuf.Length * 2);
-                targetBuf.CopyTo(newCharBuf);
-                targetBuf = newCharBuf;
-            }
+            if (targetBuf.Length <= targetOfs) Grow(ref targetBuf, targetOfs + 1);
 
             targetBuf[(int)targetOfs++] = (char)(ptr - 1);
             count++;
@@ -1189,26 +1184,18 @@ public static class PackUnpack
 
             while (len >= 16)
             {
-                if (targetBuf.Length < targetOfs + 16)
-                {
-                    var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(targetBuf.Length * 2);
-                    targetBuf.CopyTo(newCharBuf);
-                    targetBuf = newCharBuf;
-                }
+                if (targetBuf.Length < targetOfs + 16) Grow(ref targetBuf, targetOfs + 16);
 
                 var value = Vector128.LoadUnsafe(ref ptr);
 
                 // It is ok to do more work than needed => buffer will be cropped by actual used size
                 var finalValue = Sse2.SubtractSaturate(value, all01);
                 var low = Sse2.UnpackLow(finalValue, all00);
-                Sse2.Store(
-                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs,
-                    low);
+                low.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)), 2 * targetOfs);
 
                 var high = Sse2.UnpackHigh(finalValue, all00);
-                Sse2.Store(
-                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs + 16,
-                    high);
+                high.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)),
+                    2 * targetOfs + 16);
 
                 var hb = value & all80;
                 if (hb == Vector128<byte>.Zero)
@@ -1245,21 +1232,14 @@ public static class PackUnpack
 
             if (len >= 8)
             {
-                if (targetBuf.Length < targetOfs + 8)
-                {
-                    var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
-                    targetBuf.CopyTo(newCharBuf);
-                    targetBuf = newCharBuf;
-                }
+                if (targetBuf.Length < targetOfs + 8) Grow(ref targetBuf, targetOfs + 8);
 
                 var value = Unsafe.ReadUnaligned<ulong>(ref ptr);
 
                 // It is ok to do more work than needed => buffer will be cropped by actual used size
                 var finalValue = Sse2.SubtractSaturate(Vector128.Create<ulong>(value).AsByte(), all01);
                 var low = Sse2.UnpackLow(finalValue, all00);
-                Sse2.Store(
-                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs,
-                    low);
+                low.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)), 2 * targetOfs);
 
                 var skip = DetectLengthOfSimpleCharacters(value);
                 count += skip.Count;
@@ -1276,5 +1256,13 @@ public static class PackUnpack
         }
 
         goto lastBytes;
+    }
+
+    // Grows to at least the needed length, so a vector store of several characters always fits.
+    static void Grow(ref Span<char> buffer, nuint needed)
+    {
+        var newBuffer = (Span<char>)GC.AllocateUninitializedArray<char>((int)Math.Max((nuint)buffer.Length * 2, needed));
+        buffer.CopyTo(newBuffer);
+        buffer = newBuffer;
     }
 }

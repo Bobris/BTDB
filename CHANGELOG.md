@@ -172,6 +172,9 @@
   objects and events (and nullables, value tuples and key value pairs of other structs whose size is not their
   alignment) were saved and loaded at a wrong offset: they could not be read back, typically failing with "Offset must
   be within plus or minus 14 hours". Values of such fields saved by earlier versions are not readable.
+- On x86/x64, `MemReader.ReadStringOrdered`, `ReadStringOrderedAsSpan` and `PackUnpack.ReadAndExpandSimpleCharacters`
+  wrote past the end of a character buffer shorter than 16 characters and lost characters (read as `\0`) when it grew;
+  their vector stores also wrote through an unpinned pointer into heap buffers.
 - IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
   constructor in a dynamic type threw `MethodAccessException`.
 

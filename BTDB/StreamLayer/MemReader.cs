@@ -695,7 +695,7 @@ public struct MemReader
             if (c == 0x110000) return null;
             if (charBuf.Length < len + 2)
             {
-                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(charBuf.Length * 2);
+                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>((int)Math.Max(charBuf.Length * 2, len + 2));
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
@@ -728,7 +728,7 @@ public struct MemReader
 
             if (charBuf.Length < len + 2)
             {
-                var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                var newCharBuf = (Span<char>)new char[(int)Math.Max(charBuf.Length * 2, len + 2)];
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
@@ -781,7 +781,7 @@ public struct MemReader
             if (c == 0x110000) return null;
             if (charBuf.Length < len + 2)
             {
-                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(charBuf.Length * 2);
+                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>((int)Math.Max(charBuf.Length * 2, len + 2));
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
@@ -814,7 +814,7 @@ public struct MemReader
 
             if (charBuf.Length < len + 2)
             {
-                var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                var newCharBuf = (Span<char>)new char[(int)Math.Max(charBuf.Length * 2, len + 2)];
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
