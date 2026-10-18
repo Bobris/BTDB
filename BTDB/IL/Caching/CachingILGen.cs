@@ -805,8 +805,8 @@ class CachingILGen : IILGen
         public bool Equals(IReplayILGen other)
         {
             if (!(other is EmitFloatInst v)) return false;
-            // ReSharper disable once CompareOfFloatsByEqualityOperator
-            return _opCode == v._opCode && _param == v._param;
+            // Compare bit patterns so 0.0f and -0.0f (or different NaNs) are not considered the same constant
+            return _opCode == v._opCode && BitConverter.SingleToInt32Bits(_param) == BitConverter.SingleToInt32Bits(v._param);
         }
     }
 
@@ -838,8 +838,8 @@ class CachingILGen : IILGen
         public bool Equals(IReplayILGen other)
         {
             if (!(other is EmitDoubleInst v)) return false;
-            // ReSharper disable once CompareOfFloatsByEqualityOperator
-            return _opCode == v._opCode && _param == v._param;
+            // Compare bit patterns so 0.0 and -0.0 (or different NaNs) are not considered the same constant
+            return _opCode == v._opCode && BitConverter.DoubleToInt64Bits(_param) == BitConverter.DoubleToInt64Bits(v._param);
         }
     }
 }

@@ -92,7 +92,7 @@ class ILGenImpl : IILGen
 
     public void Emit(OpCode opCode, ConstructorInfo param)
     {
-        _ilGenerator.Emit(opCode, param);
+        _forbiddenInstructions.Emit(_ilGenerator, opCode, param);
     }
 
     public void Emit(OpCode opCode, MethodInfo param)

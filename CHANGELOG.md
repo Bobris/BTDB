@@ -110,6 +110,8 @@
   - `IOrderedDictionaryEnumerator` type arguments lost `global::` and failed to compile in namespaces like
     `Collections.Model`;
   - non-public `[OnSerialize]` / `[OnBeforeRemove]` methods in generic classes generated code that did not compile.
+- IL: the caching IL builder treated `0.0` and `-0.0` constants as equal, and `Newobj` with a non-public
+  constructor in a dynamic type threw `MethodAccessException`.
 
 ## 35.12.0
 
