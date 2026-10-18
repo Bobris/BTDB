@@ -598,6 +598,100 @@ The remaining gap of wide projections (about 35 ns per row for 4 properties) is 
 - `ConstructorInvoker` for types without generated metadata, such as anonymous types;
 - the enumerator layers (projected enumerator, window, scanner).
 
+### Phase 7: Parameterized plan caching
+
+Nothing is cached today: every enumeration and terminal call converts the LINQ expression, plans access paths and
+builds programs again. Measured per query (100 000 rows, best of 10 runs in one process):
+
+| Query                                                              | Time    | Allocated | Comparison              |
+|--------------------------------------------------------------------|--------:|----------:|-------------------------|
+| `Where(TenantId == missing)`, empty                                | 1.8 µs  | 7.0 KB    | `FindById` 93 ns, 96 B  |
+| `Where(TenantId == 1 && Id == id).FirstOrDefault()`                | 3.3 µs  | 10 KB     |                         |
+| same with captured `t`, `id + 20000`                               | 4.3 µs  | 11.5 KB   |                         |
+| `Count(TenantId == t)` (10 000 rows by key indexes)                | 2.4 µs  | 7.0 KB    |                         |
+| point query with `Select(new { Name, Age })`                       | 7.0 µs  | 22 KB     |                         |
+
+A profile splits it into expression conversion (about 30 %: evaluating captured values, attribute lookups for
+persisted names) and compilation (about 40 %: access paths, encoding constants, building programs, copying field
+arrays).
+
+Design:
+
+- **Shape key.** One walk over the expression produces a structural key: node types, methods, members, types and
+  literal constants. Every maximal subtree independent of the lambda parameters and of the query root that is not a
+  literal becomes a parameter: a placeholder in the key plus its value, evaluated once. Whether a nullable or reference
+  parameter is null is part of the key, so plans never see a null where they assumed a value. Unknown node types make
+  the query uncacheable, and it runs as before.
+- **Templates.** A bounded cache per relation (LRU over shapes) holds templates. A template memoizes, per call site,
+  everything the execution code converts (sources, terminal predicates and selectors, projections) and every plan it
+  compiles, keyed by stable template references and flags.
+- **Parameters in the tree.** Conversion turns parameter subtrees into `ParameterQueryNode`, a `ConstantQueryNode`
+  whose value comes from the current execution. Reading `Value` *bakes* the parameter: the template or plan is then
+  reused only when that parameter has the same value. Code paths that understand parameters read them without
+  baking. So any constant use that was not made parameter-aware stays correct, it just caches per value.
+- **Parameter-aware paths.**
+  - Values compared, computed or selected in programs live in frame slots that the scanner fills from the values
+    before scanning, so comparisons become frame-to-frame comparisons.
+  - Equalities and bounds on key fields keep the value sources; key ranges and the length of the prefix shared by
+    all ranges, where programs start reading keys, are built from the values for each execution.
+  - `Skip` and `Take` counts are resolved for each execution.
+- **Not cached.** Plans that encode constants with a transaction-dependent writer context, and templates baking a
+  value that is not a simple value (for example a captured collection for `Contains`), are rebuilt every time.
+- **Safety.** The cache is cleared when the relation's versions change. Templates are immutable once built; plans
+  are shared between threads, and per-execution state (frame values, ranges, projection boxes) lives in scanners and
+  projection instances.
+
+#### Phase 7 status: done
+
+What was built, and where it differs from the design above:
+
+- **Files.** `RelationQueryCache.cs` holds the shape builder, the parameter scope, the bounded cache (256 shapes per
+  relation, dropping the least recently used quarter), templates with up to 8 variants per memoized key, and the
+  per-execution context. `RelationInfo.QueryCache` owns the cache.
+- **Shape.** Node types, members and types hash by identity, because LINQ reuses those reflection objects and their own
+  hashing is slow. The builder and its token buffer are reused per thread. Span-typed subtrees (C# 13 binds
+  `array.Contains` through `ReadOnlySpan`) stay structural, and their operand becomes the parameter.
+- **Queryable constants.** `Skip`, `Take` and other `Queryable` operators wrap their values in constants. Those are
+  parameters too, so every page reuses the plan. A `Skip` of zero or less stays a literal, because it is dropped and
+  `Where` may follow it.
+- **Execution code.** Every conversion and compile in `RelationQuery<T>` goes through `RelationQueryExecution.Memo`:
+  sources, predicates, selectors, projections, combined filters and plans. Plan keys are records of template node
+  references and flags. Sources are bound for each execution (`RelationQuerySource.Bind`, computing `Skip` and
+  `Take`). The `Select` lambda and the transaction never enter templates; projections are copied for each execution
+  with fresh argument boxes.
+- **Parameter-aware compiling.** `CompileValue` puts non-null parameters with a storage type into frame slots.
+  `TryGetExactValue` turns key equalities, `||` equalities and bounds on parameters into `RelationQueryParameterRef`
+  values. `RelationQueryRangeBuilder` encodes them for each execution, with a fast path for a single range of
+  equalities. Programs whose key reading starts after a parameterized prefix take its length from the scanner
+  (`KeyStartFromRanges`). With parameters, the number of equal values is structural, so merged duplicates cannot
+  change the common prefix.
+- **Smaller fixes on the way.** The scanner's 4 KB value buffer comes from `ArrayPool`. Arithmetic on two primitives
+  of one type, like a captured `id + 1`, is evaluated without the expression interpreter.
+- **Tests.**
+  - A differential test runs 22 query shapes with new captured values for 8 rounds in new transactions against
+    LINQ-to-Objects: keys, ranges, `||`, indexes, decimals, dates, enums, nullable, bool, strings, `StartsWith`, a
+    captured list mutated between runs, paging, projections, aggregates and `FirstOrDefault`.
+  - Further tests cover plan reuse (no compiles for new values; strings on unindexed fields compiled once per
+    value), keys of different encoded lengths, eight threads sharing plans, and the cache bound.
+  - Mutation checks catch ignoring baked values, caching captured collections, a static key start, unwritten frame
+    parameters and unbound paging counts. The AOT smoke app runs cached shapes with new values.
+
+Results per query, each case timed in its own process (best of 10 runs of 10 000 queries after a 1.5 s warm-up). The
+first group includes building the expression tree, which callers of `IQueryable` pay anyway (about 0.6 µs for an empty
+query, 0.7 µs for a point query and 1.8 µs with `Select`):
+
+| Query                                                  | Before          | After          |
+|--------------------------------------------------------|----------------:|---------------:|
+| `Where(TenantId == missing)`, empty                    | 1.8 µs, 7.0 KB  | 1.2 µs, 2.8 KB |
+| `Where(TenantId == 1 && Id == id).FirstOrDefault()`    | 3.3 µs, 10 KB   | 2.1 µs, 3.7 KB |
+| same with captured `t`, `id + 20000`                   | 4.3 µs, 11.5 KB | 2.4 µs, 3.9 KB |
+| `Count(TenantId == t)`                                 | 2.4 µs, 7.0 KB  | 1.8 µs, 2.8 KB |
+| `Where(TenantId == t && Age == a).Count()`             | 4.5 µs, 20 KB   | 2.4 µs, 3.6 KB |
+| point query with `Select(new { Name, Age })`           | 7.0 µs, 22 KB   | 4.1 µs, 6.5 KB |
+
+Executing prebuilt expressions shows the cost left in BTDB: 0.88 µs for the point query (0.41 µs of it is the
+shape walk), 1.3 µs with `Select` and 0.77 µs for the count. Per-row scan speed is unchanged.
+
 ## Out of scope for now
 
 `GroupBy`, `Join`, `Distinct` (except possibly `Distinct` over a single projected field), async enumeration, and

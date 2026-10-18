@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -102,12 +103,14 @@ sealed class CompareQueryNode : QueryNode
 
 class ConstantQueryNode : QueryNode
 {
+    readonly object? _value;
+
     public ConstantQueryNode(object? value, Type type) : base(type)
     {
-        Value = value;
+        _value = value;
     }
 
-    public object? Value { get; }
+    public virtual object? Value => _value;
 }
 
 class PropQueryNode : QueryNode
@@ -282,19 +285,63 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
 
     public IEnumerator<T> GetEnumerator()
     {
-        var source = RelationQueryAstBuilder.BuildSource(_expression, _queryNode);
-        if (source.HasOrdering || source.HasPaging) return CreateWindow(source, null);
-        return RelationQueryExecutionPlan.Create<T>(_transaction, _relationInfo, _loaderInfo, source.Filter)
-            .GetEnumerator();
+        var execution = Start(_expression);
+        var source = Source(execution, _expression);
+        if (source.HasOrdering || source.HasPaging) return CreateWindow(execution, source, null);
+        return new RelationQueryEnumerator<T>(_transaction, _loaderInfo, CompilePlan(execution, source.Filter),
+            execution.Values);
     }
 
-    RelationQueryWindow<T> CreateWindow(RelationQuerySource source, QueryNode? selector, bool keepFrames = false,
-        RelationQueryProjection<T>? projection = null)
+    // Conversions and plans of an execution are memoized in the template of its expression shape, per relation.
+    RelationQueryExecution Start(Expression expression) => _relationInfo.QueryCache.Start(expression);
+
+    RelationQuerySource Source(RelationQueryExecution execution, Expression expression)
+    {
+        var source = execution.Memo("source", () =>
+        {
+            // The Select lambda is taken from each execution's expression instead, so the cache neither converts the
+            // captured values of an earlier execution nor keeps them alive.
+            var built = RelationQueryAstBuilder.BuildSource(expression, _queryNode);
+            built.HasProjection = built.Projection != null;
+            built.Projection = null;
+            return built;
+        });
+        var bound = source.Bind(execution.Values);
+        if (source.HasProjection) bound.Projection = RelationQueryAstBuilder.FindProjection(expression);
+        return bound;
+    }
+
+    RelationQueryPlan CompilePlan(RelationQueryExecution execution, QueryNode filter, QueryNode? selector = null,
+        bool orderSensitive = true, IReadOnlyList<QueryNode>? sortKeys = null,
+        IReadOnlyList<QueryNode>? projection = null, bool eagerProjection = false)
+    {
+        return execution.Memo(new PlanKey(filter, selector, orderSensitive, sortKeys, projection, eagerProjection),
+            () => new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, filter, selector,
+                orderSensitive, sortKeys, projection, eagerProjection));
+    }
+
+    // Template nodes are reused between executions, so references identify what a plan was compiled from.
+    sealed record PlanKey(QueryNode Filter, QueryNode? Selector, bool OrderSensitive,
+        IReadOnlyList<QueryNode>? SortKeys, IReadOnlyList<QueryNode>? Projection, bool EagerProjection);
+
+    QueryNode Predicate(RelationQueryExecution execution, LambdaExpression lambda) =>
+        execution.Memo("predicate", () => RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode));
+
+    QueryNode Selector(RelationQueryExecution execution, LambdaExpression lambda) =>
+        execution.Memo("selector", () => RelationQueryAstBuilder.BuildSelector(lambda, _queryNode));
+
+    // The cached projection has no transaction; each execution gets a copy with its own.
+    RelationQueryProjection<T> Projection(RelationQueryExecution execution, LambdaExpression lambda) =>
+        execution.Memo("projection", () => new RelationQueryProjection<T>(lambda, _queryNode, null!, _loaderInfo))
+            .ForExecution(_transaction, _loaderInfo);
+
+    RelationQueryWindow<T> CreateWindow(RelationQueryExecution execution, RelationQuerySource source,
+        QueryNode? selector, bool keepFrames = false, RelationQueryProjection<T>? projection = null)
     {
         // A projection which cannot throw is computed while scanning when every matching row is returned; Count
         // windows and sorted windows return fewer rows than they test.
-        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter, selector,
-            true, null, projection?.Selectors, projection is { CanThrow: false } && source.Skip == 0);
+        var plan = CompilePlan(execution, source.Filter, selector, true, null, projection?.Selectors,
+            projection is { CanThrow: false } && source.Skip == 0);
         var order = RelationQueryOrder.Forward;
         var descending = Array.Empty<bool>();
         if (source.HasOrdering)
@@ -307,17 +354,17 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             }
             else
             {
-                var keys = new List<QueryNode>();
-                foreach (var (key, _) in source.Ordering) keys.Add(key);
-                plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter,
-                    selector, true, keys, projection?.Selectors);
+                var ordering = source.Ordering;
+                var keys = execution.Memo(("sortKeys", ordering), () => ordering.ConvertAll(o => o.Key));
+                plan = CompilePlan(execution, source.Filter, selector, true, keys, projection?.Selectors);
                 order = RelationQueryOrder.Sorted;
                 descending = source.Ordering.ConvertAll(o => o.Descending).ToArray();
             }
         }
 
         projection?.Bind(plan);
-        return new(_transaction, _loaderInfo, plan, order, descending, source.Skip, source.Take, keepFrames);
+        return new(_transaction, _loaderInfo, plan, order, descending, source.Skip, source.Take, keepFrames,
+            execution.Values);
     }
 
     // Rows come in primary key order, so an ordering by the key fields not fixed by equalities, in key order and one
@@ -368,11 +415,12 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
 
     internal IEnumerator<TElement> EnumerateProjected<TElement>(Expression expression)
     {
-        var source = RelationQueryAstBuilder.BuildSource(expression, _queryNode);
+        var execution = Start(expression);
+        var source = Source(execution, expression);
         if (source.Projection == null) return (IEnumerator<TElement>)(object)GetEnumerator();
-        var projection = new RelationQueryProjection<T>(source.Projection, _queryNode, _transaction, _loaderInfo);
-        return new RelationQueryProjectedEnumerator<T, TElement>(CreateWindow(source, null, false, projection),
-            projection);
+        var projection = Projection(execution, source.Projection);
+        return new RelationQueryProjectedEnumerator<T, TElement>(
+            CreateWindow(execution, source, null, false, projection), projection);
     }
 
     public TResult Execute<TResult>(Expression expression)
@@ -387,35 +435,38 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         if (expression is not MethodCallExpression call || call.Method.DeclaringType != typeof(Queryable))
             throw new NotSupportedException("Relation query supports only Queryable operators.");
         var arguments = call.Arguments;
-        var querySource = RelationQueryAstBuilder.BuildSource(arguments[0], _queryNode);
+        var execution = Start(call);
+        var querySource = Source(execution, arguments[0]);
         var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
         var name = call.Method.Name;
-        if (querySource.Projection != null) return ExecuteProjected(name, call, querySource, lambda);
-        if (querySource.HasOrdering || querySource.HasPaging) return ExecuteWindowed(name, call, querySource, lambda);
+        if (querySource.Projection != null) return ExecuteProjected(execution, name, call, querySource, lambda);
+        if (querySource.HasOrdering || querySource.HasPaging)
+            return ExecuteWindowed(execution, name, call, querySource, lambda);
         var source = querySource.Filter;
         switch (name)
         {
             case nameof(Queryable.Count):
             case nameof(Queryable.LongCount):
             {
-                if (lambda != null) source = Where(source, lambda);
-                using var scanner = CreateScanner(source, null, false);
+                if (lambda != null) source = Where(execution, source, lambda);
+                using var scanner = CreateScanner(execution, source, null, false);
                 var count = scanner.Count();
                 if (name == nameof(Queryable.Count)) return checked((int)count);
                 return count;
             }
             case nameof(Queryable.Any):
             {
-                if (lambda != null) source = Where(source, lambda);
-                using var scanner = CreateScanner(source, null, false);
+                if (lambda != null) source = Where(execution, source, lambda);
+                using var scanner = CreateScanner(execution, source, null, false);
                 return scanner.MoveNext();
             }
             case nameof(Queryable.All) when lambda != null:
             {
                 // All stops at the first row failing the predicate, exactly like Any of its negation.
-                source = new WhereQueryNode(source,
-                    new NotQueryNode(RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode)));
-                using var scanner = CreateScanner(source, null, false);
+                var filter = source;
+                source = execution.Memo(("all", filter),
+                    () => new WhereQueryNode(filter, new NotQueryNode(Predicate(execution, lambda))));
+                using var scanner = CreateScanner(execution, source, null, false);
                 return !scanner.MoveNext();
             }
             case nameof(Queryable.First):
@@ -424,22 +475,22 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.SingleOrDefault):
             case nameof(Queryable.Last):
             case nameof(Queryable.LastOrDefault):
-                return ExecuteElement(name, call, source, lambda);
+                return ExecuteElement(execution, name, call, source, lambda);
             case nameof(Queryable.Min):
             case nameof(Queryable.Max):
             case nameof(Queryable.Sum):
             case nameof(Queryable.Average):
                 if (lambda == null)
                     throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
-                return Aggregate(name, querySource, RelationQueryAstBuilder.BuildSelector(lambda, _queryNode));
+                return Aggregate(execution, name, querySource, Selector(execution, lambda));
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
         }
     }
 
     // Terminal operators after OrderBy, Skip or Take.
-    object? ExecuteWindowed(string name, MethodCallExpression call, RelationQuerySource source,
-        LambdaExpression? lambda)
+    object? ExecuteWindowed(RelationQueryExecution execution, string name, MethodCallExpression call,
+        RelationQuerySource source, LambdaExpression? lambda)
     {
         var isAggregate = name is nameof(Queryable.Min) or nameof(Queryable.Max) or nameof(Queryable.Sum)
             or nameof(Queryable.Average);
@@ -447,12 +498,13 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         {
             // LINQ tests such a predicate on rows in sorted order, which equals filtering before ordering only when it
             // cannot throw, and only without paging.
-            var predicate = RelationQueryAstBuilder.BuildPredicate(lambda, _queryNode);
+            var predicate = Predicate(execution, lambda);
             if (source.HasPaging || RelationQueryCompiler.CanThrowNode(predicate))
                 throw new NotSupportedException(
                     $"Relation query supports Queryable.{name} with a predicate after OrderBy only when the predicate cannot throw, and not after Skip or Take.");
-            source.Filter = new WhereQueryNode(source.Filter,
-                name == nameof(Queryable.All) ? new NotQueryNode(predicate) : predicate);
+            var filter = source.Filter;
+            source.Filter = execution.Memo(("windowFilter", filter), () => new WhereQueryNode(filter,
+                name == nameof(Queryable.All) ? new NotQueryNode(predicate) : predicate));
         }
 
         switch (name)
@@ -462,7 +514,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.Any):
             case nameof(Queryable.All):
             {
-                var count = CountWindow(source, name is nameof(Queryable.Any) or nameof(Queryable.All));
+                var count = CountWindow(execution, source, name is nameof(Queryable.Any) or nameof(Queryable.All));
                 return name switch
                 {
                     nameof(Queryable.Count) => checked((int)count),
@@ -483,7 +535,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
                 var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
                     ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
                     : null;
-                using var window = CreateWindow(source, null);
+                using var window = CreateWindow(execution, source, null);
                 if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(hasPredicate);
                 if (name.StartsWith("Last", StringComparison.Ordinal))
                 {
@@ -507,20 +559,20 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             {
                 if (lambda == null)
                     throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
-                return Aggregate(name, source, RelationQueryAstBuilder.BuildSelector(lambda, _queryNode));
+                return Aggregate(execution, name, source, Selector(execution, lambda));
             }
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
         }
     }
 
-    object? Aggregate(string name, RelationQuerySource source, QueryNode selector)
+    object? Aggregate(RelationQueryExecution execution, string name, RelationQuerySource source, QueryNode selector)
     {
         if (!source.HasPaging && (!source.HasOrdering || name is nameof(Queryable.Min) or nameof(Queryable.Max)))
         {
             // Without paging, Min and Max do not depend on row order; sums and averages of floats or with overflow
             // checks follow primary key order like LINQ.
-            using var scanner = CreateScanner(source.Filter, selector,
+            using var scanner = CreateScanner(execution, source.Filter, selector,
                 name is nameof(Queryable.Sum) or nameof(Queryable.Average));
             var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
             scanner.Aggregate(aggregator);
@@ -528,19 +580,19 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         }
 
         // Sums and averages follow the window order like LINQ.
-        using var window = CreateWindow(source, selector, true);
+        using var window = CreateWindow(execution, source, selector, true);
         var windowAggregator = RelationQueryAggregator.Create(name, window.Scanner.Plan.Result!);
         while (window.MoveNext()) windowAggregator.Add(window.CurrentFrame);
         return windowAggregator.Result();
     }
 
     // Terminal operators after Select. Select values cannot throw, so counting ignores them.
-    object? ExecuteProjected(string name, MethodCallExpression call, RelationQuerySource source,
-        LambdaExpression? lambda)
+    object? ExecuteProjected(RelationQueryExecution execution, string name, MethodCallExpression call,
+        RelationQuerySource source, LambdaExpression? lambda)
     {
         if (lambda != null)
             throw new NotSupportedException($"Relation query does not support Queryable.{name} with a lambda after Select.");
-        var projection = new RelationQueryProjection<T>(source.Projection!, _queryNode, _transaction, _loaderInfo);
+        var projection = Projection(execution, source.Projection!);
         source.Projection = null;
         switch (name)
         {
@@ -553,7 +605,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
                 {
                     // Like LINQ's Select(...).Count(), every counted row runs the selector.
                     count = 0;
-                    using var window = CreateWindow(source, null, false, projection);
+                    using var window = CreateWindow(execution, source, null, false, projection);
                     while (window.MoveNext())
                     {
                         window.Scanner.ComputeProjection();
@@ -562,11 +614,11 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
                 }
                 else if (source.HasOrdering || source.HasPaging)
                 {
-                    count = CountWindow(source, name == nameof(Queryable.Any));
+                    count = CountWindow(execution, source, name == nameof(Queryable.Any));
                 }
                 else
                 {
-                    using var scanner = CreateScanner(source.Filter, null, false);
+                    using var scanner = CreateScanner(execution, source.Filter, null, false);
                     count = name == nameof(Queryable.Any) ? scanner.MoveNext() ? 1 : 0 : scanner.Count();
                 }
 
@@ -589,15 +641,14 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
                 if (name.StartsWith("Last", StringComparison.Ordinal) && !source.HasOrdering && !source.HasPaging)
                 {
                     // LINQ's Where and Select over a list search for the last element backwards, like Last.
-                    var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction,
-                        source.Filter, null, true, null, projection.Selectors);
+                    var plan = CompilePlan(execution, source.Filter, null, true, null, projection.Selectors);
                     projection.Bind(plan);
-                    using var scanner = new RelationQueryScanner(_transaction, plan);
+                    using var scanner = new RelationQueryScanner(_transaction, plan, execution.Values);
                     if (!scanner.MoveLast()) return orDefault ? defaultValue : throw NoElements(false);
                     return projection.BuildBoxed(scanner);
                 }
 
-                using var window = CreateWindow(source, null, false, projection);
+                using var window = CreateWindow(execution, source, null, false, projection);
                 if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(false);
                 if (name.StartsWith("Last", StringComparison.Ordinal))
                 {
@@ -622,7 +673,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.Max):
             case nameof(Queryable.Sum):
             case nameof(Queryable.Average):
-                return Aggregate(name, source, projection.SingleSelector ??
+                return Aggregate(execution, name, source, projection.SingleSelector ??
                     throw new NotSupportedException($"Relation query supports Queryable.{name} after Select only of a single value."));
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name} after Select.");
@@ -631,18 +682,18 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
 
     // Rows in the window, stopping at the first one when only presence matters. Like LINQ, an ordered source tests
     // every row, while an unordered one stops at the end of the window.
-    long CountWindow(RelationQuerySource source, bool presenceOnly)
+    long CountWindow(RelationQueryExecution execution, RelationQuerySource source, bool presenceOnly)
     {
         // Take(0) is empty without testing any row, like LINQ.
         if (source.Take == 0) return 0;
         if (source.HasOrdering)
         {
-            using var scanner = CreateScanner(source.Filter, null, false);
+            using var scanner = CreateScanner(execution, source.Filter, null, false);
             var total = Math.Max(0, scanner.Count() - source.Skip);
             return source.Take is { } take ? Math.Min(total, take) : total;
         }
 
-        using var window = CreateWindow(source, null);
+        using var window = CreateWindow(execution, source, null);
         var count = 0L;
         while (window.MoveNext())
         {
@@ -653,17 +704,18 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         return count;
     }
 
-    object? ExecuteElement(string name, MethodCallExpression call, QueryNode source, LambdaExpression? lambda)
+    object? ExecuteElement(RelationQueryExecution execution, string name, MethodCallExpression call, QueryNode source,
+        LambdaExpression? lambda)
     {
         var hasPredicate = lambda != null;
         var sourceHasWhere = source is WhereQueryNode;
-        if (hasPredicate) source = Where(source, lambda!);
+        if (hasPredicate) source = Where(execution, source, lambda!);
         var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
         // FirstOrDefault(source, defaultValue) and FirstOrDefault(source, predicate, defaultValue).
         var defaultValue = orDefault && call.Arguments.Count > (hasPredicate ? 2 : 1)
             ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
             : null;
-        using var scanner = CreateScanner(source, null);
+        using var scanner = CreateScanner(execution, source, null);
         if (name.StartsWith("Last", StringComparison.Ordinal))
         {
             // LINQ-to-Objects over a list searches backwards, except Last(predicate) after Where, which tests every row
@@ -697,16 +749,15 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         return new(hasPredicate ? "Sequence contains no matching element" : "Sequence contains no elements");
     }
 
-    WhereQueryNode Where(QueryNode source, LambdaExpression predicate)
+    WhereQueryNode Where(RelationQueryExecution execution, QueryNode source, LambdaExpression predicate)
     {
-        return new(source, RelationQueryAstBuilder.BuildPredicate(predicate, _queryNode));
+        return execution.Memo(("where", source), () => new WhereQueryNode(source, Predicate(execution, predicate)));
     }
 
-    RelationQueryScanner CreateScanner(QueryNode source, QueryNode? selector, bool orderSensitive = true)
+    RelationQueryScanner CreateScanner(RelationQueryExecution execution, QueryNode source, QueryNode? selector,
+        bool orderSensitive = true)
     {
-        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source, selector,
-            orderSensitive);
-        return new(_transaction, plan);
+        return new(_transaction, CompilePlan(execution, source, selector, orderSensitive), execution.Values);
     }
 
     static void ValidateQueryExpression(Expression expression)
@@ -737,20 +788,54 @@ sealed class RelationQuerySource
     public QueryNode Filter { get; set; }
 
     /// Sort keys, most significant first.
-    public List<(QueryNode Key, bool Descending)> Ordering { get; } = [];
+    public List<(QueryNode Key, bool Descending)> Ordering { get; private init; } = [];
 
     // Where ThenBy keys of the latest OrderBy are inserted; keys after it come from earlier OrderBy calls, whose order
     // a stable sort keeps among ties.
     internal int OrderingGroupEnd;
 
-    public long Skip { get; set; }
-    public long? Take { get; set; }
+    /// Skip and Take calls in order, with a literal count or the index of the parameter holding it; Skip and Take
+    /// are computed from them for each execution by Bind.
+    public List<(bool IsSkip, int Parameter, int Count)> Paging { get; private init; } = [];
+
+    public long Skip { get; private set; }
+    public long? Take { get; private set; }
 
     /// Select lambda over the row; null when rows themselves are returned.
     public LambdaExpression? Projection { get; set; }
 
+    /// Whether the query has a Select, whose lambda cached sources do not keep.
+    public bool HasProjection { get; set; }
+
     public bool HasOrdering => Ordering.Count > 0;
     public bool HasPaging => Skip > 0 || Take != null;
+
+    /// A copy with Skip and Take of these parameter values; the filter, ordering and projection are shared.
+    public RelationQuerySource Bind(object?[]? values)
+    {
+        var bound = new RelationQuerySource(Filter)
+        {
+            OrderingGroupEnd = OrderingGroupEnd, Projection = Projection, HasProjection = HasProjection,
+            Ordering = Ordering, Paging = Paging
+        };
+        foreach (var (isSkip, parameter, literal) in Paging)
+        {
+            var count = parameter < 0 ? literal : (int)values![parameter]!;
+            if (isSkip)
+            {
+                if (count <= 0) continue;
+                if (bound.Take != null) bound.Take = Math.Max(0, bound.Take.Value - count);
+                bound.Skip += count;
+            }
+            else
+            {
+                count = Math.Max(0, count);
+                bound.Take = bound.Take == null ? count : Math.Min(bound.Take.Value, count);
+            }
+        }
+
+        return bound;
+    }
 }
 
 static class RelationQueryAstBuilder
@@ -759,7 +844,7 @@ static class RelationQueryAstBuilder
     public static QueryNode Build(Expression expression, QueryByIdQueryNode query)
     {
         var source = BuildSource(expression, query);
-        if (source.HasOrdering || source.HasPaging)
+        if (source.HasOrdering || source.Paging.Count > 0)
             throw new NotSupportedException("Relation query supports only Queryable.Where here.");
         return source.Filter;
     }
@@ -783,7 +868,7 @@ static class RelationQueryAstBuilder
                 return source;
             }
             case nameof(Queryable.Where):
-                if (source.HasOrdering || source.HasPaging || source.Projection != null)
+                if (source.HasOrdering || source.Paging.Count > 0 || source.Projection != null)
                     throw new NotSupportedException("Relation query supports Where only before OrderBy, Select, Skip and Take.");
                 source.Filter = new WhereQueryNode(source.Filter,
                     BuildPredicate((LambdaExpression)StripQuote(call.Arguments[1]), query));
@@ -793,7 +878,7 @@ static class RelationQueryAstBuilder
             case nameof(Queryable.ThenBy):
             case nameof(Queryable.ThenByDescending):
             {
-                if (source.HasPaging || source.Projection != null || call.Arguments.Count != 2)
+                if (source.Paging.Count > 0 || source.Projection != null || call.Arguments.Count != 2)
                     throw new NotSupportedException($"Relation query does not support {name} here.");
                 var key = BuildSelector((LambdaExpression)StripQuote(call.Arguments[1]), query);
                 if (key.Type == typeof(string) ? key is not PropQueryNode : !RelationQueryTypes.TryGetStorage(key.Type, out _, out _, out _))
@@ -812,17 +897,14 @@ static class RelationQueryAstBuilder
                 return source;
             }
             case nameof(Queryable.Skip) when call.Arguments[1].Type == typeof(int):
-            {
-                var count = (int)EvaluateConstant(call.Arguments[1])!;
-                if (count <= 0) return source;
-                if (source.Take != null) source.Take = Math.Max(0, source.Take.Value - count);
-                source.Skip += count;
-                return source;
-            }
             case nameof(Queryable.Take) when call.Arguments[1].Type == typeof(int):
             {
-                var count = Math.Max(0, (int)EvaluateConstant(call.Arguments[1])!);
-                source.Take = source.Take == null ? count : Math.Min(source.Take.Value, count);
+                // Counts from parameters are bound for each execution, so paging does not bake them.
+                var isSkip = name == nameof(Queryable.Skip);
+                var parameter = RelationQueryParameterScope.TryGetParameter(call.Arguments[1])?.Index ?? -1;
+                var count = parameter < 0 ? (int)EvaluateConstant(call.Arguments[1])! : 0;
+                if (parameter < 0 && isSkip && count <= 0) return source;
+                source.Paging.Add((isSkip, parameter, count));
                 return source;
             }
             default:
@@ -831,6 +913,23 @@ static class RelationQueryAstBuilder
     }
 
     public static LambdaExpression? TryGetLambda(Expression expression) => StripQuote(expression) as LambdaExpression;
+
+    /// The Select lambda of a source BuildSource accepted, or null for Select(p => p).
+    public static LambdaExpression? FindProjection(Expression expression)
+    {
+        while (expression is MethodCallExpression call)
+        {
+            if (call.Method.Name == nameof(Queryable.Select))
+            {
+                var lambda = (LambdaExpression)StripQuote(call.Arguments[1]);
+                return lambda.Body == lambda.Parameters[0] ? null : lambda;
+            }
+
+            expression = call.Arguments[0];
+        }
+
+        return null;
+    }
 
     public static QueryNode BuildPredicate(LambdaExpression lambda, QueryByIdQueryNode query)
     {
@@ -884,7 +983,8 @@ static class RelationQueryAstBuilder
         QueryNode Convert(Expression expression)
         {
             if (!DependsOnParameter(expression))
-                return new ConstantQueryNode(EvaluateConstant(expression), expression.Type);
+                return RelationQueryParameterScope.TryGetParameter(expression) ??
+                       new ConstantQueryNode(EvaluateConstant(expression), expression.Type);
             switch (expression.NodeType)
             {
                 case ExpressionType.AndAlso:
@@ -1181,17 +1281,61 @@ static class RelationQueryAstBuilder
 
     internal static object? EvaluateConstant(Expression expression)
     {
+        RelationQueryParameterScope.BakeIfParameter(expression);
         return expression switch
         {
             ConstantExpression constant => constant.Value,
             MemberExpression member => EvaluateMember(member),
             UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked, Method: null } convert =>
                 ConvertConstant(EvaluateConstant(convert.Operand), convert.Type),
+            BinaryExpression { Method: null } binary when IsPrimitiveArithmetic(binary) => EvaluateArithmetic(binary),
             // Anything else independent of the row is evaluated once, by the expression interpreter.
             _ => Expression.Lambda<Func<object?>>(Expression.Convert(expression, typeof(object)))
                 .Compile(preferInterpretation: true)()
         };
     }
+
+    // Arithmetic on two values of the same primitive type, as captured values like id + 1 often are, without starting
+    // the expression interpreter.
+    static bool IsPrimitiveArithmetic(BinaryExpression binary)
+    {
+        var type = binary.Type;
+        return binary.NodeType is ExpressionType.Add or ExpressionType.AddChecked or ExpressionType.Subtract
+                   or ExpressionType.SubtractChecked or ExpressionType.Multiply or ExpressionType.MultiplyChecked
+                   or ExpressionType.Divide or ExpressionType.Modulo &&
+               binary.Left.Type == type && binary.Right.Type == type &&
+               (type == typeof(int) || type == typeof(long) || type == typeof(uint) || type == typeof(ulong) ||
+                type == typeof(double) || type == typeof(float));
+    }
+
+    static object EvaluateArithmetic(BinaryExpression binary)
+    {
+        var left = EvaluateConstant(binary.Left)!;
+        var right = EvaluateConstant(binary.Right)!;
+        var operation = binary.NodeType;
+        // Each result is boxed as its own type; a switch expression would convert them all to double.
+        return left switch
+        {
+            int l => (object)Compute(l, (int)right, operation),
+            long l => Compute(l, (long)right, operation),
+            uint l => Compute(l, (uint)right, operation),
+            ulong l => Compute(l, (ulong)right, operation),
+            double l => Compute(l, (double)right, operation),
+            _ => Compute((float)left, (float)right, operation)
+        };
+    }
+
+    static T Compute<T>(T left, T right, ExpressionType operation) where T : INumber<T> => operation switch
+    {
+        ExpressionType.Add => left + right,
+        ExpressionType.AddChecked => checked(left + right),
+        ExpressionType.Subtract => left - right,
+        ExpressionType.SubtractChecked => checked(left - right),
+        ExpressionType.Multiply => left * right,
+        ExpressionType.MultiplyChecked => checked(left * right),
+        ExpressionType.Divide => left / right,
+        _ => left % right
+    };
 
     static object? EvaluateMember(MemberExpression expression)
     {
@@ -1335,6 +1479,30 @@ static class RelationQueryTypes
         return value.GetType() == storage ? value : System.Convert.ChangeType(value, storage);
     }
 
+    /// Writes a value as its storage type into frame bytes, like programs keep values.
+    public static void WriteStorage(Span<byte> target, Type storage, object value)
+    {
+        value = ToStorage(value, storage);
+        if (storage == typeof(bool)) MemoryMarshal.Write(target, (bool)value);
+        else if (storage == typeof(byte)) MemoryMarshal.Write(target, (byte)value);
+        else if (storage == typeof(sbyte)) MemoryMarshal.Write(target, (sbyte)value);
+        else if (storage == typeof(ushort)) MemoryMarshal.Write(target, (ushort)value);
+        else if (storage == typeof(short)) MemoryMarshal.Write(target, (short)value);
+        else if (storage == typeof(uint)) MemoryMarshal.Write(target, (uint)value);
+        else if (storage == typeof(int)) MemoryMarshal.Write(target, (int)value);
+        else if (storage == typeof(ulong)) MemoryMarshal.Write(target, (ulong)value);
+        else if (storage == typeof(long)) MemoryMarshal.Write(target, (long)value);
+        else if (storage == typeof(Half)) MemoryMarshal.Write(target, (Half)value);
+        else if (storage == typeof(float)) MemoryMarshal.Write(target, (float)value);
+        else if (storage == typeof(double)) MemoryMarshal.Write(target, (double)value);
+        else if (storage == typeof(DateTime)) MemoryMarshal.Write(target, (DateTime)value);
+        else if (storage == typeof(Guid)) MemoryMarshal.Write(target, (Guid)value);
+        else if (storage == typeof(decimal)) MemoryMarshal.Write(target, (decimal)value);
+        else if (storage == typeof(TimeSpan)) MemoryMarshal.Write(target, (TimeSpan)value);
+        else if (storage == typeof(DateTimeOffset)) MemoryMarshal.Write(target, (DateTimeOffset)value);
+        else throw new NotSupportedException($"Relation query cannot store {storage.ToSimpleName()} values.");
+    }
+
     public static object CreateSet(Type storage, IEnumerable items)
     {
         if (storage == typeof(bool)) return Create<bool>(items);
@@ -1390,16 +1558,6 @@ static class RelationQueryTypes
     }
 }
 
-static class RelationQueryExecutionPlan
-{
-    public static IEnumerable<T> Create<T>(IInternalObjectDBTransaction transaction, RelationInfo relationInfo,
-        RelationInfo.ItemLoaderInfo loaderInfo, QueryNode ast) where T : class
-    {
-        var plan = new RelationQueryCompiler(relationInfo, typeof(T)).Compile(transaction, ast);
-        return new RelationQueryEnumerator<T>(transaction, loaderInfo, plan);
-    }
-}
-
 /// Compiled relation query: key ranges to scan plus interpreter programs evaluated on serialized key and value bytes.
 sealed class RelationQueryPlan
 {
@@ -1419,8 +1577,17 @@ sealed class RelationQueryPlan
     }
 
     /// Ascending, disjoint ranges of primary keys, or of secondary index keys when SecondaryKey is set. No ranges
-    /// means no row can match.
+    /// means no row can match. When RangeBuilder is set, these are the ranges of the values the plan was compiled with.
     public RelationQueryRange[] Ranges { get; }
+
+    /// Builds Ranges from the parameter values of each execution; null when they do not depend on parameters.
+    public RelationQueryRangeBuilder? RangeBuilder { get; internal set; }
+
+    /// Frame slots the scanner fills with parameter values before scanning.
+    public (int Index, ushort Slot, Type Storage)[] Parameters { get; internal set; } = [];
+
+    /// False when the plan depends on the transaction it was compiled in, so it cannot be reused.
+    public bool Cacheable { get; internal set; } = true;
 
     /// Tests conjuncts using only primary key fields before the value is read. Null when there are none.
     public RelationQueryProgram? KeyProgram { get; }
@@ -1572,6 +1739,9 @@ sealed class RelationQueryProgram
     /// Byte offset in the key where the program starts reading primary key fields.
     public int KeyStart { get; }
 
+    /// The program starts after the prefix common to all ranges, whose length differs between executions.
+    public bool KeyStartFromRanges { get; init; }
+
     public bool ConstantResult { get; }
 }
 
@@ -1715,6 +1885,8 @@ sealed class RelationQueryCompiler
         plan.FrameSize = _frameSize;
         plan.ObjectCount = _objectCount;
         plan.OneSlot = _oneSlot ?? -1;
+        plan.Parameters = _parameterSlots.ToArray();
+        plan.Cacheable = !_uncacheable;
         return plan;
     }
 
@@ -1811,13 +1983,16 @@ sealed class RelationQueryCompiler
         var canThrow = seenThrowing || _selectors.Exists(s => CanThrow(s.Node));
         var fixedFields = new HashSet<string>(path.FixedFields);
         conjuncts.RemoveAll(c => path.Used.Contains(c.Index));
-        var ranges = path.Ranges.ToArray();
+        var ranges = path.Ranges;
+        var rangeBuilder = path.Builder.HasParameters ? path.Builder : null;
+        // Programs start reading keys after the common prefix, whose length then comes from each execution's ranges.
+        var dynamicPrefix = rangeBuilder != null && path.CommonFieldCount > 0;
         if (path.SecondaryKeyIndex < 0)
         {
             var (keyProgram, valuePrograms) = BuildPrimaryPrograms(conjuncts, path.CommonPrefixLength,
-                path.CommonFieldCount);
+                path.CommonFieldCount, dynamicPrefix);
             return new(ranges, keyProgram, valuePrograms, _frameSize, _objectCount, result)
-                { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow };
+                { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow, RangeBuilder = rangeBuilder };
         }
 
         // Index conjuncts are tested on index keys; they must not throw, because index order is not row order.
@@ -1836,7 +2011,7 @@ sealed class RelationQueryCompiler
                        _selectors.TrueForAll(s => UsesOnlyFields(s.Node, path.KeyFields));
         var indexProgram = indexConjuncts.Count > 0 || covering && _selectors.Count > 0
             ? BuildProgram(indexConjuncts, null, path.CommonPrefixLength, path.CommonFieldCount,
-                covering ? _selectors : [], path.KeyFields, path.Prefix.Length)
+                covering ? _selectors : [], path.KeyFields, path.Prefix.Length, dynamicPrefix)
             : null;
         RelationQueryProgram? primaryKeyProgram = null;
         RelationQueryProgram?[]? primaryValuePrograms = null;
@@ -1846,11 +2021,11 @@ sealed class RelationQueryCompiler
         var secondaryKey = new RelationQuerySecondaryKey(indexProgram, !covering && (orderSensitive || anyThrows),
             covering, _relationInfo.GetSKKeyValueToPKMerger((uint)path.SecondaryKeyIndex), _relationInfo.Prefix);
         return new(ranges, primaryKeyProgram, primaryValuePrograms, _frameSize, _objectCount, result, secondaryKey)
-            { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow };
+            { FixedPrimaryKeyFields = fixedFields, CanThrow = canThrow, RangeBuilder = rangeBuilder };
     }
 
     (RelationQueryProgram? KeyProgram, RelationQueryProgram?[]? ValuePrograms) BuildPrimaryPrograms(
-        List<Conjunct> conjuncts, int prefixLength, int prefixFieldCount)
+        List<Conjunct> conjuncts, int prefixLength, int prefixFieldCount, bool dynamicPrefix = false)
     {
         // Conjuncts are evaluated in a different order than written, so a throwing conjunct must still see every
         // earlier conjunct evaluated first, and nothing after it may move before it.
@@ -1881,7 +2056,7 @@ sealed class RelationQueryCompiler
         var keyProgram = keyConjuncts.Count == 0 && (_selectors.Count == 0 || hasValueStage)
             ? null
             : BuildProgram(keyConjuncts, null, prefixLength, prefixFieldCount, hasValueStage ? [] : _selectors,
-                primaryKeyFields, _relationInfo.Prefix.Length);
+                primaryKeyFields, _relationInfo.Prefix.Length, dynamicPrefix);
         RelationQueryProgram?[]? valuePrograms = null;
         if (hasValueStage)
         {
@@ -1890,7 +2065,7 @@ sealed class RelationQueryCompiler
             valuePrograms = new RelationQueryProgram?[maxVersion + 1];
             foreach (var (version, info) in _relationInfo.RelationVersions)
                 valuePrograms[version] = BuildProgram(valueConjuncts, info.Fields, prefixLength, prefixFieldCount,
-                    _selectors, primaryKeyFields, _relationInfo.Prefix.Length);
+                    _selectors, primaryKeyFields, _relationInfo.Prefix.Length, dynamicPrefix);
         }
 
         return (keyProgram, valuePrograms);
@@ -1901,9 +2076,13 @@ sealed class RelationQueryCompiler
         public int SecondaryKeyIndex = -1;
         public TableFieldInfo[] KeyFields = [];
         public byte[] Prefix = [];
-        public List<RelationQueryRange> Ranges = [];
+        public RelationQueryRange[] Ranges = [];
 
-        /// Bytes and fields shared by every range: Prefix and the leading single-valued equalities.
+        /// Builds Ranges, again for each execution when they depend on parameters.
+        public RelationQueryRangeBuilder Builder = null!;
+
+        /// Bytes and fields shared by every range: Prefix and the leading single-valued equalities. The length differs
+        /// between executions when those equalities have parameters.
         public int CommonPrefixLength;
 
         public int CommonFieldCount;
@@ -1912,25 +2091,21 @@ sealed class RelationQueryCompiler
 
         /// Primary key fields set to a single value by the used equalities.
         public readonly HashSet<string> FixedFields = [];
-
-        /// An additional range per prefix, for keys a residual conjunct must still see.
-        public Func<byte[], RelationQueryRange>? ExtraRanges;
     }
 
     // At most this many ranges come from IN lists, so huge lists stay residual conjuncts.
     const int MaxRanges = 1024;
 
-    [SkipLocalsInit]
     AccessPath AnalyzeAccessPath(IInternalObjectDBTransaction transaction, List<Conjunct> conjuncts,
         TableFieldInfo[] keyFields, byte[] prefix, int secondaryKeyIndex)
     {
+        var builder = new RelationQueryRangeBuilder(prefix);
         var path = new AccessPath
         {
-            SecondaryKeyIndex = secondaryKeyIndex, KeyFields = keyFields, Prefix = prefix,
-            CommonPrefixLength = prefix.Length
+            SecondaryKeyIndex = secondaryKeyIndex, KeyFields = keyFields, Prefix = prefix, Builder = builder
         };
-        IWriterCtx? writerCtx = null;
-        var prefixes = new List<byte[]> { prefix };
+        var parameterValues = RelationQueryParameterScope.CurrentValues;
+        var rangeCount = 1;
         var allSingle = true;
         var fieldIndex = 0;
         for (; fieldIndex < keyFields.Length; fieldIndex++)
@@ -1938,55 +2113,42 @@ sealed class RelationQueryCompiler
             var field = keyFields[fieldIndex];
             if (field.Computed) break;
             var values = FindEqualityValues(conjuncts, field.Name, out var conjunctIndex, out var propertyType);
-            if (values == null || !CanSaveConstant(propertyType) || prefixes.Count * values.Count > MaxRanges) break;
-            if (field.Handler!.NeedsCtx()) writerCtx ??= new DBWriterCtx(transaction);
-            var save = field.Handler.Save(propertyType, _relationInfo.TypeConverterFactory);
-            var encodings = new List<byte[]>();
-            foreach (var value in values)
+            if (values == null || !CanSaveConstant(propertyType) || rangeCount * values.Count > MaxRanges) break;
+            if (field.Handler!.NeedsCtx())
             {
-                var encoded = Encode(save, writerCtx, propertyType, value);
-                if (!encodings.Exists(e => e.AsSpan().SequenceEqual(encoded))) encodings.Add(encoded);
+                builder.WriterCtx ??= new DBWriterCtx(transaction);
+                _uncacheable = true;
             }
 
-            var next = new List<byte[]>(prefixes.Count * encodings.Count);
-            foreach (var p in prefixes)
-            foreach (var e in encodings)
-                next.Add([..p, ..e]);
-            prefixes = next;
+            var save = field.Handler.Save(propertyType, _relationInfo.TypeConverterFactory);
+            // With parameters, how many values there are cannot depend on equal values merging.
+            var hasParameters = values.Exists(v => v is RelationQueryParameterRef);
+            var count = hasParameters
+                ? values.Count
+                : RelationQueryRangeBuilder.Distinct(save, builder.WriterCtx, propertyType, values, null).Count;
+            builder.Fields.Add((save, propertyType, values, count == 1));
+            builder.HasParameters |= hasParameters;
+            rangeCount *= count;
             path.Used.Add(conjunctIndex);
             path.Score += 2;
-            if (encodings.Count == 1 && IsPrimaryKeyField(field.Name)) path.FixedFields.Add(field.Name);
-            if (allSingle && encodings.Count == 1)
-            {
-                path.CommonPrefixLength += encodings[0].Length;
-                path.CommonFieldCount++;
-            }
-            else
-            {
-                allSingle = false;
-            }
+            if (count == 1 && IsPrimaryKeyField(field.Name)) path.FixedFields.Add(field.Name);
+            if (allSingle && count == 1) path.CommonFieldCount++;
+            else allSingle = false;
         }
 
-        RelationQueryRange CreateRange(byte[] p) => new(p, p, false, null, false);
-        Func<byte[], RelationQueryRange> createRange = CreateRange;
         if (fieldIndex < keyFields.Length && !keyFields[fieldIndex].Computed)
-            createRange = AnalyzeRangeField(transaction, conjuncts, keyFields[fieldIndex], path) ?? createRange;
-        foreach (var p in prefixes)
-        {
-            path.Ranges.Add(createRange(p));
-            if (path.ExtraRanges != null) path.Ranges.Add(path.ExtraRanges(p));
-        }
-
-        path.Ranges.Sort(static (a, b) => a.Start.AsSpan().SequenceCompareTo(b.Start));
+            AnalyzeRangeField(transaction, conjuncts, keyFields[fieldIndex], path);
+        path.Ranges = builder.Build(parameterValues, out path.CommonPrefixLength);
         return path;
     }
 
     // A range on the field after the equalities: ordinal StartsWith on ordered strings, or bounds on fields whose
     // encoding is order preserving.
-    Func<byte[], RelationQueryRange>? AnalyzeRangeField(IInternalObjectDBTransaction transaction,
-        List<Conjunct> conjuncts, TableFieldInfo field, AccessPath path)
+    void AnalyzeRangeField(IInternalObjectDBTransaction transaction, List<Conjunct> conjuncts, TableFieldInfo field,
+        AccessPath path)
     {
         var handler = field.Handler!;
+        var builder = path.Builder;
         object? lower = null, upper = null;
         var lowerInclusive = false;
         var upperInclusive = false;
@@ -1999,39 +2161,30 @@ sealed class RelationQueryCompiler
                 // StartsWith throws for a null key, so the conjunct stays and the null keys are scanned too.
                 var writer = new MemWriter();
                 writer.WriteStringOrderedPrefix((string)startsWith.Argument!);
-                var encodedPrefix = writer.GetSpan().ToArray();
+                builder.StartsWith = writer.GetSpan().ToArray();
                 writer = new();
                 writer.WriteStringOrdered(null);
-                var encodedNull = writer.GetSpan().ToArray();
+                builder.NullKey = writer.GetSpan().ToArray();
                 path.Score++;
-                path.ExtraRanges = p =>
-                {
-                    byte[] nullKeys = [..p, ..encodedNull];
-                    return new(nullKeys, nullKeys, false, null, false);
-                };
-                return p =>
-                {
-                    byte[] start = [..p, ..encodedPrefix];
-                    return new(start, start, false, null, false);
-                };
+                return;
             }
 
             if (conjunct.Throws) break;
 
             if (conjunct.Node is not CompareQueryNode compare || !TrySplitPropertyConstant(compare, out var property,
-                    out var constant) || property.Name != field.Name || constant.Value == null ||
-                constant.Value.GetType() != property.Type || !CanSaveConstant(property.Type) ||
-                !RelationQueryKeyRanges.IsOrderPreserving(handler))
+                    out var constant) || property.Name != field.Name || !CanSaveConstant(property.Type) ||
+                !RelationQueryKeyRanges.IsOrderPreserving(handler) ||
+                !TryGetExactValue(property, constant, out var value) || value == null)
                 continue;
             var op = compare.Left is ConstantQueryNode ? Mirror(compare.Compare) : compare.Compare;
             if (op is QueryCompare.Greater or QueryCompare.GreaterOrEqual && lower == null)
             {
-                lower = constant.Value;
+                lower = value;
                 lowerInclusive = op == QueryCompare.GreaterOrEqual;
             }
             else if (op is QueryCompare.Less or QueryCompare.LessOrEqual && upper == null)
             {
-                upper = constant.Value;
+                upper = value;
                 upperInclusive = op == QueryCompare.LessOrEqual;
             }
             else
@@ -2043,17 +2196,38 @@ sealed class RelationQueryCompiler
             path.Used.Add(conjunct.Index);
         }
 
-        if (type == null) return null;
+        if (type == null) return;
         path.Score++;
-        IWriterCtx? writerCtx = handler.NeedsCtx() ? new DBWriterCtx(transaction) : null;
-        var save = handler.Save(type, _relationInfo.TypeConverterFactory);
-        var lowerBytes = lower == null ? null : Encode(save, writerCtx, type, lower);
-        var upperBytes = upper == null ? null : Encode(save, writerCtx, type, upper);
-        return p => new(p, lowerBytes == null ? p : [..p, ..lowerBytes], lowerBytes != null && !lowerInclusive,
-            upperBytes, upperInclusive);
+        if (handler.NeedsCtx())
+        {
+            builder.WriterCtx ??= new DBWriterCtx(transaction);
+            _uncacheable = true;
+        }
+
+        builder.BoundSave = handler.Save(type, _relationInfo.TypeConverterFactory);
+        builder.BoundType = type;
+        builder.Lower = lower;
+        builder.LowerInclusive = lowerInclusive;
+        builder.Upper = upper;
+        builder.UpperInclusive = upperInclusive;
+        builder.HasParameters |= lower is RelationQueryParameterRef || upper is RelationQueryParameterRef;
     }
 
-    static byte[] Encode(FieldHandlerSave save, IWriterCtx? writerCtx, Type type, object? value)
+    // The value of an exact equality or bound: the constant's value, or a reference to a non-null parameter of the
+    // property's type, encoded for each execution.
+    static bool TryGetExactValue(PropQueryNode property, ConstantQueryNode constant, out object? value)
+    {
+        if (constant is ParameterQueryNode parameter && parameter.Type == property.Type && parameter.PeekValue != null)
+        {
+            value = new RelationQueryParameterRef(parameter.Index);
+            return true;
+        }
+
+        value = constant.Value;
+        return value == null ? property.Type == typeof(string) : value.GetType() == property.Type;
+    }
+
+    internal static byte[] Encode(FieldHandlerSave save, IWriterCtx? writerCtx, Type type, object? value)
     {
         var writer = new MemWriter();
         SaveConstant(save, ref writer, writerCtx, type, value);
@@ -2072,9 +2246,9 @@ sealed class RelationQueryCompiler
             {
                 case CompareQueryNode { Compare: QueryCompare.Equal } equals
                     when TrySplitPropertyConstant(equals, out var property, out var constant) &&
-                         property.Name == name && IsExactConstant(property, constant):
+                         property.Name == name && TryGetExactValue(property, constant, out var value):
                     propertyType = property.Type;
-                    return [constant.Value];
+                    return [value];
                 case InSetQueryNode { Operand: PropQueryNode property } inSet when property.Name == name:
                 {
                     propertyType = property.Type;
@@ -2117,16 +2291,11 @@ sealed class RelationQueryCompiler
                    CollectOrEqualities(or.Right, name, values, ref type);
         if (node is not CompareQueryNode { Compare: QueryCompare.Equal } equals ||
             !TrySplitPropertyConstant(equals, out var property, out var constant) || property.Name != name ||
-            !IsExactConstant(property, constant) || type != null && type != property.Type)
+            type != null && type != property.Type || !TryGetExactValue(property, constant, out var value))
             return false;
         type = property.Type;
-        values.Add(constant.Value);
+        values.Add(value);
         return true;
-    }
-
-    static bool IsExactConstant(PropQueryNode property, ConstantQueryNode constant)
-    {
-        return constant.Value == null ? property.Type == typeof(string) : constant.Value.GetType() == property.Type;
     }
 
     void CollectFields(QueryNode node)
@@ -2165,6 +2334,12 @@ sealed class RelationQueryCompiler
 
     ushort? _oneSlot;
 
+    // Parameters compared, computed or selected by programs, in frame slots filled for each execution.
+    readonly List<(int Index, ushort Slot, Type Storage)> _parameterSlots = [];
+
+    // Set when something compiled depends on the transaction.
+    bool _uncacheable;
+
     ushort AllocFrame(int size)
     {
         if (_frameSize + size > ushort.MaxValue)
@@ -2186,7 +2361,7 @@ sealed class RelationQueryCompiler
     RelationQueryProgram BuildProgram(List<Conjunct> conjuncts, ReadOnlyMemory<TableFieldInfo>? valueFields,
         int prefixLength, int prefixFieldCount,
         IReadOnlyList<(QueryNode Node, RelationQueryResult Result)> selectors, TableFieldInfo[] keyFieldArray,
-        int basePrefixLength)
+        int basePrefixLength, bool dynamicPrefix = false)
     {
         var keyFields = keyFieldArray.AsSpan();
         var specialized = new List<Conjunct>(conjuncts.Count);
@@ -2322,7 +2497,7 @@ sealed class RelationQueryCompiler
         _builder.AddInstruction(OpCode.Stop);
         var program = _builder.Materialize();
         _builder = null!;
-        return new(program, keyStart, false);
+        return new(program, keyStart, false) { KeyStartFromRanges = dynamicPrefix && keyStart == prefixLength };
     }
 
     // Stores the selector value and its HasValue into the result slot.
@@ -2772,6 +2947,22 @@ sealed class RelationQueryCompiler
                     throw new NotSupportedException("Relation query cannot use a string property as a value here.");
                 return new(QueryOperandKind.Frame, field.Slot, field.ValueType, field.StorageType,
                     field.IsNullable ? QueryHasValue.Frame : QueryHasValue.Always, field.HasValueSlot);
+            }
+            case ParameterQueryNode parameter when parameter.PeekValue != null &&
+                                                   RelationQueryTypes.TryGetStorage(parameter.Type,
+                                                       out var parameterStorage, out var parameterValueType, out _):
+            {
+                // Whether the value is null is part of the cache key, so a non-null value always has a value.
+                var index = _parameterSlots.FindIndex(p => p.Index == parameter.Index);
+                if (index < 0)
+                {
+                    _parameterSlots.Add((parameter.Index, AllocFrame(RelationQueryTypes.SlotSize(parameterStorage)),
+                        parameterStorage));
+                    index = _parameterSlots.Count - 1;
+                }
+
+                return new(QueryOperandKind.Frame, _parameterSlots[index].Slot, parameterValueType, parameterStorage,
+                    QueryHasValue.Always, 0);
             }
             case ConstantQueryNode constant:
             {
@@ -3293,7 +3484,7 @@ sealed class RelationQueryCompiler
                type == typeof(decimal) || type == typeof(TimeSpan) || type == typeof(DateTimeOffset);
     }
 
-    static void SaveConstant(FieldHandlerSave saver, ref MemWriter writer, IWriterCtx? writerCtx, Type type,
+    internal static void SaveConstant(FieldHandlerSave saver, ref MemWriter writer, IWriterCtx? writerCtx, Type type,
         object? value)
     {
         if (type == typeof(string))
@@ -3651,7 +3842,8 @@ sealed class RelationQueryScanner : IDisposable
     readonly CursorIterateCallback _aggregateIndex;
     readonly long[] _frame;
     readonly object?[] _objects;
-    readonly byte[]? _valueBuffer;
+    // Rented from the shared pool and returned on Dispose, so short queries do not allocate it.
+    byte[]? _valueBuffer;
     IKeyValueDBCursor? _cursor;
     IKeyValueDBCursor? _indexCursor;
     RelationQueryAggregator? _aggregator;
@@ -3664,6 +3856,13 @@ sealed class RelationQueryScanner : IDisposable
     bool _skipCurrentRow;
     bool _stepping;
     int _examined;
+
+    // Ranges of this execution's parameter values, and the length of the key prefix they all share.
+    readonly RelationQueryRange[] _ranges;
+    readonly int _commonPrefixLength;
+
+    int KeyStart(RelationQueryProgram program) =>
+        program.KeyStartFromRanges ? _commonPrefixLength : program.KeyStart;
     List<byte[]>? _candidates;
 
     // A match within this many tested rows switches to stepping; this many rejected rows in a row switch back.
@@ -3671,7 +3870,8 @@ sealed class RelationQueryScanner : IDisposable
     const int StepRejectLimit = 8;
     int _candidateIndex;
 
-    public RelationQueryScanner(IInternalObjectDBTransaction transaction, RelationQueryPlan plan)
+    public RelationQueryScanner(IInternalObjectDBTransaction transaction, RelationQueryPlan plan,
+        object?[]? parameterValues = null)
     {
         _transaction = transaction;
         Plan = plan;
@@ -3683,7 +3883,11 @@ sealed class RelationQueryScanner : IDisposable
         _frame = new long[plan.FrameSize / sizeof(long)];
         _objects = new object?[plan.ObjectCount];
         if (plan.OneSlot >= 0) FrameBytes[plan.OneSlot] = 1;
-        if (plan.ValuePrograms != null || plan.ProjectionValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
+        foreach (var (index, slot, storage) in plan.Parameters)
+            RelationQueryTypes.WriteStorage(FrameBytes[slot..], storage, parameterValues![index]!);
+        _ranges = plan.RangeBuilder?.Build(parameterValues, out _commonPrefixLength) ?? plan.Ranges;
+        if (plan.ValuePrograms != null || plan.ProjectionValuePrograms != null)
+            _valueBuffer = ArrayPool<byte>.Shared.Rent(ValueBufferSize);
         _cursor = transaction.KeyValueDBTransaction.CreateCursor();
     }
 
@@ -3722,6 +3926,7 @@ sealed class RelationQueryScanner : IDisposable
             ref byte frame, ref object? objects)
         {
             if (program.Program == null) return;
+            // Projection programs read keys from the relation prefix, which never depends on parameters.
             var keyReader = new MemReader(keyPointer + program.KeyStart, keyLength - program.KeyStart);
             var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
             BTDB.Interpreter.Interpreter.Run(ref ctx);
@@ -3780,9 +3985,9 @@ sealed class RelationQueryScanner : IDisposable
             _inRange = false;
         }
 
-        while (_rangeIndex < Plan.Ranges.Length)
+        while (_rangeIndex < _ranges.Length)
         {
-            var range = Plan.Ranges[_rangeIndex];
+            var range = _ranges[_rangeIndex];
             if (!_inRange)
             {
                 if (!Seek(cursor, range))
@@ -3963,13 +4168,13 @@ sealed class RelationQueryScanner : IDisposable
         if (_first)
         {
             _first = false;
-            _rangeIndex = Plan.Ranges.Length - 1;
+            _rangeIndex = _ranges.Length - 1;
             _inRange = false;
         }
 
         while (_rangeIndex >= 0)
         {
-            var range = Plan.Ranges[_rangeIndex];
+            var range = _ranges[_rangeIndex];
             if (!(_inRange ? cursor.FindPreviousKey(range.Prefix) : SeekLast(cursor, range)))
             {
                 _rangeIndex--;
@@ -3998,15 +4203,15 @@ sealed class RelationQueryScanner : IDisposable
     {
         ThrowIfDisposed();
         if (count <= 0 || !_first || Plan.SecondaryKey != null || Plan.HasPrograms ||
-            !Array.TrueForAll(Plan.Ranges, r => r.IsWholePrefix))
+            !Array.TrueForAll(_ranges, r => r.IsWholePrefix))
             return 0;
         var cursor = _cursor!;
         _first = false;
         var skipped = 0L;
-        for (_rangeIndex = 0; _rangeIndex < Plan.Ranges.Length; _rangeIndex++)
+        for (_rangeIndex = 0; _rangeIndex < _ranges.Length; _rangeIndex++)
         {
             if (skipped == count) break;
-            var range = Plan.Ranges[_rangeIndex];
+            var range = _ranges[_rangeIndex];
             if (!cursor.FindFirstKey(range.Prefix)) continue;
             var firstIndex = cursor.GetKeyIndex();
             cursor.FindLastKey(range.Prefix);
@@ -4044,9 +4249,9 @@ sealed class RelationQueryScanner : IDisposable
 
         var cursor = _cursor!;
         Span<byte> keyBuffer = stackalloc byte[512];
-        for (var i = Plan.Ranges.Length - 1; i >= 0; i--)
+        for (var i = _ranges.Length - 1; i >= 0; i--)
         {
-            var range = Plan.Ranges[i];
+            var range = _ranges[i];
             if (!SeekLast(cursor, range)) continue;
             do
             {
@@ -4066,11 +4271,11 @@ sealed class RelationQueryScanner : IDisposable
         ThrowIfDisposed();
         var secondaryKey = Plan.SecondaryKey;
         var noPrograms = !Plan.HasPrograms && (secondaryKey == null || secondaryKey.IndexProgram == null);
-        if (noPrograms && Array.TrueForAll(Plan.Ranges, r => r.IsWholePrefix))
+        if (noPrograms && Array.TrueForAll(_ranges, r => r.IsWholePrefix))
         {
             var cursor = secondaryKey == null ? _cursor! : IndexCursor;
             var count = 0L;
-            foreach (var range in Plan.Ranges)
+            foreach (var range in _ranges)
             {
                 if (!cursor.FindFirstKey(range.Prefix)) continue;
                 var firstIndex = cursor.GetKeyIndex();
@@ -4099,7 +4304,7 @@ sealed class RelationQueryScanner : IDisposable
             if (secondaryKey == null)
             {
                 var cursor = _cursor!;
-                foreach (var range in Plan.Ranges)
+                foreach (var range in _ranges)
                 {
                     if (!Seek(cursor, range)) continue;
                     _range = range;
@@ -4121,7 +4326,7 @@ sealed class RelationQueryScanner : IDisposable
 
             // Order does not matter and nothing can throw, so index keys are processed in index order.
             var indexCursor = IndexCursor;
-            foreach (var range in Plan.Ranges)
+            foreach (var range in _ranges)
             {
                 if (!Seek(indexCursor, range)) continue;
                 _range = range;
@@ -4172,7 +4377,7 @@ sealed class RelationQueryScanner : IDisposable
         _candidates = [];
         var indexCursor = IndexCursor;
         Span<byte> keyBuffer = stackalloc byte[512];
-        foreach (var range in Plan.Ranges)
+        foreach (var range in _ranges)
         {
             if (!Seek(indexCursor, range)) continue;
             _range = range;
@@ -4216,7 +4421,7 @@ sealed class RelationQueryScanner : IDisposable
         ref var objects = ref MemoryMarshal.GetArrayDataReference(_objects);
         fixed (byte* keyPointer = indexKey)
         {
-            var keyReader = new MemReader(keyPointer + program.KeyStart, indexKey.Length - program.KeyStart);
+            var keyReader = new MemReader(keyPointer + KeyStart(program), indexKey.Length - KeyStart(program));
             var valueReader = new MemReader();
             var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
             BTDB.Interpreter.Interpreter.Run(ref ctx);
@@ -4242,7 +4447,7 @@ sealed class RelationQueryScanner : IDisposable
                 }
                 else
                 {
-                    keyReader = new(keyPointer + keyProgram.KeyStart, key.Length - keyProgram.KeyStart);
+                    keyReader = new(keyPointer + KeyStart(keyProgram), key.Length - KeyStart(keyProgram));
                     var ctx = new InterpreterCtx(keyProgram.Program, ref frame, ref objects, ref keyReader,
                         ref valueReader);
                     BTDB.Interpreter.Interpreter.Run(ref ctx);
@@ -4262,7 +4467,7 @@ sealed class RelationQueryScanner : IDisposable
                 var program = valuePrograms[version];
                 if (program == null) return false;
                 if (program.Program == null) return program.ConstantResult;
-                keyReader = new(keyPointer + program.KeyStart, key.Length - program.KeyStart);
+                keyReader = new(keyPointer + KeyStart(program), key.Length - KeyStart(program));
                 var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
                 BTDB.Interpreter.Interpreter.Run(ref ctx);
                 return ctx.BoolResult;
@@ -4293,6 +4498,9 @@ sealed class RelationQueryScanner : IDisposable
         _indexCursor?.Dispose();
         _indexCursor = null;
         Array.Clear(_objects);
+        if (_valueBuffer == null) return;
+        ArrayPool<byte>.Shared.Return(_valueBuffer);
+        _valueBuffer = null;
     }
 }
 
@@ -4305,11 +4513,11 @@ sealed class RelationQueryEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T
     T? _current;
 
     public RelationQueryEnumerator(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
-        RelationQueryPlan plan)
+        RelationQueryPlan plan, object?[]? parameterValues)
     {
         _transaction = transaction;
         _loaderInfo = loaderInfo;
-        _scanner = new(transaction, plan);
+        _scanner = new(transaction, plan, parameterValues);
     }
 
     public bool MoveNext()
@@ -4377,7 +4585,7 @@ sealed class RelationQueryWindow<T> : IEnumerator<T>, IEnumerable<T> where T : c
 
     public RelationQueryWindow(IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo,
         RelationQueryPlan plan, RelationQueryOrder order, bool[] descending, long skip, long? take,
-        bool keepFrames = false)
+        bool keepFrames = false, object?[]? parameterValues = null)
     {
         _keepFrames = keepFrames;
         _transaction = transaction;
@@ -4386,7 +4594,7 @@ sealed class RelationQueryWindow<T> : IEnumerator<T>, IEnumerable<T> where T : c
         _descending = descending;
         _skip = skip;
         _take = take;
-        Scanner = new(transaction, plan);
+        Scanner = new(transaction, plan, parameterValues);
     }
 
     /// Positioned on the current row; its frame holds the selector value of the plan.
@@ -4576,6 +4784,34 @@ sealed class RelationQueryProjection<TRow> where TRow : class
     readonly ClassMetadata? _metadata;
     RelationQueryResult[] _results = [];
 
+    // A copy for one execution of a cached projection: the analysis is shared, argument boxes are not.
+    RelationQueryProjection(RelationQueryProjection<TRow> template, IInternalObjectDBTransaction transaction,
+        RelationInfo.ItemLoaderInfo loaderInfo)
+    {
+        _transaction = transaction;
+        _loaderInfo = loaderInfo;
+        foreach (var argument in template._arguments) _arguments.Add(new(argument));
+        _selectors = template._selectors;
+        _new = template._new;
+        _bindings = template._bindings;
+        _metadata = template._metadata;
+        _factory = template._factory;
+        _argumentCount = template._argumentCount;
+        _useCreator = template._useCreator;
+        _constructorInvoker = template._constructorInvoker;
+        _factoryInvoker = template._factoryInvoker;
+    }
+
+    /// The projection for an execution, which may be a different one than the projection was built in.
+    public RelationQueryProjection<TRow> ForExecution(IInternalObjectDBTransaction transaction,
+        RelationInfo.ItemLoaderInfo loaderInfo)
+    {
+        // Invokers are created once and shared by every execution.
+        _constructorInvoker ??= _new is { Constructor: { } constructor } ? ConstructorInvoker.Create(constructor) : null;
+        _factoryInvoker ??= _factory != null ? MethodInvoker.Create(_factory) : null;
+        return new(this, transaction, loaderInfo);
+    }
+
     public RelationQueryProjection(LambdaExpression lambda, QueryByIdQueryNode query,
         IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo)
     {
@@ -4681,6 +4917,17 @@ sealed class RelationQueryProjection<TRow> where TRow : class
     /// A constructor, factory or member argument, or the single selected value.
     sealed class ProjectionArgument
     {
+        public ProjectionArgument(ProjectionArgument other)
+        {
+            IsRow = other.IsRow;
+            Selector = other.Selector;
+            Type = other.Type;
+            EnumType = other.EnumType;
+            IsNullable = other.IsNullable;
+            StorageSize = other.StorageSize;
+            NullableValueOffset = other.NullableValueOffset;
+        }
+
         public ProjectionArgument(bool isRow, int selector, Type type)
         {
             IsRow = isRow;
@@ -5200,6 +5447,115 @@ sealed class MinMaxAggregator<T> : RelationQueryValueAggregator<T> where T : unm
 
 /// A contiguous part of the key space scanned by a relation query: keys starting with Prefix, from Start on and up to
 /// the Stop bound of the field following Prefix.
+/// Key ranges of an access path: equalities on leading key fields, then StartsWith or bounds on the next field. Values
+/// may be parameter references, encoded from each execution's values.
+sealed class RelationQueryRangeBuilder
+{
+    public RelationQueryRangeBuilder(byte[] prefix)
+    {
+        Prefix = prefix;
+    }
+
+    public byte[] Prefix { get; }
+
+    /// Equality fields in key order; Single fields have one value in every execution.
+    public readonly List<(FieldHandlerSave Save, Type Type, List<object?> Values, bool Single)> Fields = [];
+
+    /// Encoded ordinal StartsWith prefix of the next field, with the encoded null key scanned too.
+    public byte[]? StartsWith;
+    public byte[]? NullKey;
+
+    public FieldHandlerSave? BoundSave;
+    public Type? BoundType;
+    public object? Lower;
+    public object? Upper;
+    public bool LowerInclusive;
+    public bool UpperInclusive;
+
+    public bool HasParameters;
+
+    /// Set when a key handler needs a writer context; such plans are not cached.
+    public IWriterCtx? WriterCtx;
+
+    public RelationQueryRange[] Build(object?[]? values, out int commonPrefixLength)
+    {
+        if (StartsWith == null && BoundType == null && Fields.TrueForAll(f => f.Single))
+        {
+            // The common shape, one range of equalities, is written at once.
+            var writer = new MemWriter();
+            writer.WriteBlock(Prefix);
+            foreach (var (save, type, fieldValues, _) in Fields)
+                RelationQueryCompiler.SaveConstant(save, ref writer, WriterCtx, type,
+                    RelationQueryParameterRef.Resolve(fieldValues[0], values));
+            var key = writer.GetSpan().ToArray();
+            commonPrefixLength = key.Length;
+            return [new(key, key, false, null, false)];
+        }
+
+        var prefixes = new List<byte[]> { Prefix };
+        commonPrefixLength = Prefix.Length;
+        var allSingle = true;
+        foreach (var (save, type, fieldValues, single) in Fields)
+        {
+            var encodings = Distinct(save, WriterCtx, type, fieldValues, values);
+            var next = new List<byte[]>(prefixes.Count * encodings.Count);
+            foreach (var p in prefixes)
+            foreach (var e in encodings)
+                next.Add([..p, ..e]);
+            prefixes = next;
+            if (allSingle && single) commonPrefixLength += encodings[0].Length;
+            else allSingle = false;
+        }
+
+        byte[]? lowerBytes = null, upperBytes = null;
+        if (BoundType != null)
+        {
+            var lower = RelationQueryParameterRef.Resolve(Lower, values);
+            var upper = RelationQueryParameterRef.Resolve(Upper, values);
+            if (lower != null) lowerBytes = RelationQueryCompiler.Encode(BoundSave!, WriterCtx, BoundType, lower);
+            if (upper != null) upperBytes = RelationQueryCompiler.Encode(BoundSave!, WriterCtx, BoundType, upper);
+        }
+
+        var ranges = new List<RelationQueryRange>(prefixes.Count * (NullKey == null ? 1 : 2));
+        foreach (var p in prefixes)
+        {
+            if (StartsWith != null)
+            {
+                byte[] start = [..p, ..StartsWith];
+                ranges.Add(new(start, start, false, null, false));
+                byte[] nullKeys = [..p, ..NullKey!];
+                ranges.Add(new(nullKeys, nullKeys, false, null, false));
+            }
+            else if (BoundType != null)
+            {
+                ranges.Add(new(p, lowerBytes == null ? p : [..p, ..lowerBytes], lowerBytes != null && !LowerInclusive,
+                    upperBytes, UpperInclusive));
+            }
+            else
+            {
+                ranges.Add(new(p, p, false, null, false));
+            }
+        }
+
+        ranges.Sort(static (a, b) => a.Start.AsSpan().SequenceCompareTo(b.Start));
+        return ranges.ToArray();
+    }
+
+    public static List<byte[]> Distinct(FieldHandlerSave save, IWriterCtx? writerCtx, Type type, List<object?> values,
+        object?[]? parameterValues)
+    {
+        var encodings = new List<byte[]>(values.Count);
+        foreach (var value in values)
+        {
+            var encoded = RelationQueryCompiler.Encode(save, writerCtx, type,
+                RelationQueryParameterRef.Resolve(value, parameterValues));
+            if (!encodings.Exists(e => e.AsSpan().SequenceEqual(encoded))) encodings.Add(encoded);
+        }
+
+        return encodings;
+    }
+}
+
 sealed class RelationQueryRange
 {
     public RelationQueryRange(byte[] prefix, byte[] start, bool excludeStart, byte[]? stop, bool stopInclusive)

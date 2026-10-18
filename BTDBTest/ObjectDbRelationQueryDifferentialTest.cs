@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -140,6 +141,295 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
                         $"actual {actual.Value} {actual.Exception?.GetType().Name}: {actual.Exception?.Message}\n" +
                         $"{actual.Exception}");
         }
+    }
+
+    // Each case returns a query over the captured values it picks; calling it again builds the same expression shape
+    // with other values, as a method running a query with its arguments does.
+    static List<(string Name, Func<Random, Func<IQueryable<DiffRow>, object?>> Case)> CapturedValueCases(
+        List<int> sharedAges) =>
+    [
+        ("tenant", r =>
+        {
+            var t = (ulong)r.Next(5);
+            return q => q.Where(p => p.Tenant == t).ToList();
+        }),
+        ("tenant and code", r =>
+        {
+            var t = (ulong)r.Next(4);
+            var c = r.Next(3) == 0 ? "missing" : $"c{r.Next(RowCount):D3}";
+            return q => q.Where(p => p.Tenant == t && p.Code == c).ToList();
+        }),
+        ("tenant range", r =>
+        {
+            var lo = (ulong)r.Next(4);
+            var hi = lo + (ulong)r.Next(3);
+            return q => q.Where(p => p.Tenant > lo && p.Tenant <= hi).Select(p => p.Code).ToList();
+        }),
+        ("tenant or", r =>
+        {
+            var a = (ulong)r.Next(4);
+            var b = (ulong)r.Next(4);
+            return q => q.Where(p => p.Tenant == a || p.Tenant == b).Select(p => p.Code).ToList();
+        }),
+        ("captured arithmetic", r =>
+        {
+            var t = (ulong)r.Next(3);
+            return q => q.Count(p => p.Tenant == t + 1);
+        }),
+        ("rank index", r =>
+        {
+            var t = (ulong)r.Next(4);
+            var k = (uint)r.Next(8);
+            return q => q.Where(p => p.Tenant == t && p.Rank == k).ToList();
+        }),
+        ("age index", r =>
+        {
+            var a = 20 + r.Next(11);
+            return q => q.Where(p => p.Age == a).ToList();
+        }),
+        ("age bounds", r =>
+        {
+            var a = 19 + r.Next(11);
+            var b = a + r.Next(4);
+            return q => q.Where(p => p.Age >= a && p.Age < b).Select(p => p.Code).ToList();
+        }),
+        ("price", r =>
+        {
+            var x = r.Next(-5, 6) * 1.25m;
+            return q => q.Count(p => p.Price > x);
+        }),
+        ("created", r =>
+        {
+            var d = BaseDate.AddDays(r.Next(6));
+            return q => q.Count(p => p.Created < d);
+        }),
+        ("kind", r =>
+        {
+            var k = (DiffKind)r.Next(4);
+            return q => q.Where(p => p.Kind == k).Select(p => p.Code).ToList();
+        }),
+        ("bonus", r =>
+        {
+            int? b = r.Next(3) == 0 ? null : r.Next(-2, 3);
+            return q => q.Where(p => p.Bonus == b).Select(p => p.Code).ToList();
+        }),
+        ("bool and key", r =>
+        {
+            var f = r.Next(2) == 0;
+            var t = (ulong)r.Next(4);
+            return q => q.Count(p => p.Active == f && p.Tenant == t);
+        }),
+        ("name", r =>
+        {
+            var n = Names[r.Next(Names.Length)];
+            return q => q.Where(p => p.Name == n).Select(p => p.Code).ToList();
+        }),
+        ("starts with", r =>
+        {
+            var prefix = r.Next(3) switch { 0 => "c0", 1 => "ž", _ => "c01" };
+            return q => q.Count(p => p.Code != null && p.Code.StartsWith(prefix, StringComparison.Ordinal));
+        }),
+        ("mutated list", r =>
+        {
+            // The same list instance with other contents: a captured collection must never be reused.
+            sharedAges.Clear();
+            for (var i = r.Next(4); i > 0; i--) sharedAges.Add(20 + r.Next(10));
+            return q => q.Where(p => sharedAges.Contains(p.Age)).Select(p => p.Code).ToList();
+        }),
+        ("page", r =>
+        {
+            var skip = r.Next(15);
+            var take = r.Next(10);
+            return q => q.OrderBy(p => p.Age).ThenBy(p => p.Score).Skip(skip).Take(take).Select(p => p.Code).ToList();
+        }),
+        ("key page", r =>
+        {
+            var t = (ulong)r.Next(4);
+            var skip = r.Next(10);
+            return q => q.Where(p => p.Tenant == t).Skip(skip).Take(5).Select(p => p.Code).ToList();
+        }),
+        ("selected value", r =>
+        {
+            var add = r.Next(100);
+            return q => q.Where(p => p.Tenant == 2).Select(p => p.Age + add).ToList();
+        }),
+        ("anonymous", r =>
+        {
+            var m = (long)r.Next(1, 4);
+            var t = (ulong)r.Next(4);
+            return q => q.Where(p => p.Tenant == t).Select(p => new { p.Code, X = p.Score * m }).ToList();
+        }),
+        ("sum", r =>
+        {
+            var m = r.Next(1, 4);
+            return q => q.Sum(p => p.Age * m);
+        }),
+        ("first or default", r =>
+        {
+            var a = 20 + r.Next(12);
+            return q => q.Where(p => p.Age == a).OrderBy(p => p.Score).FirstOrDefault();
+        })
+    ];
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void CapturedValuesReuseCachedPlansLikeLinq(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+        var sharedAges = new List<int>();
+        var cases = CapturedValueCases(sharedAges);
+        for (var round = 0; round < 8; round++)
+        {
+            // Every round uses a new transaction, so plans are reused across transactions too.
+            using var tr = _db.StartReadOnlyTransaction();
+            var table = tr.GetRelation<IDiffRowTable>();
+            var rows = table.ToList();
+            foreach (var (name, createCase) in cases)
+            {
+                var query = createCase(random);
+                var expected = Format(() => query(rows.AsQueryable()));
+                var actual = Format(() => query(table.Query<DiffRow>()));
+                Assert.True(expected == actual, $"Seed {seed}, round {round}, {name}:\nexpected {expected}\nactual {actual}");
+            }
+        }
+
+        using var lastTr = _db.StartReadOnlyTransaction();
+        var cache = ((IRelationDbManipulator)lastTr.GetRelation<IDiffRowTable>()).RelationInfo.QueryCache;
+        Assert.True(cache.Hits > cache.Misses, $"hits {cache.Hits}, misses {cache.Misses}");
+    }
+
+    static string Format(Func<object?> run)
+    {
+        try
+        {
+            return run() switch
+            {
+                null => "null",
+                DiffRow row => Describe(row),
+                string text => text,
+                IEnumerable items => string.Join(", ", items.Cast<object?>()
+                    .Select(item => item is DiffRow row ? Describe(row) : item?.ToString() ?? "null")),
+                var value => $"{value.GetType().Name}:{value}"
+            };
+        }
+        catch (Exception exception)
+        {
+            return $"{exception.GetType().Name}: {exception.Message}";
+        }
+    }
+
+    [Fact]
+    public void CachedPlansAreReusedForNewCapturedValues()
+    {
+        FillRows(new(3));
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var cache = ((IRelationDbManipulator)table).RelationInfo.QueryCache;
+        var rows = table.ToList();
+
+        int CountTenant(ulong tenant) => table.Query<DiffRow>().Count(p => p.Tenant == tenant);
+        Assert.Equal(rows.Count(p => p.Tenant == 0), CountTenant(0));
+        var misses = cache.Misses;
+        for (var tenant = 0ul; tenant < 6; tenant++)
+            Assert.Equal(rows.Count(p => p.Tenant == tenant), CountTenant(tenant));
+        Assert.Equal(misses, cache.Misses);
+
+        // A string compared to a field without an index is part of the program, so each value is compiled once; an
+        // indexed one is a key range bound for each execution.
+        int CountNote(string? note) => table.Query<DiffRow>().Count(p => p.Note == note);
+        var notes = rows.Select(p => p.Note).Where(n => n != null).Distinct().Take(2).ToArray();
+        Assert.Equal(rows.Count(p => p.Note == notes[0]), CountNote(notes[0]));
+        misses = cache.Misses;
+        Assert.Equal(rows.Count(p => p.Note == notes[1]), CountNote(notes[1]));
+        Assert.True(cache.Misses > misses);
+        misses = cache.Misses;
+        Assert.Equal(rows.Count(p => p.Note == notes[0]), CountNote(notes[0]));
+        Assert.Equal(rows.Count(p => p.Note == notes[1]), CountNote(notes[1]));
+        Assert.Equal(misses, cache.Misses);
+        int CountName(string? name) => table.Query<DiffRow>().Count(p => p.Name == name);
+        Assert.Equal(rows.Count(p => p.Name == "n1"), CountName("n1"));
+        misses = cache.Misses;
+        Assert.Equal(rows.Count(p => p.Name == "n2"), CountName("n2"));
+        Assert.Equal(misses, cache.Misses);
+        // Skip and Take counts are parameters too, so every page reuses the plan.
+        List<string> Page(int skip, int take) =>
+            table.Query<DiffRow>().Where(p => p.Tenant == 1).Skip(skip).Take(take).Select(p => p.Code).ToList();
+        Assert.Equal(rows.Where(p => p.Tenant == 1).Skip(1).Take(2).Select(p => p.Code), Page(1, 2));
+        misses = cache.Misses;
+        for (var skip = 2; skip < 6; skip++)
+            Assert.Equal(rows.Where(p => p.Tenant == 1).Skip(skip).Take(skip).Select(p => p.Code), Page(skip, skip));
+        Assert.Equal(misses, cache.Misses);
+        // Skip(0) is dropped, so Where may follow it.
+        Assert.Equal(rows.Count(p => p.Tenant == 1), table.Query<DiffRow>().Skip(0).Where(p => p.Tenant == 1).Count());
+    }
+
+    [Fact]
+    public void CachedPlansReadKeysAfterPrefixOfEachExecution()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IDiffRowTable>();
+            // Tenants whose keys encode to 1, 3 and 5 bytes.
+            foreach (var tenant in new ulong[] { 1, 100_000, 1ul << 33 })
+            for (var i = 0; i < 12; i++)
+                table.Insert(new() { Tenant = tenant, Code = $"c{i:D2}", Age = 20 + i });
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartReadOnlyTransaction();
+        var rows = readTr.GetRelation<IDiffRowTable>().ToList();
+        // The tenant is in the scanned key prefix; the Code test reads the key right after it.
+        List<string> Codes(ulong tenant) => readTr.GetRelation<IDiffRowTable>().Query<DiffRow>()
+            .Where(p => p.Tenant == tenant && p.Code.EndsWith("1", StringComparison.Ordinal)).Select(p => p.Code)
+            .ToList();
+        foreach (var tenant in new ulong[] { 1, 100_000, 1ul << 33, 1 })
+            Assert.Equal(rows.Where(p => p.Tenant == tenant && p.Code.EndsWith('1')).Select(p => p.Code), Codes(tenant));
+    }
+
+    [Fact]
+    public void CachedPlansAreSharedBetweenThreads()
+    {
+        FillRows(new(5));
+        List<DiffRow> rows;
+        using (var tr = _db.StartReadOnlyTransaction()) rows = tr.GetRelation<IDiffRowTable>().ToList();
+        var failures = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        System.Threading.Tasks.Parallel.For(0, 8, thread =>
+        {
+            var random = new Random(thread);
+            var cases = CapturedValueCases([]).Where(c => c.Name != "mutated list").ToList();
+            for (var i = 0; i < 40; i++)
+            {
+                using var tr = _db.StartReadOnlyTransaction();
+                var table = tr.GetRelation<IDiffRowTable>();
+                var (name, createCase) = cases[random.Next(cases.Count)];
+                var query = createCase(random);
+                var expected = Format(() => query(rows.AsQueryable()));
+                var actual = Format(() => query(table.Query<DiffRow>()));
+                if (expected != actual) failures.Enqueue($"{name}: expected {expected}, actual {actual}");
+            }
+        });
+        Assert.Empty(failures);
+    }
+
+    [Fact]
+    public void QueryCacheIsBounded()
+    {
+        FillRows(new(4));
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var cache = ((IRelationDbManipulator)table).RelationInfo.QueryCache;
+        var row = Expression.Parameter(typeof(DiffRow), "p");
+        for (var i = 0; i < RelationQueryCache.Capacity + 100; i++)
+        {
+            // Literals are part of the shape, so every query has a template of its own.
+            var predicate = Expression.Lambda<Func<DiffRow, bool>>(
+                Expression.Equal(Expression.Property(row, nameof(DiffRow.Score)), Expression.Constant((long)i)), row);
+            Assert.Equal(i is >= -5 and <= 5 ? table.Count(p => p.Score == i) : 0,
+                table.Query<DiffRow>().Count(predicate));
+        }
+
+        Assert.InRange(cache.Count, 1, RelationQueryCache.Capacity);
     }
 
     [Fact]

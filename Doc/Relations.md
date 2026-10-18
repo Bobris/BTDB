@@ -517,6 +517,15 @@ Anything else throws `NotSupportedException` when the query is enumerated or exe
 
 Use `AsEnumerable()` to continue in memory.
 
+Compiled queries are cached per relation by the shape of their expression, so running the same query again, also in
+another transaction or thread, skips conversion and compilation. Captured variables, and values like `Skip` and
+`Take` counts, are parameters of the cached plan:
+- **Bound for each execution:** values compared, computed or selected, key equalities and bounds, and paging.
+- **Cached per value:** other uses, for example a string compared to a property without an index.
+- **Never cached:** captured collections, for example for `Contains`, because their contents can change.
+
+The cache keeps at most 256 query shapes per relation.
+
 With NativeAOT, keep the operators of `decimal` (for example
 `[DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(decimal))]`) when predicates compare or
 compute with `decimal`. The C# compiler builds those expression trees without operator metadata, and

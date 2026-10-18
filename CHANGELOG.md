@@ -79,6 +79,11 @@
   Selective queries are now faster than enumerating the relation and filtering with LINQ.
 - The interpreter runs programs without try blocks in an instruction loop without exception bookkeeping, and no longer
   enters a try block per instruction for programs that have them.
+- `IRelation.Query<T>()` caches compiled queries per relation by expression shape, with captured values and
+  `Skip`/`Take` counts as parameters bound for each execution. The cache is bounded to 256 shapes per relation.
+  Repeated queries skip expression conversion and compilation: a point query takes 2.1 µs instead of 3.3 µs and
+  allocates 3.7 KB instead of 10 KB, and with `Select` 4.1 µs instead of 7.0 µs. Scanners rent their value buffer
+  from `ArrayPool`, and captured arithmetic such as `id + 1` is evaluated without the expression interpreter.
 - `IRelation.Query<T>()` scans are 5–15 % faster:
   - selected properties are read straight into their result slots;
   - common integer fields are decoded, and common fields skipped, without the generic `RunCodeOp` dispatch;

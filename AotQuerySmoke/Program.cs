@@ -123,6 +123,21 @@ static class Program
             var query = table.Query<SmokePerson>();
             Check("count", all.Count(p => p.TenantId == tenant), query.Count(p => p.TenantId == tenant));
             Check("count all", all.Count, query.Count());
+            // The same shapes with other captured values reuse cached plans, binding the values for each execution.
+            var expectedCached = new System.Collections.Generic.List<string>();
+            var actualCached = new System.Collections.Generic.List<string>();
+            for (var round = 0ul; round < 6; round++)
+            {
+                var t = round % 4;
+                var minAge = 25 + (int)round * 3;
+                var skip = (int)round;
+                expectedCached.Add($"{all.Count(p => p.TenantId == t && p.Age > minAge)}:" +
+                                   string.Join(",", all.Where(p => p.TenantId == t).Skip(skip).Take(2).Select(p => p.Email)));
+                actualCached.Add($"{query.Count(p => p.TenantId == t && p.Age > minAge)}:" +
+                                 string.Join(",", query.Where(p => p.TenantId == t).Skip(skip).Take(2).Select(p => p.Email)));
+            }
+
+            Check("cached captured", string.Join(" ", expectedCached), string.Join(" ", actualCached));
             Check("any and all", "True/False", $"{query.Any(p => p.Age > 40)}/{query.All(p => p.Active)}");
             Check("first and last", $"{all.First(p => p.Age == 30).Email}/{all.Last().Email}",
                 $"{query.First(p => p.Age == 30).Email}/{query.Last().Email}");

@@ -1346,6 +1346,19 @@ public class RelationInfo
 
     internal ITypeConverterFactory TypeConverterFactory => _relationInfoResolver.TypeConverterFactory;
 
+    RelationQueryCache? _queryCache;
+
+    /// Templates of Query&lt;T&gt;() expressions, rebuilt when the relation's versions change.
+    internal RelationQueryCache QueryCache
+    {
+        get
+        {
+            var cache = _queryCache;
+            if (cache != null && ReferenceEquals(cache.VersionStamp, _relationVersions)) return cache;
+            return _queryCache = new(_relationVersions);
+        }
+    }
+
     internal uint LastPersistedVersion { get; set; }
 
     internal uint ClientTypeVersion { get; }
