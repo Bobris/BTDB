@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.12.1
+
 ### Added
 
 - `LsmKeyValueDBOptions.MaxTransactionMemory` (256 MiB by default) bounds the memtable bytes one `LsmKeyValueDB`
