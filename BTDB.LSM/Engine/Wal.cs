@@ -118,6 +118,57 @@ sealed class WalRecordBuilder
         }
     }
 
+    /// Calls set, erase and eraseRange (start inclusive, end exclusive) for the logical effect of each logged
+    /// operation, in order. Tombstone fragments follow a range erase as its consequence and are skipped.
+    public void ReplayOperations(Action<byte[], byte[]> set, Action<byte[]> erase, Action<byte[], byte[]> eraseRange)
+    {
+        var decoder = new LsmDecoder(_operations.WrittenSpan);
+        while (!decoder.End)
+        {
+            switch (decoder.ReadByte())
+            {
+                case Insert:
+                {
+                    var key = decoder.ReadByteArray();
+                    var isSet = (decoder.ReadByte() & 1) != 0;
+                    var value = decoder.ReadByteArray();
+                    if (isSet) set(key, value);
+                    else erase(key);
+                    break;
+                }
+                case Update:
+                {
+                    var key = decoder.ReadByteArray();
+                    var isSet = decoder.ReadByte() != 0;
+                    var value = decoder.ReadByteArray();
+                    if (isSet) set(key, value);
+                    else erase(key);
+                    break;
+                }
+                case Remove:
+                    erase(decoder.ReadByteArray());
+                    break;
+                case RemoveRange:
+                {
+                    var start = decoder.ReadByteArray();
+                    eraseRange(start, decoder.ReadByteArray());
+                    break;
+                }
+                case Tombstones:
+                    for (var count = decoder.ReadVUInt64(); count > 0; count--)
+                    {
+                        decoder.ReadByteArray();
+                        decoder.ReadByteArray();
+                        decoder.ReadVInt64();
+                    }
+
+                    break;
+                default:
+                    throw LsmDecoder.Corrupted();
+            }
+        }
+    }
+
     public byte[] Finish(in WalCommitMetadata metadata)
     {
         var record = new LsmEncoder(_operations.Length + 64);

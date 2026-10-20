@@ -20,10 +20,14 @@ public sealed record LsmKeyValueDBOptions
     /// Keep the memtable in native memory (default); false uses the managed reference implementation.
     public bool NativeMemtable { get; init; } = true;
 
-    /// Most memtable bytes one writing transaction may add. A modification or commit of a transaction above it throws
-    /// BTDBException and the transaction can only be rolled back, so memtable memory stays below about
-    /// MemtableSize + MaxTransactionMemory.
-    public long MaxTransactionMemory { get; init; } = 256L * 1024 * 1024;
+    /// Most memtable bytes one writing transaction keeps in memory. A larger transaction moves its changes into tables
+    /// only it reads (spills) and commits them by one manifest edit, as the newest level 0 tables, so memtable memory
+    /// stays below about MemtableSize + 2 * MaxTransactionMemory whatever the transaction size.
+    public long MaxTransactionMemory { get; init; } = 64L * 1024 * 1024;
+
+    /// Most memtable bytes one writing transaction may add in total, in memory and spilled. A modification above it
+    /// throws BTDBException and the transaction can only be rolled back. Unlimited by default.
+    public long MaxTransactionSize { get; init; } = long.MaxValue;
 
     /// Target uncompressed data block size.
     public int BlockSize { get; init; } = 32 * 1024;
@@ -83,7 +87,9 @@ public sealed record LsmKeyValueDBOptions
     /// The writer stops writing this long before its lease could expire.
     public TimeSpan LeaseSafetyMargin { get; init; } = TimeSpan.FromSeconds(2);
 
-    public TimeSpan LeaseRetryInterval { get; init; } = TimeSpan.FromSeconds(1);
+    /// Longest pause between attempts to take a lease another instance holds; the first attempts follow each other
+    /// within milliseconds, so a released lease is taken over at once.
+    public TimeSpan LeaseRetryInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 
     /// Target size of one WAL chunk; larger commits span several chunks.
     public int WalChunkTargetSize { get; init; } = 256 * 1024;
@@ -103,14 +109,10 @@ public sealed record LsmKeyValueDBOptions
     public TimeSpan WorkerFailureTimeout { get; init; } = TimeSpan.FromMinutes(1);
 
     /// The writer deletes objects no current state references only after this long, so readers in other processes can
-    /// finish reading them.
-    public TimeSpan DeletionGracePeriod { get; init; } = TimeSpan.FromMinutes(10);
-
-    /// Readers in other processes write a registry entry naming the oldest manifest their snapshots use; the writer
-    /// keeps everything such a reader may still need.
-    public bool RegisterReader { get; init; }
-
-    public TimeSpan ReaderHeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
+    /// finish reading them. It is also the longest a transaction in another process may keep its snapshot: older
+    /// snapshots fail with BTDBException once they need a deleted object. The pending deletions are kept in the
+    /// manifest, so the period does not restart when another instance takes over the writer lease.
+    public TimeSpan DeletionGracePeriod { get; init; } = TimeSpan.FromDays(1);
 
     /// First pause of WaitForCommitUlongAsync between refreshes; it doubles up to one second.
     public TimeSpan RefreshRetryInterval { get; init; } = TimeSpan.FromMilliseconds(50);
@@ -139,6 +141,11 @@ public interface ILsmKeyValueDB : IKeyValueDB
 
     /// Becomes the writer: waits for the lease, fences the previous writer and catches up.
     ValueTask AcquireWriterLeaseAsync(CancellationToken cancellation = default);
+
+    /// Hands the writer role over: waits for a running writing transaction, makes every commit durable, releases the
+    /// lease and continues as a reader, so another instance can take over at once. Flushes and compactions are left
+    /// to the next writer. A later StartWritingTransaction acquires the lease again.
+    ValueTask ReleaseWriterLeaseAsync(CancellationToken cancellation = default);
 
     bool HoldsWriterLease { get; }
 

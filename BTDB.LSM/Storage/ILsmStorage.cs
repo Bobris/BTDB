@@ -41,9 +41,6 @@ public interface ILsmStorage
 
     ValueTask DeleteAsync(string key, CancellationToken cancellation);
 
-    /// Creates or replaces a small mutable object; only the reader registry uses it, each reader for its own key.
-    ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation);
-
     /// Acquires the exclusive lease on key (creating the object if needed) for duration; false while another holder
     /// owns it. Acquiring again with the same leaseId extends it.
     ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation);

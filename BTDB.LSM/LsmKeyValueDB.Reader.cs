@@ -12,11 +12,11 @@ namespace BTDB.LSM;
 public sealed partial class LsmKeyValueDB
 {
     readonly SemaphoreSlim _refreshLock = new(1, 1);
-    readonly string _readerId;
     WalReplay _replay = null!;
+
+    // Set when this instance stopped being the writer: its replay then lags its state.
+    bool _replayStale;
     DateTimeOffset _lastManifestList = DateTimeOffset.MinValue;
-    Task? _heartbeat;
-    CancellationTokenSource? _heartbeatStop;
 
     /// Catches up to the newest durable state (ImplementationPlan.md, section 15): reads manifests newer than the
     /// current one, then replays WAL chunks after the last one read into copies of the memtables. Returns the
@@ -29,28 +29,59 @@ public sealed partial class LsmKeyValueDB
         try
         {
             if (_isWriter) return _state.CommitUlong;
-            var replay = _replay;
-            replay.BeginRound();
-            var previous = _state;
-            var version = previous.Version;
-            var manifestSequence = previous.ManifestSequence;
-            if (await FindNewerManifestAsync(manifestSequence, cancellation) is { } manifest)
-            {
-                try
-                {
-                    version = BuildVersion(_options, _cache, manifest, OpenTables());
-                }
-                catch (BTDBException)
-                {
-                    // The probed manifest is already outdated and its tables deleted; take the newest one.
-                    (manifest, _) = await ReadNewestManifestAsync(_options, cancellation);
-                    version = BuildVersion(_options, _cache, manifest, OpenTables());
-                }
+            await CatchUpAsync(false, cancellation);
+            DeleteObsoleteObjects();
+            return _state.CommitUlong;
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
 
-                replay.AdvanceFlushed(manifest);
-                manifestSequence = manifest.Sequence;
+    /// Continues the reader's replay and publishes the result; requires the refresh lock. A refresh probes the next
+    /// manifest and chunk names. A takeover (authoritative) lists them instead, so it surely reaches the newest
+    /// manifest and the end of the WAL. Returns one past the highest WAL chunk name seen. After this instance stopped
+    /// being the writer, its replay does not match its state, so the state is loaded from storage once.
+    async ValueTask<long> CatchUpAsync(bool authoritative, CancellationToken cancellation)
+    {
+        if (_replayStale)
+        {
+            var loaded = await LoadAsync(_options, _cache, OpenTables(), cancellation);
+            InstallLoaded(loaded);
+            _replayStale = false;
+            return loaded.NextChunk;
+        }
+
+        var replay = _replay;
+        replay.BeginRound();
+        var previous = _state;
+        var version = previous.Version;
+        var manifestSequence = previous.ManifestSequence;
+        var newer = authoritative
+            ? await ReadNewerManifestAsync(manifestSequence, cancellation)
+            : await FindNewerManifestAsync(manifestSequence, cancellation);
+        if (newer is { } manifest)
+        {
+            try
+            {
+                version = BuildVersion(_options, _cache, manifest, OpenTables());
+            }
+            catch (BTDBException)
+            {
+                // The probed manifest is already outdated and its tables deleted; take the newest one.
+                (manifest, _) = await ReadNewestManifestAsync(_options, cancellation);
+                version = BuildVersion(_options, _cache, manifest, OpenTables());
             }
 
+            replay.AdvanceFlushed(manifest);
+            manifestSequence = manifest.Sequence;
+            _lastManifest = manifest;
+        }
+
+        var nextChunk = authoritative ? await ReplayListedWalAsync(_options, replay, cancellation) : 0;
+        if (!authoritative)
+        {
             // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
             // WalReadParallelism names at once.
             for (var window = 1;; window = Math.Min(window * 2, WalReadParallelism))
@@ -71,26 +102,22 @@ public sealed partial class LsmKeyValueDB
                 if (!complete) break;
             }
 
-            var (memtable, generation) = replay.Current();
-            var metadata = replay.Metadata;
-            LsmState published;
-            lock (_stateLock)
-            {
-                published = new(memtable, generation, [.. replay.Sealed], version, metadata.CommitUlong,
-                    metadata.Ulongs, metadata.TransactionNumber, _state.CommitSequence + 1, _state.Sequence + 1,
-                    manifestSequence);
-                _state = published;
-            }
+            nextChunk = replay.NextChunk;
+        }
 
-            RetireReplacedArenas(previous, published);
-            DeleteObsoleteObjects();
-            if (_options.RegisterReader) await WriteRegistryEntryAsync(cancellation);
-            return metadata.CommitUlong;
-        }
-        finally
+        var (memtable, generation) = replay.Current();
+        var metadata = replay.Metadata;
+        LsmState published;
+        lock (_stateLock)
         {
-            _refreshLock.Release();
+            published = new(memtable, generation, [.. replay.Sealed], version, metadata.CommitUlong,
+                metadata.Ulongs, metadata.TransactionNumber, _state.CommitSequence + 1, _state.Sequence + 1,
+                manifestSequence);
+            _state = published;
         }
+
+        RetireReplacedArenas(previous, published);
+        return nextChunk;
     }
 
     /// Refreshes until CommitUlong reaches commitUlong, pausing RefreshRetryInterval between refreshes and doubling
@@ -105,6 +132,29 @@ public sealed partial class LsmKeyValueDB
             await Task.Delay(delay, _options.TimeProvider, cancellation);
             delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, TimeSpan.FromSeconds(1).Ticks));
         }
+    }
+
+    /// The newest manifest after sequence, found by listing every manifest name.
+    async ValueTask<LsmManifest?> ReadNewerManifestAsync(long sequence, CancellationToken cancellation)
+    {
+        string? newestKey = null;
+        await foreach (var info in _storage.ListAsync(_options.Prefix + "manifest/", cancellation))
+            newestKey = info.Key;
+        if (newestKey == null || ParseNumber(newestKey) <= (ulong)sequence) return null;
+        var content = await _storage.TryReadAsync(newestKey, cancellation) ??
+                      throw new BTDBException($"Manifest {newestKey} disappeared while loading.");
+        return LsmManifest.Decode(content, newestKey);
+    }
+
+    /// The number in an object name: the digits after the last slash, up to an extension.
+    static ulong ParseNumber(string key)
+    {
+        var name = key.AsSpan(key.LastIndexOf('/') + 1);
+        var dot = name.IndexOf('.');
+        return ulong.TryParse(dot < 0 ? name : name[..dot], System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var number)
+            ? number
+            : ulong.MaxValue;
     }
 
     /// The newest manifest after sequence, found by probing the following names; when a probe misses, manifests are
@@ -139,123 +189,5 @@ public sealed partial class LsmKeyValueDB
                     _retiredArenas.Add((arena, current.Sequence));
             }
         }
-    }
-
-    /// Registry entry: the oldest manifest any live snapshot of this reader uses, and when the entry expires.
-    async ValueTask WriteRegistryEntryAsync(CancellationToken cancellation)
-    {
-        var oldest = _state.ManifestSequence;
-        foreach (var transaction in _transactions.Keys) oldest = Math.Min(oldest, transaction.ManifestSequence);
-        await WriteRegistryEntryAsync(_options, _readerId, oldest, cancellation);
-    }
-
-    /// A reader registers with oldest manifest 0 before it loads any manifest, so a writer never misses a reader
-    /// that is about to use objects the writer is deleting.
-    static async ValueTask WriteRegistryEntryAsync(LsmKeyValueDBOptions options, string readerId, long oldest,
-        CancellationToken cancellation)
-    {
-        var encoder = new LsmEncoder();
-        encoder.WriteVUInt64((ulong)oldest);
-        encoder.WriteInt64((options.TimeProvider.GetUtcNow() + options.ReaderHeartbeatInterval * 3).UtcTicks);
-        await options.Storage.PutAsync(RegistryKey(options, readerId), encoder.WrittenSpan.ToArray(), cancellation);
-    }
-
-    static string RegistryKey(LsmKeyValueDBOptions options, string readerId) =>
-        $"{options.Prefix}readers/{readerId}";
-
-    string RegistryKey(string readerId) => RegistryKey(_options, readerId);
-
-    void StartReaderHeartbeat()
-    {
-        if (!_options.RegisterReader) return;
-        _heartbeatStop = new();
-        var stop = _heartbeatStop.Token;
-        _heartbeat = Task.Run(async () =>
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                try
-                {
-                    if (!_isWriter) await WriteRegistryEntryAsync(stop);
-                    await Task.Delay(_options.ReaderHeartbeatInterval, _options.TimeProvider, stop);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Logger?.LogWarning("BTDB.LSM reader registry heartbeat failed: " + ex.Message);
-                }
-            }
-        });
-    }
-
-    void StopReaderHeartbeat()
-    {
-        _heartbeatStop?.Cancel();
-        try
-        {
-            _heartbeat?.GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-
-        if (_options.RegisterReader)
-        {
-            try
-            {
-                _storage.DeleteAsync(RegistryKey(_readerId), CancellationToken.None).AsTask().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                Logger?.LogWarning("BTDB.LSM could not remove the reader registry entry: " + ex.Message);
-            }
-        }
-    }
-
-    (long OldestManifest, DateTimeOffset ReadAt)? _registryView;
-
-    /// Oldest manifest still used by a registered reader in another process. The registry is read again unless the
-    /// last read happened after notBefore (when the objects in question became obsolete) and within one heartbeat.
-    long OldestRegisteredManifest(DateTimeOffset notBefore)
-    {
-        var now = _options.TimeProvider.GetUtcNow();
-        if (_registryView is { } view && view.ReadAt >= notBefore &&
-            now - view.ReadAt < _options.ReaderHeartbeatInterval) return view.OldestManifest;
-        var oldest = long.MaxValue;
-        try
-        {
-            var keys = new List<string>();
-            var enumerator = _storage.ListAsync(_options.Prefix + "readers/", CancellationToken.None).GetAsyncEnumerator();
-            try
-            {
-                while (enumerator.MoveNextAsync().AsTask().GetAwaiter().GetResult()) keys.Add(enumerator.Current.Key);
-            }
-            finally
-            {
-                enumerator.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
-
-            foreach (var key in keys)
-            {
-                if (key == RegistryKey(_readerId)) continue;
-                var content = _storage.TryReadAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-                if (content == null) continue;
-                var decoder = new LsmDecoder(content);
-                var manifest = (long)decoder.ReadVUInt64();
-                var expires = new DateTimeOffset(decoder.ReadInt64(), TimeSpan.Zero);
-                if (expires > now) oldest = Math.Min(oldest, manifest);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger?.LogWarning("BTDB.LSM could not read the reader registry: " + ex.Message);
-            return _registryView?.OldestManifest ?? 0;
-        }
-
-        _registryView = (oldest, now);
-        return oldest;
     }
 }

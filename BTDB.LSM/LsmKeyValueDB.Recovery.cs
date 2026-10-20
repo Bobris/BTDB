@@ -204,26 +204,43 @@ public sealed partial class LsmKeyValueDB
                     TableKey(options.Prefix, fileNumber), length, options.TableTailReadSize));
         }
 
-        return new([.. levels[0]], levels.Select(l => l.ToArray()).ToArray(),
+        var runs = new List<TableReader[]>();
+        var next = 0;
+        foreach (var length in manifest.Level0RunLengths)
+        {
+            runs.Add(levels[0].GetRange(next, length).ToArray());
+            next += length;
+        }
+
+        if (next != levels[0].Count) throw new BTDBException("Manifest level 0 runs do not match its tables.");
+        return new([.. runs], levels.Select(l => l.ToArray()).ToArray(),
             manifest.ValueFiles.ToDictionary(v => v.FileNumber, v => v.Length));
     }
 
     static async ValueTask<LoadedDatabase> LoadAsync(LsmKeyValueDBOptions options, LsmBlockCache cache,
         IReadOnlyDictionary<ulong, TableReader>? openTables, CancellationToken cancellation)
     {
-        var storage = options.Storage;
         var (manifest, _) = await ReadNewestManifestAsync(options, cancellation);
         var version = BuildVersion(options, cache, manifest, openTables);
+        var replay = new WalReplay(options, manifest.FlushedGeneration, manifest.WalStartChunk,
+            new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs));
+        var nextChunk = await ReplayListedWalAsync(options, replay, cancellation);
+        return new() { Manifest = manifest, Version = version, Replay = replay, NextChunk = nextChunk };
+    }
+
+    /// Lists the WAL and replays its contiguous prefix from the replay's next chunk; returns one past the highest
+    /// existing chunk name, which a new writer must not reuse.
+    static async ValueTask<long> ReplayListedWalAsync(LsmKeyValueDBOptions options, WalReplay replay,
+        CancellationToken cancellation)
+    {
         var chunkNumbers = new List<long>();
-        await foreach (var info in storage.ListAsync(options.Prefix + "wal/", cancellation))
+        await foreach (var info in options.Storage.ListAsync(options.Prefix + "wal/", cancellation))
         {
             var number = long.Parse(info.Key.AsSpan(info.Key.LastIndexOf('/') + 1), CultureInfo.InvariantCulture);
-            if (number >= manifest.WalStartChunk) chunkNumbers.Add(number);
+            if (number >= replay.NextChunk) chunkNumbers.Add(number);
         }
 
         chunkNumbers.Sort();
-        var replay = new WalReplay(options, manifest.FlushedGeneration, manifest.WalStartChunk,
-            new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs));
         // Only a contiguous prefix is durable history; chunks after a gap belong to commits never acknowledged.
         var contiguous = new List<long>();
         foreach (var number in chunkNumbers)
@@ -238,11 +255,6 @@ public sealed partial class LsmKeyValueDB
             replay.Apply(number, WalFormat.Decode(content, WalKey(options.Prefix, number)));
         }
 
-        var highest = chunkNumbers.Count == 0 ? manifest.WalStartChunk - 1 : chunkNumbers[^1];
-        return new()
-        {
-            Manifest = manifest, Version = version, Replay = replay,
-            NextChunk = Math.Max(highest + 1, replay.NextChunk)
-        };
+        return Math.Max(chunkNumbers.Count == 0 ? replay.NextChunk : chunkNumbers[^1] + 1, replay.NextChunk);
     }
 }

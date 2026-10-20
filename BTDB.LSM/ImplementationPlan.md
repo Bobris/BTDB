@@ -2,8 +2,9 @@
 
 Status: phases L0–L6 are done (2026-10-16). The benchmark report (Measurements.md, sections 4–7) is reviewed and
 the preview packages are published with BTDB 35.11.3. Decisions D1–D7 are confirmed (section 21). The v1 items left
-after the preview (`MaxTransactionMemory` and compaction read pacing) are done (section 20.6); every item still open
-is admitted only with evidence (sections 20.1, 20.2 and 20.4).
+after the preview (`MaxTransactionMemory` and compaction read pacing) are done (section 20.6). Spilled transactions,
+lease handoff and manifest-recorded retention replaced the reader registry (section 20.7). Every item still open is
+admitted only with evidence (sections 20.1, 20.2 and 20.4).
 
 * L0: the counted LSM prototype (now `BTDB.LSM.Test/Counting/Prototype`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -143,7 +144,7 @@ Module layout (namespaces inside `BTDB.LSM`):
 | `Engine` | `Version`, `VersionSet`, snapshots, merging iterator, rank and select, range tombstones. |
 | `Write` | Writer queue, write transactions, WAL group commit, memtable rotation and flush, backpressure. |
 | `Compaction` | Picker, executor, value-file GC, rate limiting. |
-| `Refresh` | On-demand catch-up from WAL and manifest, `WaitForCommitUlongAsync`, reader registry. |
+| `Refresh` | On-demand catch-up from WAL and manifest, `WaitForCommitUlongAsync`. |
 | `Lease` | Writer lease acquisition and renewal, fencing, the reader-to-writer transition. |
 | `Api` | `LsmKeyValueDB`, transaction, cursor, `LsmKeyValueDBOptions`, `ILsmKeyValueDB` extras. |
 
@@ -195,7 +196,6 @@ Object layout under a configurable prefix:
 | `wal/{chunk:D16}` | One WAL chunk (section 8). |
 | `tables/{fileNum:D16}.sst` | Sorted table (section 9). |
 | `values/{fileNum:D16}.vlf` | Value file (section 10). |
-| `readers/{readerId}` | Reader registry heartbeat (section 16). |
 
 Zero-padded sequence numbers make `ListAsync(prefix, startAfter)` return them in order. A reader probes the next
 expected name with `TryReadAsync`, so it does not need to list.
@@ -366,8 +366,8 @@ by another cursor:
 Large transactions are the expected way to get throughput (decision D4). A durable upload costs about 10 ms whatever
 its size up to 256 KiB, so the per-commit cost must be amortized over many operations. The design keeps them cheap:
 
-* A transaction modifies the memtable root directly. Its size adds to the memtable: the effective memtable bound is
-  `MemtableSize + MaxTransactionMemory` (default 64 MiB + 256 MiB). Rotation waits for the transaction to finish.
+* A transaction modifies the memtable root directly. Its size adds to the memtable until it spills (below). Rotation
+  waits for the transaction to finish.
 * A commit record may span many WAL chunks (section 8.1). The chunks are uploaded with up to `WalUploadParallelism`
   (default 4) requests in flight. The chunk carrying the final part is created last, so it is the commit point.
 * **Early upload (optional, admitted only if L3 measurements show commit latency dominated by WAL upload):** once a
@@ -375,11 +375,24 @@ its size up to 256 KiB, so the per-commit cost must be amortized over many opera
   Commit then uploads only the remainder and the final part. A rollback after early upload writes an abort marker.
   Readers and recovery buffer parts by transaction number and drop aborted or unfinished ones. The operation buffer is
   freed as parts become durable, so its memory stays bounded.
-* **Spill (deferred, risk R5):** a transaction above `MaxTransactionMemory` throws `BTDBException` in v1, rather than
-  growing without bound. The limit counts the memtable bytes the transaction adds and is checked before every
-  modification and at commit. If a workload needs larger transactions, the overlay can be written out as private sorted
-  tables and committed by one manifest edit referenced from the commit record (comparable to Pebble's flushable
-  ingest). This is not part of the v1 plan.
+* **Spill (done, section 20.7):** a transaction holding more than `MaxTransactionMemory` (default 64 MiB) memtable
+  bytes writes them out as private sorted tables, comparable to Pebble's flushable ingest:
+  * The first spill seals the shared memtable, so background work flushes it while the transaction runs. The
+    transaction's changes are applied again, by their logical effect, to an own memtable stacked on its snapshot. This
+    computes every `ExistsBelow` and `CoveredBelow` against the layer below. The WAL record is dropped.
+  * Each spill writes the own memtable as a table plus value files that no manifest references. The transaction
+    continues in a fresh memtable above them. Its view is `[memtable, private runs newest first, snapshot]`.
+  * Runs merge like a counter in base 4: each segment is a run of weight 1, and four runs of equal weight merge into
+    one run of non-overlapping tables. That run is one component, so an existence check probes one filter per run.
+    The transaction holds at most three runs per weight, and each change is rewritten about log4(segments) times.
+    `LsmMerger` merges them on the components below, as compaction does.
+  * Commit writes the last segment and merges all runs into one. The worker waits until every sealed memtable is
+    flushed, then publishes that run as the newest level 0 run by one manifest edit. The empty mutable memtable's generation becomes
+    the transaction's flushed generation, and the manifest carries the transaction's commit metadata. The edit is the
+    commit point: it is durable at once and needs no WAL record.
+  * A rollback deletes the private objects at once; a crashed writer's are orphans for the next writer.
+  * `MaxTransactionSize` (unlimited by default) still caps the total. Memtable memory stays below about
+    `MemtableSize + 2 * MaxTransactionMemory` whatever the transaction size.
 
 ## 8. WAL, commit and durability
 
@@ -567,17 +580,23 @@ D3).
   duration. The pending request waits asynchronously; other queued writers wait behind it. Disposing the instance or
   cancelling `AcquireWriterLeaseAsync` ends the wait. Once the lease is acquired:
   1. Fence the manifest: create the next manifest edit as an "epoch" edit with a fresh writer epoch.
-  2. Catch up: load manifest edits and replay complete WAL records to the tip, exactly as `RefreshAsync` does
-     (section 15), so the writer starts from the newest durable state. An incomplete trailing multi-chunk record is
-     discarded.
+  2. Catch up: continue the instance's reader replay as `RefreshAsync` does (section 15), but list manifests and WAL
+     chunks instead of probing names, so the newest manifest and the highest chunk name are surely seen. Only chunks
+     the reader has not replayed yet are read. An incomplete trailing multi-chunk record is discarded. An instance that
+     was the writer before reloads from storage once, because its replay lags its state.
   3. Fence the WAL: create an "epoch" marker chunk at the first free name.
   4. Restore CommitUlong, the ulongs and the transaction number from the manifest plus replayed records, then grant the
      writing transaction.
 
   Existing read transactions keep their snapshots. New snapshots see the caught-up state.
-* **Holding the lease:** the writer keeps the lease until `Dispose`, which flushes the WAL, stops compaction and
-  releases the lease, so a waiting instance takes over without waiting for expiry. An idle writer does not release it
-  on its own.
+* **Holding the lease:** the writer keeps the lease until `ReleaseWriterLeaseAsync` or `Dispose`. Both wait for a
+  running writing transaction and upload the WAL, then release the lease before background work stops, so a waiting
+  instance takes over at once. Flushes and compactions are left to the next writer. The instance continues as a
+  reader. An idle writer does not release the lease on its own.
+* **Waiting for the lease:** retries start after 25 ms and double up to `LeaseRetryInterval` (default 250 ms).
+* **File numbers:** each writer session numbers new tables and value files from `epoch << 32`, so they never collide
+  with files a predecessor created but did not publish. Such orphans, and manifests and WAL chunks whose deletion was
+  lost, are searched for by one background unit after the takeover, not on its critical path.
 * **Losing the lease:** if renewal fails or the local deadline passes, the instance fences itself permanently for that
   epoch. Commit of an active writing transaction throws. `WaitForDurabilityAsync` throws for commits that were not yet
   durable; they were never acknowledged as durable, and the new writer will not see them. The instance discards its
@@ -621,16 +640,16 @@ D3).
 
 * **Writer-side candidates:** tables and value files that are not in the current version and not referenced by any
   in-process snapshot, and WAL chunks covered by a flushed generation.
-* **Reader registry (opt-in, `RegisterReader = true`):** a reader writes `readers/{readerId}` on open, on each
-  refresh and every `ReaderHeartbeatInterval` (default 10 s). The object holds the oldest manifest sequence and WAL
-  chunk its live snapshots still need, and an expiry. The heartbeat only extends retention; it never changes the visible
-  state. Overwriting it is the only mutable write in the design, and it touches only the reader's own key.
-* The writer deletes a candidate only when it is older than `DeletionGracePeriod` (default 10 min), every live registry
-  entry has moved past it, and expired entries are ignored. An unregistered reader is protected only by the grace
-  period.
+* The writer deletes a candidate only when it is older than `DeletionGracePeriod` (default 1 day). That is also the
+  longest a transaction in another process may keep its snapshot. Replaced manifests are deleted after at most 1
+  minute: snapshots never read manifests, and a reader whose next manifest is gone lists the newest one.
+* Every manifest lists the pending deletions with the time they became obsolete, rounded up to a 64th of the grace
+  period and stored as runs of consecutive numbers. A new writer continues with them, so a takeover never restarts the
+  period. An unreferenced table or value file that a manifest does not list was never published and is deleted at
+  once.
 * A reader that gets a 404 for a table first reloads the manifest. If its snapshot really needs a deleted object, it
-  throws "snapshot too old" (L7). An unregistered reader that keeps a transaction open longer than the grace period can
-  hit this (documented limit).
+  throws "snapshot too old" (L7). A reader that keeps a transaction open longer than the grace period can hit this
+  (documented limit).
 
 ## 17. `IKeyValueDB` mapping
 
@@ -657,7 +676,7 @@ D3).
 
 `LsmKeyValueDBOptions` contains: storage, prefix, `MemtableSize`, `MaxImmutableMemtables`, `BlockSize`,
 `BlockCacheSize`, `TargetFileSize`, `ValueSeparationThreshold`, `BloomBitsPerKey`, compression, the WAL options, the
-compaction limits, `MaxTransactionMemory`, lease duration, `ReadOnly`, the refresh and reader registry options,
+compaction limits, `MaxTransactionMemory`, `MaxTransactionSize`, lease duration, `ReadOnly`, the refresh options,
 `DeletionGracePeriod`, `Logger`, `TimeProvider` and the allocator. Time and
 storage are always injected, for deterministic tests.
 
@@ -888,10 +907,10 @@ Implemented (`LsmKeyValueDB.Reader.cs`, `WalReplay` in `LsmKeyValueDB.Recovery.c
 * **Retention:**
   * The writer deletes tables, value files, old manifests and orphans only after `DeletionGracePeriod` (default 10
     min) and only if no in-process snapshot uses them.
-  * With `RegisterReader`, a reader writes `readers/{id}`: the oldest manifest its snapshots use, and an expiry. It
-    registers with 0 before loading anything and updates the entry on every refresh and heartbeat. The writer keeps
-    any object obsolete since a manifest newer than a live entry, and it uses only a registry read made after the
-    object became obsolete. The test found the stale-cache race this rule closes.
+  * With `RegisterReader` (removed in section 20.7), a reader wrote `readers/{id}`: the oldest manifest its snapshots
+    used, and an expiry. It registered with 0 before loading anything and updated the entry on every refresh and
+    heartbeat. The writer kept any object obsolete since a manifest newer than a live entry, and it used only a
+    registry read made after the object became obsolete. The test found the stale-cache race this rule closed.
   * Covered WAL chunks are deleted at once: a reader that misses one reads the newer manifest instead.
 * **Errors:** a deleted table surfaces as `BTDBException` "no longer exists: the snapshot is older than the deletion
   grace period"; `ILsmStorage.ReadRange` throws `FileNotFoundException` for a missing object.
@@ -1009,6 +1028,23 @@ The two v1 items the phases left open are done:
   `CompactorWriteBytesPerSecondLimit` paces object creation. Index and filter reads and separated values read for
   value-file GC go through the cache and are not paced.
 
+### 20.7 Lease handoff, retention and spilled transactions
+
+* **Reader registry removed.** Read transactions in other processes last at most `DeletionGracePeriod`, now 1 day by
+  default. `RegisterReader`, `ReaderHeartbeatInterval`, the `readers/` objects and `ILsmStorage.PutAsync` are gone.
+* **Retention survives takeovers.** Manifests record pending deletions (section 16).
+  `LsmReaderTest.PendingDeletionsKeepTheirTimeAcrossWriterTakeover` covers it with shifted clocks.
+* **Handoff.** `ReleaseWriterLeaseAsync` and the faster `Dispose` release the lease right after the WAL upload. The
+  takeover continues the reader replay and moves the orphan search to the background (section 14).
+  `LsmWriterHandoffTest` checks that only the new WAL chunk is read during a takeover.
+* **Spilled transactions** (section 7.5). `LsmSpillTest` and three `LsmKeyValueDBOracleTest` cases with small
+  `MaxTransactionMemory` cover them. Since `NativeMemtable` counts arena bytes, it spills earlier than the managed
+  memtable, which counts live bytes.
+* **Level 0 runs.** Level 0 holds runs; a flush adds a run of one table, and a spilled commit adds one run of
+  non-overlapping tables. The manifest records the run lengths; older manifest formats are not read, because no
+  database uses them yet. The level 0 triggers count runs. The only run moves to level 1 unchanged when nothing
+  overlaps it.
+
 ## 21. Decisions
 
 Confirmed on 2026-10-15.
@@ -1031,7 +1067,7 @@ Confirmed on 2026-10-15.
 | R2 | The synchronous cursor API blocks threads on GETs. L0 confirmed the risk: at 64 or more concurrent thread-pool work items, throughput collapses to about 400 and then about 40 requests/s while the pool grows. | Bound concurrent blocking reads; issue one seek's component GETs asynchronously and wait once; document `ThreadPool.SetMinThreads` for hosts with many concurrent cursors. |
 | R3 | Rank and select with tombstones and many components are complex and could be slow. | Prototype in L0 against an oracle, point Deletes for small ranges, compaction priority for tables with tombstones, a component count limit through L0 stalls. |
 | R4 | `existsBelow` lookups make blind writes read first. | Bloom filters; an ODB write usually follows a read of the same key (cached). Measure with ODB benchmarks. |
-| R5 | Large transactions are the expected workload. A transaction above `MaxTransactionMemory` fails, and memtable memory peaks at `MemtableSize + MaxTransactionMemory`. | Configurable limit; multi-chunk commits with parallel upload; optional early upload (section 7.5); spill to storage if a workload needs more. |
+| R5 | Large transactions are the expected workload. A spilled transaction checks existence against its private runs, and filters must stay in the cache. A 2 GiB transaction on Azure took about 200 s to write and 14 s to commit (Measurements.md, section 8). | Spill to private tables bounds memory; spilled segments merge into few runs, and the commit adds one level 0 run (section 7.5). |
 | R6 | Object storage cost (GET and PUT transactions) and throttling (about 3,000 requests/s per blob, account limits). | Large tables and blocks, coalesced readahead, group commit, cost per operation in the L6 report. |
-| R7 | Reader snapshots in other processes versus deletion. | Reader registry plus grace period, explicit "snapshot too old" error, simulation tests. |
+| R7 | Reader snapshots in other processes versus deletion. | Grace period of 1 day recorded in manifests, explicit "snapshot too old" error, simulation tests. |
 | R8 | Format evolution. | Version fields in footer, chunk and edit headers from day one; golden-file tests. |

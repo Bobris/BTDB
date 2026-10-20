@@ -50,9 +50,6 @@ sealed class CountingLsmStorage(ILsmStorage inner) : ILsmStorage
 
     public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
 
-    public ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation) =>
-        inner.PutAsync(key, content, cancellation);
-
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
 

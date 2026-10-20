@@ -2,6 +2,40 @@
 
 ## [unreleased]
 
+### Added
+
+- `LsmKeyValueDB` writing transactions are no longer limited by memory.
+  - Above `MaxTransactionMemory` (now 64 MiB by default) a transaction moves its changes into tables that only it reads.
+  - Its commit publishes them as the newest level 0 tables by one manifest edit, without a WAL record. The commit is
+    durable when it returns.
+  - Every four spilled parts of equal size merge into one run of non-overlapping tables, and the commit merges all of
+    them into one. Level 0 now holds runs, and its triggers count runs, so the next writer does not stall behind a large
+    commit. Databases written by earlier versions cannot be opened; the storage format of the preview changed.
+  - Memory stays bounded whatever the transaction size. `LsmKeyValueDBOptions.MaxTransactionSize` (unlimited by
+    default) can still cap the total.
+- `ILsmKeyValueDB.ReleaseWriterLeaseAsync` hands the writer role over. It makes every commit durable, releases the
+  lease without flushing memtables and continues as a reader, so another instance can take over at once.
+
+### Changed
+
+- `LsmKeyValueDB` takes over as the writer faster:
+  - it continues the reader's WAL replay instead of reloading the whole unflushed WAL;
+  - it searches for orphans of a crashed writer in the background instead of listing every table and value file first;
+  - the first lease retries follow within milliseconds (`LeaseRetryInterval`, now 250 ms by default, is the longest
+    pause).
+- Each `LsmKeyValueDB` writer session numbers new files from its own range (epoch << 32).
+- `LsmKeyValueDB.Dispose` of the writer uploads the WAL and releases the lease at once. Flushes and compactions are
+  left to the next writer.
+- `LsmKeyValueDBOptions.DeletionGracePeriod` defaults to 1 day. It is also the longest a transaction in another process
+  may keep its snapshot.
+  - The manifest records pending deletions, so a writer takeover no longer restarts the period.
+  - Replaced manifests are kept for at most 1 minute.
+
+### Removed
+
+- The `LsmKeyValueDB` reader registry: `LsmKeyValueDBOptions.RegisterReader`, `ReaderHeartbeatInterval`, the
+  `readers/` objects and `ILsmStorage.PutAsync`.
+
 ## 35.12.1
 
 ### Added

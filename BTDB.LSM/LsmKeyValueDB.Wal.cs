@@ -140,7 +140,8 @@ public sealed partial class LsmKeyValueDB
             _walPending.RemoveRange(0, _walInFlightRecords);
             _walPendingBytes -= _walInFlightBytes;
             _walInFlight = null;
-            durable = _durableTransaction = _walInFlightTransaction;
+            // A spilled transaction's commit may already have made later transactions durable.
+            durable = _durableTransaction = Math.Max(_durableTransaction, _walInFlightTransaction);
         }
 
         CompleteDurabilityWaiters(durable, null);

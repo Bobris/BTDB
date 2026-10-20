@@ -68,9 +68,6 @@ public class FileSystemLsmStorageTest : IDisposable
         await storage.DeleteAsync("p/0002", default);
         await storage.DeleteAsync("missing/0002", default);
         Assert.Null(await storage.TryReadAsync("p/0002", default));
-        await storage.PutAsync("readers/r", new byte[] { 1 }, default);
-        await storage.PutAsync("readers/r", new byte[] { 2 }, default);
-        Assert.Equal(new byte[] { 2 }, await storage.TryReadAsync("readers/r", default));
     }
 
     [Fact]

@@ -22,8 +22,16 @@ public class LsmFormatTest(ITestOutputHelper output)
         BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 128, Level0CompactionTrigger = 2,
         LevelBaseBytes = 2048, LevelMultiplier = 2, LevelCount = 4, TargetFileSize = 1024, PointDeleteRangeLimit = 2,
         ValueSeparationThreshold = 64, WalChunkTargetSize = 1024, DeletionGracePeriod = TimeSpan.Zero,
-        BlockCacheSize = 1 << 20
+        BlockCacheSize = 1 << 20, TimeProvider = FixedTime.Instance
     };
+
+    /// Manifests record when objects became obsolete, so the sample needs a fixed clock to be deterministic.
+    sealed class FixedTime : TimeProvider
+    {
+        public static readonly FixedTime Instance = new();
+
+        public override DateTimeOffset GetUtcNow() => new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    }
 
     /// Writes the sample and returns its content as seen by the writer; the writer then crashes, so the last commits
     /// stay only in the WAL.

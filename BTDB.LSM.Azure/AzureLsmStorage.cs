@@ -184,11 +184,6 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
         await container.GetBlobClient(key).DeleteIfExistsAsync(cancellationToken: cancellation);
     }
 
-    public async ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
-    {
-        await container.GetBlobClient(key).UploadAsync(new BinaryData(content), overwrite: true, cancellation);
-    }
-
     /// Azure leases last a whole number of seconds from 15 to 60. Other durations are rejected instead of adjusted,
     /// because the writer computes its deadline from the duration it asked for.
     static TimeSpan LeaseDuration(TimeSpan duration)

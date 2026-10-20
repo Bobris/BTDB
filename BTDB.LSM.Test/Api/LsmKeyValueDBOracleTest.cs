@@ -22,8 +22,12 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
     [InlineData(5, 2048, 256, 4, 100_000)]
     [InlineData(6, 1024, 128, 2, 30_000, 0)]
     [InlineData(7, 2048, 256, 64, 30_000, 2)]
+    // Transactions above MaxTransactionMemory spill into private tables and commit them as level 0 tables.
+    [InlineData(8, 1024, 128, 2, 30_000, 64, 2048)]
+    [InlineData(9, 64 * 1024, 256, 64, 30_000, 1024, 4096)]
+    [InlineData(10, 4096, 128, 0, 30_000, 0, 1024)]
     public async Task MatchesBTreeKeyValueDB(int seed, long memtableSize, int blockSize, int pointDeleteRangeLimit,
-        int operations, int valueSeparationThreshold = 1024)
+        int operations, int valueSeparationThreshold = 1024, long maxTransactionMemory = 64 * 1024 * 1024)
     {
         var random = new Random(seed);
         var storage = new InMemoryLsmStorage();
@@ -33,7 +37,8 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
             Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = memtableSize, BlockSize = blockSize, RestartInterval = 2, IndexPartitionSize = 48,
             PointDeleteRangeLimit = pointDeleteRangeLimit, Level0CompactionTrigger = 3, LevelBaseBytes = 4096,
             LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
-            ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = new LsmBlockCache(32 * 1024)
+            ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = new LsmBlockCache(32 * 1024),
+            MaxTransactionMemory = maxTransactionMemory
         });
         try
         {

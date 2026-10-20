@@ -28,7 +28,6 @@ sealed class TableReadCountingStorage(InMemoryLsmStorage inner) : ILsmStorage
 
     public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
     public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
-    public ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation) => inner.PutAsync(key, content, cancellation);
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
     public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
     public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
@@ -47,12 +46,12 @@ public class LsmLimitsTest
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task TransactionAboveMaxTransactionMemoryThrowsAndRollsBack(bool nativeMemtable)
+    public async Task TransactionAboveMaxTransactionSizeThrowsAndRollsBack(bool nativeMemtable)
     {
         var options = new LsmKeyValueDBOptions
         {
             Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true, NativeMemtable = nativeMemtable,
-            MaxTransactionMemory = 64 * 1024
+            MaxTransactionMemory = 16 * 1024, MaxTransactionSize = 64 * 1024
         };
         using var db = await LsmKeyValueDB.OpenAsync(options);
         using (var tr = await db.StartWritingTransaction())
@@ -69,7 +68,7 @@ public class LsmLimitsTest
             {
                 for (var i = 100; i < 10_000; i++) cursor.CreateOrUpdateKeyValue(Key(i), new byte[100]);
             });
-            Assert.Contains("MaxTransactionMemory", exception.Message);
+            Assert.Contains("MaxTransactionSize", exception.Message);
             Assert.Throws<BTDBException>(() => cursor.CreateOrUpdateKeyValue(Key(20_000), new byte[1]));
             Assert.Throws<BTDBException>(() => tr.Commit());
         }

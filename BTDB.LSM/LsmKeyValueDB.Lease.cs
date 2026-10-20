@@ -43,7 +43,11 @@ public sealed partial class LsmKeyValueDB
             {
                 while (true)
                 {
-                    // Acquiring again with the same lease id also extends a lease this instance still holds.
+                    // Acquiring again with the same lease id also extends a lease this instance still holds. A lease
+                    // released by its holder is taken over soon: retries start fast and slow down to
+                    // LeaseRetryInterval.
+                    var retry = TimeSpan.FromTicks(Math.Min(TimeSpan.FromMilliseconds(25).Ticks,
+                        _options.LeaseRetryInterval.Ticks));
                     while (true)
                     {
                         var requested = _options.TimeProvider.GetUtcNow();
@@ -55,7 +59,8 @@ public sealed partial class LsmKeyValueDB
                             break;
                         }
 
-                        await Task.Delay(_options.LeaseRetryInterval, _options.TimeProvider, cancellation);
+                        await Task.Delay(retry, _options.TimeProvider, cancellation);
+                        retry = TimeSpan.FromTicks(Math.Min(retry.Ticks * 2, _options.LeaseRetryInterval.Ticks));
                     }
 
                     try
@@ -88,64 +93,108 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
+    /// Takes over as the writer while holding the lease: catches up from this instance's reader state (listing
+    /// manifests and WAL chunks, so nothing newer is missed), then fences the manifest and the WAL. Nothing proportional
+    /// to the database size happens here; orphans of a predecessor are searched for in the background afterwards.
     async ValueTask BecomeWriterAsync(CancellationToken cancellation)
     {
-        var loaded = await LoadAsync(_options, _cache, OpenTables(), cancellation);
-        InstallLoaded(loaded);
-        var orphans = await FindOrphansAsync(loaded, cancellation);
-        _epoch = loaded.MaxEpoch + 1;
-        _manifestSequence = loaded.Manifest.Sequence;
-        // Fence the manifest: the next manifest name now carries this writer's epoch.
-        WriteManifest(loaded.Version, loaded.Manifest.CommitUlong, loaded.Manifest.Ulongs,
-            loaded.Manifest.TransactionNumber, loaded.Manifest.FlushedGeneration, loaded.Manifest.WalStartChunk);
-        // Fence the WAL: an epoch marker at the first free name; later stale chunks have a lower epoch.
-        await CreateChunkAsync(loaded.FirstFreeChunk,
-            WalFormat.Encode(_epoch, loaded.MemtableGeneration, true, []));
-        // Only now is the loaded manifest final: a failed attempt may have seen objects a predecessor then published.
-        var now = _options.TimeProvider.GetUtcNow();
+        var nextChunk = await CatchUpAsync(true, cancellation);
+        var manifest = _lastManifest;
+        var replay = _replay;
+        var state = _state;
+        _epoch = Math.Max(replay.MaxEpoch, manifest.WriterEpoch) + 1;
+        _manifestSequence = manifest.Sequence;
+        // Every writer session numbers new files from its own range, so they never collide with files a predecessor
+        // created but did not publish.
+        _nextFileNumber = Math.Max(manifest.NextFileNumber, FirstFileNumber(_epoch));
+        // The predecessor's pending deletions keep their time; snapshots this instance took before keep them alive.
         lock (_obsoleteObjects)
-            foreach (var (key, fileNumber) in orphans)
-                _obsoleteObjects.Add((key, fileNumber, 0, now, loaded.Manifest.Sequence + 1));
+        {
+            _obsoleteObjects.Clear();
+            foreach (var deletion in manifest.PendingDeletions)
+                _obsoleteObjects.Add(new(deletion.Kind, deletion.Number, state.Sequence, deletion.Since));
+        }
+
+        // Fence the manifest: the next manifest name now carries this writer's epoch.
+        WriteManifest(state.Version, manifest.CommitUlong, manifest.Ulongs, manifest.TransactionNumber,
+            manifest.FlushedGeneration, manifest.WalStartChunk);
+        // Fence the WAL: an epoch marker at the first free name; later stale chunks have a lower epoch.
+        var firstFreeChunk = replay.NextChunk;
+        await CreateChunkAsync(firstFreeChunk, WalFormat.Encode(_epoch, state.MemtableGeneration, true, []));
         lock (_walLock)
         {
             _walPending.Clear();
             _walPendingBytes = 0;
             _walInFlight = null;
-            _walNextChunk = Math.Max(loaded.NextChunk, loaded.FirstFreeChunk + 1);
-            _durableTransaction = loaded.Metadata.TransactionNumber;
+            _walNextChunk = Math.Max(nextChunk, firstFreeChunk + 1);
+            _durableTransaction = state.TransactionNumber;
             _generationFirstChunk.Clear();
-            foreach (var (generation, chunk) in loaded.GenerationFirstChunk) _generationFirstChunk[generation] = chunk;
+            foreach (var (generation, chunk) in replay.GenerationFirstChunk) _generationFirstChunk[generation] = chunk;
         }
 
+        // Only now is the manifest final: a failed attempt may have seen objects a predecessor then published.
+        _orphanScanDue = true;
         _isWriter = true;
         StartWriterServices();
-        if (loaded.Immutables.Length > 0) RequestWork();
+        RequestWork();
     }
 
-    /// A predecessor may have created tables and value files it never published. New file numbers start after every
-    /// existing object; the unreferenced objects are returned, to be deleted like obsolete ones once fenced.
-    async ValueTask<List<(string Key, ulong FileNumber)>> FindOrphansAsync(LoadedDatabase loaded,
-        CancellationToken cancellation)
+    static ulong FirstFileNumber(long epoch) => (ulong)epoch << 32;
+
+    bool _orphanScanDue;
+
+    /// After a takeover, queues for deletion what no manifest tracks: tables and value files a predecessor created
+    /// but never published, and manifests and WAL chunks whose deletion was lost. The manifest lists every published
+    /// object still waiting for deletion, so the others are deleted at once. Runs as a unit of background work, on the thread that moves files from the version
+    /// to the pending deletions, so a published file is never mistaken for an orphan.
+    void ScanForOrphans()
     {
-        var orphans = new List<(string, ulong)>();
-        var referenced = loaded.Version.AllTables().Select(t => t.Table.FileNumber)
-            .Concat(loaded.Version.ValueFiles.Keys).ToHashSet();
-        var highest = 0UL;
-        foreach (var prefix in new[] { "tables/", "values/" })
+        var listed = new List<(LsmObjectKind Kind, ulong Number)>();
+        foreach (var (kind, prefix) in new[]
+                 {
+                     (LsmObjectKind.Table, "tables/"), (LsmObjectKind.ValueFile, "values/"),
+                     (LsmObjectKind.Manifest, "manifest/"), (LsmObjectKind.WalChunk, "wal/")
+                 })
         {
-            await foreach (var info in _storage.ListAsync(_options.Prefix + prefix, cancellation))
+            var enumerator = _storage.ListAsync(_options.Prefix + prefix, CancellationToken.None).GetAsyncEnumerator();
+            try
             {
-                var name = info.Key[(info.Key.LastIndexOf('/') + 1)..];
-                var dot = name.IndexOf('.');
-                if (dot < 0 || !ulong.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture,
-                        out var fileNumber)) continue;
-                highest = Math.Max(highest, fileNumber);
-                if (!referenced.Contains(fileNumber)) orphans.Add((info.Key, fileNumber));
+                while (enumerator.MoveNextAsync().AsTask().GetAwaiter().GetResult())
+                    if (ParseNumber(enumerator.Current.Key) is var number and not ulong.MaxValue)
+                        listed.Add((kind, number));
+            }
+            finally
+            {
+                enumerator.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
         }
 
-        _nextFileNumber = Math.Max(_nextFileNumber, highest + 1);
-        return orphans;
+        var state = _state;
+        var referenced = state.Version.AllTables().Select(t => t.Table.FileNumber)
+            .Concat(state.Version.ValueFiles.Keys).ToHashSet();
+        var ownFiles = FirstFileNumber(_epoch);
+        var manifest = _lastManifest;
+        var found = 0;
+        lock (_obsoleteObjects)
+        {
+            var pending = _obsoleteObjects.Select(o => (o.Kind, o.Number)).ToHashSet();
+            foreach (var (kind, number) in listed)
+            {
+                if (pending.Contains((kind, number))) continue;
+                var orphan = kind switch
+                {
+                    LsmObjectKind.Table or LsmObjectKind.ValueFile => number < ownFiles && !referenced.Contains(number),
+                    LsmObjectKind.Manifest => number < (ulong)manifest.Sequence,
+                    _ => number < (ulong)manifest.WalStartChunk
+                };
+                if (!orphan) continue;
+                _obsoleteObjects.Add(new(kind, number, state.Sequence, DateTimeOffset.MinValue));
+                found++;
+            }
+        }
+
+        if (found > 0) Logger?.LogWarning($"BTDB.LSM found {found} objects no manifest tracks; they will be deleted.");
+        DeleteObsoleteObjects();
     }
 
     /// Replaces the in-memory state by state loaded from storage. Existing snapshots keep what they read; objects
@@ -290,6 +339,114 @@ public sealed partial class LsmKeyValueDB
             throw new LsmWriterFencedException("The writer lease deadline passed.");
     }
 
+    /// Hands the writer role over: waits for a running writing transaction, makes every commit durable, releases the
+    /// lease and continues as a reader of the same state, so another instance can take over at once. Flushes and
+    /// compactions are left to the next writer; a compaction running now is abandoned.
+    public async ValueTask ReleaseWriterLeaseAsync(CancellationToken cancellation = default)
+    {
+        await _modeLock.WaitAsync(cancellation);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_isWriter) return;
+            // Holding the writer slot keeps commits out while the WAL drains.
+            var waiting = TakeWriterSlotAsync();
+            try
+            {
+                await waiting.WaitAsync(cancellation);
+            }
+            catch (OperationCanceledException)
+            {
+                // The slot may still be granted later; give it back then.
+                _ = waiting.ContinueWith(t => t.Result.Dispose(), CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+                throw;
+            }
+
+            using var slot = waiting.Result;
+            await _refreshLock.WaitAsync(CancellationToken.None);
+            try
+            {
+                await StepDownAsync();
+            }
+            finally
+            {
+                _refreshLock.Release();
+            }
+        }
+        finally
+        {
+            _modeLock.Release();
+        }
+    }
+
+    /// Stops being the writer without losing acknowledged commits: drains the WAL, then releases the lease before
+    /// waiting for background work to stop, so a successor does not wait for a running compaction. Objects that work
+    /// still tries to create are fenced locally. Requires the mode lock and no commit in progress. Commits that cannot
+    /// be uploaded are lost, as when the lease is lost, and reported by the returned task.
+    async Task StepDownAsync()
+    {
+        _writerStop?.Cancel();
+        _walSignal.Release();
+        try
+        {
+            if (_walUploader != null) await _walUploader;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        _walUploader = null;
+        Exception? uploadError = null;
+        try
+        {
+            while (await UploadWalAsync())
+            {
+            }
+        }
+        catch (Exception ex)
+        {
+            uploadError = ex;
+        }
+
+        _holdsLease = false;
+        _isWriter = false;
+        try
+        {
+            await _storage.ReleaseLeaseAsync(LockKey, _leaseId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogWarning("BTDB.LSM could not release the writer lease; it expires instead: " + ex.Message);
+        }
+
+        await StopWriterServicesAsync();
+        var reason = uploadError == null
+            ? new LsmWriterFencedException("The writer lease was released.")
+            : new LsmWriterFencedException("The writer lease was released; the WAL upload failed: " +
+                                           uploadError.Message);
+        CompleteDurabilityWaiters(long.MaxValue, reason);
+        TaskCompletionSource[] compactions;
+        lock (_fullCompactionRequests)
+        {
+            compactions = [.. _fullCompactionRequests];
+            _fullCompactionRequests.Clear();
+        }
+
+        foreach (var compaction in compactions) compaction.TrySetException(reason);
+        FailIngestRequests(reason);
+        lock (_walLock)
+        {
+            _walPending.Clear();
+            _walPendingBytes = 0;
+            _walInFlight = null;
+        }
+
+        // The state is the durable state, but the reader replay lags it; the next refresh or takeover reloads.
+        _replayStale = true;
+        if (uploadError != null) throw new BTDBException("Commits not yet durable were lost: " + uploadError.Message, uploadError);
+    }
+
     /// Stops being the writer: pending commits that were not durable are lost and their durability waiters fail, the
     /// in-memory state is reloaded from storage and the instance continues as a reader.
     async Task LoseWriterAsync(Exception reason)
@@ -317,6 +474,7 @@ public sealed partial class LsmKeyValueDB
                 foreach (var compaction in compactions)
                     compaction.TrySetException(
                         new LsmWriterFencedException("The writer lease was lost before the compaction ran."));
+                FailIngestRequests(new LsmWriterFencedException("The writer lease was lost before the commit."));
                 lock (_walLock)
                 {
                     _walPending.Clear();
@@ -324,10 +482,12 @@ public sealed partial class LsmKeyValueDB
                     _walInFlight = null;
                 }
 
+                _replayStale = true;
                 if (_disposed) return;
                 try
                 {
                     InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
+                    _replayStale = false;
                 }
                 catch (Exception ex)
                 {

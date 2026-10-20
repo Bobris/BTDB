@@ -111,8 +111,6 @@ public sealed partial class LsmKeyValueDB
         RequestWork();
     }
 
-    void RotateForShutdown() => RotateIfNeeded();
-
     bool RotateIfNeeded()
     {
         lock (_stateLock)
@@ -165,7 +163,16 @@ public sealed partial class LsmKeyValueDB
     /// picked compaction. Only one thread runs units at a time, so only it changes the table set.
     bool RunOneUnit()
     {
+        if (_orphanScanDue)
+        {
+            ScanForOrphans();
+            _orphanScanDue = false;
+            return true;
+        }
+
         var state = _state;
+        // A spilled transaction is published only after every sealed memtable is flushed below its tables.
+        if (state.Immutables.Length == 0 && RunIngest()) return true;
         if (state.Immutables.Length > 0)
         {
             var flushStart = Stopwatch.GetTimestamp();
@@ -225,7 +232,7 @@ public sealed partial class LsmKeyValueDB
             var table = WriteTable(TableBuilder.Build(memtable.Enumerate().Select(e => values.Apply(e)),
                 memtable.Tombstones, _tableOptions));
             values.Finish();
-            version = version.WithLevel0([table, .. version.Level0]);
+            version = version.WithLevel0Runs([[table], .. version.Level0Runs]);
             Logger?.TransactionLogCreated((uint)table.FileNumber);
         }
 
@@ -243,11 +250,12 @@ public sealed partial class LsmKeyValueDB
         PublishVersion(version, obsolete, created, null);
     }
 
-    ValueSeparation NewValueSeparation(LsmVersion version, List<(ulong FileNumber, long Bytes)> created) =>
-        new(_options.ValueSeparationThreshold, new ValueFileWriter(() => _nextFileNumber++, _options.TargetFileSize,
+    ValueSeparation NewValueSeparation(LsmVersion version, List<(ulong FileNumber, long Bytes)> created,
+        bool pace = true) =>
+        new(_options.ValueSeparationThreshold, new ValueFileWriter(AllocateFileNumber, _options.TargetFileSize,
                 (fileNumber, content) =>
                 {
-                    CreateObject(ValueKey(fileNumber), content);
+                    CreateObject(ValueKey(fileNumber), content, pace: pace);
                     created.Add((fileNumber, content.Length));
                 }),
             fileNumber => version.LiveValueRatio(fileNumber) < _options.ValueGcThreshold, ReadValue);
@@ -255,10 +263,18 @@ public sealed partial class LsmKeyValueDB
     /// Publishes a new table set: writes the manifest, then replaces the version (and drops the flushed sealed
     /// memtable) in the current state. Replaced tables, value files no table references and WAL chunks now covered by
     /// tables are deleted, and a flushed memtable's arena released, once no snapshot can need them.
+    /// With committed, flushed is the empty mutable memtable standing in for a spilled transaction: its generation is
+    /// the transaction's, the manifest carries the transaction's commit metadata, and the next generation starts.
     void PublishVersion(LsmVersion version, IReadOnlyCollection<TableReader> obsolete,
-        IEnumerable<(ulong FileNumber, long Bytes)> createdValueFiles, SealedMemtable? flushed)
+        IEnumerable<(ulong FileNumber, long Bytes)> createdValueFiles, SealedMemtable? flushed, bool committed = false)
     {
         version = version.WithValueFiles(createdValueFiles, out var droppedValueFiles);
+        var now = _options.TimeProvider.GetUtcNow();
+        LsmPendingDeletion[] dropped =
+        [
+            .. obsolete.Select(t => new LsmPendingDeletion(LsmObjectKind.Table, t.FileNumber, now)),
+            .. droppedValueFiles.Select(f => new LsmPendingDeletion(LsmObjectKind.ValueFile, f, now))
+        ];
         var previousWalStart = _lastManifest.WalStartChunk;
         if (flushed != null)
         {
@@ -276,12 +292,12 @@ public sealed partial class LsmKeyValueDB
             }
             WriteManifest(version, flushed.CommitUlong, flushed.Ulongs, flushed.TransactionNumber,
                 Math.Max(_lastManifest.FlushedGeneration, flushed.Generation),
-                Math.Max(previousWalStart, walStart));
+                Math.Max(previousWalStart, walStart), dropped, now);
         }
         else
         {
             WriteManifest(version, _lastManifest.CommitUlong, _lastManifest.Ulongs, _lastManifest.TransactionNumber,
-                _lastManifest.FlushedGeneration, previousWalStart);
+                _lastManifest.FlushedGeneration, previousWalStart, dropped, now);
         }
 
         long sequence;
@@ -292,24 +308,23 @@ public sealed partial class LsmKeyValueDB
                 ? current.Immutables
                 : current.Immutables.Where(m => m != flushed).ToArray();
             sequence = current.Sequence + 1;
-            _state = new(current.Memtable, current.MemtableGeneration, immutables, version, current.CommitUlong,
-                current.Ulongs, current.TransactionNumber, current.CommitSequence, sequence,
-                _lastManifest.Sequence);
+            _state = committed
+                ? new(NewMemtable(_options), current.MemtableGeneration + 1, immutables, version, flushed!.CommitUlong,
+                    flushed.Ulongs, flushed.TransactionNumber, current.CommitSequence + 1, sequence,
+                    _lastManifest.Sequence)
+                : new(current.Memtable, current.MemtableGeneration, immutables, version, current.CommitUlong,
+                    current.Ulongs, current.TransactionNumber, current.CommitSequence, sequence,
+                    _lastManifest.Sequence);
         }
 
-        var now = _options.TimeProvider.GetUtcNow();
-        var manifestSequence = _lastManifest.Sequence;
         lock (_obsoleteObjects)
         {
             if (flushed?.Memtable.Arena is { } arena) _retiredArenas.Add((arena, sequence));
-            foreach (var table in obsolete)
-                _obsoleteObjects.Add((table.ObjectKey, table.FileNumber, sequence, now, manifestSequence));
-            foreach (var fileNumber in droppedValueFiles)
-                _obsoleteObjects.Add((ValueKey(fileNumber), fileNumber, sequence, now, manifestSequence));
+            foreach (var deletion in dropped) _obsoleteObjects.Add(new(deletion.Kind, deletion.Number, sequence, now));
             // Snapshots never read the WAL and a reader finding a covered chunk gone reads the newer manifest
             // instead, so covered chunks can go at once.
             for (var chunk = previousWalStart; chunk < _lastManifest.WalStartChunk; chunk++)
-                _obsoleteObjects.Add((WalKey(_options.Prefix, chunk), 0, 0, DateTimeOffset.MinValue, 0));
+                _obsoleteObjects.Add(new(LsmObjectKind.WalChunk, (ulong)chunk, 0, DateTimeOffset.MinValue));
         }
 
         DeleteObsoleteObjects();
@@ -331,43 +346,75 @@ public sealed partial class LsmKeyValueDB
     internal ReadOnlyMemory<byte> Resolve(LsmValue value) =>
         value.IsSeparated ? ReadValue(ValueHandle.Decode(value.Data.Span)) : value.Data;
 
-    TableReader WriteTable(byte[] content)
+    /// Background work and a spilling writing transaction both create files, so numbers are taken atomically.
+    ulong AllocateFileNumber() => Interlocked.Increment(ref _nextFileNumber) - 1;
+
+    TableReader WriteTable(byte[] content) => WriteTable(content, true);
+
+    TableReader WriteTable(byte[] content, bool pace)
     {
-        var fileNumber = _nextFileNumber++;
+        var fileNumber = AllocateFileNumber();
         var key = TableKey(_options.Prefix, fileNumber);
-        CreateObject(key, content);
-        _tableBytesWritten += content.Length;
+        CreateObject(key, content, pace: pace);
+        Interlocked.Add(ref _tableBytesWritten, content.Length);
         return TableReader.Open(_storage, _cache, _cacheScope, fileNumber, key, content.Length,
             _options.TableTailReadSize, content);
     }
 
+    /// Writes the next manifest. It lists every pending deletion: those already waiting, the objects this edit drops
+    /// and the manifest it replaces; the caller adds the dropped objects to the waiting ones once it published them.
     void WriteManifest(LsmVersion version, ulong commitUlong, ulong[] ulongs, long transactionNumber,
-        long flushedGeneration, long walStartChunk)
+        long flushedGeneration, long walStartChunk, IReadOnlyCollection<LsmPendingDeletion>? dropped = null,
+        DateTimeOffset? now = null)
     {
+        var previous = _lastManifest;
+        var replacedAt = now ?? _options.TimeProvider.GetUtcNow();
+        LsmPendingDeletion[] pending;
+        lock (_obsoleteObjects)
+            pending =
+            [
+                .. _obsoleteObjects.Where(o => o.Kind != LsmObjectKind.WalChunk)
+                    .Select(o => new LsmPendingDeletion(o.Kind, o.Number, o.Since)),
+                .. dropped ?? [],
+                .. previous.Sequence > 0
+                    ? [new LsmPendingDeletion(LsmObjectKind.Manifest, (ulong)previous.Sequence, replacedAt)]
+                    : Array.Empty<LsmPendingDeletion>()
+            ];
+        // Rounding the times up to a 64th of the grace period keeps the manifest small: the manifests replaced
+        // within one period form one run. A successor deletes those objects at most that much later.
+        var period = Math.Max(1, _options.DeletionGracePeriod.Ticks / 64);
+        for (var i = 0; i < pending.Length; i++)
+        {
+            var ticks = pending[i].Since.UtcTicks;
+            var rounded = ticks % period == 0 ? ticks : Math.Min(ticks - ticks % period + period, DateTimeOffset.MaxValue.UtcTicks);
+            pending[i] = pending[i] with { Since = new(rounded, TimeSpan.Zero) };
+        }
         var manifest = new LsmManifest
         {
             Sequence = ++_manifestSequence, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = version.LevelCount, WriterEpoch = _epoch,
             FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk,
             Tables = version.AllTables().Select(t => (t.Level, t.Table.FileNumber, t.Table.Length)).ToArray(),
-            ValueFiles = version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray()
+            Level0RunLengths = version.Level0Runs.Select(r => r.Length).ToArray(),
+            ValueFiles = version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray(),
+            PendingDeletions = pending
         };
         CreateObject(ManifestKey(manifest.Sequence), manifest.Encode(), true);
-        var previous = _lastManifest;
         _lastManifest = manifest;
-        // Readers probe manifest names in order, so older manifests stay for the grace period.
+        // Readers probe manifest names in order, so replaced manifests stay for a while (ManifestRetention).
         if (previous.Sequence > 0)
             lock (_obsoleteObjects)
-                _obsoleteObjects.Add((ManifestKey(previous.Sequence), 0, 0, _options.TimeProvider.GetUtcNow(), 0));
+                _obsoleteObjects.Add(new(LsmObjectKind.Manifest, (ulong)previous.Sequence, 0, replacedAt));
         Logger?.KeyValueIndexCreated((uint)manifest.Sequence, version.Components.Sum(c => c.EntryCount), 0,
             TimeSpan.Zero, 0);
     }
 
     /// Creates an immutable object as the writer. For a manifest, a different object under the name means another
     /// writer took over; a lost response is reconciled by reading the object back.
-    void CreateObject(string key, byte[] content, bool fence = false)
+    void CreateObject(string key, byte[] content, bool fence = false, bool pace = true)
     {
-        _writePacer.Pace(content.Length, CompactorWriteBytesPerSecondLimit);
+        // The pacer belongs to background work; a spilling transaction is foreground work and is not paced.
+        if (pace) _writePacer.Pace(content.Length, CompactorWriteBytesPerSecondLimit);
         var backoff = TimeSpan.FromMilliseconds(20);
         for (var attempt = 0;; attempt++)
         {
@@ -440,42 +487,54 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    /// Deletes obsolete objects no snapshot, reader in another process or current version can still need
-    /// (ImplementationPlan.md, section 16). Only the writer deletes; a failed delete is retried on a later pass.
+    /// An object waiting for deletion: ObsoleteAt is the first state sequence that no longer references it, so older
+    /// snapshots of this instance keep it; Since is when it became obsolete.
+    readonly record struct ObsoleteObject(LsmObjectKind Kind, ulong Number, long ObsoleteAt, DateTimeOffset Since)
+    {
+        public bool IsFile => Kind is LsmObjectKind.Table or LsmObjectKind.ValueFile;
+    }
+
+    string ObjectKey(LsmObjectKind kind, ulong number) => kind switch
+    {
+        LsmObjectKind.Table => TableKey(_options.Prefix, number),
+        LsmObjectKind.ValueFile => ValueKey(number),
+        LsmObjectKind.Manifest => ManifestKey((long)number),
+        _ => WalKey(_options.Prefix, (long)number)
+    };
+
+    static readonly TimeSpan ManifestRetention = TimeSpan.FromMinutes(1);
+
+    /// Deletes obsolete objects no snapshot of this instance or current version needs and whose grace period for
+    /// readers in other processes has passed (ImplementationPlan.md, section 16). Only the writer deletes; a failed
+    /// delete is retried on a later pass.
     void DeleteObsoleteObjects()
     {
         ReleaseRetiredArenas();
         if (!_isWriter) return;
         var now = _options.TimeProvider.GetUtcNow();
         var grace = _options.DeletionGracePeriod;
-        DateTimeOffset? newestLapsed = null;
-        lock (_obsoleteObjects)
-        {
-            foreach (var o in _obsoleteObjects)
-                if (now - o.Since >= grace && (newestLapsed == null || o.Since > newestLapsed))
-                    newestLapsed = o.Since;
-        }
-
-        if (newestLapsed is not { } since) return;
-        // Readers in other processes are protected by the grace period and, when registered, by their entries,
-        // read after the objects became obsolete.
-        var oldestRegistered = OldestRegisteredManifest(since);
-        // Never delete what the current version references, whatever led to the entry.
-        var version = _state.Version;
-        var referenced = version.AllTables().Select(t => t.Table.FileNumber).Concat(version.ValueFiles.Keys)
-            .ToHashSet();
-        var deletable = new List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)>();
+        // Snapshots never read manifests, and a reader whose next manifest is gone lists the newest one, so replaced
+        // manifests stay only briefly; few of them keep listings at takeover cheap.
+        var manifestGrace = grace < ManifestRetention ? grace : ManifestRetention;
+        HashSet<ulong>? referenced = null;
+        var deletable = new List<ObsoleteObject>();
         lock (_obsoleteObjects)
         {
             var oldestLive = OldestLiveSequence();
             for (var i = _obsoleteObjects.Count - 1; i >= 0; i--)
             {
                 var o = _obsoleteObjects[i];
-                if (o.ObsoleteAt > oldestLive || now - o.Since < grace || o.Manifest > oldestRegistered) continue;
+                if (o.ObsoleteAt > oldestLive ||
+                    now - o.Since < (o.Kind == LsmObjectKind.Manifest ? manifestGrace : grace)) continue;
                 _obsoleteObjects.RemoveAt(i);
-                if (o.FileNumber != 0 && referenced.Contains(o.FileNumber))
+                // Never delete what the current version references, whatever led to the entry.
+                var version = _state.Version;
+                referenced ??= version.AllTables().Select(t => t.Table.FileNumber).Concat(version.ValueFiles.Keys)
+                    .ToHashSet();
+                if (o.IsFile && referenced.Contains(o.Number))
                 {
-                    Logger?.LogWarning("BTDB.LSM kept " + o.Key + ": the current version references it.");
+                    Logger?.LogWarning("BTDB.LSM kept " + ObjectKey(o.Kind, o.Number) +
+                                       ": the current version references it.");
                     continue;
                 }
 
@@ -485,15 +544,16 @@ public sealed partial class LsmKeyValueDB
 
         foreach (var o in deletable)
         {
+            var key = ObjectKey(o.Kind, o.Number);
             try
             {
-                if (o.FileNumber != 0) _cache.Evict(new(_cacheScope, o.FileNumber));
-                _storage.DeleteAsync(o.Key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-                if (o.FileNumber != 0) Logger?.FileMarkedForDelete((uint)o.FileNumber);
+                if (o.IsFile) _cache.Evict(new(_cacheScope, o.Number));
+                _storage.DeleteAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                if (o.IsFile) Logger?.FileMarkedForDelete((uint)o.Number);
             }
             catch (Exception ex)
             {
-                Logger?.LogWarning("BTDB.LSM could not delete " + o.Key + ", will retry: " + ex.Message);
+                Logger?.LogWarning("BTDB.LSM could not delete " + key + ", will retry: " + ex.Message);
                 lock (_obsoleteObjects) _obsoleteObjects.Add(o);
             }
         }

@@ -194,14 +194,6 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
-    {
-        cancellation.ThrowIfCancellationRequested();
-        var path = PathOf(key);
-        File.Move(WriteTemporary(path, content.Span), path, true);
-        return ValueTask.CompletedTask;
-    }
-
     const string LeaseLockSuffix = ".lease-lock";
 
     /// Runs action while holding an exclusive lock on the lease's lock file, shared by every process using the

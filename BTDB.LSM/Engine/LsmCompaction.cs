@@ -46,12 +46,14 @@ sealed class ValueSeparation(int threshold, ValueFileWriter writer, Func<ulong, 
 /// One compaction: all inputs of Level merge with the overlapping tables of Level + 1. Level 0 always takes every L0
 /// table, so no newer L0 table is left above an older merged one. A rewrite compacts one table into its own level to
 /// drop references to mostly dead value files.
-sealed record LsmCompactionPlan(int Level, TableReader[] Inputs, TableReader[] Overlaps, bool Rewrite = false)
+sealed record LsmCompactionPlan(int Level, TableReader[] Inputs, TableReader[] Overlaps, bool Rewrite = false,
+    bool SingleRun = false)
 {
     public int OutputLevel => Rewrite ? Level : Level + 1;
 
-    /// A single input without overlaps moves down unchanged: the state below its span is the same at both levels.
-    public bool IsTrivialMove => !Rewrite && Overlaps.Length == 0 && Inputs.Length == 1;
+    /// A single input, or the only L0 run, without overlaps moves down unchanged: the state below its span is the same
+    /// at both levels.
+    public bool IsTrivialMove => !Rewrite && Overlaps.Length == 0 && (Inputs.Length == 1 || SingleRun);
 }
 
 /// Leveled compaction (ImplementationPlan.md, section 13): scores, input selection, the count-preserving merge and
@@ -69,10 +71,10 @@ static class LsmCompaction
     {
         var bestLevel = -1;
         var bestScore = 1.0;
-        if (version.Level0.Length >= options.Level0Trigger)
+        if (version.Level0Runs.Length >= options.Level0Trigger)
         {
             bestLevel = 0;
-            bestScore = (double)version.Level0.Length / options.Level0Trigger;
+            bestScore = (double)version.Level0Runs.Length / options.Level0Trigger;
         }
 
         // The bottom level is never compacted further down.
@@ -92,7 +94,7 @@ static class LsmCompaction
             var inputs = version.Level0;
             var lower = inputs.Select(t => t.Lower).Min(LsmKeys.Comparer)!;
             var upper = inputs.Select(t => t.Upper).Max(LsmKeys.Comparer)!;
-            return new(0, inputs, version.Overlapping(1, lower, upper));
+            return new(0, inputs, version.Overlapping(1, lower, upper), SingleRun: version.Level0Runs.Length == 1);
         }
 
         var tables = version.Levels[bestLevel];
@@ -122,19 +124,19 @@ static class LsmCompaction
         if (plan.IsTrivialMove)
         {
             var moved = plan.Level == 0
-                ? version.WithLevel0([]).Replace(1, [], plan.Inputs)
+                ? version.WithLevel0Runs([]).Replace(1, [], plan.Inputs)
                 : version.Replace(plan.Level, plan.Inputs, []).Replace(plan.OutputLevel, [], plan.Inputs);
             return (moved, []);
         }
 
         var run = new List<ILsmComponent>();
-        if (plan.Level == 0) run.AddRange(plan.Inputs);
+        if (plan.Level == 0) run.AddRange(version.Level0Components);
         else run.Add(new LevelComponent(plan.Inputs));
         if (plan.Overlaps.Length > 0) run.Add(new LevelComponent(plan.Overlaps));
         var below = new LsmView(version.ComponentsBelow(plan.OutputLevel));
         var outputs = WriteOutputs(new LsmMerger([.. run], below, options.OnInputRead), below, options, tableOptions, writeTable, values);
         var next = plan.Level == 0
-            ? version.WithLevel0([])
+            ? version.WithLevel0Runs([])
             : version.Replace(plan.Level, plan.Inputs, []);
         next = next.Replace(plan.OutputLevel, plan.Overlaps, outputs);
         return (next, [.. plan.Inputs, .. plan.Overlaps]);
@@ -150,9 +152,15 @@ static class LsmCompaction
         if (obsolete.Length == 0) return (version, []);
         var outputs = WriteOutputs(new LsmMerger(version.Components, new LsmView([]), options.OnInputRead), new LsmView([]), options,
             tableOptions, writeTable, values);
-        return (new LsmVersion(empty.Level0, empty.Levels, version.ValueFiles)
+        return (new LsmVersion(empty.Level0Runs, empty.Levels, version.ValueFiles)
             .Replace(version.LevelCount - 1, [], outputs), obsolete);
     }
+
+    /// Merges a run of components (newest first) that sits on below into non-overlapping tables sorted by key; used
+    /// for the private tables of a spilled transaction.
+    public static List<TableReader> Merge(ILsmComponent[] run, LsmView below, LsmCompactionOptions options,
+        TableBuildOptions tableOptions, Func<byte[], TableReader> writeTable, ValueSeparation values) =>
+        WriteOutputs(new LsmMerger(run, below), below, options, tableOptions, writeTable, values);
 
     /// Streams merged entries into tables of about TargetFileSize. Table i spans [first key of table i, first key of
     /// table i + 1); fragments crossing a boundary are split and each part gets its own CoveredBelow from below.

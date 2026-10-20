@@ -5,13 +5,15 @@ using BTDB.LSM.Format;
 
 namespace BTDB.LSM.Engine;
 
-/// Immutable table set (ImplementationPlan.md, section 11): L0 tables newest first, each its own component because L0
-/// tables may overlap, and levels 1..n of non-overlapping tables sorted by key, each presented as one component.
+/// Immutable table set (ImplementationPlan.md, section 11): L0 runs newest first, each its own component because runs
+/// may overlap, and levels 1..n of non-overlapping tables sorted by key, each presented as one component. An L0 run is
+/// one flushed table, or the non-overlapping tables of a spilled transaction.
 sealed class LsmVersion
 {
-    public LsmVersion(TableReader[] level0, TableReader[][] levels, IReadOnlyDictionary<ulong, long> valueFiles)
+    public LsmVersion(TableReader[][] level0Runs, TableReader[][] levels, IReadOnlyDictionary<ulong, long> valueFiles)
     {
-        Level0 = level0;
+        Level0Runs = level0Runs;
+        Level0 = [.. level0Runs.SelectMany(r => r)];
         Levels = levels;
         ValueFiles = valueFiles;
         var live = new Dictionary<ulong, long>();
@@ -19,7 +21,7 @@ sealed class LsmVersion
         foreach (var (fileNumber, bytes) in table.ValueReferences)
             live[fileNumber] = live.GetValueOrDefault(fileNumber) + bytes;
         LiveValueBytes = live;
-        var components = new List<ILsmComponent>(level0);
+        var components = new List<ILsmComponent>(level0Runs.Select(RunComponent));
         LevelComponents = new LevelComponent?[levels.Length];
         for (var level = 1; level < levels.Length; level++)
         {
@@ -34,6 +36,9 @@ sealed class LsmVersion
     public static LsmVersion Empty(int levelCount) =>
         new([], Enumerable.Range(0, levelCount).Select(_ => Array.Empty<TableReader>()).ToArray(),
             new Dictionary<ulong, long>());
+
+    /// A run of non-overlapping tables sorted by key as one component.
+    public static ILsmComponent RunComponent(TableReader[] run) => run.Length == 1 ? run[0] : new LevelComponent(run);
 
     /// Value files of this version and their total stored bytes.
     public IReadOnlyDictionary<ulong, long> ValueFiles { get; }
@@ -53,10 +58,17 @@ sealed class LsmVersion
         foreach (var (fileNumber, bytes) in added) files.Add(fileNumber, bytes);
         dropped = files.Keys.Where(f => !LiveValueBytes.ContainsKey(f)).ToArray();
         foreach (var fileNumber in dropped) files.Remove(fileNumber);
-        return new(Level0, Levels, files);
+        return new(Level0Runs, Levels, files);
     }
 
+    /// L0 runs newest first; each is sorted by key and non-overlapping.
+    public TableReader[][] Level0Runs { get; }
+
+    /// Tables of all L0 runs, newest run first.
     public TableReader[] Level0 { get; }
+
+    /// Components of the L0 runs, newest first; they lead Components.
+    public ReadOnlySpan<ILsmComponent> Level0Components => Components.AsSpan(0, Level0Runs.Length);
 
     /// Index 0 is unused; Levels[n] holds level n sorted by key.
     public TableReader[][] Levels { get; }
@@ -92,7 +104,7 @@ sealed class LsmVersion
     public TableReader[] Overlapping(int level, byte[] lower, byte[] upper) => Levels[level]
         .Where(t => LsmKeys.Compare(t.Upper, lower) > 0 && LsmKeys.Compare(t.Lower, upper) < 0).ToArray();
 
-    public LsmVersion WithLevel0(TableReader[] level0) => new(level0, Levels, ValueFiles);
+    public LsmVersion WithLevel0Runs(TableReader[][] level0Runs) => new(level0Runs, Levels, ValueFiles);
 
     /// Replaces tables of level by others; the result is kept sorted by key.
     public LsmVersion Replace(int level, IReadOnlyCollection<TableReader> removed, IEnumerable<TableReader> added)
@@ -101,6 +113,6 @@ sealed class LsmVersion
         var levels = (TableReader[][])Levels.Clone();
         levels[level] = Levels[level].Where(t => !removed.Contains(t)).Concat(added)
             .OrderBy(t => t.Lower, LsmKeys.Comparer).ToArray();
-        return new(Level0, levels, ValueFiles);
+        return new(Level0Runs, levels, ValueFiles);
     }
 }

@@ -94,12 +94,6 @@ sealed class LatencyLsmStorage(ILsmStorage inner) : ILsmStorage
         await inner.DeleteAsync(key, cancellation);
     }
 
-    public async ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
-    {
-        await Task.Delay(Cost(8, content.Length, WriteBytesPerMs), cancellation);
-        await inner.PutAsync(key, content, cancellation);
-    }
-
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
 

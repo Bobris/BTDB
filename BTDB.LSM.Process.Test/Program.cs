@@ -111,7 +111,7 @@ public static class Program
 
     static async Task<int> Reader(string directory)
     {
-        using var db = await LsmKeyValueDB.OpenAsync(Options(directory, 15_000) with { RegisterReader = true });
+        using var db = await LsmKeyValueDB.OpenAsync(Options(directory, 15_000));
         while (Console.ReadLine() is { } line)
         {
             var parts = line.Split(' ');

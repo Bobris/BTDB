@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Format;
 
@@ -45,6 +47,17 @@ sealed class LsmState(
     /// Increases with every published state; used to decide when obsolete objects can be deleted.
     public long Sequence { get; } = sequence;
 
+    /// View of components stacked on this whole state, for example a spilled transaction's memtable and private runs.
+    public LsmView CreateView(IReadOnlyList<ILsmComponent> above)
+    {
+        var components = new List<ILsmComponent>(1 + above.Count + Immutables.Length + Version.Components.Length);
+        components.AddRange(above);
+        components.Add(Memtable);
+        foreach (var sealedMemtable in Immutables) components.Add(sealedMemtable.Memtable);
+        components.AddRange(Version.Components);
+        return new([.. components]);
+    }
+
     public LsmView CreateView(IMemtable memtable)
     {
         var components = new ILsmComponent[1 + Immutables.Length + Version.Components.Length];
@@ -55,13 +68,26 @@ sealed class LsmState(
     }
 }
 
+/// Kind of an object waiting for deletion. Manifests carry pending tables, value files and manifests; covered WAL
+/// chunks are deleted at once.
+enum LsmObjectKind : byte
+{
+    Table,
+    ValueFile,
+    Manifest,
+    WalChunk
+}
+
+/// An object no current state references, obsolete since Since; Number is its file, manifest or chunk number.
+readonly record struct LsmPendingDeletion(LsmObjectKind Kind, ulong Number, DateTimeOffset Since);
+
 /// Manifest object content (ImplementationPlan.md, section 11): a full checkpoint of the table set, the value files,
-/// the commit metadata of the newest flushed generation and the WAL position from which recovery replays. Objects are
-/// manifest/{sequence}, created once; the sequence doubles as the writer fence.
+/// the commit metadata of the newest flushed generation, the WAL position from which recovery replays and the objects
+/// waiting for deletion. Objects are manifest/{sequence}, created once; the sequence doubles as the writer fence.
 sealed class LsmManifest
 {
     const ulong Magic = 0x4D4D534C42445442; // "BTDBLSMM"
-    const int FormatVersion = 4;
+    const int FormatVersion = 6;
 
     public long Sequence { get; init; }
     public ulong NextFileNumber { get; init; }
@@ -79,10 +105,17 @@ sealed class LsmManifest
     /// First WAL chunk that may hold a record of a generation not yet in tables.
     public long WalStartChunk { get; init; }
 
-    /// Level 0 tables newest first, then every other level sorted by key.
+    /// Level 0 tables newest run first, each run sorted by key, then every other level sorted by key.
     public (int Level, ulong FileNumber, long Length)[] Tables { get; init; } = [];
 
+    /// Number of tables in each level 0 run, newest first.
+    public int[] Level0RunLengths { get; init; } = [];
+
     public (ulong FileNumber, long Length)[] ValueFiles { get; init; } = [];
+
+    /// Objects the writer deletes once DeletionGracePeriod passed since they became obsolete; a new writer continues
+    /// with them, so takeovers do not restart the period.
+    public LsmPendingDeletion[] PendingDeletions { get; init; } = [];
 
     public byte[] Encode()
     {
@@ -114,6 +147,37 @@ sealed class LsmManifest
             encoder.WriteVUInt64((ulong)length);
         }
 
+        encoder.WriteVUInt64((ulong)Level0RunLengths.Length);
+        foreach (var length in Level0RunLengths) encoder.WriteVUInt64((ulong)length);
+
+        // Pending deletions are grouped by time and stored as runs of consecutive numbers: the writer rounds the times
+        // up, so the manifests replaced within one period form one run.
+        var groups = PendingDeletions.GroupBy(d => d.Since.UtcTicks).OrderBy(g => g.Key).ToArray();
+        encoder.WriteVUInt64((ulong)groups.Length);
+        var previousTicks = 0L;
+        foreach (var group in groups)
+        {
+            encoder.WriteVInt64(group.Key - previousTicks);
+            previousTicks = group.Key;
+            var runs = new List<(LsmObjectKind Kind, ulong Start, ulong Length)>();
+            foreach (var deletion in group.OrderBy(d => d.Kind).ThenBy(d => d.Number).Distinct())
+            {
+                if (runs.Count > 0 && runs[^1] is var last && last.Kind == deletion.Kind &&
+                    last.Start + last.Length == deletion.Number)
+                    runs[^1] = last with { Length = last.Length + 1 };
+                else
+                    runs.Add((deletion.Kind, deletion.Number, 1));
+            }
+
+            encoder.WriteVUInt64((ulong)runs.Count);
+            foreach (var (kind, start, length) in runs)
+            {
+                encoder.WriteByte((byte)kind);
+                encoder.WriteVUInt64(start);
+                encoder.WriteVUInt64(length);
+            }
+        }
+
         encoder.WriteChecksum(0);
         return encoder.WrittenSpan.ToArray();
     }
@@ -139,12 +203,29 @@ sealed class LsmManifest
             tables[i] = (decoder.ReadVUInt32(), decoder.ReadVUInt64(), (long)decoder.ReadVUInt64());
         var valueFiles = new (ulong, long)[decoder.ReadVUInt32()];
         for (var i = 0; i < valueFiles.Length; i++) valueFiles[i] = (decoder.ReadVUInt64(), (long)decoder.ReadVUInt64());
+        var runLengths = new int[decoder.ReadVUInt32()];
+        for (var i = 0; i < runLengths.Length; i++) runLengths[i] = (int)decoder.ReadVUInt32();
+        var pending = new List<LsmPendingDeletion>();
+        var ticks = 0L;
+        for (var groups = decoder.ReadVUInt64(); groups > 0; groups--)
+        {
+            ticks += decoder.ReadVInt64();
+            for (var runs = decoder.ReadVUInt64(); runs > 0; runs--)
+            {
+                var kind = (LsmObjectKind)decoder.ReadByte();
+                if (kind > LsmObjectKind.WalChunk) throw LsmDecoder.Corrupted();
+                var start = decoder.ReadVUInt64();
+                for (var length = decoder.ReadVUInt64(); length > 0; length--)
+                    pending.Add(new(kind, start++, new(ticks, TimeSpan.Zero)));
+            }
+        }
+
         return new()
         {
             Sequence = sequence, NextFileNumber = nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = levelCount, Tables = tables,
             ValueFiles = valueFiles, WriterEpoch = writerEpoch, FlushedGeneration = flushedGeneration,
-            WalStartChunk = walStartChunk
+            WalStartChunk = walStartChunk, PendingDeletions = [.. pending], Level0RunLengths = runLengths
         };
     }
 }

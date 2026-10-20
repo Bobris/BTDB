@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.LSM.Engine;
 using BTDB.LSM.Format;
 using BTDB.LSM.Storage;
 using Xunit;
@@ -169,56 +171,60 @@ public class LsmReaderTest
         Assert.Contains("no longer exists", error.Message);
     }
 
+    sealed class ShiftedTimeProvider(TimeSpan offset) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + offset;
+    }
+
+    static LsmManifest NewestManifest(InMemoryLsmStorage storage)
+    {
+        var key = storage.Keys("manifest/").Max(StringComparer.Ordinal)!;
+        return LsmManifest.Decode(storage.Peek(key), key);
+    }
+
     [Fact]
-    public async Task RegisteredReaderKeepsItsTables()
+    public async Task PendingDeletionsKeepTheirTimeAcrossWriterTakeover()
     {
         var storage = new InMemoryLsmStorage();
-        using var writer = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
-        {
-            MemtableSize = 1 << 20, ReaderHeartbeatInterval = TimeSpan.FromSeconds(1),
-            DeletionGracePeriod = TimeSpan.Zero
-        });
+        var options = Options(storage, true) with { MemtableSize = 1 << 20, DeletionGracePeriod = TimeSpan.FromHours(1) };
         var random = new Random(5);
         var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        for (var commit = 1; commit <= 50; commit++) model = await Commit(writer, random, (ulong)commit, model);
-        writer.CreateKvi(default);
-        using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
+        using (var first = await LsmKeyValueDB.OpenAsync(options))
         {
-            RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromSeconds(1),
-            BlockCache = new LsmBlockCache(64 * 1024)
+            for (var commit = 1; commit <= 50; commit++) model = await Commit(first, random, (ulong)commit, model);
+            first.CreateKvi(default);
+            for (var commit = 51; commit <= 100; commit++) model = await Commit(first, random, (ulong)commit, model);
+            await first.Compact(default);
+        }
+
+        var pending = NewestManifest(storage).PendingDeletions;
+        Assert.Contains(pending, d => d.Kind == LsmObjectKind.Table);
+        Assert.Contains(pending, d => d.Kind == LsmObjectKind.Manifest);
+        // A table no manifest ever published, as a crashed writer leaves it.
+        storage.CreateAsync("tables/0000000000999999.sst", new byte[] { 1 }, default).AsTask().Wait();
+
+        // Within the grace period of the first writer's clock only the unpublished table may go.
+        using (var second = await LsmKeyValueDB.OpenAsync(options with
+               {
+                   TimeProvider = new ShiftedTimeProvider(TimeSpan.FromMinutes(30))
+               }))
+        {
+            await second.Compact(default);
+            Assert.DoesNotContain("tables/0000000000999999.sst", storage.Keys("tables/"));
+            Assert.True(storage.Keys("tables/").Length > NewestManifest(storage).Tables.Length);
+        }
+
+        // A takeover does not restart the period: once it passed on the first writer's clock, everything goes.
+        using var third = await LsmKeyValueDB.OpenAsync(options with
+        {
+            TimeProvider = new ShiftedTimeProvider(TimeSpan.FromHours(2))
         });
-        // The registry entry expires after three heartbeats, which must outlast a delayed heartbeat timer on a loaded
-        // test machine for the whole test; an expired entry rightly lets the writer delete the old tables.
-        var expected = new SortedDictionary<string, string>(model, StringComparer.Ordinal);
-        var old = reader.StartReadOnlyTransaction();
-        var tablesBefore = storage.Keys("tables/").Length;
-        try
-        {
-        await reader.RefreshAsync();
-        for (var commit = 51; commit <= 100; commit++) model = await Commit(writer, random, (ulong)commit, model);
-        writer.CreateKvi(default);
-        await writer.Compact(default);
-        await Task.Delay(200);
-        Assert.Equal(expected, Content(old));
-        }
-        finally
-        {
-            old.Dispose();
-        }
-
-        await reader.RefreshAsync();
-        await Task.Delay(200);
-        // Once the reader moved on, the writer deletes what only the old snapshot used; deletion runs in the
-        // background, so wait for it with a generous limit for loaded test machines.
-        await writer.Compact(default);
-        for (var wait = 0; wait < 100 && storage.Keys("tables/").Length >= tablesBefore + 2; wait++)
-        {
-            await Task.Delay(100);
-            await writer.Compact(default);
-        }
-
-        Assert.True(storage.Keys("tables/").Length < tablesBefore + 2, string.Join(",", storage.Keys("tables/")));
-        using var tr = reader.StartReadOnlyTransaction();
+        await third.Compact(default);
+        var manifest = NewestManifest(storage);
+        Assert.Equal(manifest.Tables.Length, storage.Keys("tables/").Length);
+        Assert.Equal(manifest.ValueFiles.Length, storage.Keys("values/").Length);
+        Assert.True(storage.Keys("manifest/").Length <= 2, string.Join(",", storage.Keys("manifest/")));
+        using var tr = third.StartReadOnlyTransaction();
         Assert.Equal(model, Content(tr));
     }
 }

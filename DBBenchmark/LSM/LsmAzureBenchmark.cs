@@ -100,7 +100,7 @@ static class LsmAzureBenchmark
         LsmKeyValueDBOptions Options(bool writer) => new()
         {
             Storage = storage, Prefix = "db/", AcquireWriterLeaseOnOpen = writer, MemtableSize = MemtableBytes,
-            BlockCacheSize = CacheBytes, DeletionGracePeriod = TimeSpan.FromMinutes(1), RegisterReader = !writer
+            BlockCacheSize = CacheBytes, DeletionGracePeriod = TimeSpan.FromMinutes(1)
         };
 
         // Bulk load in transactions of 10,000 keys, then wait until background compaction settles.
@@ -190,7 +190,7 @@ static class LsmAzureBenchmark
 
         // Cold open, cold and warm point reads, FindKeyIndex, and a full scan in a fresh instance.
         stopwatch.Restart();
-        using (var db = await LsmKeyValueDB.OpenAsync(Options(false) with { RegisterReader = false }))
+        using (var db = await LsmKeyValueDB.OpenAsync(Options(false)))
         {
             var openSeconds = stopwatch.Elapsed.TotalSeconds;
             Report("lsm-open", new { seconds = openSeconds, memory = Memory(db) });

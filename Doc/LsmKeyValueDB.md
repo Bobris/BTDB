@@ -67,9 +67,26 @@ Every instance opens as a reader. An instance becomes the writer by taking the w
 * in `AcquireWriterLeaseAsync`, or
 * in the first `StartWritingTransaction`, which waits until the lease is free.
 
+The writer keeps the lease until it hands the role over or is disposed:
+
+```csharp
+// On the node that wrote last: make every commit durable and let another node write at once.
+await db.ReleaseWriterLeaseAsync();
+```
+
+`ReleaseWriterLeaseAsync` waits for a running writing transaction, uploads the WAL and releases the lease. The
+instance continues as a reader of the same state. A later `StartWritingTransaction` takes the lease again. `Dispose`
+of the writer does the same. Neither flushes memtables: the next writer flushes them.
+
+Another instance waiting in `StartWritingTransaction` retries within milliseconds and then every `LeaseRetryInterval`
+at most (250 ms by default). It continues from the state it already replayed as a reader. A takeover reads only the
+newest manifest and the WAL chunks the reader has not seen yet, then writes one manifest and one WAL chunk. It sees
+every commit the previous writer made durable.
+
 The writer takes the lease over from a crashed writer once the lease expires, after `LeaseDuration` at most (15 s by
-default; Azure accepts whole seconds from 15 to 60 and rejects other values). Taking over fences the previous writer: it can no longer create objects, and if it
-is still alive it fails its pending durability waits and continues as a reader.
+default; Azure accepts whole seconds from 15 to 60 and rejects other values). Taking over fences the previous writer:
+it can no longer create objects, and if it is still alive it fails its pending durability waits and continues as a
+reader.
 
 A reader in another process sees a consistent snapshot. It does not refresh automatically:
 
@@ -114,14 +131,41 @@ Resident memory is roughly:
 * `BlockCacheSize` (256 MiB by default; a native, sharded CLOCK cache that can be shared by several databases),
 * the mutable memtable and up to `MaxImmutableMemtables` sealed ones (`MemtableSize`, 64 MiB by default, in native
   memory),
-* a running writing transaction, which adds to the memtable at most `MaxTransactionMemory` (256 MiB by default) and
-  keeps its WAL record until commit,
+* a running writing transaction, which keeps at most `MaxTransactionMemory` (64 MiB by default) in memory, plus its
+  WAL record until commit,
 * small per-table metadata: the top-level index and table properties,
 * WAL bytes waiting for upload, bounded by `MaxUnflushedWalBytes`.
 
 Writers wait (stall) when sealed memtables, level 0 tables or WAL bytes exceed their limits, until background flush,
-compaction or upload catches up. A writing transaction that adds more than `MaxTransactionMemory` bytes to the memtable
-throws `BTDBException` on its next modification or commit and can only be rolled back.
+compaction or upload catches up.
+
+## Large transactions
+
+A writing transaction can be practically unlimited in size. Once it holds more than `MaxTransactionMemory` memtable
+bytes, it spills:
+
+* Its changes move into tables and value files that only it reads, and it continues with an empty memtable.
+* Every four spilled parts of equal size merge into one run of non-overlapping tables. A transaction therefore keeps
+  few runs, and each new key checks only a few bloom filters for whether it exists.
+* Its commit writes the last part as a table and merges all runs into one. It waits until earlier memtables are
+  flushed, then publishes that run as the newest level 0 run by one manifest edit. It writes no WAL record. The commit
+  is durable when it returns.
+* A level 0 run counts as one level 0 entry for `Level0CompactionTrigger` and `Level0StopWritesTrigger`, so the next
+  writer does not stall behind a large commit.
+* A rollback deletes the private tables at once.
+
+Other transactions never see a spilled transaction before its commit. Memory stays below about
+`MemtableSize + 2 * MaxTransactionMemory` whatever the size. `MaxTransactionSize` (unlimited by default) caps the
+total: a transaction above it throws `BTDBException` on its next modification or commit and can only be rolled back.
+
+Performance of a 2 GiB transaction on Azure ([Measurements](../BTDB.LSM/Measurements.md), section 8):
+
+* Writing it took about 200 s, about 10 MiB/s, with a working set of under 2 GiB.
+* Its commit took about 14 s, mostly the final merge. Another instance saw it 0.1 s later, and the next writer did
+  not wait.
+* Every new key checks the bloom filters of the transaction's runs. Size `BlockCacheSize` so that an eighth of it
+  holds the filters of the transaction's keys: about 2 bytes per key at the default 16 bits. Raising
+  `BloomBitsPerKey` without a larger cache makes large transactions much slower.
 
 ## Performance notes
 
@@ -143,23 +187,27 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `MemtableSize` | 64 MiB | Memtable size that triggers a flush to a level 0 table. |
-| `MaxTransactionMemory` | 256 MiB | Most memtable bytes one writing transaction may add. |
+| `MaxTransactionMemory` | 64 MiB | Memtable bytes a writing transaction keeps in memory before it spills into tables. |
+| `MaxTransactionSize` | unlimited | Most memtable bytes one writing transaction may add, in memory and spilled. |
 | `BlockSize` | 32 KiB | Target uncompressed data block size; one cache miss reads one block. |
 | `BlockCacheSize` / `BlockCache` | 256 MiB | Size of the block cache the database creates, or a shared cache. |
 | `BloomBitsPerKey` | 16 | Bloom filter size; a false positive costs one ranged GET when a key is written or looked up. |
-| `ValueSeparationThreshold` | 1 KiB | Longer values are stored in value files, so compaction does not rewrite them. |
+| `ValueSeparationThreshold` | 1 KiB | Longer values go to shared value files at flush, so compaction does not rewrite them. |
 | `LevelBaseBytes`, `LevelMultiplier`, `TargetFileSize` | 256 MiB, 10, 64 MiB | Leveled compaction shape. |
 | `LeaseDuration` | 15 s | Writer lease duration; also the longest failover wait. |
+| `LeaseRetryInterval` | 250 ms | Longest pause between attempts to take a lease another instance holds. |
 | `WorkerFailureTimeout` | 1 min | `CreateKvi` and `Compact` fail when flushes and compactions keep failing this long. |
 | `WalChunkTargetSize` | 256 KiB | Size of one WAL object; larger commits span several. |
-| `DeletionGracePeriod` | 10 min | Obsolete objects are kept this long for readers in other processes. |
-| `RegisterReader` | false | A reader registers the oldest manifest it uses, so the writer keeps its objects past the grace period. |
+| `DeletionGracePeriod` | 1 day | Obsolete objects are kept this long for readers in other processes. |
 
 `CompactorReadBytesPerSecondLimit` and `CompactorWriteBytesPerSecondLimit` on the database (0, no limit, by default)
 pace the reads of compaction inputs and the creation of tables, value files and manifests.
 
-A reader whose snapshot is older than the grace period, and which did not register, fails with `BTDBException`
-("no longer exists"). It never reads a partial state.
+A transaction in another process may keep its snapshot for at most `DeletionGracePeriod`. An older snapshot fails with
+`BTDBException` ("no longer exists") once it needs a deleted object. It never reads a partial state.
+
+The manifest records when each object became obsolete, so a new writer keeps counting from that time. Replaced manifests
+are kept for at most one minute: snapshots do not read them.
 
 ## Object layout
 
@@ -170,14 +218,13 @@ A reader whose snapshot is older than the grace period, and which did not regist
 | `wal/{n}` | WAL chunks with commit records. |
 | `tables/{n}.sst` | Sorted tables with partitioned index and bloom filters. |
 | `values/{n}.vlf` | Separated values. |
-| `readers/{id}` | Reader registry entries. |
 
 Every object is written once with create-if-absent and never modified.
 
 ## Other storage
 
-`ILsmStorage` is provider-neutral: create-if-absent, read, ranged read (synchronous and asynchronous), list, delete,
-put and a lease.
+`ILsmStorage` is provider-neutral: create-if-absent, read, ranged read (synchronous and asynchronous), list, delete
+and a lease.
 
 * `InMemoryLsmStorage` is for tests.
 * `FileSystemLsmStorage` stores a database in a local directory that processes on one machine can share. It is meant

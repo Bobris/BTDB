@@ -33,10 +33,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     readonly Lock _stateLock = new();
     readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new();
     readonly ConcurrentDictionary<LsmKeyValueDBTransaction, bool> _transactions = new();
-    /// Objects waiting for deletion: the state sequence and time they became obsolete and the first manifest that no
-    /// longer references them.
-    readonly List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)>
-        _obsoleteObjects = [];
+    readonly List<ObsoleteObject> _obsoleteObjects = [];
     readonly List<(NativeArena Arena, long ObsoleteAt)> _retiredArenas = [];
     volatile LsmState _state;
     LsmKeyValueDBTransaction? _writingTransaction;
@@ -45,9 +42,8 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     ulong _nextFileNumber;
     volatile bool _disposed;
 
-    LsmKeyValueDB(LsmKeyValueDBOptions options, LsmBlockCache cache, LoadedDatabase loaded, string readerId)
+    LsmKeyValueDB(LsmKeyValueDBOptions options, LsmBlockCache cache, LoadedDatabase loaded)
     {
-        _readerId = readerId;
         _options = options;
         _storage = options.Storage;
         _cache = cache;
@@ -76,7 +72,6 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         _durableTransaction = loaded.Metadata.TransactionNumber;
         MaxTrLogFileSize = options.MemtableSize;
         Logger = options.Logger;
-        StartReaderHeartbeat();
     }
 
     /// Opens the database as a reader of its newest durable state; with AcquireWriterLeaseOnOpen it also becomes the
@@ -85,9 +80,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         CancellationToken cancellation = default)
     {
         var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
-        var readerId = Guid.NewGuid().ToString("N");
-        if (options.RegisterReader) await WriteRegistryEntryAsync(options, readerId, 0, cancellation);
-        var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation), readerId);
+        var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
         if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);
         return db;
     }
@@ -124,21 +117,30 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     /// uploads are too far behind. inBatch is ignored: every commit is published (ImplementationPlan.md, D4).
     public async ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
+        while (true)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_isWriter) await AcquireWriterLeaseAsync();
+            await WaitWhileStalledAsync();
+            var transaction = (LsmKeyValueDBTransaction)await TakeWriterSlotAsync();
+            // The writer role may have been released or lost while this transaction waited for the slot.
+            if (_isWriter && transaction.WriterEpoch == _epoch) return transaction;
+            transaction.Dispose();
+        }
+    }
+
+    /// Waits for the single writer slot; the returned writing transaction holds it until it finishes.
+    Task<IKeyValueDBTransaction> TakeWriterSlotAsync()
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!_isWriter) await AcquireWriterLeaseAsync();
-        await WaitWhileStalledAsync();
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        Task<IKeyValueDBTransaction> waiting;
         lock (_writeLock)
         {
-            if (_writingTransaction == null) return NewWritingTransactionUnsafe();
+            if (_writingTransaction == null) return Task.FromResult<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
             var waiter = new TaskCompletionSource<IKeyValueDBTransaction>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             _writeWaitingQueue.Enqueue(waiter);
-            waiting = waiter.Task;
+            return waiter.Task;
         }
-
-        return await waiting;
     }
 
     enum StallReason
@@ -157,7 +159,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         if (_worker == null || !_isWriter) return StallReason.None;
         var state = _state;
         if (state.Immutables.Length >= _options.MaxImmutableMemtables) return StallReason.SealedMemtables;
-        if (state.Version.Level0.Length >= _options.Level0StopWritesTrigger) return StallReason.Level0;
+        if (state.Version.Level0Runs.Length >= _options.Level0StopWritesTrigger) return StallReason.Level0;
         return WalBacklogStalls() ? StallReason.WalBacklog : StallReason.None;
     }
 
@@ -301,7 +303,9 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             var tables = level == 0 ? state.Version.Level0 : state.Version.Levels[level];
             if (tables.Length == 0) continue;
             builder.Append("Level").Append(level).Append(':').Append(tables.Length).Append(" tables, ")
-                .Append(state.Version.LevelBytes(level)).Append(" bytes").AppendLine();
+                .Append(state.Version.LevelBytes(level)).Append(" bytes");
+            if (level == 0) builder.Append(", ").Append(state.Version.Level0Runs.Length).Append(" runs");
+            builder.AppendLine();
         }
 
         builder.Append("Flushes:").Append(_flushCount).Append(", ").Append(_flushBytes).Append(" bytes, ")
@@ -387,8 +391,8 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     /// Paces the creation of tables, value files and manifests; 0 means no limit.
     public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 
-    /// As the writer, uploads pending WAL records, flushes sealed memtables and releases the lease; as a reader, only
-    /// releases memory.
+    /// As the writer, uploads pending WAL records and releases the lease at once; flushes and compactions are left to
+    /// the next writer. As a reader, only releases memory.
     public void Dispose()
     {
         if (_disposed) return;
@@ -407,21 +411,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         _modeLock.Wait();
         try
         {
-            if (_isWriter)
-            {
-                StopWriterServicesAsync().GetAwaiter().GetResult();
-                // The background services are stopped: finish WAL uploads, flushes and due compactions here.
-                while (UploadWalAsync().AsTask().GetAwaiter().GetResult())
-                {
-                }
-
-                RotateForShutdown();
-                RunAllWork();
-                DeleteObsoleteObjects();
-                _storage.ReleaseLeaseAsync(LockKey, _leaseId, CancellationToken.None).AsTask().GetAwaiter()
-                    .GetResult();
-                _isWriter = false;
-            }
+            if (_isWriter) StepDownAsync().GetAwaiter().GetResult();
         }
         finally
         {
@@ -434,7 +424,6 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             _fullCompactionRequests.Clear();
         }
 
-        StopReaderHeartbeat();
         DeleteObsoleteObjects();
         var state = _state;
         state.Memtable.Arena?.Dispose();
