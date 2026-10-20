@@ -461,3 +461,115 @@ What changed:
 * **Readahead without the thread pool.** Readahead and prefetch now run on 16 dedicated threads using synchronous
   reads. A cursor waiting for a block in flight therefore never waits for a thread-pool thread (risk R2).
   `LsmReadaheadTest` checks that scans are still served by readahead. Scan throughput on Azure was not measured again.
+
+## 8. Spilled transactions and writer handoff on Azure (2026-10-20)
+
+Harness: `DBBenchmark lsm-spill` (`DBBenchmark/LSM/LsmSpillBenchmark.cs`). The setup matched section 4: a
+Standard_D8ads_v5 VM in Sweden Central (8 vCPU, 32 GiB, Release build, .NET 10) with a managed identity, and a
+Standard_LRS (StorageV2) account in the same region with shared keys disabled. The resources were deleted after the
+runs.
+
+**Workload.**
+
+* 2,000,000 base keys of 16 bytes with 100-byte values, loaded and fully compacted.
+* One writing transaction of 2 GiB of key and value bytes:
+  * 13,884,713 new keys in pseudo-random order with 100-byte values;
+  * 6,942 updates of random existing keys;
+  * 8,192 values of 64 KiB, a quarter of the bytes and half random so they do not compress.
+* `MaxTransactionMemory` and `MemtableSize` were 64 MiB.
+* After the commit: a second instance waits for the commit, the next single-key writer runs, and level 0 compaction
+  finishes.
+* Finally, the two instances hand the writer role back and forth: commit one key, `ReleaseWriterLeaseAsync`, then the
+  other instance's `StartWritingTransaction`.
+
+Runs differ in the block cache size and in the bloom filter bits per key, which apply to every table including the
+private ones.
+
+| Case | Run 1: 256 MiB, 16 bits | Run 2: 1 GiB, 16 bits | Run 3: 1 GiB, 24 bits | Run 4: 256 MiB, 24 bits |
+| --- | --- | --- | --- | --- |
+| Writing the transaction, s | 642 | 379 | 163 | not finished after 6.6 h |
+| Throughput, MiB/s | 3.2 | 5.4 | 12.6 | |
+| Block cache misses during the transaction | 125,536 | 62,747 | 7,988 | |
+| `Commit`, s | 0.11 | 0.12 | 0.11 | |
+| Level 0 tables after the commit | 44 | 44 | 44 | |
+| Peak native memory, MiB (cache and memtables) | 289 | 961 | 302 | |
+| Peak working set, MiB | 1,595 | 2,044 | 988 | |
+| Second instance sees the commit, s | 0.30 | 0.83 | 0.61 | |
+| Next single-key writer waits (level 0 stall), s | 26.2 | 25.0 | 25.3 | |
+| Release of the writer lease, ms p50 / p95 | 16 / 161 (50 handoffs) | 64 / 153 (10) | 39 / 100 (10) | |
+| Takeover by the other instance, ms p50 / p95 | 55 / 143 (50 handoffs) | 51 / 137 (10) | 56 / 146 (10) | |
+
+Findings:
+
+* **Memory stays bounded.** A 2 GiB transaction peaked at 1–2 GiB of working set. Native memory is the block cache
+  plus at most two 64 MiB segments. The managed peak of 0.7–1.1 GiB is mostly garbage from building tables and
+  value files in memory.
+* **The commit is cheap and atomic.** It writes the last segment and one manifest edit in 0.11 s. Another instance
+  sees the 2 GiB commit after one manifest read and the table footers, in 0.3–0.8 s.
+* **Writing is dominated by existence checks against the transaction's own tables.** Every new key must know whether
+  it exists, so it checks the bloom filter of every private table written so far, up to 43 here.
+  * At 16 bits per key the false positive rate is about 0.046 %. That predicts about 140,000 data block reads for
+    13.9 million keys against 22 tables on average; run 1 measured 125,536 cache misses. At about 5 ms each, they
+    explain nearly all of the 642 s.
+  * A larger cache keeps more of those blocks (run 2). 24 bits per key cut the misses to about 8,000 (run 3), and the
+    rest of the 163 s is CPU and the upload of tables and 512 MiB of value files.
+* **Filters must stay resident.** Filters share an eighth of the block cache. 13.9 million keys need about 28 MB of
+  filters at 16 bits and 42 MB at 24 bits. With 256 MiB of cache (32 MiB for metadata), run 1 was at the edge. In
+  run 4, the filters no longer fit: every check read a filter partition from storage, and the transaction did not
+  finish in 6.6 hours. More filter bits without a matching cache make large transactions much slower.
+* **The next writer stalls for about 25 s.** The commit adds 44 overlapping tables to level 0, above
+  `Level0StopWritesTrigger` (12). Writers wait until the level 0 compaction of about 350 MB finishes.
+* **Handoff takes about 55 ms at p50 and 140 ms at p95.** That is the lease, two listings, the new WAL chunks and two
+  creates. The release returns after the WAL upload. Its tail comes from waiting for background work to stop, after
+  the lease is already free.
+
+Recommendation (implemented below): the spilled tables of one transaction should **not** simply count as one level 0
+sublevel for the stall trigger.
+
+* With random keys they overlap one another, so they are not a sublevel. Exempting them would let writers continue
+  while every read checks 44 extra components for the 25 s of compaction.
+* Instead, the transaction should merge its spilled segments into one sorted run of non-overlapping tables, for
+  example whenever eight segments exist and at commit. The run is then legitimately one component, for both
+  existence checks and the stall trigger.
+  * Existence checks would cost one filter probe per run instead of one per segment, which removes most false
+    positives without more filter bits.
+  * The commit would add one run to level 0, so the next writer would not stall.
+  * The merge rereads and rewrites only keys and small values, about 350 MB here, inside the large transaction rather
+    than in the writers after it.
+* Size `BlockCacheSize` so that an eighth of it holds the filters of the transaction's keys: about 2 bytes per key at
+  16 bits.
+
+### After merging spilled segments into runs
+
+Runs 5–7 used the same workload, with 16 bits per key.
+
+* Spilled segments merge four at a time into runs of non-overlapping tables (plan section 7.5).
+* The commit merges all runs into one, and level 0 holds runs.
+* Run 5 stopped after the next-writer case, because a benchmark bug waited for level 0 tables instead of runs.
+
+| Case | Run 1 (before) | Run 5: 256 MiB | Run 6: 256 MiB | Run 7: 1 GiB |
+| --- | --- | --- | --- | --- |
+| Writing the transaction, s | 642 | 201 | 201 | 190 |
+| Throughput including the commit, MiB/s | 3.2 | 9.5 | 9.5 | 10.1 |
+| Block cache misses during the transaction | 125,536 | 33,043 | 33,014 | 30,283 |
+| `Commit`, s | 0.11 | 13.7 | 14.0 | 13.3 |
+| Level 0 after the commit | 44 tables | 6 tables, 1 run | 6 tables, 1 run | 6 tables, 1 run |
+| Peak working set, MiB | 1,595 | 1,632 | 1,853 | 2,088 |
+| Second instance sees the commit, s | 0.30 | 0.06 | 0.06 | 0.08 |
+| Next single-key writer waits, s | 26.2 | 0.0 | 0.0 | 0.0 |
+| Release of the writer lease, ms p50 / p95 | 16 / 161 | | 29 / 176 (50 handoffs) | 11 / 177 (10) |
+| Takeover by the other instance, ms p50 / p95 | 55 / 143 | | 83 / 135 (50 handoffs) | 80 / 141 (10) |
+
+Findings:
+
+* **Writing is about three times faster at the default cache.** Existence checks probe a few runs instead of up to 43
+  tables, so cache misses fell from 125,536 to about 33,000. The remaining misses are false positives and data blocks
+  of the runs; a 1 GiB cache barely changes them. Repeated merges read and rewrite the private tables about
+  log4(segments) times, which costs less than the misses they save.
+* **The commit takes about 14 s instead of 0.1 s.** It merges every run into one, rewriting about 380 MB of keys and
+  small values. In exchange, the next writer does not wait at all, instead of 25 s, and level 0 compaction is not
+  triggered. The run stays in level 0 until more runs arrive.
+* **Readers open the result faster.** A second instance sees the commit in 0.06–0.08 s, because it opens 6 table
+  footers instead of 44.
+* **Handoff is unchanged** at 80 ms p50 and 140 ms p95; the p50 varies between runs from 55 to 83 ms.
+

@@ -68,6 +68,12 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "lsm-spill", StringComparison.OrdinalIgnoreCase))
+        {
+            LSM.LsmSpillBenchmark.RunAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "lsm-storage", StringComparison.OrdinalIgnoreCase))
         {
             LSM.LsmStorageScreening.RunAsync().GetAwaiter().GetResult();
