@@ -7,7 +7,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.Replication.EventSourcing</PackageId>
-        <Version>35.12.1</Version>
+        <Version>35.13.0</Version>
         <PackageVersion>$(Version)-preview</PackageVersion>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>https://github.com/Bobris/BTDB</PackageProjectUrl>

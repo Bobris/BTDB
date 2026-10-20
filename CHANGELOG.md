@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.13.0
+
 ### Added
 
 - `LsmKeyValueDB` writing transactions are no longer limited by memory.
