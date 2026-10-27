@@ -312,6 +312,34 @@ public class EventLogOwnerLaneTest
     }
 
     [Fact]
+    public async Task DelayedFirstDispatchAtANewOwnerReturnsTheOffsetOfItsCommittedRetry()
+    {
+        var storage = new FaultyEventLogStorage();
+        var a = await Lane(storage, A, Small(4096));
+        // The retry of sequence 1 commits through A while its first dispatch is still on the way to B.
+        Assert.Equal(0ul, await Submit(a, 5, 1, Bytes(0), dispatched: true));
+        var b = await Lane(storage, B, Small(4096));
+        Assert.Equal(0ul, await Submit(b, 5, 1, Bytes(0)));
+        Assert.Equal(1ul, await Submit(b, 5, 2, Bytes(1), oldest: 2, resumeFrom: 1));
+        await AssertHistory(storage, 2);
+    }
+
+    [Fact]
+    public async Task NewSessionAtTheNextOffsetTakesOverWithItsFirstCommitWithoutReading()
+    {
+        var storage = new FaultyEventLogStorage();
+        var a = await Lane(storage, A, Small(4096));
+        await Submit(a, 5, 1, Bytes(0));
+        var b = await Lane(storage, B, Small(4096));
+        var reads = storage.Inner.Reads;
+        Assert.Equal(1ul, await Submit(b, 6, 1, Bytes(1), resumeFrom: 1));
+        Assert.Equal(reads, storage.Inner.Reads);
+        Assert.Equal(0, storage.Mutations("owner"));
+        Assert.True(b.IsInstalled);
+        await AssertHistory(storage, 2);
+    }
+
+    [Fact]
     public async Task LandedWriteWhoseResponseWasLostIsCommittedEvenWhenATakeoverFollowsIt()
     {
         var storage = new FaultyEventLogStorage();

@@ -12,6 +12,18 @@
   latency does not grow. The wait ends once pending commits fill a batch. `AdaptiveWalLingerMax = TimeSpan.Zero`
   uploads at once. On Azure, 2–16 concurrent durable writers went from about 8 to 4–4.5 ms at p50 with 1.7–1.9 times
   the throughput, and one writer was unchanged (`DBBenchmark lsm-durable`, BTDB.LSM/Measurements.md section 9).
+- Lean 4 proofs of the event-log commit protocol in `BTDB.Replication/Proofs/` (`lake build`):
+  - the split chain never forks, committed history only grows, and a successful write lands exactly at its writer's
+    next offset;
+  - each Publish call commits once, in per-session call order, with exact receipts.
+
+### Fixed
+
+- Event log: one Publish call could be committed twice. This happened when its first dispatch reached a new topic
+  owner after its retry had already committed through the previous owner, because a lane trusted
+  `previouslyDispatched = false` for an unknown session. An unknown session's state now always comes from committed
+  history from the round's resume offset. A first submission at the owner's next offset still needs no storage read and
+  keeps the combined takeover write.
 
 ## 35.13.0
 

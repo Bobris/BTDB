@@ -214,9 +214,11 @@ internal sealed class EventLogOwnerLane
     /// <summary>
     /// Accept one record of a publisher session. Sequences of a session commit in order; a repeated sequence joins its
     /// pending commit or returns its committed offset. <paramref name="oldestUnresolved"/> is the publisher's lowest
-    /// sequence without a receipt; lower sequences are resolved. When the lane does not know the session and the records
-    /// may have been dispatched to a predecessor, it first installs itself and scans committed history from
-    /// <paramref name="resumeFrom"/>, so a record is never committed twice.
+    /// sequence without a receipt; lower sequences are resolved. A lane that does not know the session derives its state
+    /// from the committed frames from <paramref name="resumeFrom"/>, even for a first dispatch, which can arrive after
+    /// its retry committed elsewhere; so a record is never committed twice. It reads nothing when no frame exists from
+    /// there, and installs itself first when the records may have been dispatched to a predecessor. A write after the
+    /// lane's snapshot fences the lane, so its snapshot is enough.
     /// </summary>
     public async ValueTask<ulong> SubmitAsync(ulong session, ulong sequence, ReadOnlyMemory<byte> record,
         ulong oldestUnresolved, bool previouslyDispatched, ulong resumeFrom, CancellationToken cancellation)
@@ -233,7 +235,7 @@ internal sealed class EventLogOwnerLane
                 _sessions.TryGetValue(session, out state);
                 if (sequence < oldestUnresolved || oldestUnresolved == 0)
                     throw new ArgumentOutOfRangeException(nameof(oldestUnresolved));
-                if (state == null && !previouslyDispatched)
+                if (state == null && !previouslyDispatched && resumeFrom >= _next)
                 {
                     state = new(oldestUnresolved - 1);
                     _sessions.Add(session, state);
@@ -244,7 +246,8 @@ internal sealed class EventLogOwnerLane
                     break;
                 }
             }
-            await ResolveSessionAsync(session, oldestUnresolved, resumeFrom, cancellation).ConfigureAwait(false);
+            await ResolveSessionAsync(session, oldestUnresolved, resumeFrom, previouslyDispatched, cancellation)
+                .ConfigureAwait(false);
             lock (_lock)
                 if (_sessions.TryGetValue(session, out state) && sequence <= state.Committed &&
                     !state.Offsets.ContainsKey(sequence))
@@ -293,10 +296,10 @@ internal sealed class EventLogOwnerLane
         if (_batchFull != null && BatchFullLocked()) _batchFull.TrySetResult();
     }
 
-    async ValueTask ResolveSessionAsync(ulong session, ulong oldestUnresolved, ulong resumeFrom,
+    async ValueTask ResolveSessionAsync(ulong session, ulong oldestUnresolved, ulong resumeFrom, bool install,
         CancellationToken cancellation)
     {
-        await InstallAsync().WaitAsync(cancellation).ConfigureAwait(false);
+        if (install) await InstallAsync().WaitAsync(cancellation).ConfigureAwait(false);
         ulong end;
         lock (_lock) end = _next;
         var committed = oldestUnresolved - 1;

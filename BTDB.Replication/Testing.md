@@ -319,6 +319,8 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
   - repeated ambiguous writes, both landed and not landed, never duplicate;
   - candidate takeover fences the owner, and a predecessor winning the race fences the candidate;
   - resubmission to a new owner returns the original offsets;
+  - a delayed first dispatch reaching a new owner returns the offset of its committed retry, and a new session at
+    the next offset takes over with its first commit without reading;
   - a landed write whose response was lost stays committed even when a takeover follows it;
   - pipelined sequences commit in order, and an unfilled gap fails;
   - idle-owner validation detects a takeover;
@@ -352,12 +354,20 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
   - three nodes publishing and following over HTTP;
   - rejection of unauthenticated requests;
   - takeover after the owner process stops.
+- Lean proofs in [Proofs/](Proofs/README.md) (`lake build`), over every interleaving of abstract models:
+  - the split chain never forks, committed history only grows, sealed splits never change, and a successful write
+    lands exactly at its writer's next offset;
+  - the session rule before the 2026-10-27 fix could commit one Publish call twice when a first dispatch arrived late
+    at a new owner (a counterexample);
+  - the implemented rule, which derives an unknown session's state from history, commits each transfer once, keeps
+    per-session call order and returns exact receipts.
 
 Not covered yet:
 
 - TLS and proxy paths.
 - Multi-VM partitions.
-- Exhaustive interleavings of seal, create and takeover. The listed cases are directed schedules.
+- Exhaustive interleavings of seal, create and takeover in the C# code. The listed cases are directed schedules;
+  the Lean proofs cover an abstract model, related to the code by inspection.
 - Sustained load with merging on live Azure.
 
 ## Recorded measurements

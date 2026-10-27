@@ -1,0 +1,5 @@
+name = "EventLogProofs"
+defaultTargets = ["EventLogProofs"]
+
+[[lean_lib]]
+name = "EventLogProofs"
