@@ -418,6 +418,13 @@ Each WAL chunk is one immutable object `wal/{chunk}`:
   one large commit and chunks of different commits alike. Durability advances when the whole batch is created, so a
   commit is durable once every chunk up to and including its final part is durable. Commits arriving during an upload
   form the next batch.
+* Before an upload the uploader may wait up to `AdaptiveWalLingerMax` (default 3 ms) for commits that answer the
+  previous upload: writers awaiting durability commit again as soon as it completes. It uses the EventLog commit window
+  estimator (`CommitLingerEstimator`, compiled into BTDB.LSM): arrivals are timed from the moment an upload would start
+  without a window, which is the first commit after an idle upload, so one writer awaiting each commit never opens it
+  and independent commits keep it closed. The wait ends once pending commits fill a batch. On Azure it cut durable
+  commit latency of 2–16 concurrent writers from about 8 to 4–4.5 ms at p50 and raised their throughput 1.7–1.9 times,
+  with no change for one writer (`Measurements.md`, section 9).
 * `DurableTransactions = false` is the default (decision D2, as in `BTreeKeyValueDB`). `Commit()` returns once the
   memtable is updated. The durability window is about one flush interval plus upload latency.
 * `ILsmKeyValueDB.WaitForDurabilityAsync(transactionNumber, ct)` completes when that commit is durable, and throws if

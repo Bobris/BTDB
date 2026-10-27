@@ -70,6 +70,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         _manifestSequence = loaded.Manifest.Sequence;
         _nextFileNumber = loaded.Manifest.NextFileNumber;
         _durableTransaction = loaded.Metadata.TransactionNumber;
+        if (options.AdaptiveWalLingerMax > TimeSpan.Zero) _walLinger = new(options.AdaptiveWalLingerMax);
         MaxTrLogFileSize = options.MemtableSize;
         Logger = options.Logger;
     }

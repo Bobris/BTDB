@@ -119,6 +119,12 @@ the time of the call. It does not wait for later commits or uncommitted changes.
 Cancellation can be passed as `WaitForDurabilityAsync(cancellation: cancellationToken)`.
 
 `FlushAsync` has the same effect as `WaitForDurabilityAsync()` and waits for everything committed so far.
+
+When several writers wait for durability, each commits again as soon as its upload completes, and without help their
+commits would split into a small upload and a larger one. The uploader therefore waits briefly before an upload when
+commits usually follow the previous upload closely, so they share it. It chooses the wait itself from when commits
+arrive, up to `AdaptiveWalLingerMax` (3 ms by default), and keeps it at zero for one writer awaiting each commit and for
+independent commits, so their latency does not grow. `AdaptiveWalLingerMax = TimeSpan.Zero` uploads at once.
 `DurableTransactions = true` makes every `Commit` wait. Readers in other processes see only durable commits.
 
 Disposing a transaction without committing rolls it back. Uncommitted changes are never queued for WAL upload, so
@@ -198,6 +204,7 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | `LeaseRetryInterval` | 250 ms | Longest pause between attempts to take a lease another instance holds. |
 | `WorkerFailureTimeout` | 1 min | `CreateKvi` and `Compact` fail when flushes and compactions keep failing this long. |
 | `WalChunkTargetSize` | 256 KiB | Size of one WAL object; larger commits span several. |
+| `AdaptiveWalLingerMax` | 3 ms | Longest wait before a WAL upload for commits that answer the previous one; zero disables it. |
 | `DeletionGracePeriod` | 1 day | Obsolete objects are kept this long for readers in other processes. |
 
 `CompactorReadBytesPerSecondLimit` and `CompactorWriteBytesPerSecondLimit` on the database (0, no limit, by default)

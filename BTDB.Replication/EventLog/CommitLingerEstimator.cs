@@ -7,12 +7,13 @@ namespace BTDB.Replication.EventLog;
 /// the commit when records are already queued, otherwise the first record arriving after it, which would start the
 /// write at once (that record itself gains nothing from waiting). Waiting L lets the records arriving within L after
 /// that moment join the write, saving them about one write duration W, while every record of the cycle waits L longer.
-/// Per record the gain is f(L) - L/W, where f(L) is the fraction of all arrivals that land within L after the moment. Publishers that answer a commit (publish-and-await loops, often on other nodes)
-/// concentrate arrivals right after it and make the gain positive; independent arrivals are uniform over the cycle,
-/// where f(L) = L/(W + L) &lt; L/W, so the window stays zero. Sparse arrivals make f(L) noisy, so the arrivals in a
-/// window must also exceed their independent-traffic expectation by a clear Poisson margin. Statistics decay per
-/// commit; a new window replaces the current one only when its gain is clearly higher. Not thread safe: the owner lane
-/// calls it under its lock.
+/// Per record the gain is f(L) - L/W, where f(L) is the fraction of all arrivals that land within L after the moment.
+/// Publishers that answer a commit (publish-and-await loops, often on other nodes) concentrate arrivals right after it
+/// and make the gain positive; independent arrivals are uniform over the cycle, where f(L) = L/(W + L) &lt; L/W, so the
+/// window stays zero. Sparse arrivals make f(L) noisy, so the arrivals in a window must also exceed their
+/// independent-traffic expectation by a clear Poisson margin. Statistics decay per commit; a new window replaces the
+/// current one only when its gain is clearly higher. Not thread safe: callers serialize it under their lock. The
+/// BTDB.LSM WAL uploader compiles this file too, with commits as records and WAL uploads as writes.
 /// </summary>
 internal sealed class CommitLingerEstimator
 {

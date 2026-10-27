@@ -28,6 +28,8 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
+        <!-- The adaptive WAL upload window uses the EventLog commit window estimator. -->
+        <Compile Include="../BTDB.Replication/EventLog/CommitLingerEstimator.cs" Link="Engine/CommitLingerEstimator.cs"/>
         <InternalsVisibleTo Include="BTDB.LSM.Test"/>
         <InternalsVisibleTo Include="BTDB.LSM.Azure.Test"/>
         <InternalsVisibleTo Include="DBBenchmark"/>

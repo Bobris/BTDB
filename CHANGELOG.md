@@ -2,6 +2,17 @@
 
 ## [unreleased]
 
+### Added
+
+- `LsmKeyValueDB` WAL uploads adapt to writers that wait for durability. Before an upload, the uploader waits briefly
+  for commits that usually follow the previous upload closely, so concurrent writers awaiting
+  `WaitForDurabilityAsync` (or using `DurableTransactions`) share one upload instead of splitting into a small and a
+  large one. It chooses the wait from when commits arrive, up to the new `LsmKeyValueDBOptions.AdaptiveWalLingerMax`
+  (3 ms by default), and keeps it at zero for one writer awaiting each commit and for independent commits, so their
+  latency does not grow. The wait ends once pending commits fill a batch. `AdaptiveWalLingerMax = TimeSpan.Zero`
+  uploads at once. On Azure, 2–16 concurrent durable writers went from about 8 to 4–4.5 ms at p50 with 1.7–1.9 times
+  the throughput, and one writer was unchanged (`DBBenchmark lsm-durable`, BTDB.LSM/Measurements.md section 9).
+
 ## 35.13.0
 
 ### Added

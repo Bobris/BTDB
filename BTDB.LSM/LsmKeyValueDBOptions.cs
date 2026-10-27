@@ -98,6 +98,14 @@ public sealed record LsmKeyValueDBOptions
     /// grouped into the next one.
     public TimeSpan WalFlushInterval { get; init; } = TimeSpan.FromMilliseconds(20);
 
+    /// The WAL uploader waits briefly before an upload, up to this long, when commits usually follow the previous
+    /// upload closely: several writers that wait for durability commit again as soon as their upload completes, and
+    /// their commits then share one upload instead of splitting into a small and a large one. It chooses the wait from
+    /// when commits arrive, measured in real time, and keeps it at zero for one writer awaiting each commit and for
+    /// independent commits, so their latency does not grow. The wait ends early once pending commits fill a batch;
+    /// waits below 2 ms yield the thread in a loop. Zero uploads at once.
+    public TimeSpan AdaptiveWalLingerMax { get; init; } = TimeSpan.FromMilliseconds(3);
+
     public int WalUploadParallelism { get; init; } = 4;
 
     /// Writers wait while more WAL bytes than this are waiting for upload.

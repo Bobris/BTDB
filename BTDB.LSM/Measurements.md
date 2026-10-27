@@ -573,3 +573,55 @@ Findings:
   footers instead of 44.
 * **Handoff is unchanged** at 80 ms p50 and 140 ms p95; the p50 varies between runs from 55 to 83 ms.
 
+
+## 9. Adaptive WAL upload window on Azure (2026-10-27)
+
+Harness: `DBBenchmark lsm-durable` (`DBBenchmark/LSM/LsmDurableBenchmark.cs`). The setup matched section 8: a
+Standard_D8ads_v5 VM in Sweden Central (8 vCPU, Release build, .NET 10) with a managed identity, and a Standard_LRS
+(StorageV2) account in the same region with shared keys disabled. The resources were deleted after the run.
+
+**Workload.** Every commit writes one 8-byte key with a 100-byte value and then awaits
+`WaitForDurabilityAsync(tr.GetTransactionNumber())`; latency runs from `StartWritingTransaction` (or the scheduled
+arrival) to durability.
+
+* Closed loops: n writers each commit and wait in a loop.
+* Open loops: independent commits at a Poisson rate.
+* Mixed: 1,000 independent commits/s plus 8 closed-loop writers.
+
+Each case ran on a fresh database for 3 s of warm-up and 15 s of measurement, once with
+`AdaptiveWalLingerMax = TimeSpan.Zero` (off) and once with the default 3 ms (adaptive), three times with alternating
+order. The table shows medians of the three runs: commits/s, latency p50 / p99 in ms, commits per WAL chunk create, and
+the window the uploader chose. A WAL chunk create took 3.8–4.6 ms at p50 throughout.
+
+| Case | Off: commits/s | Off: p50 / p99 | Off: commits per create | Adaptive: commits/s | Adaptive: p50 / p99 | Adaptive: commits per create | Window, ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 writer | 243 | 4.0 / 5.6 | 1.0 | 246 | 3.9 / 5.4 | 1.0 | 0 |
+| 2 writers | 254 | 7.7 / 10.3 | 1.0 | 467 | 4.1 / 5.9 | 2.0 | 0.19 |
+| 4 writers | 485 | 7.8 / 10.7 | 2.0 | 920 | 4.2 / 7.5 | 4.0 | 0.19 |
+| 8 writers | 947 | 8.4 / 12.1 | 4.0 | 1,732 | 4.3 / 9.0 | 7.7 | 0.19 |
+| 16 writers | 1,796 | 8.3 / 11.8 | 8.0 | 3,114 | 4.5 / 10.3 | 14.0 | 0.19 |
+| 64 writers | 7,244 | 8.7 / 13.4 | 31.9 | 10,258 | 5.1 / 12.6 | 50.8 | 0.56 |
+| 256 writers | 27,217 | 8.8 / 17.3 | 121.2 | 32,144 | 6.4 / 18.6 | 200.9 | 1.31 |
+| Open 100/s | 99 | 5.4 / 11.3 | 1.1 | 99 | 5.4 / 12.2 | 1.1 | 0 |
+| Open 1,000/s | 1,007 | 6.0 / 10.2 | 4.0 | 1,007 | 6.0 / 9.5 | 4.0 | 0 |
+| Mixed: 8 writers | 1,966 total | 8.1 / 17.9 | 8.3 | 2,849 total | 4.2 / 8.2 | 12.3 | 0.19 |
+| Mixed: open 1,000/s | | 6.3 / 21.6 | | | 6.2 / 12.8 | | |
+
+Findings:
+
+* **One writer is not slowed down.** The window stayed at 0 in every sample of every single-writer run: its next commit
+  is always the first after an idle upload, which the estimator never counts. Latency (3.9 against 4.0 ms p50) and
+  throughput are within run-to-run noise, as is the cost of the WAL create itself.
+* **Independent commits are not slowed down.** At 100 and 1,000 commits/s the window stayed closed (one sample of
+  0.38 ms in nine runs) and latencies matched.
+* **Concurrent writers awaiting durability halve their latency.** Without the window the commits answering an upload
+  split into a small upload and a larger one, so each writer waited for about two uploads: two writers even
+  alternated, one commit per upload, at 7.7 ms. With a window of 0.19 ms (one bin of the estimator) all of them share
+  one upload: p50 fell to 4.1–4.5 ms for 2–16 writers and throughput rose 1.7–1.9 times.
+* **Many writers still gain.** With 64 and 256 writers the window grew to 0.56 and 1.31 ms, because their commits take
+  longer to arrive through the single writer slot. Throughput rose by 42 % and 18 %, and p50 fell to 5.1 and 6.4 ms;
+  p99 stayed about the same.
+* **Mixed traffic benefits on both sides.** The closed-loop writers in the mixed case went from 8.1 to 4.2 ms p50, and
+  the tail of the independent commits fell (p99 21.6 to 12.8 ms) because the queue drains in fewer uploads.
+* Durable commits took about 4 ms at p50 here, against 8–10 ms in section 4 on the same VM size and region; the
+  Put Blob latency of the storage account, not BTDB.LSM, sets that floor.

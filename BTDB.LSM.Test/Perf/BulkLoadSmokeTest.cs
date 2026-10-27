@@ -32,6 +32,11 @@ sealed class LatencyLsmStorage(ILsmStorage inner) : ILsmStorage
         }
     }
 
+    public long Requests(string kind)
+    {
+        lock (_stats) return _stats.TryGetValue(kind, out var current) ? current.Count : 0;
+    }
+
     public string Report()
     {
         lock (_stats)

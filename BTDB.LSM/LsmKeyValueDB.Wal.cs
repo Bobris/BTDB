@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Engine;
 using BTDB.LSM.Storage;
+using BTDB.Replication.EventLog;
 
 namespace BTDB.LSM;
 
@@ -19,6 +21,8 @@ public sealed partial class LsmKeyValueDB
     readonly List<PendingRecord> _walPending = [];
     readonly SortedDictionary<long, List<TaskCompletionSource>> _durabilityWaiters = new();
     readonly Dictionary<long, long> _generationFirstChunk = new();
+    readonly CommitLingerEstimator? _walLinger;
+    readonly long _walClockOrigin = Stopwatch.GetTimestamp();
     SemaphoreSlim _walSignal = new(0);
     List<EncodedChunk>? _walInFlight;
     int _walInFlightRecords;
@@ -36,6 +40,7 @@ public sealed partial class LsmKeyValueDB
         {
             _walPending.Add(new(generation, transactionNumber, record));
             _walPendingBytes += record.Length;
+            _walLinger?.Arrival(WalClock);
         }
 
         if (_walUploader == null) UploadWalAsync().AsTask().GetAwaiter().GetResult();
@@ -61,6 +66,7 @@ public sealed partial class LsmKeyValueDB
             {
                 try
                 {
+                    await LingerWalAsync(stop);
                     if (!await UploadWalAsync()) break;
                     backoff = TimeSpan.FromMilliseconds(20);
                 }
@@ -98,7 +104,7 @@ public sealed partial class LsmKeyValueDB
             PendingRecord[] records;
             lock (_walLock)
             {
-                var limit = (long)_options.WalChunkTargetSize * _options.WalUploadParallelism;
+                var limit = WalBatchLimit;
                 var count = 0;
                 long bytes = 0;
                 while (count < _walPending.Count && (count == 0 || bytes + _walPending[count].Payload.Length <= limit))
@@ -128,6 +134,7 @@ public sealed partial class LsmKeyValueDB
         }
 
         var chunks = _walInFlight;
+        var started = WalClock;
         for (var start = 0; start < chunks.Count; start += _options.WalUploadParallelism)
         {
             var batch = chunks.Skip(start).Take(_options.WalUploadParallelism).ToArray();
@@ -142,11 +149,62 @@ public sealed partial class LsmKeyValueDB
             _walInFlight = null;
             // A spilled transaction's commit may already have made later transactions durable.
             durable = _durableTransaction = Math.Max(_durableTransaction, _walInFlightTransaction);
+            // Before the waiters complete, so the commits answering them count from this upload.
+            _walLinger?.Committed(started, WalClock, _walPending.Count > 0);
         }
 
         CompleteDurabilityWaiters(durable, null);
         NotifyProgress();
         return true;
+    }
+
+    TimeSpan WalClock => Stopwatch.GetElapsedTime(_walClockOrigin);
+
+    long WalBatchLimit => (long)_options.WalChunkTargetSize * _options.WalUploadParallelism;
+
+    /// The wait before each upload chosen by AdaptiveWalLingerMax; zero when disabled.
+    internal TimeSpan WalLinger
+    {
+        get
+        {
+            lock (_walLock) return _walLinger?.Current ?? TimeSpan.Zero;
+        }
+    }
+
+    /// Before an upload, waits for commits that usually follow the previous one closely, see AdaptiveWalLingerMax.
+    /// Ends early once pending commits fill a batch or the uploader stops; a retry of a failed batch does not wait.
+    async ValueTask LingerWalAsync(CancellationToken stop)
+    {
+        TimeSpan linger;
+        lock (_walLock)
+        {
+            if (_walLinger == null || _walInFlight != null || _walPending.Count == 0) return;
+            linger = _walLinger.Current;
+        }
+
+        if (linger == TimeSpan.Zero) return;
+        var start = Stopwatch.GetTimestamp();
+        TimeSpan Remaining() => stop.IsCancellationRequested || Interlocked.Read(ref _walPendingBytes) >= WalBatchLimit
+            ? TimeSpan.Zero
+            : linger - Stopwatch.GetElapsedTime(start);
+
+        if (linger >= TimeSpan.FromMilliseconds(2))
+        {
+            // Every commit releases the signal, so the batch limit is checked as commits arrive.
+            try
+            {
+                for (var remaining = Remaining(); remaining > TimeSpan.Zero; remaining = Remaining())
+                    await _walSignal.WaitAsync(remaining, stop);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return;
+        }
+
+        // Timers are coarser than short windows.
+        while (Remaining() > TimeSpan.Zero) await Task.Yield();
     }
 
     sealed record PlannedChunk(long Generation, List<WalPart> Parts);
