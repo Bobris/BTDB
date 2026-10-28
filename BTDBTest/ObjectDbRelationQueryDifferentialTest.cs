@@ -952,6 +952,107 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             .Select(r => new { r.Code }).Last().Code);
     }
 
+
+    /// Queries written as chains on `Query<T>()` are intercepted by the generated code at compile time, unlike the
+    /// queries above, which are built at runtime; they must return what the same chains return over the rows.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void InterceptedQueryChainsMatchLinq(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var failures = new List<string>();
+        var t = (ulong)random.Next(4);
+        var a = 20 + random.Next(12);
+        var n = Names[random.Next(Names.Length)];
+        var k = (DiffKind)random.Next(4);
+        var d = BaseDate.AddDays(random.Next(30));
+        var skip = random.Next(5);
+        var take = random.Next(1, 20);
+        var p = (decimal)random.Next(100) / 4;
+        var ages = new[] { 20, 25, 30, a };
+        void Check(string name, Func<object?> expected, Func<object?> actual)
+        {
+            var e = Format(expected);
+            var x = Format(actual);
+            if (e != x) failures.Add($"{name}:\n  expected {e}\n  actual   {x}");
+        }
+        Check("chain 1", () => rows.Where(r => r.Tenant == t && r.Age > a).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t && r.Age > a).ToList());
+        Check("chain 2", () => rows.Where(r => r.Name == n).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Name == n).ToList());
+        Check("chain 3", () => rows.Where(r => r.Name != null && r.Name.StartsWith("n")).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Name != null && r.Name.StartsWith("n")).ToList());
+        Check("chain 4", () => rows.Where(r => r.Kind == k || r.Bonus == null).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Kind == k || r.Bonus == null).ToList());
+        Check("chain 5", () => rows.Where(r => r.Created >= d).OrderBy(r => r.Created).ThenByDescending(r => r.Code).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Created >= d).OrderBy(r => r.Created).ThenByDescending(r => r.Code).ToList());
+        Check("chain 6", () => rows.Where(r => !r.Active).Skip(skip).Take(take).ToList(),
+            () => table.Query<DiffRow>().Where(r => !r.Active).Skip(skip).Take(take).ToList());
+        Check("chain 7", () => rows.Where(r => ages.Contains(r.Age)).Select(r => r.Code).ToList(),
+            () => table.Query<DiffRow>().Where(r => ages.Contains(r.Age)).Select(r => r.Code).ToList());
+        Check("chain 8", () => rows.Where(r => r.Price > p).Sum(r => r.Price),
+            () => table.Query<DiffRow>().Where(r => r.Price > p).Sum(r => r.Price));
+        Check("chain 9", () => rows.Count(r => r.Flag == true),
+            () => table.Query<DiffRow>().Count(r => r.Flag == true));
+        Check("chain 10", () => rows.Any(r => r.Age == a),
+            () => table.Query<DiffRow>().Any(r => r.Age == a));
+        Check("chain 11", () => rows.All(r => r.Age > 0),
+            () => table.Query<DiffRow>().All(r => r.Age > 0));
+        Check("chain 12", () => rows.Where(r => r.Tenant == t).Min(r => r.Score),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Min(r => r.Score));
+        Check("chain 13", () => rows.Where(r => r.Tenant == t).Max(r => r.Ratio),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Max(r => r.Ratio));
+        Check("chain 14", () => rows.Where(r => r.Tenant == t).Average(r => r.Age),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Average(r => r.Age));
+        Check("chain 15", () => rows.OrderByDescending(r => r.Score).ThenBy(r => r.Code).FirstOrDefault(),
+            () => table.Query<DiffRow>().OrderByDescending(r => r.Score).ThenBy(r => r.Code).FirstOrDefault());
+        Check("chain 16", () => rows.Where(r => r.Tenant == t).OrderBy(r => r.Name).Select(r => new { r.Name, r.Age }).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).OrderBy(r => r.Name).Select(r => new { r.Name, r.Age }).ToList());
+        Check("chain 17", () => rows.Where(r => r.Note != null && r.Note.Contains("l")).Count(),
+            () => table.Query<DiffRow>().Where(r => r.Note != null && r.Note.Contains("l")).Count());
+        Check("chain 18", () => rows.Where(r => r.Bonus > a).Select(r => r.Bonus).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Bonus > a).Select(r => r.Bonus).ToList());
+        Check("chain 19", () => rows.Where(r => r.Level >= 3 && r.Delta < 0).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Level >= 3 && r.Delta < 0).ToList());
+        Check("chain 20", () => rows.Where(r => r.Rank % 3 == 1).Take(take).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Rank % 3 == 1).Take(take).ToList());
+        Check("chain 21", () => rows.Where(r => r.Code.Length > 2).OrderBy(r => r.Code).Skip(skip).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Code.Length > 2).OrderBy(r => r.Code).Skip(skip).ToList());
+        Check("chain 22", () => rows.Where(r => r.Duration > TimeSpan.FromHours(1)).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Duration > TimeSpan.FromHours(1)).ToList());
+        Check("chain 23", () => rows.Where(r => r.Token == Guid.Empty).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Token == Guid.Empty).ToList());
+        Check("chain 24", () => rows.Where(r => r.Tenant == t).Select(r => r.Age * 2 + 1).ToList(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Select(r => r.Age * 2 + 1).ToList());
+        Check("chain 25", () => rows.Where(r => r.Name == null).Count(),
+            () => table.Query<DiffRow>().Where(r => r.Name == null).Count());
+        Check("chain 26", () => rows.Where(r => string.Compare(r.Code, "m", StringComparison.Ordinal) > 0).ToList(),
+            () => table.Query<DiffRow>().Where(r => string.Compare(r.Code, "m", StringComparison.Ordinal) > 0).ToList());
+        Check("chain 27", () => rows.Where(r => r.Tenant == t && r.Code == "x").SingleOrDefault(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t && r.Code == "x").SingleOrDefault());
+        Check("chain 28", () => rows.Where(r => r.Seen > new DateTimeOffset(BaseDate)).OrderBy(r => r.Seen).Select(r => r.Code).FirstOrDefault(),
+            () => table.Query<DiffRow>().Where(r => r.Seen > new DateTimeOffset(BaseDate)).OrderBy(r => r.Seen).Select(r => r.Code).FirstOrDefault());
+        Check("chain 29", () => rows.OrderBy(r => r.Age).ThenBy(r => r.Tenant).ThenBy(r => r.Code).Skip(skip).Take(take).Select(r => r.Code).ToList(),
+            () => table.Query<DiffRow>().OrderBy(r => r.Age).ThenBy(r => r.Tenant).ThenBy(r => r.Code).Skip(skip).Take(take).Select(r => r.Code).ToList());
+        Check("chain 30", () => rows.Where(r => r.Kind != DiffKind.A).Count(r => r.Active),
+            () => table.Query<DiffRow>().Where(r => r.Kind != DiffKind.A).Count(r => r.Active));
+        Check("chain 31", () => rows.Where(r => r.Tenant == t).LongCount(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).LongCount());
+        Check("chain 32", () => rows.Where(r => r.Tenant == t).OrderBy(r => r.Code).Last(),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).OrderBy(r => r.Code).Last());
+        Check("chain 33", () => rows.Where(r => r.Tenant == t).Sum(r => (long)r.Rank),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Sum(r => (long)r.Rank));
+        Check("chain 34", () => rows.Where(r => r.Tenant == t).Max(r => r.Bonus),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Max(r => r.Bonus));
+        Check("chain 35", () => rows.Where(r => r.Tenant == t).Average(r => r.Bonus),
+            () => table.Query<DiffRow>().Where(r => r.Tenant == t).Average(r => r.Bonus));
+        Assert.True(failures.Count == 0, $"Seed {seed}:\n" + string.Join("\n", failures));
+    }
+
     void FillRows(Random random)
     {
         using var tr = _db.StartTransaction();
