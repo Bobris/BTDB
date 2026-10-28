@@ -154,4 +154,24 @@ public class EventLayerEmitModeTest
             Assert.Contains(nameof(RenamedItem), error.Message);
         });
     }
+
+    // The 2026-10-28 fixes of collections other than List, HashSet and Dictionary, of lists declared only as read-only
+    // interfaces, of read-only IPAddress instances and of wide nullable conversions, with IL emitted. Before the fix of
+    // IntelligentCast an IReadOnlySet<T> member failed here with InvalidCastException.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void CollectionAndConversionFixesHoldWithEmit(EventLayer layer)
+    {
+        RunWithEmitMode(false, () =>
+        {
+            var coverage = new EventStore2CoverageTest();
+            coverage.OtherDictionariesStore(layer);
+            coverage.ReadOnlyAndImmutableListsStore(layer);
+            coverage.ListDeclaredOnlyAsReadOnlyLoads(layer);
+            coverage.ReadOnlyIPAddressStoresAsObject(layer);
+            coverage.WideNullableMemberLoadsAsPlain(layer);
+        });
+    }
 }

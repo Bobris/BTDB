@@ -90,7 +90,9 @@
   member of the item type declared as a list or set, failed to load with "Cannot find collection metadata". The
   collection types tried for it now include the read-only interfaces, whose generated metadata creates a `List` or
   `HashSet`, and a collection that loads as another one of the same items, like a `List` for an `IReadOnlySet<T>`
-  member, is copied into the collection that member's metadata creates.
+  member, is copied into the collection that member's metadata creates. With IL emitted
+  (`IFieldHandler.UseNoEmitForDescriptors = false`) such a member failed with `InvalidCastException` instead;
+  `IntelligentCast` now converts too.
 - ObjectDB and the event store: a list member holding a collection other than an array, `List`, `HashSet` or
   `Collection`, like the `ReadOnlyCollection<T>` that `AsReadOnly()` returns or an `ImmutableList<T>`, failed to save
   with "Cannot save type". Any other `IEnumerable<T>` of the item type is now enumerated; the stored format is the

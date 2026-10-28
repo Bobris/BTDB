@@ -231,6 +231,15 @@ public static class TypeDescriptorExtensions
             return indirect.ValueAsObject as T;
         }
 
+        // As the loader without emitting does: a collection can load as another one of the same items, like a List for
+        // an IReadOnlySet<T> member.
+        if (DefaultTypeConverterFactory.Instance.GetConverter(obj.GetType(), typeof(T)) is { } converter)
+        {
+            T? converted = null;
+            converter(ref Unsafe.As<object, byte>(ref obj), ref Unsafe.As<T?, byte>(ref converted));
+            return converted;
+        }
+
         return (T)obj; // This will throw
     }
 
