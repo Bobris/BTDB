@@ -69,7 +69,8 @@ public sealed class EventLogService : IEventLog, IEventLogPeerHandler, IAsyncDis
         if (_disposal.IsCancellationRequested) return;
         _disposal.Cancel();
         foreach (var topic in _topics.Values) await topic.DisposeAsync().ConfigureAwait(false);
-        _disposal.Dispose();
+        // _disposal stays undisposed: work still running checks its token, which a disposed source no longer gives,
+        // and a source without a timer or wait handle holds nothing to release.
     }
 }
 
@@ -478,8 +479,10 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             var self = new EventLogOwner(_options.NewSessionId().ToString("x16"), _service.Endpoint);
             var candidate = await EventLogOwnerLane.CreateCandidateAsync(_service.Storage, _reader, Name, _options,
                 _service.Scheduler, self, cancellation).ConfigureAwait(false);
-            Attach(candidate);
-            return (candidate, null);
+            if (Attach(candidate)) return (candidate, null);
+            // Disposed meanwhile, which stopped the lane it found but cannot stop this one.
+            candidate.Stop();
+            return (null, null);
         }
         finally
         {
@@ -487,12 +490,14 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         }
     }
 
-    void Attach(EventLogOwnerLane lane)
+    bool Attach(EventLogOwnerLane lane)
     {
         lane.Committed += batch => OnCommitted(lane, batch);
         lane.Stopped += _ => OwnerLost(lane);
         lock (_lock)
         {
+            // Disposal cancels before it takes this lock to detach the lane, so a lane attached here is detached.
+            if (_service.Disposal.IsCancellationRequested) return false;
             _lane = lane;
             _ownerEndpoint = null;
             _suspectEndpoint = null;
@@ -508,6 +513,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         }
         ScheduleHeartbeat(lane);
         ScheduleMerge(lane);
+        return true;
     }
 
     void ScheduleMerge(EventLogOwnerLane lane)

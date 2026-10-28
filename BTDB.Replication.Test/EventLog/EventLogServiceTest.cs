@@ -491,4 +491,39 @@ public class EventLogServiceTest
         await reading.WaitAsync(Timeout);
         Assert.Equal(Enumerable.Range(0, 150).Select(i => (ulong)i), received);
     }
+    [Fact]
+    public async Task OwnerCandidateCreatedDuringDisposalIsStopped()
+    {
+        var storage = new FaultyEventLogStorage();
+        var service = new EventLogService(storage, new InProcessEventLogTransport().From("a"), "a",
+            new SystemReplicationScheduler(), EventLogCluster.FastOptions);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = _ =>
+        {
+            blocked.TrySetResult();
+            return new(gate.Task);
+        };
+        // A peer's submit carries its own cancellation, not the service's disposal.
+        var submit = ((IEventLogPeerHandler)service).SubmitAsync(
+            new(Topic, 1, 1, 1, false, 0, [Bytes(0)]), CancellationToken.None).AsTask();
+        await blocked.Task.WaitAsync(Timeout);
+        await service.DisposeAsync();
+        storage.BeforeMutation = null;
+        gate.SetResult();
+        try
+        {
+            await submit.WaitAsync(Timeout);
+        }
+        catch (Exception error) when (error is not TimeoutException)
+        {
+        }
+        await Task.Delay(200);
+        // Before the fix the candidate attached to the disposed topic, which nothing stopped any more, so the disposed
+        // service kept owning the topic and its heartbeats kept writing.
+        Assert.False(service.IsOwner(Topic));
+        var mutations = storage.Operations.Count;
+        await Task.Delay(EventLogCluster.FastOptions.HeartbeatInterval * 5);
+        Assert.Equal(mutations, storage.Operations.Count);
+    }
 }
