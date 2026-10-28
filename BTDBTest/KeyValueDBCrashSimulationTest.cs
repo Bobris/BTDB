@@ -464,6 +464,88 @@ public class KeyValueDBCrashSimulationTest
         }
     }
 
+    static string DumpWithUlongs(IKeyValueDB db)
+    {
+        using var tr = db.StartReadOnlyTransaction();
+        var ulongs = string.Join(",", Enumerable.Range(0, 3).Select(i => tr.GetUlong((uint)i)));
+        return Dump(db) + "|" + ulongs + "@" + tr.GetCommitUlong();
+    }
+
+    /// Ulongs and the commit ulong, written as deltas to the log and kept in key index headers, survive crashes like
+    /// keys: every crash opens to the ulongs of a commit at or after the last one that returned.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryCrashKeepsUlongsOfDurableCommits(int seed)
+    {
+        async Task<(List<string> States, List<int> Done)> UlongWorkload(RecordingCollection files)
+        {
+            var random = new Random(seed);
+            var states = new List<string>();
+            var done = new List<int>();
+            var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var ulongs = new ulong[3];
+            using var db = new BTreeKeyValueDB(Options(files));
+            db.DurableTransactions = true;
+            states.Add(DumpWithUlongs(db));
+            done.Add(0);
+            for (var t = 1; t <= 30; t++)
+            {
+                using (var tr = await db.StartWritingTransaction())
+                {
+                    using var cursor = tr.CreateCursor();
+                    var key = new[] { (byte)random.Next(10) };
+                    var value = Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray();
+                    cursor.CreateOrUpdateKeyValue(key, value);
+                    model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                    var index = random.Next(3);
+                    // Large and decreasing values make the logged deltas wrap.
+                    ulongs[index] = random.Next(3) == 0 ? ulong.MaxValue - (ulong)t : (ulong)random.Next(1000);
+                    tr.SetUlong((uint)index, ulongs[index]);
+                    tr.SetCommitUlong(random.Next(4) == 0 ? (ulong)(100 - t) : (ulong)t);
+                    tr.Commit();
+                }
+
+                states.Add(DumpWithUlongs(db));
+                done.Add(files.Operations);
+                if (t % 6 == 5) await db.Compact(CancellationToken.None);
+                if (t % 7 == 6) db.CreateKvi(CancellationToken.None);
+            }
+
+            return (states, done);
+        }
+
+        int total;
+        using (var counting = new RecordingCollection())
+        {
+            await UlongWorkload(counting);
+            total = counting.Operations;
+        }
+
+        var random = new Random(seed);
+        for (var crash = 0; crash < total; crash++)
+        {
+            using var files = new RecordingCollection { CrashAt = crash };
+            var (states, done) = await UlongWorkload(files);
+            var directory = Path.Combine(Path.GetTempPath(), "btdb-crash-ulongs-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                WriteSnapshot(files, directory, random);
+                using var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                var opened = DumpWithUlongs(db);
+                var acknowledged = done.FindLastIndex(d => d <= crash);
+                Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
+                    $"Seed {seed} crash {crash}/{total}: opened ulongs {opened[(opened.IndexOf('|'))..]}, not those of a " +
+                    $"commit at or after {acknowledged}: {states[acknowledged][(states[acknowledged].IndexOf('|'))..]}");
+            }
+            finally
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
+
     sealed class WarningLogger : IKeyValueDBLogger
     {
         public string? LastWarning;
