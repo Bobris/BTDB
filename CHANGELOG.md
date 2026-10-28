@@ -81,6 +81,9 @@
 
 ### Fixed
 
+- Event store: an `object` member holding `IPAddress.Loopback`, `IPAddress.Any` or another address .NET keeps as an
+  instance of its internal read-only `IPAddress` subclass failed to store, as events describe such a member by its
+  runtime type. That type now maps to the `IPAddress` descriptor in both event store versions.
 - ObjectDB and the event store: changing a member from a value type larger than 16 bytes, like `DateTimeOffset?`,
   `Guid?` or `decimal?`, to another type, like `DateTimeOffset`, lost its value. ObjectDB reported the field and loaded
   the default, and the event store failed with `NotImplementedException`. The conversion had staging only for values up

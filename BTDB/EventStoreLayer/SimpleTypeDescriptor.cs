@@ -112,7 +112,9 @@ public class SimpleTypeDescriptor : ITypeDescriptor
 
     public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
-        if (targetType == GetPreferredType())
+        // A subclass, like the read-only one of IPAddress.Loopback, is saved as the class it derives from.
+        if (targetType == GetPreferredType() ||
+            !targetType.IsValueType && targetType.IsAssignableTo(GetPreferredType()))
         {
             return _save;
         }

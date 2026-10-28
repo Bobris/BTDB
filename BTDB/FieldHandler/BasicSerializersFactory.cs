@@ -376,7 +376,11 @@ public static class BasicSerializersFactory
             (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
             {
                 writer.WriteIPAddress(Unsafe.As<byte, System.Net.IPAddress>(ref value));
-            });
+            },
+            // IPAddress.Loopback, Any and the like are instances of an internal read-only subclass.
+            System.Net.IPAddress.Loopback.GetType() is var readOnlyType && readOnlyType != typeof(System.Net.IPAddress)
+                ? [readOnlyType]
+                : null);
         Add(fh, des, "Version",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadVersion))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipVersion))!,
@@ -467,11 +471,14 @@ public static class BasicSerializersFactory
     static void Add(ICollection<IFieldHandler> fh, ICollection<ITypeDescriptor> des, string name,
         MethodInfo readMethodInfo, MethodInfo skipMethodInfo, MethodInfo writeMethodInfo, SkipReaderCtxFunc skipReader,
         FieldHandlerLoad loaderReader, FieldHandlerSave saverWriter, Layer2Loader load, Layer2Skipper skip,
-        Layer2Saver save)
+        Layer2Saver save, Type[]? nativeTypes = null)
     {
         fh.Add(new SimpleFieldHandlerBase(name, readMethodInfo, skipMethodInfo, writeMethodInfo, skipReader,
             loaderReader, saverWriter));
-        des.Add(new SimpleTypeDescriptor(name, readMethodInfo, skipMethodInfo, writeMethodInfo, load, skip, save));
+        des.Add(nativeTypes is { Length: > 0 }
+            ? new SimpleTypeDescriptorWithNativeTypes(name, readMethodInfo, skipMethodInfo, writeMethodInfo, load,
+                skip, save, nativeTypes)
+            : new SimpleTypeDescriptor(name, readMethodInfo, skipMethodInfo, writeMethodInfo, load, skip, save));
     }
 
     public static readonly IFieldHandler[] FieldHandlers;

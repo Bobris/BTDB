@@ -334,4 +334,29 @@ public class EventStore2CoverageTest
         Assert.Equal(offset.Offset, read.Offset.Offset);
         Assert.Equal(1.5m, read.Amount);
     }
+
+    [Generate]
+    public class WithUntypedAddresses
+    {
+        public object? Any { get; set; }
+        public List<object>? Many { get; set; }
+    }
+
+    // Before the fix IPAddress.Loopback and the like, instances of an internal read-only subclass, failed to store as
+    // an object.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void ReadOnlyIPAddressStoresAsObject(EventLayer layer)
+    {
+        var read = (WithUntypedAddresses)RoundTrip(layer, new WithUntypedAddresses
+        {
+            Any = System.Net.IPAddress.Loopback,
+            Many = [System.Net.IPAddress.IPv6Any, System.Net.IPAddress.Parse("1.2.3.4")]
+        })!;
+        Assert.Equal(System.Net.IPAddress.Loopback, read.Any);
+        Assert.Equal(System.Net.IPAddress.IPv6Any, read.Many![0]);
+        Assert.Equal(System.Net.IPAddress.Parse("1.2.3.4"), read.Many[1]);
+    }
 }
