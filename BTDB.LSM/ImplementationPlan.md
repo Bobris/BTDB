@@ -627,7 +627,9 @@ D3).
     there, but its parallel chunks after that name may land. Replay therefore ends a writer's history at the first own
     name holding a lower epoch.
   * A manifest records the epoch of the writer of its WAL start chunk, so replay starting there ignores lower epochs
-    too.
+    too. Every start is a generation's first data chunk or the next chunk to write, so it lies in its writer's own
+    range, where `restart_agrees` proves the restarted replay equal to the full one. If the writer's chunks before the
+    start never landed, the full replay would stop earlier, but their records are in the flushed tables.
   * `BTDB.LSM/Proofs/` proves in Lean that every acknowledged commit stays in every replay and that every replay is a
     prefix of one writer's history, for any interleaving of writers and delayed chunks. Its counterexamples reproduce
     both earlier failures, as do two `LsmWriterHandoffTest` cases.

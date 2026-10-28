@@ -11,3 +11,5 @@ open Lsm
 #print axioms Counts.merge_final
 #print axioms Counts.merge_consistent
 #print axioms Counts.merge_total
+#print axioms Wal.restart_agrees
+#print axioms Wal.fixed_restart_replays

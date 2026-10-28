@@ -693,6 +693,110 @@ theorem fixed_replays_one_history {σ : State} (h : Reach .fixed σ) {k : Nat} {
     obtain ⟨t, ht⟩ := take_flatten_prefix W.planned j
     exact ⟨t, by rw [hist, List.append_assoc, ht]⟩
 
+/-! ## Starting at a manifest's WAL start -/
+
+/-- Replay of `d` names from `k`, starting in state `c`, stopping at the first missing name. -/
+def runFrom (r : Rule) (wal : Nat → Option Chunk) (k : Nat) (c : RS) : Nat → Option RS
+  | 0 => some c
+  | d + 1 => (runFrom r wal k c d).bind fun u => (wal (k + d)).map fun ch => rstep r u (k + d) ch
+
+/-- A full replay state `t` and a restarted one `u` at name `pos`: same epoch and break, `u` lacks the records
+before the start, and their first own names agree or both are reached. -/
+def Agree (pre : List Nat) (pos : Nat) (t u : RS) : Prop :=
+  t.maxE = u.maxE ∧ t.broken = u.broken ∧ t.out = pre ++ u.out ∧ (t.own = u.own ∨ (t.own ≤ pos ∧ u.own ≤ pos))
+
+theorem own_next {t u : RS} {pos : Nat} (h : t.own = u.own ∨ (t.own ≤ pos ∧ u.own ≤ pos)) :
+    t.own = u.own ∨ (t.own ≤ pos + 1 ∧ u.own ≤ pos + 1) := by
+  rcases h with h | ⟨a, b⟩
+  · exact Or.inl h
+  · exact Or.inr ⟨by omega, by omega⟩
+
+theorem rstep_agree (r : Rule) {pre : List Nat} {pos : Nat} {t u : RS} (h : Agree pre pos t u) (c : Chunk) :
+    Agree pre (pos + 1) (rstep r t pos c) (rstep r u pos c) := by
+  obtain ⟨hm, hb, ho, hown⟩ := h
+  have hown' : (t.own ≤ pos ↔ u.own ≤ pos) := by
+    rcases hown with h | ⟨h1, h2⟩
+    · rw [h]
+    · exact ⟨fun _ => h2, fun _ => h1⟩
+  unfold rstep
+  rw [hm]
+  by_cases h1 : c.epoch < u.maxE
+  · simp only [h1, ite_true]
+    by_cases h2 : r = .fixed ∧ u.own ≤ pos
+    · have h3 : r = .fixed ∧ t.own ≤ pos := ⟨h2.1, hown'.2 h2.2⟩
+      simp only [h2, h3, and_self, ite_true]
+      exact ⟨rfl, rfl, ho, own_next hown⟩
+    · have h3 : ¬ (r = .fixed ∧ t.own ≤ pos) := fun h => h2 ⟨h.1, hown'.1 h.2⟩
+      simp only [h2, h3, ite_false]
+      exact ⟨hm, hb, ho, own_next hown⟩
+  · simp only [h1, ite_false]
+    by_cases h2 : u.maxE < c.epoch
+    · simp only [h2, ite_true]
+      split
+      · exact ⟨rfl, rfl, ho, Or.inl rfl⟩
+      · exact ⟨rfl, rfl, by simp [ho], Or.inl rfl⟩
+    · simp only [h2, ite_false]
+      rw [hb]
+      split
+      · exact ⟨hm, hb, ho, own_next hown⟩
+      · exact ⟨rfl, rfl, by simp [ho], own_next hown⟩
+
+/-- Restarting replay at a name the full replay reached unbroken and in its writer's own range, with only its epoch,
+changes nothing after it: the records before the start (in tables) followed by the restarted replay are exactly the
+full replay. This is why a manifest records its WAL start chunk with the epoch of that chunk's writer
+(`LsmManifest.WalStartEpoch`); every start a flush picks is a generation's first data chunk or the next chunk to
+write, both in their writer's own range. -/
+theorem restart_agrees (r : Rule) (wal : Nat → Option Chunk) {k : Nat} {s : RS} (hs : runTo r wal k = some s)
+    (hb : s.broken = false) (hown : s.own ≤ k) : ∀ d,
+    (runTo r wal (k + d)).isSome = (runFrom r wal k ⟨s.maxE, k, false, []⟩ d).isSome ∧
+    ∀ t u, runTo r wal (k + d) = some t → runFrom r wal k ⟨s.maxE, k, false, []⟩ d = some u →
+      Agree s.out (k + d) t u
+  | 0 => by
+    refine ⟨by simp [hs, runFrom], fun t u ht hu => ?_⟩
+    simp only [Nat.add_zero, hs, Option.some.injEq] at ht; subst ht
+    simp only [runFrom, Option.some.injEq] at hu; subst hu
+    exact ⟨rfl, hb, by simp, Or.inr ⟨by omega, Nat.le_refl _⟩⟩
+  | d + 1 => by
+    obtain ⟨hsome, hagree⟩ := restart_agrees r wal hs hb hown d
+    cases ht : runTo r wal (k + d) with
+    | none =>
+      have hu : runFrom r wal k ⟨s.maxE, k, false, []⟩ d = none := by
+        cases hu : runFrom r wal k ⟨s.maxE, k, false, []⟩ d
+        · rfl
+        · rw [ht, hu] at hsome; simp at hsome
+      refine ⟨by rw [show k + (d + 1) = (k + d) + 1 by omega]; simp [runTo, runFrom, ht, hu], fun t u h _ => ?_⟩
+      rw [show k + (d + 1) = (k + d) + 1 by omega, runTo] at h; simp [ht] at h
+    | some t₀ =>
+      cases hu : runFrom r wal k ⟨s.maxE, k, false, []⟩ d with
+      | none => rw [ht, hu] at hsome; simp at hsome
+      | some u₀ =>
+        have hag := hagree t₀ u₀ ht hu
+        have hk : k + (d + 1) = (k + d) + 1 := by omega
+        refine ⟨?_, fun t u h1 h2 => ?_⟩
+        · rw [hk]; cases hc : wal (k + d) <;> simp [runTo, runFrom, ht, hu, hc]
+        · rw [hk] at h1 ⊢
+          cases hc : wal (k + d) with
+          | none => simp [runTo, ht, hc] at h1
+          | some c =>
+            simp [runTo, ht, hc] at h1
+            simp [runFrom, hu, hc] at h2
+            subst h1; subst h2
+            exact rstep_agree r hag c
+
+/-- With the fixed rule, a reader starting at a manifest whose WAL start the full replay reaches unbroken sees
+the tables followed by exactly what the full replay applies there, so `fixed_keeps_acknowledged` and
+`fixed_replays_one_history` hold for it too. -/
+theorem fixed_restart_replays {σ : State} (h : Reach .fixed σ) {k : Nat} {s : RS}
+    (hs : runTo .fixed σ.wal k = some s) (hb : s.broken = false) (hown : s.own ≤ k) {d : Nat} {u : RS}
+    (hu : runFrom .fixed σ.wal k ⟨s.maxE, k, false, []⟩ d = some u) :
+    ∃ t, runTo .fixed σ.wal (k + d) = some t ∧ t.out = s.out ++ u.out ∧
+      (t.out = [] ∨ ∃ e W, σ.writers e = some W ∧ W.active = true ∧ t.out <+: hist W) := by
+  obtain ⟨hsome, hagree⟩ := restart_agrees .fixed σ.wal hs hb hown d
+  cases ht : runTo .fixed σ.wal (k + d) with
+  | none => rw [ht, hu] at hsome; simp at hsome
+  | some t =>
+    exact ⟨t, rfl, (hagree t u ht hu).2.2.1, fixed_replays_one_history h ht⟩
+
 /-- The fixed rule still lets a writer take over, write and acknowledge, so the results above are not vacuous. -/
 theorem fixed_commits : ∃ σ, Reach .fixed σ ∧ ∃ W s, σ.writers 1 = some W ∧ W.acked = 1 ∧
     runTo .fixed σ.wal 2 = some s ∧ σ.wal 2 = none ∧ s.out = [1] := by

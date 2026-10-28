@@ -31,8 +31,9 @@ acknowledges the longest prefix of its planned chunks that landed with its conte
 
 Not modelled in `Wal.lean`:
 
-- multi-chunk records, generations, flushes and the manifest's WAL start (the epoch it records is argued in
-  `../ImplementationPlan.md`, section 14);
+- multi-chunk records, generations and flushes. `restart_agrees` covers a manifest's WAL start that the full replay
+  reaches. A start whose own earlier chunks never landed (their records are in tables) is argued in
+  `../ImplementationPlan.md`, section 14;
 - manifest fencing, which the model replaces by fresh, increasing epochs;
 - record encoding. A record is an opaque `Nat`.
 
@@ -44,6 +45,7 @@ Not modelled in `Wal.lean`:
 | `Wal.current_replays_a_gap` | Under the rule before the fix, writer 1's delayed chunk takes writer 2's first own name. Replay then applies writer 2's next chunk, and the result is neither writer's history. |
 | `Wal.fixed_keeps_acknowledged` | With the fixed rule, each writer's replayed base plus its acknowledged chunks is a prefix of every replay that stops at its first missing name. |
 | `Wal.fixed_replays_one_history` | With the fixed rule, every replay is empty or a prefix of one writer's history. |
+| `Wal.restart_agrees`, `Wal.fixed_restart_replays` | Restarting replay at a name the full replay reaches unbroken and in its writer's own range, with only that writer's epoch, applies exactly what the full replay applies there. That is the context a manifest records (`WalStartEpoch`), so both results above hold for readers starting at a manifest. |
 | `Wal.fixed_commits` | The fixed rule still lets a writer take over, write and acknowledge, so the results above are not vacuous. |
 | `Counts.total_telescopes` | Over a consistent stack of components, the count contributions at a key sum to `[exists on top] − [exists below]`, so counts and ranks add across components (L5). |
 | `Counts.merge_final`, `merge_consistent`, `merge_total` | The component `LsmMerger` makes from a run reaches the same state at the key, is consistent with the state below the run, and contributes the same count. |
