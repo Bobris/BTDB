@@ -68,6 +68,7 @@
   - `BTDB/Proofs/`, Bon member deserializers: each consuming one value keeps every member on its own value;
   - `BTDB/Proofs/`, lazy ObjectDB collections: counting on each call stays right through several instances;
   - `BTDB/Proofs/`, merging re-serialized event descriptors: recording every descriptor met, it ends;
+  - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
