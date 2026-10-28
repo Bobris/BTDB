@@ -44,30 +44,41 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
         LoadInfoAboutFiles();
     }
 
+    // The files of one database share its Guid, and a file with another one is foreign and deleted. A foreign file,
+    // or one whose Guid is damaged, must not decide it however files are listed: take the Guid most files carry and,
+    // among equally common ones, the Guid of the earliest file.
+    static Guid? ChooseGuid(List<(uint Index, Guid? Guid, IFileInfo Info)> headers)
+    {
+        var guids = new Dictionary<Guid, (int Count, uint First)>();
+        foreach (var (index, guid, _) in headers)
+        {
+            if (guid is not { } value) continue;
+            guids[value] = guids.TryGetValue(value, out var seen)
+                ? (seen.Count + 1, Math.Min(seen.First, index))
+                : (1, index);
+        }
+
+        return guids.Count == 0 ? null : guids.MaxBy(p => (p.Value.Count, -(long)p.Value.First)).Key;
+    }
+
     void LoadInfoAboutFiles()
     {
+        var headers = new List<(uint Index, Guid? Guid, IFileInfo Info)>();
         foreach (var file in _fileCollection.Enumerate())
         {
+            Guid? guid = null;
             try
             {
                 var readerController = file.GetExclusiveReader();
                 var reader = new MemReader(readerController);
                 var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
-                Guid? guid = null;
                 if (magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid))
                 {
                     guid = reader.ReadGuid();
-                    if (Guid.HasValue && Guid.Value != guid)
-                    {
-                        _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
-                        continue;
-                    }
-
-                    Guid = guid;
                 }
                 else if (!magic.AsSpan().SequenceEqual(MagicStartOfFile))
                 {
-                    _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
+                    headers.Add((file.Index, null, UnknownFile.Instance));
                     continue;
                 }
 
@@ -104,13 +115,25 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
                         break;
                 }
 
-                if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
-                _fileInfos.TryAdd(file.Index, fileInfo);
+                headers.Add((file.Index, guid, fileInfo));
             }
             catch (Exception)
             {
-                _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
+                headers.Add((file.Index, guid, UnknownFile.Instance));
             }
+        }
+
+        Guid = ChooseGuid(headers);
+        foreach (var (index, guid, fileInfo) in headers)
+        {
+            if (guid.HasValue && guid != Guid)
+            {
+                _fileInfos.TryAdd(index, UnknownFile.Instance);
+                continue;
+            }
+
+            if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
+            _fileInfos.TryAdd(index, fileInfo);
         }
 
         if (!Guid.HasValue)

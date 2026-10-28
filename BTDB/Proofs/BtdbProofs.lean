@@ -14,3 +14,4 @@ import BtdbProofs.Creator
 import BtdbProofs.RangeEnumeration
 import BtdbProofs.Replay
 import BtdbProofs.GrowRead
+import BtdbProofs.FileGuid

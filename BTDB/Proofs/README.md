@@ -81,6 +81,9 @@ it starts with the buffered bytes (at least 4096, at most the length), reads, an
 array is full or the input ends. It also models `ReadStringBeyondBuffer`, which grows a character array when the next
 one or two UTF-16 units do not fit.
 
+`BtdbProofs/FileGuid.lean` models how `FileCollectionWithFileInfos` picks the database Guid from its files' headers;
+files with another Guid are foreign and deleted on open.
+
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
@@ -117,6 +120,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `GrowRead.previous_unbounded` | Before the 2026-10-28 fix the reader allocated the declared length at once, beyond any such bound (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`). |
 | `Replay.replay_after_abandoned` | A log cut by a crash inside a transaction, after complete commands, followed by the complete transactions of the next session, replays to every complete transaction: a start drops the transaction the crash left open. |
 | `Replay.previous_loses_later_commit` | Before the 2026-10-28 fix, replay ended at a start inside an open transaction, so the next session's commits were lost on the following open (`TransactionLogDamageTest.CommitsAfterACrashInsideATransactionSurviveTheNextOpen`). |
+| `FileGuid.majority_chosen` | The Guid most files carry is the database's, so a Guid more than half of the files carry is picked in every listing order. |
+| `FileGuid.previous_picks_foreign` | Before the 2026-10-28 fix the first listed file decided, so one foreign or damaged file listed first made every database file foreign, and opening deleted them (`KeyValueDBFileInfosTest.ForeignFileListedFirstDoesNotDeleteTheDatabase`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

@@ -66,6 +66,70 @@ public class KeyValueDBFileInfosTest
         Assert.Equal(1u, files.GetCount());
     }
 
+    // Enumerates files newest first, as a directory listing may.
+    sealed class ReversedFileCollection(IFileCollection inner) : IFileCollection
+    {
+        public IFileCollectionFile AddFile(string humanHint) => inner.AddFile(humanHint);
+        public uint GetCount() => inner.GetCount();
+        public IFileCollectionFile GetFile(uint index) => inner.GetFile(index);
+        public System.Collections.Generic.IEnumerable<IFileCollectionFile> Enumerate() => inner.Enumerate().Reverse().ToList();
+        public void ConcurrentTemporaryTruncate(uint index, uint offset) => inner.ConcurrentTemporaryTruncate(index, offset);
+        public void Dispose() => inner.Dispose();
+    }
+
+    /// A foreign transaction log listed before the database's own files does not make them foreign: the database
+    /// keeps its content and only the foreign file is deleted.
+    [Fact]
+    public void ForeignFileListedFirstDoesNotDeleteTheDatabase()
+    {
+        using var files = new InMemoryFileCollection();
+        using var otherFiles = new InMemoryFileCollection();
+        using (var db = Open(files, 1024))
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+        using (var db = Open(otherFiles)) WriteKey(db, 200);
+        var foreignTrl = otherFiles.Enumerate().First();
+        var foreignContent = new byte[foreignTrl.GetSize()];
+        foreignTrl.RandomRead(foreignContent, 0, false);
+        var own = files.GetCount();
+        Assert.True(own > 1);
+        WriteFile(files, foreignContent);
+        using (var db = Open(new ReversedFileCollection(files)))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+
+        Assert.Equal(own, files.GetCount());
+    }
+
+    /// A key index whose Guid byte is damaged, listed first, is the one foreign file: the database replays its logs.
+    [Fact]
+    public void KeyIndexWithDamagedGuidListedFirstDoesNotDeleteTheDatabase()
+    {
+        using var files = new InMemoryFileCollection();
+        using (var db = Open(files, 1024))
+        {
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+            db.CreateKvi(default);
+        }
+
+        var index = files.Enumerate().Last();
+        var content = new byte[index.GetSize()];
+        index.RandomRead(content, 0, false);
+        Assert.Equal(KVFileType.ModernKeyIndexWithUlongs, (KVFileType)content[5 + 16]);
+        content[8] ^= 1; // inside the Guid after the "BTDB3" magic
+        var damaged = files.AddFile("kvi");
+        var writer = new MemWriter(damaged.GetAppenderWriter());
+        writer.WriteBlock(content);
+        writer.Flush();
+        index.Remove();
+        using (var db = Open(new ReversedFileCollection(files)))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+    }
+
     [Fact]
     public void ReadFileInfoHandlesAllHeaderVariants()
     {

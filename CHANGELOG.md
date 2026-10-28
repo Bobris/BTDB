@@ -53,11 +53,18 @@
   - `BTDB/Proofs/`, reading a length-prefixed byte array or string: the reader returns a byte array exactly when the
     input holds the declared length and allocates at most four times the larger of the input and 4096 bytes, and a
     string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.
+  - `BTDB/Proofs/`, database files: the Guid more than half of the files carry is the database's in every listing
+    order, so a stray file cannot make the database's own files foreign.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 
 ### Fixed
 
+- `BTreeKeyValueDB` could delete its own files on open when one foreign file, or one whose header Guid was damaged,
+  came first in the file listing, as `OnDiskFileCollection` lists a directory in no particular order. The first
+  listed file decided the database Guid, every file with another Guid counted as foreign, and opening deleted the
+  foreign files, so the database opened as the stray file's database or crashed with `InvalidCastException`. The
+  Guid most files carry now decides, and among equally common ones the Guid of the earliest file.
 - `BTreeKeyValueDB` lost every commit made after reopening from a crash that cut the transaction log inside a
   transaction between two of its commands. Replay dropped the unfinished transaction, and the next session wrote its
   commits to a new log file, but the following open stopped replaying at that file's first transaction start because
