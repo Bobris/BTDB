@@ -69,8 +69,9 @@
 
 ### Fixed
 
-- Bon serialization, and ObjectDB relations and the event store through the generated metadata, lost or misread
-  `ValueTuple` items next to struct-typed ones; values written that way before the fix are wrong. `ValueTuple` has
+- Bon serialization, and ObjectDB and the event store through the generated metadata they use by default (without
+  emitted code), lost or misread `ValueTuple` items next to struct-typed ones; values written that way before the fix
+  are wrong. `ValueTuple` has
   automatic layout, where the runtime places struct items such as `DateTime`, `Guid`, nullables and nested tuples
   after primitive ones, but the serializer computed offsets in another order, and the source generator measured tuple
   layouts on stand-in structs with sequential layout. So `(DateTime, byte)` came back with a default `DateTime`,

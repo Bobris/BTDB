@@ -86,4 +86,42 @@ public class EventLayerEmitModeTest
             Assert.Equal(uint.MaxValue, Assert.IsType<LongValue>(result).Value);
         });
     }
+
+    public enum TupleKind
+    {
+        A,
+        B
+    }
+
+    [Generate]
+    public class StructItemTupleEvent
+    {
+        public (DateTime, byte) DateAndByte { get; set; }
+        public ((int, string), TupleKind) NestedWithEnum { get; set; }
+        public (Guid, byte)? NullableGuidAndByte { get; set; }
+    }
+
+    // Without emitting code the layers access tuple items at the offsets of the generated metadata, which before the
+    // fix were measured on stand-in structs with sequential layout instead of the tuple's automatic layout.
+    [Theory]
+    [InlineData(EventLayer.Mapping, false)]
+    [InlineData(EventLayer.Mapping, true)]
+    [InlineData(EventLayer.Store1, false)]
+    [InlineData(EventLayer.Store1, true)]
+    [InlineData(EventLayer.Store2, false)]
+    [InlineData(EventLayer.Store2, true)]
+    public void TuplesWithStructItemsRoundTrip(EventLayer layer, bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            var when = new DateTime(2025, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+            var guid = Guid.NewGuid();
+            var result = Assert.IsType<StructItemTupleEvent>(RoundTrip(layer, new StructItemTupleEvent
+            {
+                DateAndByte = (when, 7), NestedWithEnum = ((1, "s"), TupleKind.B), NullableGuidAndByte = (guid, 3)
+            }));
+            Assert.Equal(((when, (byte)7), ((1, "s"), TupleKind.B), ((Guid, byte)?)(guid, 3)),
+                (result.DateAndByte, result.NestedWithEnum, result.NullableGuidAndByte));
+        });
+    }
 }
