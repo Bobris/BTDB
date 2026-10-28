@@ -18,7 +18,7 @@ is no `sorry`.
 | --- | --- | --- |
 | `Chain.lean` | Level-0 split chain: conditional appends to the writable tail (combined takeover, seal-only writes, owner change), successor creation after the lane's own seal, adopting a helper's header-only successor, header-only successors created by anybody after a seal, candidates reading the tail, cleanup marks on sealed splits | `EventLogOwnerLane.AppendAsync`, `CreateSuccessorAsync`, `SetOwnerAsync`, `CreateCandidateAsync`, `ValidateAsync`, `EventLogStorageReader.FindTailAsync`, `EventLogMerger` |
 | `Bounds.lean` | One versioned topic history; lanes whose conditional writes are dispatched, applied and answered separately; `ValidateAsync` calls answering from a write or a tail check | `EventLogOwnerLane.ValidateAsync`, `WriteAsync`, `SetOwnerAsync` |
-| `Merge.lean` | Splits and two merged levels with fan-out `F`; merges once a later split exists; deletions justified by a covering object that existed at some point, as concurrent and deposed mergers with stale listings and verification caches decide | `EventLogMerger.RunPassAsync`, `IsGarbageAsync` |
+| `Merge.lean` | Splits and any number of merged levels (`MergeLevels`) with fan-out `F`; merges once a later split exists; deletions justified by a covering object that existed at some point, as concurrent and deposed mergers with stale listings and verification caches decide | `EventLogMerger.RunPassAsync`, `IsGarbageAsync` |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
 Every step is atomic and may happen at any time, so the proofs cover all interleavings of the modelled operations,
@@ -88,7 +88,7 @@ because `PrepareRound` runs after the asynchronous owner resolution.
 - Byte-level formats, checksums, frame and seal encoding, and the merged-object index (`EventLogFormatTest` covers
   them).
 - Deletion deadlines and readers in the middle of a pass over an object that is deleted; readers locating offsets
-  through merged objects; configurations with more than two merged levels.
+  through merged objects.
 - `ValidateAsync`, heartbeats, bounds freshness, subscriptions and the HTTP transport.
 - Liveness: bounded retries, gap timeouts, backoff, and whether a publisher eventually gets its receipt.
 - A refinement proof from the C# code to the models. The mapping above is by inspection.

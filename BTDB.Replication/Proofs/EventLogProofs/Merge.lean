@@ -1,16 +1,15 @@
-import EventLogProofs.Common
-
 /-!
 # Background merging never leaves a gap
 
-A model of `EventLogMerger` with two merged levels and fan-out `F > 0`. Split `g + 1` is level-0 object `g`; level-1
-object `g` covers splits `g·F + 1 … (g + 1)·F`, and level-2 object `m` covers level-1 objects `m·F … m·F + F − 1`.
-A level is merged only once a later split exists (`last < maxSplit`). An object is deleted when a higher-level object
-covering it existed at some point: mergers run concurrently, also on a deposed owner, and decide from listings and
-verification caches that may be stale, so the covering object may already be gone. Deadlines only protect readers in
-the middle of a pass and are not modelled.
+A model of `EventLogMerger` with `L` merged levels (`EventLogOptions.MergeLevels`) and fan-out `F > 0`
+(`MergeFanOut`). Split `g + 1` is level-0 object `g`; level-`l` object `g` covers splits `g·Fˡ + 1 … (g + 1)·Fˡ`, and
+the level-`l'` object covering it is `g / F^(l' − l)`. A level is merged only once a later split exists
+(`last < maxSplit`). An object below the top level is deleted when a higher-level object covering it existed at some
+point: mergers run concurrently, also on a deposed owner, and decide from listings and verification caches that may be
+stale, so the covering object may already be gone. Deadlines only protect readers in the middle of a pass and are not
+modelled.
 
-* `coverage`: every split is still readable from some existing object of level 0, 1 or 2.
+* `coverage`: every split is still readable from some existing object.
 * `latest_split_exists`: the latest split, where tail discovery starts, is never deleted.
 -/
 
@@ -19,212 +18,163 @@ namespace EventLog.Merge
 structure State where
   /-- Number of splits; split IDs are `1 … splits`. -/
   splits : Nat
-  s0 : Nat → Bool
-  s1 : Nat → Bool
-  s2 : Nat → Bool
+  /-- Existing objects by level and number. -/
+  obj : Nat → Nat → Bool
   /-- Ghost: objects that ever existed, for example in a stale listing or verification cache. -/
-  e0 : Nat → Bool
-  e1 : Nat → Bool
-  e2 : Nat → Bool
+  ever : Nat → Nat → Bool
 
-def init : State := ⟨0, fun _ => false, fun _ => false, fun _ => false, fun _ => false, fun _ => false, fun _ => false⟩
+def init : State := ⟨0, fun _ _ => false, fun _ _ => false⟩
 
-def set (f : Nat → Bool) (i : Nat) (b : Bool) : Nat → Bool := fun j => if j = i then b else f j
+def set (f : Nat → Nat → Bool) (l g : Nat) (b : Bool) : Nat → Nat → Bool :=
+  fun l' g' => if l' = l ∧ g' = g then b else f l' g'
 
-inductive Step (F : Nat) : State → State → Prop
+inductive Step (L F : Nat) : State → State → Prop
   | append (σ : State) :
-      Step F σ { σ with splits := σ.splits + 1, s0 := set σ.s0 σ.splits true, e0 := set σ.e0 σ.splits true }
-  | merge1 (σ : State) (g : Nat) (h : (g + 1) * F < σ.splits) :
-      Step F σ { σ with s1 := set σ.s1 g true, e1 := set σ.e1 g true }
-  | merge2 (σ : State) (m : Nat) (h : (m + 1) * F * F < σ.splits) :
-      Step F σ { σ with s2 := set σ.s2 m true, e2 := set σ.e2 m true }
-  /-- A split goes once a level-1 or level-2 object covering it existed. -/
-  | delete0 (σ : State) (g : Nat) (h : σ.e1 (g / F) = true ∨ σ.e2 (g / F / F) = true) :
-      Step F σ { σ with s0 := set σ.s0 g false }
-  /-- A level-1 object goes once a level-2 object covering it existed. -/
-  | delete1 (σ : State) (g : Nat) (h : σ.e2 (g / F) = true) :
-      Step F σ { σ with s1 := set σ.s1 g false }
+      Step L F σ { σ with splits := σ.splits + 1, obj := set σ.obj 0 σ.splits true, ever := set σ.ever 0 σ.splits true }
+  | merge (σ : State) (l g : Nat) (hl : 1 ≤ l ∧ l ≤ L) (h : (g + 1) * F ^ l < σ.splits) :
+      Step L F σ { σ with obj := set σ.obj l g true, ever := set σ.ever l g true }
+  /-- An object goes once a higher-level object covering it existed. -/
+  | delete (σ : State) (l g l' : Nat) (hl : l < l' ∧ l' ≤ L) (h : σ.ever l' (g / F ^ (l' - l)) = true) :
+      Step L F σ { σ with obj := set σ.obj l g false }
 
-inductive Reach (F : Nat) : State → Prop
-  | init : Reach F init
-  | step {σ τ : State} : Reach F σ → Step F σ τ → Reach F τ
+inductive Reach (L F : Nat) : State → Prop
+  | init : Reach L F init
+  | step {σ τ : State} : Reach L F σ → Step L F σ τ → Reach L F τ
 
-structure Inv (F : Nat) (σ : State) : Prop where
-  top : ∀ m, σ.e2 m = true → σ.s2 m = true
-  mid : ∀ g, σ.e1 g = true → σ.s1 g = true ∨ σ.s2 (g / F) = true
-  low : ∀ g, σ.e0 g = true → σ.s0 g = true ∨ σ.s1 (g / F) = true ∨ σ.s2 (g / F / F) = true
-  splits : ∀ g, g < σ.splits → σ.e0 g = true
-  eligible1 : ∀ g, σ.e1 g = true → (g + 1) * F < σ.splits
-  eligible2 : ∀ m, σ.e2 m = true → (m + 1) * F * F < σ.splits
-  ever1 : ∀ g, σ.s1 g = true → σ.e1 g = true
-  ever2 : ∀ m, σ.s2 m = true → σ.e2 m = true
+/-- An object is covered by an existing object of its own or a higher level. -/
+def Covered (L F : Nat) (obj : Nat → Nat → Bool) (l g : Nat) : Prop :=
+  ∃ l', l ≤ l' ∧ l' ≤ L ∧ obj l' (g / F ^ (l' - l)) = true
 
-theorem set_apply (f : Nat → Bool) (i j : Nat) (b : Bool) : set f i b j = if j = i then b else f j := rfl
+structure Inv (L F : Nat) (σ : State) : Prop where
+  covered : ∀ l g, l ≤ L → σ.ever l g = true → Covered L F σ.obj l g
+  levels : ∀ l g, σ.ever l g = true → l ≤ L
+  splits : ∀ g, g < σ.splits → σ.ever 0 g = true
+  eligible : ∀ l g, 1 ≤ l → σ.ever l g = true → (g + 1) * F ^ l < σ.splits
+  ever_of_obj : ∀ l g, σ.obj l g = true → σ.ever l g = true
 
-theorem inv_init (F : Nat) : Inv F init where
-  top _ h := by simp [init] at h
-  mid _ h := by simp [init] at h
-  low _ h := by simp [init] at h
+theorem div_pow_div (g F a b : Nat) : g / F ^ a / F ^ b = g / F ^ (a + b) := by
+  rw [Nat.div_div_eq_div_mul, Nat.pow_add]
+
+theorem set_apply (f : Nat → Nat → Bool) (l g l' g' : Nat) (b : Bool) :
+    set f l g b l' g' = if l' = l ∧ g' = g then b else f l' g' := rfl
+
+theorem inv_init (L F : Nat) : Inv L F init where
+  covered _ _ _ h := by simp [init] at h
+  levels _ _ h := by simp [init] at h
   splits _ h := by simp [init] at h
-  eligible1 _ h := by simp [init] at h
-  eligible2 _ h := by simp [init] at h
-  ever1 _ h := by simp [init] at h
-  ever2 _ h := by simp [init] at h
+  eligible _ _ _ h := by simp [init] at h
+  ever_of_obj _ _ h := by simp [init] at h
 
-theorem inv_step {F : Nat} {σ τ : State} (hI : Inv F σ) (h : Step F σ τ) : Inv F τ := by
+/-- Adding an object keeps every coverage. -/
+theorem covered_add {L F : Nat} {obj : Nat → Nat → Bool} {l g l₀ g₀ : Nat} (h : Covered L F obj l g) :
+    Covered L F (set obj l₀ g₀ true) l g := by
+  obtain ⟨l', h1, h2, h3⟩ := h
+  refine ⟨l', h1, h2, ?_⟩
+  simp only [set_apply]; split <;> simp_all
+
+theorem ever_set {f : Nat → Nat → Bool} {l g l' g' : Nat} (h : set f l g true l' g' = true) :
+    (l' = l ∧ g' = g) ∨ f l' g' = true := by
+  simp only [set_apply] at h
+  split at h
+  · rename_i he; exact Or.inl he
+  · exact Or.inr h
+
+theorem inv_step {L F : Nat} {σ τ : State} (hI : Inv L F σ) (h : Step L F σ τ) : Inv L F τ := by
   cases h with
   | append =>
     exact {
-      top := hI.top
-      mid := hI.mid
-      low := fun g hg => by
-        simp only [set_apply] at hg ⊢
-        by_cases hgs : g = σ.splits
-        · simp [hgs]
-        · simp only [hgs, ite_false] at hg ⊢; exact hI.low g hg
+      covered := fun l g hl hg => by
+        rcases ever_set hg with ⟨rfl, rfl⟩ | hg
+        · exact ⟨0, Nat.le_refl _, hl, by simp [set_apply]⟩
+        · exact covered_add (hI.covered l g hl hg)
+      levels := fun l g hg => by
+        rcases ever_set hg with ⟨rfl, _⟩ | hg
+        · exact Nat.zero_le _
+        · exact hI.levels l g hg
       splits := fun g hg => by
         simp only [set_apply]
-        by_cases hgs : g = σ.splits
-        · simp [hgs]
-        · simp only [hgs, ite_false]; exact hI.splits g (by arith)
-      eligible1 := fun g hg => by have := hI.eligible1 g hg; dsimp only; omega
-      eligible2 := fun m hm => by have := hI.eligible2 m hm; dsimp only; omega
-      ever1 := hI.ever1
-      ever2 := hI.ever2 }
-  | merge1 g hg =>
-    exact {
-      top := hI.top
-      mid := fun g' hg' => by
-        simp only [set_apply] at hg' ⊢
-        by_cases he : g' = g
+        by_cases he : g = σ.splits
         · simp [he]
-        · simp only [he, ite_false] at hg' ⊢; exact hI.mid g' hg'
-      low := fun g' hg' => by
-        simp only [set_apply]
-        rcases hI.low g' hg' with h | h | h
-        · exact Or.inl h
-        · right; left; by_cases he : g' / F = g <;> simp [he, h]
-        · right; right; exact h
-      splits := hI.splits
-      eligible1 := fun g' hg' => by
-        simp only [set_apply] at hg'
-        by_cases he : g' = g
-        · subst he; exact hg
-        · simp only [he, ite_false] at hg'; exact hI.eligible1 g' hg'
-      eligible2 := hI.eligible2
-      ever1 := fun g' hg' => by
-        simp only [set_apply] at hg' ⊢
-        by_cases he : g' = g
-        · simp [he]
-        · simp only [he, ite_false] at hg' ⊢; exact hI.ever1 g' hg'
-      ever2 := hI.ever2 }
-  | merge2 m hm =>
+        · simp only [he, and_false, ite_false]; exact hI.splits g (by dsimp only at hg; omega)
+      eligible := fun l g hl hg => by
+        rcases ever_set hg with ⟨rfl, _⟩ | hg
+        · omega
+        · have := hI.eligible l g hl hg; dsimp only; omega
+      ever_of_obj := fun l g hg => by
+        rcases ever_set hg with ⟨rfl, rfl⟩ | hg
+        · simp [set_apply]
+        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all }
+  | merge l₀ g₀ hl h =>
     exact {
-      top := fun m' hm' => by
-        simp only [set_apply] at hm' ⊢
-        by_cases he : m' = m
-        · simp [he]
-        · simp only [he, ite_false] at hm' ⊢; exact hI.top m' hm'
-      mid := fun g hg => by
-        simp only [set_apply]
-        rcases hI.mid g hg with h | h
-        · exact Or.inl h
-        · right; by_cases he : g / F = m <;> simp [he, h]
-      low := fun g hg => by
-        simp only [set_apply]
-        rcases hI.low g hg with h | h | h
-        · exact Or.inl h
-        · right; left; exact h
-        · right; right; by_cases he : g / F / F = m <;> simp [he, h]
-      splits := hI.splits
-      eligible1 := hI.eligible1
-      eligible2 := fun m' hm' => by
-        simp only [set_apply] at hm'
-        by_cases he : m' = m
-        · subst he; exact hm
-        · simp only [he, ite_false] at hm'; exact hI.eligible2 m' hm'
-      ever1 := hI.ever1
-      ever2 := fun m' hm' => by
-        simp only [set_apply] at hm' ⊢
-        by_cases he : m' = m
-        · simp [he]
-        · simp only [he, ite_false] at hm' ⊢; exact hI.ever2 m' hm' }
-  | delete0 g hcover =>
-    -- The covering object, or the level-2 object covering it in turn, still exists.
-    have hrest : σ.s1 (g / F) = true ∨ σ.s2 (g / F / F) = true := by
-      rcases hcover with h | h
-      · exact hI.mid _ h
-      · exact Or.inr (hI.top _ h)
+      covered := fun l g hlL hg => by
+        rcases ever_set hg with ⟨rfl, rfl⟩ | hg
+        · exact ⟨l, Nat.le_refl _, hlL, by simp [set_apply]⟩
+        · exact covered_add (hI.covered l g hlL hg)
+      levels := fun l g hg => by
+        rcases ever_set hg with ⟨rfl, _⟩ | hg
+        · exact hl.2
+        · exact hI.levels l g hg
+      splits := fun g hg => by
+        have := hI.splits g hg; simp only [set_apply]; split <;> simp_all
+      eligible := fun l g hl' hg => by
+        rcases ever_set hg with ⟨rfl, rfl⟩ | hg
+        · exact h
+        · exact hI.eligible l g hl' hg
+      ever_of_obj := fun l g hg => by
+        rcases ever_set hg with ⟨rfl, rfl⟩ | hg
+        · simp [set_apply]
+        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all }
+  | delete l₀ g₀ l₁ hl h =>
+    -- The covering object, or one covering it in turn, still exists and is not the deleted one.
+    obtain ⟨l₂, h1, h2, h3⟩ := hI.covered l₁ _ hl.2 h
+    have hcov : ∀ l g, l ≤ l₀ → g / F ^ (l₀ - l) = g₀ → σ.obj l₂ (g / F ^ (l₂ - l)) = true := by
+      intro l g hle hg
+      rw [← hg, div_pow_div, div_pow_div] at h3
+      rwa [show l₀ - l + (l₁ - l₀ + (l₂ - l₁)) = l₂ - l by omega] at h3
     exact {
-      top := hI.top
-      mid := hI.mid
-      low := fun g' hg' => by
-        simp only [set_apply]
-        by_cases he : g' = g
-        · subst he; simp only [ite_true]; exact Or.inr hrest
-        · simp only [he, ite_false]; exact hI.low g' hg'
+      covered := fun l g hlL hg => by
+        obtain ⟨l', h1', h2', h3'⟩ := hI.covered l g hlL hg
+        by_cases he : l' = l₀ ∧ g / F ^ (l' - l) = g₀
+        · obtain ⟨hl', hg'⟩ := he
+          subst hl'
+          have h4 := hcov l g h1' hg'
+          have h5 : l₂ ≠ l' := by omega
+          exact ⟨l₂, by omega, h2, by simp only [set_apply]; simp [h5, h4]⟩
+        · exact ⟨l', h1', h2', by simp only [set_apply]; simp [he, h3']⟩
+      levels := hI.levels
       splits := hI.splits
-      eligible1 := hI.eligible1
-      eligible2 := hI.eligible2
-      ever1 := hI.ever1
-      ever2 := hI.ever2 }
-  | delete1 g hcover =>
-    have h2 := hI.top _ hcover
-    exact {
-      top := hI.top
-      mid := fun g' hg' => by
-        simp only [set_apply]
-        by_cases he : g' = g
-        · subst he; simp only [ite_true]; exact Or.inr h2
-        · simp only [he, ite_false]; exact hI.mid g' hg'
-      low := fun g' hg' => by
-        simp only [set_apply]
-        rcases hI.low g' hg' with h | h | h
-        · exact Or.inl h
-        · by_cases he : g' / F = g
-          · right; right; rw [he]; exact h2
-          · right; left; simp only [he, ite_false]; exact h
-        · right; right; exact h
-      splits := hI.splits
-      eligible1 := hI.eligible1
-      eligible2 := hI.eligible2
-      ever1 := fun g' hg' => by
-        simp only [set_apply] at hg'
-        by_cases he : g' = g
-        · simp [he] at hg'
-        · simp only [he, ite_false] at hg'; exact hI.ever1 g' hg'
-      ever2 := hI.ever2 }
+      eligible := hI.eligible
+      ever_of_obj := fun l g hg => by
+        simp only [set_apply] at hg
+        split at hg
+        · cases hg
+        · exact hI.ever_of_obj l g hg }
 
-theorem reach_inv {F : Nat} {σ : State} (h : Reach F σ) : Inv F σ := by
+theorem reach_inv {L F : Nat} {σ : State} (h : Reach L F σ) : Inv L F σ := by
   induction h with
-  | init => exact inv_init F
+  | init => exact inv_init L F
   | step _ hs ih => exact inv_step ih hs
 
 /-- Every split is still readable from an existing object, whatever deletions concurrent mergers made. -/
-theorem coverage {F : Nat} {σ : State} (h : Reach F σ) (g : Nat) (hg : g < σ.splits) :
-    σ.s0 g = true ∨ σ.s1 (g / F) = true ∨ σ.s2 (g / F / F) = true :=
-  let hI := reach_inv h
-  hI.low g (hI.splits g hg)
+theorem coverage {L F : Nat} {σ : State} (h : Reach L F σ) (g : Nat) (hg : g < σ.splits) :
+    ∃ l, l ≤ L ∧ σ.obj l (g / F ^ l) = true := by
+  have hI := reach_inv h
+  obtain ⟨l, _, h2, h3⟩ := hI.covered 0 g (Nat.zero_le _) (hI.splits g hg)
+  exact ⟨l, h2, by simpa using h3⟩
 
-theorem lt_succ_div_mul (a F : Nat) (hF : 0 < F) : a < (a / F + 1) * F := by
-  have := Nat.lt_div_mul_add (a := a) hF
+theorem lt_succ_div_mul (a G : Nat) (hG : 0 < G) : a < (a / G + 1) * G := by
+  have := Nat.lt_div_mul_add (a := a) hG
   rw [Nat.add_mul, Nat.one_mul]; omega
 
 /-- The latest split is never deleted: no merged object ever covered it. -/
-theorem latest_split_exists {F : Nat} (hF : 0 < F) {σ : State} (h : Reach F σ) (hs : 0 < σ.splits) :
-    σ.s0 (σ.splits - 1) = true := by
+theorem latest_split_exists {L F : Nat} (hF : 0 < F) {σ : State} (h : Reach L F σ) (hs : 0 < σ.splits) :
+    σ.obj 0 (σ.splits - 1) = true := by
   have hI := reach_inv h
-  rcases hI.low (σ.splits - 1) (hI.splits (σ.splits - 1) (by omega)) with h0 | h1 | h2
-  · exact h0
-  · -- A level-1 object containing the latest split would have been merged without a later split.
-    have := hI.eligible1 ((σ.splits - 1) / F) (hI.ever1 _ h1)
-    have := lt_succ_div_mul (σ.splits - 1) F hF
-    omega
-  · have := hI.eligible2 ((σ.splits - 1) / F / F) (hI.ever2 _ h2)
-    have h3 := lt_succ_div_mul ((σ.splits - 1) / F) F hF
-    have h4 := lt_succ_div_mul (σ.splits - 1) F hF
-    have h5 : ((σ.splits - 1) / F + 1) * F ≤ ((σ.splits - 1) / F / F + 1) * F * F :=
-      Nat.mul_le_mul_right F (by omega)
+  obtain ⟨l, _, hobj⟩ := coverage h (σ.splits - 1) (by omega)
+  by_cases hl : l = 0
+  · subst hl; simpa using hobj
+  · have := hI.eligible l _ (by omega) (hI.ever_of_obj _ _ hobj)
+    have := lt_succ_div_mul (σ.splits - 1) (F ^ l) (Nat.pow_pos hF)
     omega
 
 end EventLog.Merge
