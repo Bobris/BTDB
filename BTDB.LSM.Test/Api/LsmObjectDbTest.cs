@@ -32,6 +32,19 @@ public class LsmObjectDbTableTest(ITestOutputHelper output) : ObjectDbTableTest(
 }
 
 [Collection(LsmObjectDb.Name)]
+public class LsmRelationMutationDifferentialTest(ITestOutputHelper output) : RelationMutationDifferentialTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
+public class LsmObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output)
+    : ObjectDbAdvancedEnumeratorBoundaryTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
 public class LsmObjectDbTableScanTest(ITestOutputHelper output) : ObjectDbTableScanTest(output)
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
