@@ -413,7 +413,8 @@ internal static class EventLogFormat
         var recordCount = BinaryPrimitives.ReadUInt64LittleEndian(prefix[(position + 9)..]);
         var frameCount = BinaryPrimitives.ReadUInt32LittleEndian(prefix[(position + 17)..]);
         if (level == 0 || prefix[position + 21] != EntryWidth || lastSplitId < splitId ||
-            frameCount + recordCount > MaxObjectLength / EntryWidth) throw Corrupt("merged header");
+            frameCount > MaxObjectLength / EntryWidth ||
+            recordCount > (ulong)(MaxObjectLength / EntryWidth - frameCount)) throw Corrupt("merged header");
         var frameTable = position + 22;
         var recordTable = frameTable + (int)frameCount * EntryWidth;
         return new(level, splitId, lastSplitId, firstOffset, recordCount, (int)frameCount, frameTable, recordTable,

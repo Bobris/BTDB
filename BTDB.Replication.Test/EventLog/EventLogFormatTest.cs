@@ -103,6 +103,24 @@ public class EventLogFormatTest
         Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(copy, "t"));
     }
 
+    /// The reader decides from the fixed part of a merged header alone whether an offset lies beyond the object,
+    /// before the header checksum is read, so its counts must not wrap around in validation.
+    [Theory]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(ulong.MaxValue - 1)]
+    [InlineData(1ul << 63)]
+    public void MergedRecordCountTooLargeIsCorruption(ulong recordCount)
+    {
+        var first = Split(1, 0, [[[1], [2]]], true);
+        var sources = new[] { ((ReadOnlyMemory<byte>)first, EventLogFormat.Parse(first, "t")) };
+        var merged = EventLogFormat.CreateMerged("t", 1, 1, 1, sources);
+        // Common header (8 + topic + 16 bytes), level, last split ID, then the record count.
+        BitConverter.TryWriteBytes(merged.AsSpan(8 + 1 + 16 + 9), recordCount);
+        var prefix = merged.AsSpan(0, EventLogFormat.MergedFixedLength("t")).ToArray();
+        Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.ParseMergedFixed(prefix, "t"));
+        Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(merged, "t"));
+    }
+
     [Theory]
     [InlineData("a", true)]
     [InlineData("events-data.v1_x", true)]
