@@ -397,7 +397,8 @@ public sealed partial class LsmKeyValueDB
         {
             Sequence = ++_manifestSequence, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = version.LevelCount, WriterEpoch = _epoch,
-            FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk, WalStartEpoch = walStartEpoch,
+            WriterSession = _writerSession, FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk,
+            WalStartEpoch = walStartEpoch,
             Tables = version.AllTables().Select(t => (t.Level, t.Table.FileNumber, t.Table.Length)).ToArray(),
             Level0RunLengths = version.Level0Runs.Select(r => r.Length).ToArray(),
             ValueFiles = version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray(),

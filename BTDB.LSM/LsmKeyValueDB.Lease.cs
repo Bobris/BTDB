@@ -21,6 +21,7 @@ public sealed partial class LsmKeyValueDB
     // requires it, so writes racing a takeover or a lease loss are fenced locally.
     volatile bool _holdsLease;
     long _epoch;
+    ulong _writerSession;
     DateTimeOffset _leaseDeadline;
 
     string LockKey => _options.Prefix + "LOCK";
@@ -103,6 +104,8 @@ public sealed partial class LsmKeyValueDB
         var replay = _replay;
         var state = _state;
         _epoch = Math.Max(replay.MaxEpoch, manifest.WriterEpoch) + 1;
+        // Another takeover from the same state computes the same epoch; its fencing manifest must differ from ours.
+        _writerSession = _options.WriterSession ?? (ulong)Random.Shared.NextInt64(long.MinValue, long.MaxValue);
         _manifestSequence = manifest.Sequence;
         // Every writer session numbers new files from its own range, so they never collide with files a predecessor
         // created but did not publish.

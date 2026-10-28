@@ -588,7 +588,9 @@ D3).
   acquisition. While another instance holds the lease, acquisition retries with a period derived from the lease
   duration. The pending request waits asynchronously; other queued writers wait behind it. Disposing the instance or
   cancelling `AcquireWriterLeaseAsync` ends the wait. Once the lease is acquired:
-  1. Fence the manifest: create the next manifest edit as an "epoch" edit with a fresh writer epoch.
+  1. Fence the manifest: create the next manifest edit as an "epoch" edit with a fresh writer epoch. Every manifest
+     also records a random number of its writer session, so two takeovers that read the same state write different
+     edits, and the second one is fenced instead of taking the first one's edit for its own lost response.
   2. Catch up: continue the instance's reader replay as `RefreshAsync` does (section 15), but list manifests and WAL
      chunks instead of probing names, so the newest manifest and the highest chunk name are surely seen. Only chunks
      the reader has not replayed yet are read. An incomplete trailing multi-chunk record is discarded. An instance that

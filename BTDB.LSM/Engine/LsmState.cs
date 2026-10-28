@@ -87,7 +87,7 @@ readonly record struct LsmPendingDeletion(LsmObjectKind Kind, ulong Number, Date
 sealed class LsmManifest
 {
     const ulong Magic = 0x4D4D534C42445442; // "BTDBLSMM"
-    const int FormatVersion = 7;
+    const int FormatVersion = 8;
 
     public long Sequence { get; init; }
     public ulong NextFileNumber { get; init; }
@@ -98,6 +98,11 @@ sealed class LsmManifest
 
     /// Epoch of the writer session that wrote this manifest; a new writer fences by writing a higher one.
     public long WriterEpoch { get; init; }
+
+    /// Random number of the writer session that wrote this manifest. Two takeovers that read the same state would
+    /// otherwise write equal fencing manifests, and each would take the other's for its own lost response
+    /// (BTDB.LSM/Proofs, Fence.lean).
+    public ulong WriterSession { get; init; }
 
     /// Every WAL generation up to this one is in tables.
     public long FlushedGeneration { get; init; }
@@ -133,6 +138,7 @@ sealed class LsmManifest
         foreach (var value in Ulongs) encoder.WriteVUInt64(value);
         encoder.WriteVUInt64((ulong)LevelCount);
         encoder.WriteVUInt64((ulong)WriterEpoch);
+        encoder.WriteUInt64(WriterSession);
         encoder.WriteVUInt64((ulong)FlushedGeneration);
         encoder.WriteVUInt64((ulong)WalStartChunk);
         encoder.WriteVUInt64((ulong)WalStartEpoch);
@@ -200,6 +206,7 @@ sealed class LsmManifest
         for (var i = 0; i < ulongs.Length; i++) ulongs[i] = decoder.ReadVUInt64();
         var levelCount = decoder.ReadVUInt32();
         var writerEpoch = (long)decoder.ReadVUInt64();
+        var writerSession = decoder.ReadUInt64();
         var flushedGeneration = (long)decoder.ReadVUInt64();
         var walStartChunk = (long)decoder.ReadVUInt64();
         var walStartEpoch = (long)decoder.ReadVUInt64();
@@ -229,7 +236,7 @@ sealed class LsmManifest
         {
             Sequence = sequence, NextFileNumber = nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = levelCount, Tables = tables,
-            ValueFiles = valueFiles, WriterEpoch = writerEpoch, FlushedGeneration = flushedGeneration,
+            ValueFiles = valueFiles, WriterEpoch = writerEpoch, WriterSession = writerSession, FlushedGeneration = flushedGeneration,
             WalStartChunk = walStartChunk, WalStartEpoch = walStartEpoch, PendingDeletions = [.. pending], Level0RunLengths = runLengths
         };
     }

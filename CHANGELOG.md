@@ -56,6 +56,10 @@
   start chunk for the same check.
   - The WAL chunk format version is now 2 and the manifest version 7. Databases written by earlier versions cannot be
     opened.
+- `LsmKeyValueDB` takeovers that overlap could both become the writer with one epoch. Two takeovers that read the same
+  state wrote equal fencing manifests, so the second took the first one's manifest for its own lost response. Their
+  parallel WAL uploads could then interleave in one history. Every manifest now records a random number of its writer
+  session, so the second takeover is fenced and takes over again with a higher epoch. The manifest version is now 8.
 
 ## 35.13.0
 

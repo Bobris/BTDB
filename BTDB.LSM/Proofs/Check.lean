@@ -16,3 +16,5 @@ open Lsm
 #print axioms WalFlush.flush_keeps_acknowledged
 #print axioms WalFlush.flush_replays_one_history
 #print axioms WalFlush.flush_of_unlanded_chunk
+#print axioms Fence.current_shares_epoch
+#print axioms Fence.fixed_fresh_epochs

@@ -13,7 +13,7 @@ chunk may land at any later time while its name is free. That covers parallel up
 delayed requests and lost responses. Nothing relies on the lease; writers may even overlap. A writer acknowledges
 the longest prefix of its planned chunks that landed with its content, which is at least what `UploadWalAsync`
 acknowledges. A record is an opaque `Nat`; one chunk holds whole records (multi-chunk records, generations and
-manifests are not modelled). Epochs are fresh and increasing, as the manifest epoch edit guarantees.
+manifests are not modelled). Epochs are fresh and increasing, as the manifest epoch edit guarantees (`Fence.lean`).
 
 `Rule.current` is the implemented protocol: the takeover fences only the first missing name, and replay ignores a
 chunk only when its epoch is lower than an earlier one. `Rule.fixed` fences every missing name below the next chunk,

@@ -22,7 +22,7 @@ public class LsmFormatTest(ITestOutputHelper output)
         BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 128, Level0CompactionTrigger = 2,
         LevelBaseBytes = 2048, LevelMultiplier = 2, LevelCount = 4, TargetFileSize = 1024, PointDeleteRangeLimit = 2,
         ValueSeparationThreshold = 64, WalChunkTargetSize = 1024, DeletionGracePeriod = TimeSpan.Zero,
-        BlockCacheSize = 1 << 20, TimeProvider = FixedTime.Instance
+        BlockCacheSize = 1 << 20, TimeProvider = FixedTime.Instance, WriterSession = 1
     };
 
     /// Manifests record when objects became obsolete, so the sample needs a fixed clock to be deterministic.

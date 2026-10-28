@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.LSM.Engine;
 using BTDB.LSM.Storage;
 using Xunit;
 
@@ -65,6 +66,27 @@ sealed class CreateHookingStorage(InMemoryLsmStorage inner) : ILsmStorage
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
     public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
     public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
+}
+
+/// Grants every lease, as a lease that two instances believe they hold, and runs a hook before each object creation.
+sealed class OverlappingLeaseStorage(InMemoryLsmStorage inner) : ILsmStorage
+{
+    public Func<string, ValueTask>? BeforeCreate { get; set; }
+
+    public async ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
+    {
+        if (BeforeCreate is { } hook) await hook(key);
+        return await inner.CreateAsync(key, content, cancellation);
+    }
+
+    public ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation) => inner.TryReadAsync(key, cancellation);
+    public ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation) => inner.ReadRangeAsync(key, offset, destination, cancellation);
+    public void ReadRange(string key, long offset, Span<byte> destination) => inner.ReadRange(key, offset, destination);
+    public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
+    public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
+    public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => ValueTask.FromResult(true);
+    public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => ValueTask.FromResult(true);
+    public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => ValueTask.CompletedTask;
 }
 
 /// Handing the writer role between instances (ImplementationPlan.md, section 14).
@@ -204,6 +226,48 @@ public class LsmWriterHandoffTest
         }
 
         Assert.Equal(Enumerable.Range(0, commits + 1).Select(n => WalKey(n)), storage.Keys("wal/"));
+    }
+
+    [Fact]
+    public async Task TakeoversFromTheSameStateGetDifferentEpochs()
+    {
+        var storage = new InMemoryLsmStorage();
+        using (var first = await LsmKeyValueDB.OpenAsync(Options(storage) with { AcquireWriterLeaseOnOpen = true }))
+        {
+            await Write(first, 0, 10, 1);
+            await first.FlushAsync();
+        }
+
+        var before = storage.Keys("manifest/").Count();
+        // Two instances believe they hold the lease, and both read the same state before either creates its fencing
+        // manifest.
+        var arrived = 0;
+        var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        OverlappingLeaseStorage Overlapping() => new(storage)
+        {
+            BeforeCreate = async key =>
+            {
+                if (!key.StartsWith("manifest/", StringComparison.Ordinal)) return;
+                if (Interlocked.Increment(ref arrived) == 2) both.SetResult();
+                await both.Task;
+            }
+        };
+        // Manifests are created synchronously, so each takeover needs its own thread to wait at the barrier.
+        var dbs = await Task.WhenAll(new[] { Overlapping(), Overlapping() }.Select(s =>
+            Task.Run(() => LsmKeyValueDB.OpenAsync(Options(s) with { AcquireWriterLeaseOnOpen = true }).AsTask())));
+        try
+        {
+            // Before the fix both fencing manifests were equal, so the second takeover took the first one's manifest
+            // for its own and both wrote with one epoch. Now the second is fenced and takes over again after it.
+            var fences = storage.Keys("manifest/").Skip(before)
+                .Select(key => LsmManifest.Decode(storage.Peek(key)!, key)).ToArray();
+            Assert.Equal(2, fences.Length);
+            Assert.True(fences[0].WriterEpoch < fences[1].WriterEpoch);
+        }
+        finally
+        {
+            foreach (var db in dbs) db.Dispose();
+        }
     }
 
     [Fact]

@@ -113,6 +113,10 @@ public sealed record LsmKeyValueDBOptions
 
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
+    /// Fixes the writer session number that manifests record, so tests can write deterministic objects; null draws a
+    /// random one at every takeover.
+    internal ulong? WriterSession { get; init; }
+
     /// CreateKvi and Compact fail when flushes and compactions have kept failing this long; the worker keeps retrying.
     public TimeSpan WorkerFailureTimeout { get; init; } = TimeSpan.FromMinutes(1);
 
