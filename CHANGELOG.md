@@ -63,6 +63,10 @@
 
 ### Fixed
 
+- `KeyValueDBExportImporter.Import` and `ImportAsync` allocated the key or value size an export declared before
+  reading it, so a few bytes of a damaged export could allocate gigabytes or fail with `OutOfMemoryException`
+  instead of `EndOfStreamException`. The buffer now grows with the bytes that arrive, as `MemReader` does since its
+  fix.
 - `BTreeKeyValueDB.CreateKvi` ignored `PreserveHistoryUpToCommitUlong`: it dropped the key index preserved history
   opens from, so a later `OpenUpToCommitUlong` at the preserved commit silently opened a later commit. It now keeps
   that key index, as compaction does. Found by opening randomized histories at every preserved commit.

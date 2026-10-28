@@ -207,6 +207,28 @@ public class KeyValueDBExportImporterTest
         await Assert.ThrowsAsync(exceptionType, () => KeyValueDBExportImporter.ImportAsync(tr, new MemoryStream(data)));
     }
 
+    /// A key or value size far beyond what the stream holds, as in a damaged export, fails at the end of the stream
+    /// without allocating the declared size.
+    [Theory]
+    [InlineData(true, 1 << 30)]
+    [InlineData(false, 1 << 30)]
+    [InlineData(true, int.MaxValue)]
+    [InlineData(false, int.MaxValue)]
+    public async Task SizesBeyondTheStreamFailWithoutAllocatingThem(bool key, int declared)
+    {
+        var data = key
+            ? Concat(Header(1), Int32(declared), new byte[100])
+            : Concat(Header(1), Int32(1), [1], Int32(declared), new byte[100]);
+        using var db = Create(true);
+        using var tr = db.StartTransaction();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<EndOfStreamException>(() => KeyValueDBExportImporter.Import(tr, new MemoryStream(data)));
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
+        before = GC.GetAllocatedBytesForCurrentThread();
+        await Assert.ThrowsAsync<EndOfStreamException>(() => KeyValueDBExportImporter.ImportAsync(tr, new MemoryStream(data)));
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

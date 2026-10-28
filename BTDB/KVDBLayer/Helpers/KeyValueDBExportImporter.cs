@@ -136,13 +136,13 @@ public static class KeyValueDBExportImporter
             if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
             var keySize = PackUnpack.UnpackInt32LE(tempBuf, 0);
             if (keySize < 0) throw new BTDBException("Negative key size");
-            if (keySize > tempBuf.Length) tempBuf = new byte[keySize];
-            if (await ReadFullyAsync(stream, tempBuf.AsMemory(0, keySize)) != keySize) throw new EndOfStreamException();
+            (tempBuf, var keyRead) = await ReadSizedAsync(stream, tempBuf, keySize);
+            if (keyRead != keySize) throw new EndOfStreamException();
             if (await ReadFullyAsync(stream, tempBuf2.AsMemory(0, 4)) != 4) throw new EndOfStreamException();
             var valueSize = PackUnpack.UnpackInt32LE(tempBuf2, 0);
             if (valueSize < 0) throw new BTDBException("Negative value size");
-            if (valueSize > tempBuf2.Length) tempBuf2 = new byte[valueSize];
-            if (await ReadFullyAsync(stream, tempBuf2.AsMemory(0, valueSize)) != valueSize) throw new EndOfStreamException();
+            (tempBuf2, var valueRead) = await ReadSizedAsync(stream, tempBuf2, valueSize);
+            if (valueRead != valueSize) throw new EndOfStreamException();
             cursor.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
 
@@ -187,13 +187,11 @@ public static class KeyValueDBExportImporter
             if (ReadFully(stream, tempBuf.AsSpan(0, 4)) != 4) throw new EndOfStreamException();
             var keySize = PackUnpack.UnpackInt32LE(tempBuf, 0);
             if (keySize < 0) throw new BTDBException("Negative key size");
-            if (keySize > tempBuf.Length) tempBuf = new byte[keySize];
-            if (ReadFully(stream, tempBuf.AsSpan(0, keySize)) != keySize) throw new EndOfStreamException();
+            if (ReadSized(stream, ref tempBuf, keySize) != keySize) throw new EndOfStreamException();
             if (ReadFully(stream, tempBuf2.AsSpan(0, 4)) != 4) throw new EndOfStreamException();
             var valueSize = PackUnpack.UnpackInt32LE(tempBuf2, 0);
             if (valueSize < 0) throw new BTDBException("Negative value size");
-            if (valueSize > tempBuf2.Length) tempBuf2 = new byte[valueSize];
-            if (ReadFully(stream, tempBuf2.AsSpan(0, valueSize)) != valueSize) throw new EndOfStreamException();
+            if (ReadSized(stream, ref tempBuf2, valueSize) != valueSize) throw new EndOfStreamException();
             cursor.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
 
@@ -209,6 +207,34 @@ public static class KeyValueDBExportImporter
                     transaction.SetUlong(i, PackUnpack.UnpackUInt64LE(tempBuf, 0));
                 }
             }
+        }
+    }
+
+    // A size beyond what a damaged stream holds must fail at its end, so the buffer grows with the bytes that arrive
+    // instead of being allocated for the declared size. Returns how many of the size were read.
+    static int ReadSized(Stream stream, ref byte[] buffer, int size)
+    {
+        var filled = 0;
+        while (true)
+        {
+            var chunk = Math.Min(size, buffer.Length) - filled;
+            var read = ReadFully(stream, buffer.AsSpan(filled, chunk));
+            filled += read;
+            if (filled == size || read < chunk) return filled;
+            Array.Resize(ref buffer, (int)Math.Min(size, 2L * buffer.Length));
+        }
+    }
+
+    static async ValueTask<(byte[] Buffer, int Read)> ReadSizedAsync(Stream stream, byte[] buffer, int size)
+    {
+        var filled = 0;
+        while (true)
+        {
+            var chunk = Math.Min(size, buffer.Length) - filled;
+            var read = await ReadFullyAsync(stream, buffer.AsMemory(filled, chunk)).ConfigureAwait(false);
+            filled += read;
+            if (filled == size || read < chunk) return (buffer, filled);
+            Array.Resize(ref buffer, (int)Math.Min(size, 2L * buffer.Length));
         }
     }
 
