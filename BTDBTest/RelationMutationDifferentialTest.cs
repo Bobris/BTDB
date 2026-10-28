@@ -72,7 +72,7 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                     Payload = random.Next(100)
                 };
                 var exists = model.ContainsKey((tenant, id));
-                var op = random.Next(8);
+                var op = random.Next(10);
                 log.Add($"{step}: op {op} {tenant}/{id} age {row.Age} name {row.Name ?? "null"} exists {exists}");
                 switch (op)
                 {
@@ -104,6 +104,26 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                             var removed = model.Keys.Where(k => k.Item1 == tenant).ToList();
                             Assert.Equal(removed.Count, table.RemoveById(tenant));
                             foreach (var k in removed) model.Remove(k);
+                        }
+
+                        break;
+                    case 8:
+                    {
+                        var batch = Enumerable.Range(0, random.Next(1, 4)).Select(_ => new Row
+                        {
+                            Tenant = (ulong)random.Next(1, 3), Id = (ulong)random.Next(1, 8),
+                            Age = (uint)random.Next(20, 24), Name = Names[random.Next(Names.Length)],
+                            Payload = random.Next(100)
+                        }).ToList();
+                        table.UpsertRange(batch);
+                        foreach (var r in batch) model[(r.Tenant, r.Id)] = (r.Age, r.Name, r.Payload);
+                        break;
+                    }
+                    case 9:
+                        if (random.Next(6) == 0)
+                        {
+                            table.RemoveAll();
+                            model.Clear();
                         }
 
                         break;
@@ -151,6 +171,22 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
         }
     }
 
+    static readonly KeyProposition[] Propositions =
+        [KeyProposition.Ignored, KeyProposition.Included, KeyProposition.Excluded];
+
+    static bool InRange(uint age, AdvancedEnumeratorParam<uint> range) =>
+        range.StartProposition switch
+        {
+            KeyProposition.Included => age >= range.Start,
+            KeyProposition.Excluded => age > range.Start,
+            _ => true
+        } && range.EndProposition switch
+        {
+            KeyProposition.Included => age <= range.End,
+            KeyProposition.Excluded => age < range.End,
+            _ => true
+        };
+
     static string Describe(Row r) => $"{r.Tenant}/{r.Id} {r.Age} {r.Name ?? "null"} {r.Payload}";
 
     static void Check(IRowTable table, Dictionary<(ulong, ulong), (uint Age, string? Name, int Payload)> model)
@@ -165,11 +201,19 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
             for (var age = 20u; age < 24; age++)
                 Assert.Equal(rows.Where(r => r.Tenant == tenant && r.Age == age).OrderBy(r => r.Id).Select(Describe),
                     table.FindByAge(tenant, age).Select(Describe));
-            var range = new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 21, KeyProposition.Included, 22,
-                KeyProposition.Excluded);
-            Assert.Equal(rows.Count(r => r.Tenant == tenant && r.Age == 21), table.CountByAge(tenant, range));
-            Assert.Equal(rows.Where(r => r.Tenant == tenant && r.Age == 21).OrderBy(r => r.Id).Select(Describe),
-                table.ListByAge(tenant, range).Select(Describe));
+            foreach (var order in new[] { EnumerationOrder.Ascending, EnumerationOrder.Descending })
+            foreach (var startProposition in Propositions)
+            foreach (var endProposition in Propositions)
+            {
+                var start = (uint)(20 + (int)startProposition);
+                var end = (uint)(23 - (int)endProposition);
+                var range = new AdvancedEnumeratorParam<uint>(order, start, startProposition, end, endProposition);
+                var expected = rows.Where(r => r.Tenant == tenant && InRange(r.Age, range))
+                    .OrderBy(r => r.Age).ThenBy(r => r.Id).ToList();
+                if (order == EnumerationOrder.Descending) expected.Reverse();
+                Assert.Equal(expected.Count, table.CountByAge(tenant, range));
+                Assert.Equal(expected.Select(Describe), table.ListByAge(tenant, range).Select(Describe));
+            }
         }
 
         foreach (var name in Names)
