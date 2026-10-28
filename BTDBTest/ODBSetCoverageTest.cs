@@ -378,4 +378,59 @@ public class ODBSetCoverageTest : FieldHandlerCoverageTestBase
         Assert.Equal(order == EnumerationOrder.Ascending ? new[] { 2, 3, 4 } : new[] { 4, 3, 2 }, listed);
         Assert.Equal(new[] { 1, 5 }, root.A.Order());
     }
+
+    [Theory]
+    [InlineData("forward")]
+    [InlineData("reverse")]
+    [InlineData("increasing")]
+    [InlineData("decreasing")]
+    [InlineData("advanced descending")]
+    public void RemovingEachListedItemListsEveryItemOnce(string scan)
+    {
+        using var tr = _db.StartTransaction();
+        var root = tr.Singleton<SetsRoot>();
+        for (var i = 1; i <= 9; i++) root.A.Add(i);
+        var (items, expected) = scan switch
+        {
+            "forward" => ((IEnumerable<int>)root.A, Enumerable.Range(1, 9).ToArray()),
+            "reverse" => (root.A.GetReverseEnumerator(), Enumerable.Range(1, 9).Reverse().ToArray()),
+            "increasing" => (root.A.GetIncreasingEnumerator(4), Enumerable.Range(4, 6).ToArray()),
+            "decreasing" => (root.A.GetDecreasingEnumerator(6), Enumerable.Range(1, 6).Reverse().ToArray()),
+            _ => (root.A.GetAdvancedEnumerator(new(EnumerationOrder.Descending, 0, KeyProposition.Ignored, 0,
+                KeyProposition.Ignored)), Enumerable.Range(1, 9).Reverse().ToArray())
+        };
+        var listed = new List<int>();
+        foreach (var item in items)
+        {
+            listed.Add(item);
+            Assert.True(root.A.Remove(item));
+        }
+
+        Assert.Equal(expected, listed);
+    }
+
+    /// Adding items next to the listed ones while enumerating does not repeat or skip the items listed before.
+    [Theory]
+    [InlineData("forward")]
+    [InlineData("reverse")]
+    public void AddingItemsWhileEnumeratingKeepsListedOnesOnce(string scan)
+    {
+        using var tr = _db.StartTransaction();
+        var root = tr.Singleton<SetsRoot>();
+        for (var i = 10; i <= 50; i += 10) root.A.Add(i);
+        var listed = new List<int>();
+        foreach (var item in scan == "forward" ? (IEnumerable<int>)root.A : root.A.GetReverseEnumerator())
+        {
+            listed.Add(item);
+            if (item % 10 == 0)
+            {
+                root.A.Add(item - 1);
+                root.A.Add(item + 1);
+            }
+        }
+
+        Assert.Equal(listed.Distinct().Count(), listed.Count);
+        Assert.Subset(listed.ToHashSet(), new HashSet<int> { 10, 20, 30, 40, 50 });
+        Assert.True(scan == "forward" ? listed.SequenceEqual(listed.Order()) : listed.SequenceEqual(listed.OrderDescending()));
+    }
 }

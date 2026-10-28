@@ -348,4 +348,33 @@ public class ODBDictionaryCoverageTest : FieldHandlerCoverageTestBase
         Assert.Equal(order == EnumerationOrder.Ascending ? new[] { 2, 3, 4 } : new[] { 4, 3, 2 }, listed);
         Assert.Equal(new[] { 1, 5 }, root.A.Keys.Order());
     }
+
+    [Theory]
+    [InlineData("forward")]
+    [InlineData("reverse")]
+    [InlineData("increasing")]
+    [InlineData("decreasing")]
+    [InlineData("keys")]
+    public void RemovingEachListedKeyListsEveryKeyOnce(string scan)
+    {
+        using var tr = _db.StartTransaction();
+        var root = tr.Singleton<DictRoot>();
+        for (var i = 1; i <= 9; i++) root.A[i] = "v" + i;
+        var (keys, expected) = scan switch
+        {
+            "forward" => (root.A.Select(p => p.Key), Enumerable.Range(1, 9).ToArray()),
+            "reverse" => (root.A.GetReverseEnumerator().Select(p => p.Key), Enumerable.Range(1, 9).Reverse().ToArray()),
+            "increasing" => (root.A.GetIncreasingEnumerator(4).Select(p => p.Key), Enumerable.Range(4, 6).ToArray()),
+            "decreasing" => (root.A.GetDecreasingEnumerator(6).Select(p => p.Key), Enumerable.Range(1, 6).Reverse().ToArray()),
+            _ => (root.A.Keys, Enumerable.Range(1, 9).ToArray())
+        };
+        var listed = new List<int>();
+        foreach (var key in keys)
+        {
+            listed.Add(key);
+            Assert.True(root.A.Remove(key));
+        }
+
+        Assert.Equal(expected, listed);
+    }
 }

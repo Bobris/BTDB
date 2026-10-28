@@ -36,6 +36,16 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
     }
 
     [BTDB.Generate]
+    public interface IItemScanTable : IRelation<Item>
+    {
+        bool RemoveById(ulong companyId, ulong groupId, ulong id);
+        IEnumerable<Item> FindById(ulong companyId);
+        IEnumerable<Item> FindById(ulong companyId, ulong groupId);
+        IEnumerable<Item> ListByGroup(AdvancedEnumeratorParam<ulong> companyId);
+        IEnumerable<Item> ListById(AdvancedEnumeratorParam<ulong> companyId);
+    }
+
+    [BTDB.Generate]
     public interface IItemOrderedTable : IRelation<Item>
     {
         bool RemoveById(ulong companyId, ulong groupId, ulong id);
@@ -216,5 +226,54 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
 
         var expected = new ulong[] { 2, 3, 4 };
         Assert.Equal(order == EnumerationOrder.Ascending ? expected : expected.Reverse().ToArray(), listed);
+    }
+
+    public static IEnumerable<object[]> Scans() => new[]
+    {
+        "table", "FindById(company)", "FindById(company, group)", "ListById ascending", "ListById descending",
+        "ListByGroup ascending", "ListByGroup descending", "query", "query descending"
+    }.Select(s => new object[] { s });
+
+    /// Removing each listed item while enumerating lists every item of the scan once.
+    [Theory]
+    [MemberData(nameof(Scans))]
+    public void RemovingEachListedItemListsEveryItemOnce(string scan)
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IItemScanTable>();
+        var all = new List<(ulong, ulong, ulong)>();
+        for (ulong company = 1; company <= 3; company++)
+        for (ulong group = 1; group <= 3; group++)
+        for (ulong id = 1; id <= 3; id++)
+        {
+            table.Upsert(new Item { CompanyId = company, GroupId = group, Id = id });
+            all.Add((company, group, id));
+        }
+
+        var all2 = new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 1, KeyProposition.Included, 3,
+            KeyProposition.Included);
+        var desc = new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending, 1, KeyProposition.Included, 3,
+            KeyProposition.Included);
+        var (items, expected) = scan switch
+        {
+            "table" => ((IEnumerable<Item>)table, all),
+            "FindById(company)" => (table.FindById(2), all.Where(k => k.Item1 == 2).ToList()),
+            "FindById(company, group)" => (table.FindById(2, 2), all.Where(k => k.Item1 == 2 && k.Item2 == 2).ToList()),
+            "ListById ascending" => (table.ListById(all2), all),
+            "ListById descending" => (table.ListById(desc), all.AsEnumerable().Reverse().ToList()),
+            "ListByGroup ascending" => (table.ListByGroup(all2), all),
+            "ListByGroup descending" => (table.ListByGroup(desc), all.AsEnumerable().Reverse().ToList()),
+            "query" => (table.Query<Item>().Where(i => i.Id != 7), all),
+            _ => (table.Query<Item>().OrderByDescending(i => i.CompanyId).ThenByDescending(i => i.GroupId)
+                .ThenByDescending(i => i.Id), all.AsEnumerable().Reverse().ToList())
+        };
+        var listed = new List<(ulong, ulong, ulong)>();
+        foreach (var item in items)
+        {
+            listed.Add((item.CompanyId, item.GroupId, item.Id));
+            Assert.True(table.RemoveById(item.CompanyId, item.GroupId, item.Id));
+        }
+
+        Assert.Equal(expected, listed);
     }
 }
