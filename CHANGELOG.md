@@ -32,6 +32,9 @@
   trusted a write still in flight when the call started, or the end of its commit loop. That write could have landed
   before another owner took over and committed. The owner now trusts only a write dispatched after the call started,
   or a tail check.
+- Event log: an idle owner could stop as if it had been taken over. Its tail was sealed, a helper had created the
+  header-only successor, and its merger then marked the sealed split for deletion, changing that split's version.
+  Validation of a sealed tail now checks only the successor.
 - `LsmKeyValueDB` writer takeover could lose acknowledged durable commits. Parallel WAL uploads complete out of order,
   so a crashed writer could leave several missing chunk names, and the new writer fenced only the first. Replay then
   stopped at the next hole, and a later takeover fenced it and discarded the new writer's commits. A takeover now

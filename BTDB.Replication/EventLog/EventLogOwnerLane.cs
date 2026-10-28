@@ -726,15 +726,21 @@ internal sealed class EventLogOwnerLane
                 await waiter.Task.WaitAsync(cancellation).ConfigureAwait(false);
                 continue;
             }
-            var properties = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId), cancellation)
-                .ConfigureAwait(false);
-            var fenced = properties == null || properties.Version != version;
-            if (!fenced && sealedTail)
+            bool fenced;
+            if (sealedTail)
             {
-                // A helper's header-only successor still carries this session; the next commit appends to it.
+                // A sealed split never changes again, but cleanup marks and deletes it, which changes or removes its
+                // version. Only a successor that is not this session's header-only one shows a takeover; a helper's
+                // still carries this session, and the next commit appends to it (Proofs/EventLogProofs/Chain.lean).
                 var successor = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId + 1), cancellation)
                     .ConfigureAwait(false);
-                fenced = successor != null && successor.Owner != Self;
+                fenced = successor != null && (successor.Owner != Self || successor.Length != _headerLength);
+            }
+            else
+            {
+                var properties = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId), cancellation)
+                    .ConfigureAwait(false);
+                fenced = properties == null || properties.Version != version;
             }
             lock (_lock)
             {

@@ -7,7 +7,7 @@ A model of the storage operations of `EventLogOwnerLane` on the level-0 split ch
 writable tail (`AppendAsync`, also the combined takeover, seal-only writes and `SetOwnerAsync`), successor creation
 with content after the lane's own seal (`CreateSuccessorAsync`), adopting a helper's header-only successor that still
 carries the lane's session, header-only successors created by anybody after observing a seal (`CreateCandidateAsync`),
-and candidates reading the tail (`FindTailAsync`).
+candidates reading the tail (`FindTailAsync`), and cleanup marking sealed splits (`EventLogMerger`).
 
 Splits `0, 1, …` stand for split IDs `1, 2, …`. Versions come from a counter, so a version is never reused. A record
 is an opaque `Nat`; frame and offset encoding are not modelled. Every operation is atomic and may happen at any time,
@@ -21,7 +21,9 @@ Proved for every reachable state and step:
 * `append_exact`, `createSucc_exact`: a write that applies appends its batch exactly after the history the writer
   holds, so its first offset is the length of that history and its receipts are exact. This is what
   `ExactlyOnce.lean` assumes about one versioned history;
-* `step_sealed_stable`: a sealed split never changes again.
+* `step_sealed_stable`: a sealed split never changes again, except for the version of a cleanup mark (`mark`);
+* `sealed_tail_validation`: a lane whose split is sealed holds the whole history while the successor is absent or
+  header-only, so `ValidateAsync` needs no version check of the sealed split.
 -/
 
 namespace EventLog.Chain
@@ -84,6 +86,9 @@ inductive Step : State → State → Prop
       (hb : σ.splits[L.sid + 1]? = some b) (ho : b.owner = L.self) (hr : b.recs = []) (hu : b.sealed = false) :
       Step σ { σ with lanes := upd σ.lanes i (some ⟨L.self, L.sid + 1, b.ver, [], false, L.pre ++ L.content⟩) }
   | stop (σ : State) (i : Nat) : Step σ { σ with lanes := upd σ.lanes i none }
+  /-- Background cleanup marks a sealed split for deletion (`ScheduleDeletionAsync`): only its version changes. -/
+  | mark (σ : State) (j : Nat) (b : Blob) (hb : σ.splits[j]? = some b) (hs : b.sealed = true) :
+      Step σ { σ with splits := σ.splits.set j { b with ver := σ.vc }, vc := σ.vc + 1 }
 
 inductive Reach : State → Prop
   | init : Reach init
@@ -123,6 +128,25 @@ theorem take_set_of_le (l : List Blob) (n j : Nat) (x : Blob) (h : n ≤ j) : (l
   split
   · rw [List.getElem?_set_ne (by arith)]
   · rfl
+
+/-- Changing only a blob's version keeps every history. -/
+theorem map_recs_set {l : List Blob} {j : Nat} {b b' : Blob} (hb : l[j]? = some b) (hr : b'.recs = b.recs) :
+    (l.set j b').map Blob.recs = l.map Blob.recs := by
+  apply List.ext_getElem?
+  intro k
+  simp only [List.getElem?_map]
+  by_cases hk : k = j
+  · subst hk
+    have hlt : k < l.length := by
+      rcases Nat.lt_or_ge k l.length with h | h
+      · exact h
+      · rw [List.getElem?_eq_none h] at hb; cases hb
+    rw [List.getElem?_set_self hlt, hb]; simp [hr]
+  · rw [List.getElem?_set_ne (Ne.symm hk)]
+
+theorem hist_take_set {l : List Blob} {j n : Nat} {b b' : Blob} (hb : l[j]? = some b) (hr : b'.recs = b.recs) :
+    hist ((l.set j b').take n) = hist (l.take n) := by
+  rw [hist, hist, List.map_take, List.map_take, map_recs_set hb hr]
 
 theorem getElem?_lt {l : List Blob} {j : Nat} {b : Blob} (hb : l[j]? = some b) : j < l.length := by
   rcases Nat.lt_or_ge j l.length with h | h
@@ -309,6 +333,44 @@ theorem inv_step {σ τ : State} (hI : Inv σ) (h : Step σ τ) : Inv τ := by
       lanes := fun j L hL => by
         have ⟨_, hL⟩ := upd_none hL
         exact hI.lanes j L hL }
+  | mark j b hb hs =>
+    have hset : ∀ k, (σ.splits.set j { b with ver := σ.vc })[k]? =
+        if k = j then some { b with ver := σ.vc } else σ.splits[k]? := by
+      intro k
+      by_cases hk : k = j
+      · subst hk; rw [List.getElem?_set_self (getElem?_lt hb)]; simp
+      · rw [List.getElem?_set_ne (Ne.symm hk)]; simp [hk]
+    exact {
+      chain := fun k b' hb' hk => by
+        simp only [List.length_set] at hk
+        rw [hset] at hb'
+        split at hb'
+        · cases hb'; exact hs
+        · exact hI.chain k b' hb' hk
+      ver_lt := fun b' hb' => by
+        rcases List.mem_or_eq_of_mem_set hb' with h | h
+        · have := hI.ver_lt b' h; arith
+        · subst h; simp
+      lanes := fun i L hL => by
+        have h2 := hI.lanes i L hL
+        exact {
+          sid_lt := by simp; exact h2.sid_lt
+          ver_lt := by have := h2.ver_lt; arith
+          pre := by dsimp only; rw [hist_take_set (b' := { b with ver := σ.vc }) hb rfl]; exact h2.pre
+          sealed := fun h => by
+            obtain ⟨b₂, hb₂, hs₂, hr₂⟩ := h2.sealed h
+            refine ⟨if L.sid = j then { b with ver := σ.vc } else b₂, by rw [hset]; split <;> simp_all, ?_, ?_⟩
+            · split
+              · simp [hs]
+              · exact hs₂
+            · split
+              · rename_i hj; rw [hj, hb] at hb₂; cases hb₂; simpa using hr₂
+              · exact hr₂
+          current := fun b' hb' hv => by
+            rw [hset] at hb'
+            split at hb'
+            · cases hb'; have := h2.ver_lt; simp at hv; omega
+            · exact h2.current b' hb' hv } }
 
 theorem reach_inv {σ : State} (h : Reach σ) : Inv σ := by
   induction h with
@@ -357,22 +419,47 @@ theorem step_hist_prefix {σ τ : State} (hI : Inv σ) (h : Step σ τ) : hist �
     simp only; rw [h1, h2]; exact List.prefix_append _ _
   | adopt => exact List.prefix_refl _
   | stop => exact List.prefix_refl _
+  | mark j b hb _ =>
+    dsimp only; rw [hist, hist, map_recs_set (b' := { b with ver := σ.vc }) hb rfl]; exact List.prefix_refl _
 
-/-- A sealed split never changes again. -/
+/-- A sealed split never changes again, except for the version of a cleanup mark. -/
 theorem step_sealed_stable {σ τ : State} (hI : Inv σ) (h : Step σ τ) {j : Nat} {b : Blob}
-    (hb : σ.splits[j]? = some b) (hs : b.sealed = true) : τ.splits[j]? = some b := by
+    (hb : σ.splits[j]? = some b) (hs : b.sealed = true) :
+    ∃ b', τ.splits[j]? = some b' ∧ b'.recs = b.recs ∧ b'.sealed = true ∧ b'.owner = b.owner := by
   cases h with
   | create0 _ h0 => simp [h0] at hb
-  | helper => simp only; rw [List.getElem?_append_left (getElem?_lt hb)]; exact hb
-  | candidate => exact hb
+  | helper => exact ⟨b, by simp only; rw [List.getElem?_append_left (getElem?_lt hb)]; exact hb, rfl, hs, rfl⟩
+  | candidate => exact ⟨b, hb, rfl, hs, rfl⟩
   | append i L b' batch close hL hu hb' hv =>
-    simp only
     by_cases hj : j = L.sid
     · subst hj; rw [hb] at hb'; cases hb'
       rw [(hI.lanes i L hL).current b hb hv |>.2, hu] at hs; cases hs
-    · rw [List.getElem?_set_ne (Ne.symm hj)]; exact hb
-  | createSucc => simp only; rw [List.getElem?_append_left (getElem?_lt hb)]; exact hb
-  | adopt => exact hb
-  | stop => exact hb
+    · exact ⟨b, by simp only; rw [List.getElem?_set_ne (Ne.symm hj)]; exact hb, rfl, hs, rfl⟩
+  | createSucc => exact ⟨b, by simp only; rw [List.getElem?_append_left (getElem?_lt hb)]; exact hb, rfl, hs, rfl⟩
+  | adopt => exact ⟨b, hb, rfl, hs, rfl⟩
+  | stop => exact ⟨b, hb, rfl, hs, rfl⟩
+  | mark k b₂ hb₂ _ =>
+    by_cases hj : j = k
+    · subst hj; rw [hb] at hb₂; cases hb₂
+      exact ⟨{ b with ver := σ.vc }, by simp only; rw [List.getElem?_set_self (getElem?_lt hb)], rfl, hs, rfl⟩
+    · exact ⟨b, by simp only; rw [List.getElem?_set_ne (Ne.symm hj)]; exact hb, rfl, hs, rfl⟩
+
+/-- `ValidateAsync` of a sealed tail: when its successor is absent or header-only, the lane holds the whole history,
+whatever happened to the sealed split's version. -/
+theorem sealed_tail_validation {σ : State} (hI : Inv σ) {i : Nat} {L : Lane} (hL : σ.lanes i = some L)
+    (hs : L.sealed = true)
+    (hsucc : σ.splits.length = L.sid + 1 ∨ ∃ b, σ.splits[L.sid + 1]? = some b ∧ b.recs = [] ∧ b.sealed = false) :
+    hist σ.splits = L.pre ++ L.content := by
+  have hLok := hI.lanes i L hL
+  rcases hsucc with hlen | ⟨b, hb, hr, hu⟩
+  · exact sealed_tail hLok hs hlen
+  · obtain ⟨b₀, hb₀, _, hr₀⟩ := hLok.sealed hs
+    have hlen : σ.splits.length = L.sid + 2 := by
+      have hlt := getElem?_lt hb
+      rcases Nat.lt_or_ge (L.sid + 2) σ.splits.length with h | h
+      · have := hI.chain _ _ hb h; rw [hu] at this; cases this
+      · omega
+    rw [eq_take_last σ.splits (L.sid + 1) b hb hlen, take_succ_of _ _ _ hb₀, hist_append, hist_append, hist_single,
+      hist_single, hr, hr₀, ← hLok.pre, List.append_nil]
 
 end EventLog.Chain

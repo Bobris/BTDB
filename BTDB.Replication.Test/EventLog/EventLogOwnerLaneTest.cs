@@ -444,6 +444,25 @@ public class EventLogOwnerLaneTest
     }
 
     [Fact]
+    public async Task CleanupOfTheSealedTailDoesNotFenceItsOwner()
+    {
+        var storage = new FaultyEventLogStorage();
+        var a = await Lane(storage, A, Small(400, 300));
+        await Submit(a, 1, 1, Bytes(0)); // proactively sealed at once
+        await Lane(storage, B, Small(400, 300)); // a helper creates the header-only successor
+        // The owner's merger may now merge the group ending at split 1 and mark it for deletion.
+        var key = EventLogFormat.SplitKey(Topic, 1);
+        var sealedSplit = await storage.ReadAsync(key, default);
+        Assert.NotNull(await storage.ScheduleDeletionAsync(key, sealedSplit!.Version, TimeSpan.FromDays(1), default));
+        // Before the fix the changed version looked like a takeover and stopped the owner.
+        Assert.Equal(1ul, await a.ValidateAsync(default));
+        // A takeover of the successor still fences it.
+        var contender = await Lane(storage, B, Small(400, 300));
+        await contender.InstallAsync();
+        await Assert.ThrowsAsync<EventLogOwnerLostException>(async () => await a.ValidateAsync(default));
+    }
+
+    [Fact]
     public async Task OwnerWhoseSuccessorWasCreatedByAHelperStillAppends()
     {
         var storage = new FaultyEventLogStorage();

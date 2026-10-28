@@ -14,3 +14,4 @@ open EventLog
 #print axioms ExactlyOnce.fixed_commits
 #print axioms Bounds.current_bounds_stale
 #print axioms Bounds.fixed_bounds_fresh
+#print axioms Chain.sealed_tail_validation

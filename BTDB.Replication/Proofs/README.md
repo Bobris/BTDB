@@ -16,7 +16,7 @@ is no `sorry`.
 
 | File | Models | Code |
 | --- | --- | --- |
-| `Chain.lean` | Level-0 split chain: conditional appends to the writable tail (combined takeover, seal-only writes, owner change), successor creation after the lane's own seal, adopting a helper's header-only successor, header-only successors created by anybody after a seal, candidates reading the tail | `EventLogOwnerLane.AppendAsync`, `CreateSuccessorAsync`, `SetOwnerAsync`, `CreateCandidateAsync`, `EventLogStorageReader.FindTailAsync` |
+| `Chain.lean` | Level-0 split chain: conditional appends to the writable tail (combined takeover, seal-only writes, owner change), successor creation after the lane's own seal, adopting a helper's header-only successor, header-only successors created by anybody after a seal, candidates reading the tail, cleanup marks on sealed splits | `EventLogOwnerLane.AppendAsync`, `CreateSuccessorAsync`, `SetOwnerAsync`, `CreateCandidateAsync`, `ValidateAsync`, `EventLogStorageReader.FindTailAsync`, `EventLogMerger` |
 | `Bounds.lean` | One versioned topic history; lanes whose conditional writes are dispatched, applied and answered separately; `ValidateAsync` calls answering from a write or a tail check | `EventLogOwnerLane.ValidateAsync`, `WriteAsync`, `SetOwnerAsync` |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
@@ -35,7 +35,8 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `Chain.chain` | Every split except the last is sealed: the chain never forks. |
 | `Chain.step_hist_prefix` | Canonical history only grows; a committed prefix is never replaced or truncated (contract 3). |
 | `Chain.append_exact`, `Chain.createSucc_exact` | A successful write appends its batch at the writer's next offset, so receipts carry exact offsets. |
-| `Chain.step_sealed_stable` | A sealed split never changes. |
+| `Chain.step_sealed_stable` | A sealed split never changes, except for the version of a cleanup mark. |
+| `Chain.sealed_tail_validation` | A lane whose split is sealed holds the whole history while the successor is absent or header-only. `ValidateAsync` therefore checks only the successor of a sealed tail; before the 2026-10-28 fix it also compared the sealed split's version, which cleanup changes. |
 | `ExactlyOnce.previous_duplicates` | The rule before the fix could commit one Publish call twice (finding below). |
 | `ExactlyOnce.fixed_exactly_once` | With the implemented rule, no transfer is committed twice (contract 7). |
 | `ExactlyOnce.fixed_call_order` | With the implemented rule, each session's committed sequences are exactly `1, 2, …, k` in history order (contract 8). |

@@ -323,7 +323,8 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
     the next offset takes over with its first commit without reading;
   - a landed write whose response was lost stays committed even when a takeover follows it;
   - pipelined sequences commit in order, and an unfilled gap fails;
-  - idle-owner validation detects a takeover, and validation does not trust a write dispatched before it;
+  - idle-owner validation detects a takeover, does not trust a write dispatched before it, and is not fooled by
+    cleanup marking its sealed tail;
   - takeover of a sealed idle tail through a header-only successor, including when a helper created it first;
   - oversized records are rejected.
 - `EventLogServiceTest`, with several in-process nodes, an in-process transport with partitions and the real
