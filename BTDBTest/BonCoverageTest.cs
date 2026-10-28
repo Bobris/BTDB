@@ -107,6 +107,8 @@ public class BonCoverageTest
     [InlineData(0.1, 66)]
     [InlineData(double.PositiveInfinity, 64)]
     [InlineData(double.NegativeInfinity, 64)]
+    // Before the fix dumping NaN to JSON failed with ArgumentException from Utf8JsonWriter.
+    [InlineData(double.NaN, 66)]
     public void FloatsUseSmallestExactEncoding(double value, byte expectedCode)
     {
         var buf = Build((ref BonBuilder b) => b.Write(value));
@@ -120,6 +122,7 @@ public class BonCoverageTest
         var json = new Bon(buf).DumpToJson();
         if (double.IsPositiveInfinity(value)) Assert.Equal("\"+∞\"", json);
         else if (double.IsNegativeInfinity(value)) Assert.Equal("\"-∞\"", json);
+        else if (double.IsNaN(value)) Assert.Equal("\"NaN\"", json);
         else Assert.Equal(value, double.Parse(json, System.Globalization.CultureInfo.InvariantCulture));
     }
 

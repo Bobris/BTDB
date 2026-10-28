@@ -1359,6 +1359,9 @@ public struct Bon
                     case double.NegativeInfinity:
                         writer.WriteStringValue("-∞");
                         break;
+                    case double.NaN:
+                        writer.WriteStringValue("NaN");
+                        break;
                     default:
                         writer.WriteNumberValue(d);
                         break;

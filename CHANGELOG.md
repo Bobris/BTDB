@@ -77,6 +77,8 @@
 
 ### Fixed
 
+- Bon: `DumpToJson` failed with `ArgumentException` on a NaN value, which JSON numbers cannot hold. It now writes NaN
+  as the string `"NaN"`, as it writes infinities as `"+∞"` and `"-∞"`.
 - ObjectDB and the event store failed with "Cannot save type <>z__ReadOnlySingleElementList" for the list a one-item
   collection expression makes for `IEnumerable<T>`, `IReadOnlyCollection<T>` or `IReadOnlyList<T>`. They already saved
   the array such expressions make for more items and now save the one-item list too.
