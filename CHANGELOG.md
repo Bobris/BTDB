@@ -73,6 +73,11 @@
 
 ### Fixed
 
+- Event store: a damaged type id in a metadata log could make `EventDeserializer.ProcessMetadataLog` grow its type
+  table to that id, so a large one exhausted memory, and other damaged ids failed with `ArgumentOutOfRangeException` or
+  `NullReferenceException`; the types a failed log had read stayed behind for the next one. A type id outside what the
+  log can hold, a missing type id and a reference to an unknown type now report `BTDBException` ("Metadata
+  corrupted"), and a failed log leaves nothing behind.
 - Event store: damaged event data whose back reference pointed to no object read before failed with
   `ArgumentOutOfRangeException`, and one naming a type id without a type failed with `NullReferenceException`. The
   first now reports `InvalidDataException`, and the second is treated as missing metadata, like an unknown type id.

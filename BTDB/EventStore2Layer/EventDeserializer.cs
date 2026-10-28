@@ -143,87 +143,109 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
             fixed (void* _ = buffer.Buffer)
             {
                 var reader = MemReader.CreateFromPinnedSpan(buffer.AsSyncReadOnlySpan());
-                var typeId = reader.ReadVInt32();
-                while (typeId != 0)
+                try
                 {
-                    var typeCategory = (TypeCategory)reader.ReadUInt8();
-                    ITypeDescriptor descriptor;
-                    switch (typeCategory)
-                    {
-                        case TypeCategory.BuildIn:
-                            throw new ArgumentOutOfRangeException();
-                        case TypeCategory.Class:
-                            descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
-                            break;
-                        case TypeCategory.List:
-                            descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                            break;
-                        case TypeCategory.Dictionary:
-                            descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                            break;
-                        case TypeCategory.Enum:
-                            descriptor = new EnumTypeDescriptor(this, ref reader);
-                            break;
-                        case TypeCategory.Nullable:
-                            descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                            break;
-                        case TypeCategory.Tuple:
-                            descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    while (-typeId - 1 >= _id2InfoNew.Count)
-                        _id2InfoNew.Add(null);
-                    _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
-                    typeId = reader.ReadVInt32();
+                    ProcessMetadataLog(ref reader, buffer.Length);
                 }
-
-                for (var i = 0; i < _id2InfoNew.Count; i++)
+                finally
                 {
-                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d =>
-                        d is PlaceHolderDescriptor placeHolderDescriptor
-                            ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
-                            : d);
+                    // A damaged log leaves half its types read; they must not leak into the next log.
+                    _id2InfoNew.Clear();
+                    _remapToOld.Clear();
                 }
-
-                // This additional cycle is needed to fill names of recursive structures
-                for (var i = 0; i < _id2InfoNew.Count; i++)
-                {
-                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d);
-                }
-
-                for (var i = 0; i < _id2InfoNew.Count; i++)
-                {
-                    var infoForType = _id2InfoNew[i];
-                    for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
-                    {
-                        if (infoForType!.Descriptor.Equals(_id2Info[j]!.Descriptor))
-                        {
-                            _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
-                            _id2InfoNew[i] = _id2Info[j];
-                            infoForType = _id2InfoNew[i];
-                            break;
-                        }
-                    }
-
-                    if (infoForType!.Id < 0)
-                    {
-                        infoForType.Id = (int)_id2Info.Count;
-                        _id2Info.Add(infoForType);
-                        _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
-                    }
-                }
-
-                for (var i = 0; i < _id2InfoNew.Count; i++)
-                {
-                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => _remapToOld.TryGetValue(d, out var res) ? res : d);
-                }
-
-                _id2InfoNew.Clear();
-                _remapToOld.Clear();
             }
+        }
+    }
+
+    void ProcessMetadataLog(ref MemReader reader, int length)
+    {
+        var typeId = reader.ReadVInt32();
+        while (typeId != 0)
+        {
+            // New types have ids -1, -2, ...; each takes some bytes of the log, so a valid id is far below its
+            // length, and anything else is damage, which could otherwise make the table below exhaust memory.
+            if (typeId > 0 || -(long)typeId - 1 >= length) throw new BTDBException("Metadata corrupted");
+            var typeCategory = (TypeCategory)reader.ReadUInt8();
+            ITypeDescriptor descriptor;
+            switch (typeCategory)
+            {
+                case TypeCategory.BuildIn:
+                    throw new ArgumentOutOfRangeException();
+                case TypeCategory.Class:
+                    descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
+                    break;
+                case TypeCategory.List:
+                    descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                    break;
+                case TypeCategory.Dictionary:
+                    descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                    break;
+                case TypeCategory.Enum:
+                    descriptor = new EnumTypeDescriptor(this, ref reader);
+                    break;
+                case TypeCategory.Nullable:
+                    descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                    break;
+                case TypeCategory.Tuple:
+                    descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            while (-typeId - 1 >= _id2InfoNew.Count)
+                _id2InfoNew.Add(null);
+            _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
+            typeId = reader.ReadVInt32();
+        }
+
+        for (var i = 0; i < _id2InfoNew.Count; i++)
+        {
+            if (_id2InfoNew[i] == null) throw new BTDBException("Metadata corrupted");
+        }
+
+        for (var i = 0; i < _id2InfoNew.Count; i++)
+        {
+            _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d =>
+                d is PlaceHolderDescriptor placeHolderDescriptor
+                    ? -(long)placeHolderDescriptor.TypeId - 1 is var index && index >= 0 &&
+                      index < _id2InfoNew.Count
+                        ? _id2InfoNew[(int)index]!.Descriptor
+                        : throw new BTDBException("Metadata corrupted")
+                    : d);
+        }
+
+        // This additional cycle is needed to fill names of recursive structures
+        for (var i = 0; i < _id2InfoNew.Count; i++)
+        {
+            _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d);
+        }
+
+        for (var i = 0; i < _id2InfoNew.Count; i++)
+        {
+            var infoForType = _id2InfoNew[i];
+            for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
+            {
+                if (infoForType!.Descriptor.Equals(_id2Info[j]!.Descriptor))
+                {
+                    _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
+                    _id2InfoNew[i] = _id2Info[j];
+                    infoForType = _id2InfoNew[i];
+                    break;
+                }
+            }
+
+            if (infoForType!.Id < 0)
+            {
+                infoForType.Id = (int)_id2Info.Count;
+                _id2Info.Add(infoForType);
+                _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
+            }
+        }
+
+        for (var i = 0; i < _id2InfoNew.Count; i++)
+        {
+            _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => _remapToOld.TryGetValue(d, out var res) ? res : d);
         }
     }
 

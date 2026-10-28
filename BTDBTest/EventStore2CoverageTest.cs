@@ -198,4 +198,42 @@ public class EventStore2CoverageTest
         var deserializer = new EventDeserializer();
         Assert.Throws<InvalidDataException>(() => deserializer.Deserialize(out _, ByteBuffer.NewAsync(writer.GetSpan().ToArray())));
     }
+
+    [Generate]
+    public class MetadataProbe
+    {
+        public string? Name { get; set; }
+        public List<Holder>? Items { get; set; }
+    }
+
+    // Before the fix a damaged first type id made processing fill a table up to it, exhausting memory for a large one,
+    // or failed with ArgumentOutOfRangeException or NullReferenceException; and a failed log left its types behind.
+    [Theory]
+    [InlineData(-1_000_000_000)]
+    [InlineData(5)]
+    [InlineData(0)]
+    public void DamagedMetadataTypeIdIsReported(int firstId)
+    {
+        var value = new MetadataProbe { Name = "n", Items = [new()] };
+        var serializer = new EventSerializer();
+        var meta = serializer.Serialize(out var hasMetadata, value).ToByteArray();
+        Assert.True(hasMetadata);
+        serializer.ProcessMetadataLog(ByteBuffer.NewAsync(meta));
+        var data = serializer.Serialize(out _, value).ToByteArray();
+
+        var reader = MemReader.CreateFromPinnedSpan(meta);
+        var originalFirstId = reader.ReadVInt32();
+        var rest = meta.AsSpan((int)reader.GetCurrentPosition()).ToArray();
+        // 0 stands for an id that skips two ids and leaves a gap.
+        var writer = new MemWriter();
+        writer.WriteVInt32(firstId == 0 ? originalFirstId - 2 : firstId);
+        writer.WriteBlock(rest);
+        var damaged = writer.GetSpan().ToArray();
+
+        var deserializer = new EventDeserializer();
+        Assert.Throws<BTDBException>(() => deserializer.ProcessMetadataLog(ByteBuffer.NewAsync(damaged)));
+        deserializer.ProcessMetadataLog(ByteBuffer.NewAsync(meta));
+        Assert.True(deserializer.Deserialize(out var result, ByteBuffer.NewAsync(data)));
+        Assert.Equal("n", Assert.IsType<MetadataProbe>(result).Name);
+    }
 }
