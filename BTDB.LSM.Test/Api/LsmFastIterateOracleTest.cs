@@ -13,7 +13,7 @@ namespace BTDB.LSM.Test.Api;
 /// erased key. BTreeKeyValueDB is the reference for LsmKeyValueDB and InMemoryKeyValueDB.
 public class LsmFastIterateOracleTest
 {
-    public static IEnumerable<object[]> Seeds() => Enumerable.Range(1, 300).Select(seed => new object[] { seed });
+    public static IEnumerable<object[]> Seeds() => Enumerable.Range(1, 1000).Select(seed => new object[] { seed });
 
     [Theory]
     [MemberData(nameof(Seeds))]
@@ -44,11 +44,34 @@ public class LsmFastIterateOracleTest
         var log = new List<string>();
         try
         {
-            for (var step = 0; step < 80; step++)
+            for (var step = 0; step < 120; step++)
             {
+                if (random.Next(25) == 0)
+                {
+                    // End the transaction, sometimes flushing the LSM memtable into tables, and start another one.
+                    var commit = random.Next(3) != 0;
+                    log.Add($"{step}: {(commit ? "commit" : "rollback")}");
+                    foreach (var other in cursors)
+                    foreach (var x in other)
+                        x.Dispose();
+                    foreach (var t in transactions)
+                    {
+                        if (commit) t.Commit();
+                        t.Dispose();
+                    }
+
+                    if (random.Next(2) == 0) await lsmDb.FlushAsync();
+                    transactions.Clear();
+                    foreach (var db in dbs) transactions.Add(await db.StartWritingTransaction());
+                    cursors = Enumerable.Range(0, 3).Select(_ => transactions.Select(t => t.CreateCursor()).ToArray())
+                        .ToArray();
+                    Assert.All(transactions, t => Assert.Equal(transactions[0].GetKeyValueCount(), t.GetKeyValueCount()));
+                    continue;
+                }
+
                 var ci = random.Next(cursors.Length);
                 var c = cursors[ci];
-                var op = random.Next(14);
+                var op = random.Next(20);
                 var key = RandomKey(random);
                 log.Add($"{step}: op {op} cursor {ci} key {Convert.ToHexString(key)}");
                 switch (op)
@@ -117,12 +140,43 @@ public class LsmFastIterateOracleTest
                         Same(c, x => IterateNoCursor(x, stop));
                         break;
                     }
-                    default:
+                    case 12:
                     {
                         var stop = random.Next(1, 8);
                         Same(c, x => Iterate(x, stop));
                         break;
                     }
+                    case 13:
+                    {
+                        var prefix = key[..random.Next(key.Length + 1)];
+                        Same(c, x => x.FindFirstKey(prefix));
+                        break;
+                    }
+                    case 14:
+                    {
+                        var prefix = key[..random.Next(key.Length + 1)];
+                        Same(c, x => x.FindLastKey(prefix));
+                        break;
+                    }
+                    case 15:
+                    {
+                        var prefix = key[..random.Next(key.Length + 1)];
+                        var index = random.Next(-1, 6);
+                        Same(c, x => x.FindKeyIndex(prefix, index));
+                        break;
+                    }
+                    case 16:
+                        Same(c, x => x.FindExactKey(key));
+                        break;
+                    case 17:
+                        Same(c, x => { x.Invalidate(); return x.IsValid(); });
+                        break;
+                    case 18:
+                        if (c[0].IsValid()) Same(c, x => Convert.ToHexString(x.SlowGetValue()));
+                        break;
+                    default:
+                        Same(c, x => x.GetKeyIndex());
+                        break;
                 }
 
                 // A fuzzy cursor is invalid in BTreeKeyValueDB but remembers its key in the others, as the oracle
@@ -181,8 +235,8 @@ public class LsmFastIterateOracleTest
 
     static byte[] RandomKey(Random random)
     {
-        var key = new byte[random.Next(0, 3)];
-        for (var i = 0; i < key.Length; i++) key[i] = (byte)(random.Next(3) * 0x7F);
+        var key = new byte[random.Next(0, 4)];
+        for (var i = 0; i < key.Length; i++) key[i] = (byte)(random.Next(4) * 0x55);
         return key;
     }
 
