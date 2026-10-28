@@ -77,6 +77,9 @@
 
 ### Fixed
 
+- ObjectDB and the event store failed with "Cannot save type <>z__ReadOnlySingleElementList" for the list a one-item
+  collection expression makes for `IEnumerable<T>`, `IReadOnlyCollection<T>` or `IReadOnlyList<T>`. They already saved
+  the array such expressions make for more items and now save the one-item list too.
 - Bon serialization: members typed as a collection interface, such as `IList<T>`, `IReadOnlyList<T>`, `ISet<T>`,
   `IEnumerable<T>`, `IDictionary<TKey,TValue>` or `IReadOnlyDictionary<TKey,TValue>`, deserialized as null. They now
   load as the `List`, `HashSet` or `Dictionary` the generated collection metadata creates, and a registered class such

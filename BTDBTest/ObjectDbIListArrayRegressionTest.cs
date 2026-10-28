@@ -167,4 +167,53 @@ public class ObjectDbIListArrayRegressionTest : ObjectDbTestBase
             IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
         }
     }
+
+    public class CompilerListRow
+    {
+        [PrimaryKey]
+        public ulong Id { get; set; }
+
+        public IList<int> Values { get; set; } = null!;
+
+        [SecondaryKey("Key")]
+        public IList<ulong> Key { get; set; } = null!;
+    }
+
+    public interface ICompilerListRowTable : IRelation<CompilerListRow>
+    {
+        CompilerListRow FindById(ulong id);
+        IEnumerable<CompilerListRow> ListByKey(IList<ulong> key);
+    }
+
+    // Before the fix the list a one-item collection expression makes for IReadOnlyList<T> failed to save.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void IListPropertyBackedBySingleItemCollectionExpressionShouldWork(bool noEmit)
+    {
+        var oldUseNoEmitForRelations = IFieldHandler.UseNoEmitForRelations;
+        IFieldHandler.UseNoEmitForRelations = noEmit;
+        try
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.GetRelation<ICompilerListRowTable>().Upsert(new CompilerListRow
+                {
+                    Id = 1, Values = (IList<int>)(IReadOnlyList<int>)[5], Key = (IList<ulong>)(IReadOnlyList<ulong>)[9]
+                });
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using var tr2 = _db.StartReadOnlyTransaction();
+            var table = tr2.GetRelation<ICompilerListRowTable>();
+            Assert.Equal([5], table.FindById(1).Values);
+            Assert.Equal(1ul, table.ListByKey(new List<ulong> { 9 }).Single().Id);
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
+        }
+    }
 }

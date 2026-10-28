@@ -369,6 +369,13 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     return;
                 }
 
+                if (IsSingleElementList(objType, itemType))
+                {
+                    writer.WriteVUInt32(2);
+                    saveItem(ref writer, ctx, ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+                    return;
+                }
+
                 else if (IsCollectionWrapper(objType, itemType))
                 {
                     obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
@@ -476,6 +483,12 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     return;
                 }
 
+                if (IsSingleElementList(objType, itemType))
+                {
+                    nestedNewDescriptor(ctx, ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+                    return;
+                }
+
                 else if (IsCollectionWrapper(objType, itemType))
                 {
                     obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
@@ -486,6 +499,14 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 }
             }
         };
+    }
+
+    // A collection expression of one item for IEnumerable<T>, IReadOnlyCollection<T> or IReadOnlyList<T> makes this
+    // compiler type, whose only field, the item, follows the method table pointer.
+    static bool IsSingleElementList(Type objType, Type itemType)
+    {
+        return objType.IsGenericType && objType.Name == "<>z__ReadOnlySingleElementList`1" &&
+               objType.GenericTypeArguments[0] == itemType;
     }
 
     static bool IsCollectionWrapper(Type objType, Type itemType)

@@ -277,4 +277,30 @@ public class EventStore2CoverageTest
             mapping.LoadTypeDescriptors(ref reader);
         });
     }
+
+    [Generate]
+    public class WithReadOnlyCollections
+    {
+        public IReadOnlyList<int>? List { get; set; }
+        public IEnumerable<string>? Single { get; set; }
+        public IEnumerable<int>? Many { get; set; }
+    }
+
+    // Before the fix the list a one-item collection expression makes for IEnumerable<T> failed to save.
+    [Fact]
+    public void CollectionExpressionsForReadOnlyInterfacesRoundTrip()
+    {
+        var value = new WithReadOnlyCollections { List = [1], Single = ["a"], Many = [2, 3] };
+        var serializer = new EventSerializer();
+        var meta = serializer.Serialize(out _, value).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out _, value);
+        var deserializer = new EventDeserializer();
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out var result, data));
+        var read = (WithReadOnlyCollections)result!;
+        Assert.Equal([1], read.List);
+        Assert.Equal(["a"], read.Single);
+        Assert.Equal([2, 3], read.Many);
+    }
 }

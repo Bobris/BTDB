@@ -327,6 +327,11 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                         saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
                     }
                 }
+                else if (IsSingleElementList(objType, itemType))
+                {
+                    writer.WriteVUInt32(1);
+                    saveItem(ref writer, ctx, ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+                }
                 else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
             }
             else
@@ -334,6 +339,14 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                 writer.WriteVUInt32(0);
             }
         };
+    }
+
+    // A collection expression of one item for IEnumerable<T>, IReadOnlyCollection<T> or IReadOnlyList<T> makes this
+    // compiler type, whose only field, the item, follows the method table pointer.
+    static bool IsSingleElementList(Type objType, Type itemType)
+    {
+        return objType.IsGenericType && objType.Name == "<>z__ReadOnlySingleElementList`1" &&
+               objType.GenericTypeArguments[0] == itemType;
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
