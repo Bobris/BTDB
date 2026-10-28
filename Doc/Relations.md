@@ -707,10 +707,14 @@ in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).
 
 ## Modification check during enumeration
 
-When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is
-still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate`
-in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during
-enumerating by secondary indexes are not detected at this moment.
+Relations can be modified while they are enumerated; enumerators are not invalidated (see
+`CheckModificationDuringEnumerate` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)). Removing each listed item
+while enumerating lists every item once, also for ranges of `ListBy…` with an `AdvancedEnumeratorParam` in both orders,
+which stop at their key bounds (`RemovingEachListedItemListsEveryItemOnce` and
+`RemovingListedItemsKeepsEnumerationInRange` in
+[ObjectDbAdvancedEnumeratorBoundaryTest](../BTDBTest/ObjectDbAdvancedEnumeratorBoundaryTest.cs)). An item inserted, or
+moved by an update of the key being enumerated, ahead of the enumerator can be listed, so code that moves items along
+the order it enumerates may meet them again.
 
 ## OnCreate
 

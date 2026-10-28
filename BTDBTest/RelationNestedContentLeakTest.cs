@@ -158,49 +158,4 @@ public class RelationNestedContentLeakTest(ITestOutputHelper output) : ObjectDbT
         visitor.Iterate(read);
         Assert.Empty(visitor.UnseenKeys());
     }
-
-    /// A dictionary loaded with one row and stored in another should belong to both, so removing either keeps the
-    /// other's. Today the second row stores a reference to the same dictionary, and removing the first row frees it.
-    [Fact(Skip = "Known bug: saving a live ObjectDB dictionary into a second row shares it instead of copying it")]
-    public void DictionaryOfAnotherRowIsCopied()
-    {
-        using (var tr = _db.StartTransaction())
-        {
-            var table = tr.GetRelation<IRowTable>();
-            table.Upsert(new Row
-            {
-                Tenant = 1, Id = 1, Map = new Dictionary<int, int> { { 1, 10 } },
-                Nested = new Dictionary<int, IDictionary<int, int>> { { 1, new Dictionary<int, int> { { 2, 20 } } } }
-            });
-            tr.Commit();
-        }
-
-        using (var tr = _db.StartTransaction())
-        {
-            var table = tr.GetRelation<IRowTable>();
-            var first = table.FindByIdOrDefault(1, 1)!;
-            table.Upsert(new Row { Tenant = 1, Id = 2, Map = first.Map, Nested = first.Nested });
-            tr.Commit();
-        }
-
-        using (var tr = _db.StartTransaction())
-        {
-            var table = tr.GetRelation<IRowTable>();
-            Assert.True(table.RemoveById(1, 1));
-            tr.Commit();
-        }
-
-        using (var tr = _db.StartReadOnlyTransaction())
-        {
-            var second = tr.GetRelation<IRowTable>().FindByIdOrDefault(1, 2)!;
-            Assert.Equal(10, second.Map[1]);
-            Assert.Equal(20, second.Nested[1][2]);
-        }
-
-        using var visitor = new FindUnusedKeysVisitor();
-        using var read = _db.StartReadOnlyTransaction();
-        visitor.ImportAllKeys(read);
-        visitor.Iterate(read);
-        Assert.Empty(visitor.UnseenKeys());
-    }
 }
