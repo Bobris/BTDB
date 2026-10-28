@@ -100,12 +100,6 @@ If you want to make Func<...> resolvable just declare new delegate with same sig
 attribute.
 It means that previous example also allows to use `Func<int, IMyService>`.
 
-```csharp
-[Generate]
-
-
-```
-
 ### How to generate for specific generic type instance
 
 ```csharp
