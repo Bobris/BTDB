@@ -127,6 +127,66 @@ public class FieldHandlerUpgradeConversionTest : FieldHandlerCoverageTestBase
     }
 
     [Generate]
+    public class ExtremesV1
+    {
+        public uint UIntToLong { get; set; }
+        public int IntToULong { get; set; }
+        public short ShortToULong { get; set; }
+        public long LongToULong { get; set; }
+        public ulong ULongToLong { get; set; }
+        public int IntToUInt { get; set; }
+        public uint UIntToDouble { get; set; }
+        public ulong ULongToDouble { get; set; }
+        public ulong ULongToFloat { get; set; }
+        public long LongToDouble { get; set; }
+    }
+
+    [Generate]
+    public class ExtremesV2
+    {
+        public long UIntToLong { get; set; }
+        public ulong IntToULong { get; set; }
+        public ulong ShortToULong { get; set; }
+        public ulong LongToULong { get; set; }
+        public long ULongToLong { get; set; }
+        public uint IntToUInt { get; set; }
+        public double UIntToDouble { get; set; }
+        public double ULongToDouble { get; set; }
+        public float ULongToFloat { get; set; }
+        public double LongToDouble { get; set; }
+    }
+
+    /// Values at the edges of their types read back as other numeric types like C# casts, or are reported.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExtremeNumericConversions(bool emit)
+    {
+        using var _ = EmitMode(emit);
+        var v1 = new ExtremesV1
+        {
+            UIntToLong = uint.MaxValue, IntToULong = -1, ShortToULong = short.MinValue, LongToULong = long.MinValue,
+            ULongToLong = ulong.MaxValue, IntToUInt = -1, UIntToDouble = uint.MaxValue, ULongToDouble = ulong.MaxValue,
+            ULongToFloat = ulong.MaxValue, LongToDouble = long.MinValue
+        };
+        var v2 = StoreAndReloadAs<ExtremesV1, ExtremesV2>(v1, "Extremes");
+        var logged = string.Join(Environment.NewLine, LoggedMessages);
+        var actual = new object[]
+        {
+            v2.UIntToLong, v2.IntToULong, v2.ShortToULong, v2.LongToULong, v2.ULongToLong, v2.IntToUInt,
+            v2.UIntToDouble, v2.ULongToDouble, v2.ULongToFloat, v2.LongToDouble
+        };
+        var expected = new object[]
+        {
+            (long)v1.UIntToLong, unchecked((ulong)v1.IntToULong), unchecked((ulong)v1.ShortToULong),
+            unchecked((ulong)v1.LongToULong), unchecked((long)v1.ULongToLong), unchecked((uint)v1.IntToUInt),
+            (double)v1.UIntToDouble, (double)v1.ULongToDouble, (float)v1.ULongToFloat, (double)v1.LongToDouble
+        };
+        Assert.True(expected.SequenceEqual(actual),
+            $"expected {string.Join(", ", expected)}{Environment.NewLine}actual {string.Join(", ", actual)}{Environment.NewLine}{logged}");
+    }
+
+    [Generate]
     public class SpecialV1
     {
         public byte[]? BytesToBuffer { get; set; }
