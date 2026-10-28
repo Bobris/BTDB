@@ -182,7 +182,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         _transactionLogSizeStrategy = options.TransactionLogSizeStrategy;
         Logger = options.Logger;
         _compactorScheduler = options.CompactorScheduler;
-        _kviCompressionStrategy = options.KviCompressionStrategy;
+        _kviCompressionStrategy = options.KviCompressionStrategy ??
+                                  throw new ArgumentNullException(nameof(options.KviCompressionStrategy));
         _maxTrLogFileSize = _fileSplitSize = options.FileSplitSize;
         AutoAdjustFileSize = options.AutoAdjustFileSize;
         _readOnly = options.ReadOnly;

@@ -48,7 +48,8 @@
   `ArgumentOutOfRangeException` when a topic is opened.
 - `LsmKeyValueDB.OpenAsync` accepted options the engine cannot run with. A `WalUploadParallelism` of zero spun forever
   in the WAL upload, a `LeaseSafetyMargin` covering the whole `LeaseDuration` kept every writer takeover retrying, a
-  zero `RefreshRetryInterval` spun while waiting for a commit, and a `LevelCount` of one crashed the first compaction.
+  zero `RefreshRetryInterval` spun while waiting for a commit, a `LevelCount` of one crashed the first compaction, and a
+  `Level0StopWritesTrigger` below `Level0CompactionTrigger` stopped writes before level 0 could compact, for good.
   Open now validates the options and throws `ArgumentOutOfRangeException` for such values.
 - Event log over HTTP: with `SplitCap` above `MaxRecordSize` plus 8 MiB, a committed batch of small records could
   exceed the peer message limit, which was derived from `MaxRecordSize` alone. A subscriber then rejected the live

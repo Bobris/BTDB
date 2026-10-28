@@ -46,12 +46,13 @@ public class LsmLimitsTest
     public static TheoryData<string> InvalidOptions => new()
     {
         nameof(LsmKeyValueDBOptions.WalUploadParallelism), nameof(LsmKeyValueDBOptions.LeaseSafetyMargin),
-        nameof(LsmKeyValueDBOptions.RefreshRetryInterval), nameof(LsmKeyValueDBOptions.LevelCount)
+        nameof(LsmKeyValueDBOptions.RefreshRetryInterval), nameof(LsmKeyValueDBOptions.LevelCount),
+        nameof(LsmKeyValueDBOptions.Level0StopWritesTrigger)
     };
 
     /// Before the fix such options were taken as given: a zero upload parallelism spun in the WAL upload, a safety
     /// margin covering the lease kept every takeover retrying, a zero refresh interval spun while waiting for a commit,
-    /// and a single level crashed the first compaction.
+    /// a single level crashed the first compaction, and writes stopping before level 0 compacts waited forever.
     [Theory]
     [MemberData(nameof(InvalidOptions))]
     public async Task OptionsTheEngineCannotRunWithAreRejectedOnOpen(string option)
@@ -62,6 +63,10 @@ public class LsmLimitsTest
             nameof(LsmKeyValueDBOptions.WalUploadParallelism) => options with { WalUploadParallelism = 0 },
             nameof(LsmKeyValueDBOptions.LeaseSafetyMargin) => options with { LeaseSafetyMargin = options.LeaseDuration },
             nameof(LsmKeyValueDBOptions.RefreshRetryInterval) => options with { RefreshRetryInterval = TimeSpan.Zero },
+            nameof(LsmKeyValueDBOptions.Level0StopWritesTrigger) => options with
+            {
+                Level0CompactionTrigger = 8, Level0StopWritesTrigger = 4
+            },
             _ => options with { LevelCount = 1 }
         };
         await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(async () =>

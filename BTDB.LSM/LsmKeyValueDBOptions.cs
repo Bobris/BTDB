@@ -141,7 +141,8 @@ public sealed record LsmKeyValueDBOptions
     public IKeyValueDBLogger? Logger { get; init; }
 
     /// Rejects values the engine cannot run with: a zero upload parallelism or refresh interval would spin, a safety
-    /// margin covering the whole lease would never let a writer write, and a single level has nowhere to compact to.
+    /// margin covering the whole lease would never let a writer write, a single level has nowhere to compact to, and
+    /// writes stopping before level 0 compacts would never resume.
     internal void Validate()
     {
         ArgumentNullException.ThrowIfNull(Storage);
@@ -161,7 +162,9 @@ public sealed record LsmKeyValueDBOptions
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(TargetFileSize);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(TableTailReadSize);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxImmutableMemtables);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Level0StopWritesTrigger);
+        // Writes stop at Level0StopWritesTrigger runs, and only Level0CompactionTrigger runs start the compaction that
+        // resumes them.
+        ArgumentOutOfRangeException.ThrowIfLessThan(Level0StopWritesTrigger, Level0CompactionTrigger);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(LeaseDuration, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfLessThan(LeaseSafetyMargin, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(LeaseSafetyMargin, LeaseDuration);
