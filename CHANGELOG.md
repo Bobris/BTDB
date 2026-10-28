@@ -45,6 +45,8 @@
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
     listed keys, and the index comparison used before leaves the range.
+  - `BTDB/Proofs/`, transaction log replay: a log ended by damage or inside a transaction replays to exactly the
+    transactions committed before it.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 

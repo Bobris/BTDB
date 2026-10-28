@@ -64,3 +64,5 @@ open Btdb
 #print axioms Creator.groups_shrink
 #print axioms RangeEnumeration.index_stop_leaves_range
 #print axioms RangeEnumeration.key_stop_lists_range
+#print axioms Replay.replay_stops_at_damage
+#print axioms Replay.replay_drops_unfinished
