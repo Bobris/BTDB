@@ -90,3 +90,6 @@ open Btdb
 #print axioms SerializerPlaceholder.previous_stale_placeholder
 #print axioms BonNesting.fixed_depth
 #print axioms BonNesting.previous_unbounded
+#print axioms EventMetadataIds.written_index_below_length
+#print axioms EventMetadataIds.written_indices_fill
+#print axioms EventMetadataIds.large_index_rejected

@@ -21,3 +21,4 @@ import BtdbProofs.PreservedIndex
 import BtdbProofs.HintNames
 import BtdbProofs.SerializerPlaceholder
 import BtdbProofs.BonNesting
+import BtdbProofs.EventMetadataIds

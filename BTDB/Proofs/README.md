@@ -93,6 +93,9 @@ of the transaction log and of a key index that points into it.
 `BtdbProofs/PreservedIndex.lean` models which key indexes `BTreeKeyValueDB.CreateIndexFile` keeps when it writes a new
 one under `PreserveHistoryUpToCommitUlong`.
 
+`BtdbProofs/EventMetadataIds.lean` models the type ids `EventSerializer` writes into a metadata log and the checks
+`EventDeserializer.ProcessMetadataLog` makes on them (`../EventStore2Layer/`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -150,6 +153,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `PreservedIndex.previous_drops_preserved` | Before the 2026-10-28 fix `CreateKvi` kept only its new index, so opening at the preserved commit opened a later one (`KeyValueDBHistoryOpenTest`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
+| `EventMetadataIds.written_index_below_length`, `EventMetadataIds.written_indices_fill` | Every type id the serializer writes passes the deserializer's length check, and the ids fill the type table without gaps, so the checks reject no valid metadata log. |
+| `EventMetadataIds.large_index_rejected` | A type id whose index the log cannot hold, as damage leaves, is rejected before the table grows to it (`EventStore2CoverageTest.DamagedMetadataTypeIdIsReported`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

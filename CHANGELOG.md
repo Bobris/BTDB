@@ -49,6 +49,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
+  - `BTDB/Proofs/`, event metadata: the checks on type ids reject no metadata log the serializer writes, and reject
+    an id the log cannot hold before the type table grows to it;
   - `BTDB/Proofs/`, Bon reading: containers that readers accept nest at most as deep as the data is long, even when
     damage makes a container's items run past its pointer;
   - `BTDB/Proofs/`, Bon serializer creation: once no creation of a type runs, the placeholder cached for recursive types
@@ -86,7 +88,7 @@
   table to that id, so a large one exhausted memory, and other damaged ids failed with `ArgumentOutOfRangeException` or
   `NullReferenceException`; the types a failed log had read stayed behind for the next one. A type id outside what the
   log can hold, a missing type id and a reference to an unknown type now report `BTDBException` ("Metadata
-  corrupted"), and a failed log leaves nothing behind.
+  corrupted"), and a failed log leaves nothing behind (`BTDB/Proofs/BtdbProofs/EventMetadataIds.lean`).
 - Event store: damaged event data whose back reference pointed to no object read before failed with
   `ArgumentOutOfRangeException`, and one naming a type id without a type failed with `NullReferenceException`. The
   first now reports `InvalidDataException`, and the second is treated as missing metadata, like an unknown type id.
