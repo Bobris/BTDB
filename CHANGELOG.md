@@ -27,7 +27,7 @@
     - counted entries add up across components, and the compaction merge preserves each key's state and count;
     - manifest fencing gives every writer session a fresh epoch.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
-    for every prefix-free, order-preserving key encoding.
+    for every prefix-free, order-preserving key encoding, and the unsigned variable-length integer encoding is one.
 
 ### Fixed
 
