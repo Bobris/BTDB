@@ -1,0 +1,5 @@
+name = "BtdbProofs"
+defaultTargets = ["BtdbProofs"]
+
+[[lean_lib]]
+name = "BtdbProofs"

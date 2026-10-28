@@ -5726,7 +5726,8 @@ sealed class RelationQueryRange
     /// Whether the key, already known to be at or after Start, is past the upper bound.
     public bool IsPastStop(ReadOnlySpan<byte> rest)
     {
-        // Encodings are prefix free, so a key either starts with the bound encoding or differs within it.
+        // Encodings are prefix free, so a key either starts with the bound encoding or differs within it
+        // (BTDB/Proofs, KeyRange.lean).
         var equal = rest.StartsWith(Stop);
         return StopInclusive ? !equal && rest.SequenceCompareTo(Stop) > 0 : equal || rest.SequenceCompareTo(Stop) > 0;
     }
