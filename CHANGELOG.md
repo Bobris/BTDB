@@ -63,6 +63,8 @@
 
 ### Fixed
 
+- `ReadOnlyKeyValueDB` threw `EndOfStreamException` or `OverflowException` for a damaged header whose counts ran past
+  the data, where truncated data is documented to throw `InvalidDataException`. Found by fuzzing damaged images.
 - Replaying a damaged `BTreeKeyValueDB` transaction log allocated whatever key length a command declared before
   reading the key, so a damaged length could allocate up to 2 GiB, and one beyond the maximum array size failed the
   open with `OutOfMemoryException` instead of ending replay. A length beyond the rest of the file now counts as

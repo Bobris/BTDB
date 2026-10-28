@@ -75,14 +75,22 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
         var reader = new MemReader((void*)begin, (int)Math.Min(totalLength - 4, int.MaxValue));
         if (!reader.CheckMagic(ReadOnlyFormat.Magic)) throw new InvalidDataException("Wrong header magic");
         if (reader.ReadInt16BE() != ReadOnlyFormat.Version) throw new InvalidDataException("Unsupported version");
-        KeyValueCount = checked((long)reader.ReadVUInt64());
-        CommitUlong = reader.ReadVUInt64();
-        var ulongCount = reader.ReadVUInt32();
-        if (ulongCount > totalLength) throw new InvalidDataException("Corrupted read only database header");
-        Ulongs = new ulong[ulongCount];
-        for (var i = 0u; i < ulongCount; i++)
+        try
         {
-            Ulongs[i] = reader.ReadVUInt64();
+            KeyValueCount = checked((long)reader.ReadVUInt64());
+            CommitUlong = reader.ReadVUInt64();
+            var ulongCount = reader.ReadVUInt32();
+            if (ulongCount > totalLength) throw new InvalidDataException("Corrupted read only database header");
+            Ulongs = new ulong[ulongCount];
+            for (var i = 0u; i < ulongCount; i++)
+            {
+                Ulongs[i] = reader.ReadVUInt64();
+            }
+        }
+        // A header running past the data or holding a count no long can, as damage leaves, is truncated data.
+        catch (Exception error) when (error is EndOfStreamException or OverflowException)
+        {
+            throw new InvalidDataException("Corrupted read only database header", error);
         }
 
         RootOffset = ReadOnlyFormat.ReadUInt32LE(begin + totalLength - 4);
