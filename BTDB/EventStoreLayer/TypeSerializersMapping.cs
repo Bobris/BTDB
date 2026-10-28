@@ -263,6 +263,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
     public object? LoadObject(ref MemReader reader)
     {
+        EventNesting.EnsureStack("read");
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
         {
@@ -296,6 +297,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
     public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
     {
+        EventNesting.EnsureStack("store");
         if (obj == null) return this;
         InfoForType infoForType;
         var objType = obj.GetType();
@@ -426,6 +428,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
         public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
         {
+            EventNesting.EnsureStack("store");
             if (obj == null) return this;
             if (!_visited.Add(obj)) return this;
             InfoForType infoForType;
@@ -489,6 +492,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
         public void StoreObject(ref MemWriter writer, object? obj)
         {
+            EventNesting.EnsureStack("store");
             if (obj == null)
             {
                 writer.WriteUInt8(0);
@@ -560,6 +564,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
     public void StoreObject(ref MemWriter writer, object? obj)
     {
+        EventNesting.EnsureStack("store");
         if (obj == null)
         {
             writer.WriteUInt8(0);
@@ -635,6 +640,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
         public void StoreObject(ref MemWriter writer, object? obj)
         {
+            EventNesting.EnsureStack("store");
             if (obj == null)
             {
                 writer.WriteByteZero();

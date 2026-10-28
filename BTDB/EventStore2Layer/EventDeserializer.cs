@@ -329,6 +329,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
 
     public object? LoadObject(ref MemReader reader)
     {
+        EventNesting.EnsureStack("read");
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
         {
@@ -390,6 +391,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
 
     public void SkipObject(ref MemReader reader)
     {
+        EventNesting.EnsureStack("read");
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
         {

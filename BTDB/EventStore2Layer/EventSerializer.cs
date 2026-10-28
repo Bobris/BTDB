@@ -563,6 +563,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     public void StoreNewDescriptors(object? obj)
     {
+        EventNesting.EnsureStack("store");
         if (obj == null) return;
         if (_visited.ContainsKey(obj)) return;
         _visited.Add(obj, _visited.Count);
@@ -772,6 +773,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     public void StoreObject(ref MemWriter writer, object? obj)
     {
+        EventNesting.EnsureStack("store");
         if (_newTypeFound) return;
         if (obj == null)
         {

@@ -455,6 +455,7 @@ public class TypeSerializers : ITypeSerializers
 
         public object? LoadObject(ref MemReader reader)
         {
+            EventNesting.EnsureStack("read");
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
             {
@@ -506,6 +507,7 @@ public class TypeSerializers : ITypeSerializers
 
         public void SkipObject(ref MemReader reader)
         {
+            EventNesting.EnsureStack("read");
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
             {

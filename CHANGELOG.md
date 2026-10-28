@@ -81,6 +81,9 @@
 
 ### Fixed
 
+- Event store: an event whose objects nest deeper than the stack holds, like a long linked list, overflowed the stack
+  and ended the process when stored in either event store version, and when read on a thread with a smaller stack than
+  the one that wrote it or from damaged data. Both now fail with `BTDBException`.
 - ObjectDB: inline objects nested deeper than the stack holds, like a long linked list of inline nodes, overflowed the
   stack and ended the process when written, and when read on a thread with a smaller stack than the one that wrote
   them or from damaged data. Both now fail with `BTDBException`.
