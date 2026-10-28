@@ -139,6 +139,46 @@ public sealed record LsmKeyValueDBOptions
     public double ValueGcThreshold { get; init; } = 0.5;
 
     public IKeyValueDBLogger? Logger { get; init; }
+
+    /// Rejects values the engine cannot run with: a zero upload parallelism or refresh interval would spin, a safety
+    /// margin covering the whole lease would never let a writer write, and a single level has nowhere to compact to.
+    internal void Validate()
+    {
+        ArgumentNullException.ThrowIfNull(Storage);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MemtableSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxTransactionMemory);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxTransactionSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(BlockSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(RestartInterval);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(IndexPartitionSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(BloomBitsPerKey);
+        ArgumentOutOfRangeException.ThrowIfNegative(BlockCacheSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(PointDeleteRangeLimit);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Level0CompactionTrigger);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(LevelBaseBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(LevelMultiplier);
+        ArgumentOutOfRangeException.ThrowIfLessThan(LevelCount, 2);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(TargetFileSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(TableTailReadSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxImmutableMemtables);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Level0StopWritesTrigger);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(LeaseDuration, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(LeaseSafetyMargin, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(LeaseSafetyMargin, LeaseDuration);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(LeaseRetryInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(WalChunkTargetSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(WalFlushInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(AdaptiveWalLingerMax, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(WalUploadParallelism);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxUnflushedWalBytes);
+        ArgumentOutOfRangeException.ThrowIfLessThan(WorkerFailureTimeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(DeletionGracePeriod, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(RefreshRetryInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(ManifestListInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegative(ValueSeparationThreshold);
+        if (ValueGcThreshold is < 0 or > 1 || double.IsNaN(ValueGcThreshold))
+            throw new ArgumentOutOfRangeException(nameof(ValueGcThreshold));
+    }
 }
 
 public interface ILsmKeyValueDB : IKeyValueDB

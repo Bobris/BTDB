@@ -80,6 +80,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     public static async ValueTask<LsmKeyValueDB> OpenAsync(LsmKeyValueDBOptions options,
         CancellationToken cancellation = default)
     {
+        options.Validate();
         var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
         var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
         if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);

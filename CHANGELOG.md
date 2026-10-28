@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- `LsmKeyValueDB.OpenAsync` accepted options the engine cannot run with. A `WalUploadParallelism` of zero spun forever
+  in the WAL upload, a `LeaseSafetyMargin` covering the whole `LeaseDuration` kept every writer takeover retrying, a
+  zero `RefreshRetryInterval` spun while waiting for a commit, and a `LevelCount` of one crashed the first compaction.
+  Open now validates the options and throws `ArgumentOutOfRangeException` for such values.
 - Event log over HTTP: with `SplitCap` above `MaxRecordSize` plus 8 MiB, a committed batch of small records could
   exceed the peer message limit, which was derived from `MaxRecordSize` alone. A subscriber then rejected the live
   message, took the owner for unreachable and could take a healthy topic over. The limit now covers the largest

@@ -43,6 +43,33 @@ public class LsmLimitsTest
         return tr.GetKeyValueCount();
     }
 
+    public static TheoryData<string> InvalidOptions => new()
+    {
+        nameof(LsmKeyValueDBOptions.WalUploadParallelism), nameof(LsmKeyValueDBOptions.LeaseSafetyMargin),
+        nameof(LsmKeyValueDBOptions.RefreshRetryInterval), nameof(LsmKeyValueDBOptions.LevelCount)
+    };
+
+    /// Before the fix such options were taken as given: a zero upload parallelism spun in the WAL upload, a safety
+    /// margin covering the lease kept every takeover retrying, a zero refresh interval spun while waiting for a commit,
+    /// and a single level crashed the first compaction.
+    [Theory]
+    [MemberData(nameof(InvalidOptions))]
+    public async Task OptionsTheEngineCannotRunWithAreRejectedOnOpen(string option)
+    {
+        var options = new LsmKeyValueDBOptions { Storage = new InMemoryLsmStorage() };
+        options = option switch
+        {
+            nameof(LsmKeyValueDBOptions.WalUploadParallelism) => options with { WalUploadParallelism = 0 },
+            nameof(LsmKeyValueDBOptions.LeaseSafetyMargin) => options with { LeaseSafetyMargin = options.LeaseDuration },
+            nameof(LsmKeyValueDBOptions.RefreshRetryInterval) => options with { RefreshRetryInterval = TimeSpan.Zero },
+            _ => options with { LevelCount = 1 }
+        };
+        await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            using var db = await LsmKeyValueDB.OpenAsync(options);
+        });
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
