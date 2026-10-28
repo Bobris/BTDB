@@ -155,7 +155,7 @@ public class SourceGenerator : IIncrementalGenerator
                                     $"Interface '{symbol.Name}' with dispatchers can be nested only in partial types",
                                     symbol.Locations[0]);
                             var parentDeclarations = parents
-                                .Select(p => p.Modifiers + " " + p.Keyword.ValueText + " " + p.Identifier.ValueText +
+                                .Select(p => p.Modifiers + " " + p.Keyword.ValueText + " " + p.Identifier.Text +
                                              p.TypeParameterList)
                                 .ToArray();
                             var containingNamespace = symbol.ContainingNamespace;
@@ -1807,7 +1807,7 @@ public class SourceGenerator : IIncrementalGenerator
                         return "";
                     }
 
-                    return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
+                    return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.Text;
                 }).ToArray();
         }
 
@@ -3098,7 +3098,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         // language=c#
         factoryCode.Append($$"""
-            public partial interface {{generationInfo.Name}}
+            public partial interface {{CSharpSyntaxUtilities.EscapeIdentifier(generationInfo.Name)}}
             {
             """);
 

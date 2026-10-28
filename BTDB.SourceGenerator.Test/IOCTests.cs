@@ -31,6 +31,27 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyKeywordNamedDispatcherInterface()
+    {
+        // Before the fix the generated part of the interface and of its containing type were declared without their
+        // verbatim prefix, which did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                public partial class @class
+                {
+                    [BTDB.Generate]
+                    public partial interface @event
+                    {
+                        public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container);
+                    }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyDispatcherInterfaceNestedInPartialTypes()
     {
         // Before the fix the generated part was not nested in the containing types, so it did not compile.
