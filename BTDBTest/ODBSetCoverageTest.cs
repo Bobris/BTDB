@@ -356,4 +356,26 @@ public class ODBSetCoverageTest : FieldHandlerCoverageTestBase
         Assert.True(root.A.Remove(7));
         Assert.Equal(0, CountOf(root.A));
     }
+
+    /// Removing each listed item while enumerating a range stays within the range, also when the removed item is the
+    /// bound the enumeration stops at.
+    [Theory]
+    [InlineData(EnumerationOrder.Ascending)]
+    [InlineData(EnumerationOrder.Descending)]
+    public void RemovingListedItemsKeepsAdvancedEnumerationInRange(EnumerationOrder order)
+    {
+        using var tr = _db.StartTransaction();
+        var root = tr.Singleton<SetsRoot>();
+        for (var i = 1; i <= 5; i++) root.A.Add(i);
+        var listed = new List<int>();
+        foreach (var item in root.A.GetAdvancedEnumerator(
+                     new(order, 2, KeyProposition.Included, 4, KeyProposition.Included)))
+        {
+            listed.Add(item);
+            Assert.True(root.A.Remove(item));
+        }
+
+        Assert.Equal(order == EnumerationOrder.Ascending ? new[] { 2, 3, 4 } : new[] { 4, 3, 2 }, listed);
+        Assert.Equal(new[] { 1, 5 }, root.A.Order());
+    }
 }

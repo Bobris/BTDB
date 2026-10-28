@@ -48,6 +48,11 @@
 
 ### Fixed
 
+- Descending enumeration of a relation (`ListBy…` with an `AdvancedEnumeratorParam`, including the ordered dictionary
+  enumerators), an `IOrderedSet` or an `IOrderedDictionary` returned one key below the range when the caller removed
+  the range's first key while enumerating, as code deleting what it lists does. The enumerators stopped by comparing
+  key indexes, and a removed bound key takes the index of the key before it. They now compare keys with the range
+  bounds.
 - `BTreeKeyValueDB` and `InMemoryKeyValueDB`: a cursor that `FastIterate` or `FastIterateNoCursor` moved past the
   last key kept an index past the end. After another cursor's change, iterating again visited nothing, and the
   in-memory cursor still reported itself valid, so reading or iterating from it threw `InvalidOperationException`.

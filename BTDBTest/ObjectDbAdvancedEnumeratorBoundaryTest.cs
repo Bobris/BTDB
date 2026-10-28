@@ -35,6 +35,13 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
         bool AnyByGroup(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
     }
 
+    [BTDB.Generate]
+    public interface IItemOrderedTable : IRelation<Item>
+    {
+        bool RemoveById(ulong companyId, ulong groupId, ulong id);
+        IOrderedDictionaryEnumerator<ulong, Item> ListById(ulong companyId, ulong groupId, AdvancedEnumeratorParam<ulong> id);
+    }
+
     public static IEnumerable<object[]> Boundaries()
     {
         foreach (var order in new[] { EnumerationOrder.Ascending, EnumerationOrder.Descending })
@@ -164,5 +171,50 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
                 Assert.True(expected == counted, $"counted {counted} of {expected} for {description}");
                 Assert.True((expected > 0) == any, $"any {any} for {expected} for {description}");
             }
+    }
+
+    /// Removing each listed item while enumerating stays within the range, also when the removed item is the bound
+    /// the enumeration stops at.
+    [Theory]
+    [InlineData(EnumerationOrder.Ascending, false)]
+    [InlineData(EnumerationOrder.Descending, false)]
+    [InlineData(EnumerationOrder.Ascending, true)]
+    [InlineData(EnumerationOrder.Descending, true)]
+    public void RemovingListedItemsKeepsEnumerationInRange(EnumerationOrder order, bool secondaryKey)
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IItemTable>();
+        for (ulong id = 1; id <= 5; id++) table.Upsert(new Item { CompanyId = 1, GroupId = 1, Id = id });
+        var bounds = new AdvancedEnumeratorParam<ulong>(order, 2, KeyProposition.Included, 4, KeyProposition.Included);
+        var listed = new List<ulong>();
+        foreach (var item in secondaryKey ? table.ListByGroup(1, 1, bounds) : table.ListById(1, 1, bounds))
+        {
+            listed.Add(item.Id);
+            Assert.True(table.RemoveById(1, 1, item.Id));
+        }
+
+        var expected = new ulong[] { 2, 3, 4 };
+        Assert.Equal(order == EnumerationOrder.Ascending ? expected : expected.Reverse().ToArray(), listed);
+    }
+
+    [Theory]
+    [InlineData(EnumerationOrder.Ascending)]
+    [InlineData(EnumerationOrder.Descending)]
+    public void RemovingListedKeysKeepsOrderedEnumerationInRange(EnumerationOrder order)
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IItemOrderedTable>();
+        for (ulong id = 1; id <= 5; id++) table.Upsert(new Item { CompanyId = 1, GroupId = 1, Id = id });
+        var listed = new List<ulong>();
+        using var enumerator = table.ListById(1, 1,
+            new AdvancedEnumeratorParam<ulong>(order, 2, KeyProposition.Included, 4, KeyProposition.Included));
+        while (enumerator.NextKey(out var id))
+        {
+            listed.Add(id);
+            Assert.True(table.RemoveById(1, 1, id));
+        }
+
+        var expected = new ulong[] { 2, 3, 4 };
+        Assert.Equal(order == EnumerationOrder.Ascending ? expected : expected.Reverse().ToArray(), listed);
     }
 }

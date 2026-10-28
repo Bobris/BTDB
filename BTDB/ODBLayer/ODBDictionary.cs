@@ -747,6 +747,10 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         readonly ODBDictionary<TKey, TValue> _owner;
         IKeyValueDBCursor? _startCursor;
         IKeyValueDBCursor? _endCursor;
+        // Range bounds as keys: they stay valid when the caller removes keys while enumerating, unlike key indexes,
+        // which a removed bound key moves to the key before it.
+        byte[]? _startKey;
+        byte[]? _endKey;
         IKeyValueDBCursor? _cursor;
         SeekState _seekState;
         readonly bool _ascending;
@@ -819,6 +823,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             var startIndex = _startCursor.GetKeyIndex();
             var endIndex = _endCursor.GetKeyIndex();
             if (startIndex > endIndex) return;
+            _startKey = _startCursor.SlowGetKey();
+            _endKey = _endCursor.SlowGetKey();
             _cursor = keyValueTr.CreateCursor();
             _cursor.FindKeyIndex(_ascending ? startIndex : endIndex);
             _seekState = SeekState.Undefined;
@@ -903,7 +909,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                         return false;
                     }
 
-                    if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
+                    if (CompareKey(_cursor, _endKey!) > 0)
                     {
                         key = default;
                         _cursor.Dispose();
@@ -921,7 +927,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                         return false;
                     }
 
-                    if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
+                    if (CompareKey(_cursor, _startKey!) < 0)
                     {
                         key = default;
                         _cursor.Dispose();
@@ -937,6 +943,13 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
             key = _owner.CurrentToKey(_cursor);
             return true;
+        }
+
+        [SkipLocalsInit]
+        static int CompareKey(IKeyValueDBCursor cursor, byte[] bound)
+        {
+            Span<byte> buffer = stackalloc byte[512];
+            return cursor.GetKeySpan(ref buffer).SequenceCompareTo(bound);
         }
 
         public void Dispose()

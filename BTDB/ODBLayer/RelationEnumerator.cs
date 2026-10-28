@@ -597,6 +597,9 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
     readonly IInternalObjectDBTransaction _tr;
     readonly IKeyValueDBTransaction _keyValueTr;
     IKeyValueDBCursor? _untilCursor;
+    // The last key of the range in enumeration order. Keys stay valid bounds when the caller removes items while
+    // enumerating, unlike key indexes, which a removed bound key moves to the key before it.
+    byte[]? _untilKey;
     IKeyValueDBCursor? _cursor;
     bool _seekNeeded;
     readonly bool _ascending;
@@ -717,6 +720,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
                 _untilCursor = startCursor;
             }
 
+            _untilKey = _untilCursor.SlowGetKey();
             startCursor = null;
             endCursor = null;
             _seekNeeded = true;
@@ -774,7 +778,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
                     return false;
                 }
 
-                if (_cursor.GetKeyIndex() > _untilCursor!.GetKeyIndex())
+                if (CompareWithUntilKey() > 0)
                 {
                     Dispose();
                     return false;
@@ -788,7 +792,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
                     return false;
                 }
 
-                if (_cursor.GetKeyIndex() < _untilCursor!.GetKeyIndex())
+                if (CompareWithUntilKey() < 0)
                 {
                     Dispose();
                     return false;
@@ -797,6 +801,13 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
         }
 
         return true;
+    }
+
+    [SkipLocalsInit]
+    int CompareWithUntilKey()
+    {
+        Span<byte> buffer = stackalloc byte[512];
+        return _cursor!.GetKeySpan(ref buffer).SequenceCompareTo(_untilKey);
     }
 
     public void Reset()
@@ -953,6 +964,10 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     readonly IKeyValueDBTransaction _keyValueTr;
     IKeyValueDBCursor? _startCursor;
     IKeyValueDBCursor? _endCursor;
+    // Range bounds as keys: they stay valid when the caller removes keys while enumerating, unlike key indexes, which
+    // a removed bound key moves to the key before it.
+    byte[]? _startKey;
+    byte[]? _endKey;
     IKeyValueDBCursor? _cursor;
     bool _seekNeeded;
     readonly bool _ascending;
@@ -1047,6 +1062,8 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         var endIndex = _endCursor.GetKeyIndex();
         if (startIndex > endIndex) return;
         _count = (uint)(endIndex - startIndex + 1);
+        _startKey = _startCursor.SlowGetKey();
+        _endKey = _endCursor.SlowGetKey();
         _cursor = _keyValueTr.CreateCursor();
         _cursor.FindKeyIndex(_ascending ? startIndex : endIndex);
 
@@ -1115,6 +1132,13 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         }
     }
 
+    [SkipLocalsInit]
+    int CompareKey(byte[] bound)
+    {
+        Span<byte> buffer = stackalloc byte[512];
+        return _cursor!.GetKeySpan(ref buffer).SequenceCompareTo(bound);
+    }
+
     // Cursor which failed to move is invalidated and next move would restart from beginning, so stay at End instead
     bool MoveToEnd()
     {
@@ -1147,7 +1171,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                     return MoveToEnd();
                 }
 
-                if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
+                if (CompareKey(_endKey!) > 0)
                 {
                     key = default;
                     return MoveToEnd();
@@ -1161,7 +1185,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                     return MoveToEnd();
                 }
 
-                if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
+                if (CompareKey(_startKey!) < 0)
                 {
                     key = default;
                     return MoveToEnd();
