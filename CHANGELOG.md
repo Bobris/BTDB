@@ -28,7 +28,8 @@
     - manifest fencing gives every writer session a fresh epoch.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
-    encodings are such encodings; `Find` with a prefix length answers its contract.
+    encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
+    first key passing the lower bound.
 
 ### Fixed
 

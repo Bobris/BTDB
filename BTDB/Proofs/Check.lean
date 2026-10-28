@@ -18,3 +18,10 @@ open Btdb
 #print axioms Cursor.previous_outside_no_next
 #print axioms Cursor.next_in_block
 #print axioms Cursor.next_outside
+#print axioms Seek.seek_exact
+#print axioms Seek.seek_next
+#print axioms Seek.seek_previous
+#print axioms Seek.seek_previous_none
+#print axioms Seek.seek_exclusive
+#print axioms Seek.seek_exclusive_none
+#print axioms Seek.seek_exclusive_kept

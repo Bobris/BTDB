@@ -4187,7 +4187,7 @@ sealed class RelationQueryScanner : IDisposable
         _inRange = false;
     }
 
-    /// Positions the cursor on the first key of the range.
+    /// Positions the cursor on the first key of the range (BTDB/Proofs, Seek.lean).
     static bool Seek(IKeyValueDBCursor cursor, RelationQueryRange range)
     {
         if (range.Start.Length == range.Prefix.Length) return cursor.FindFirstKey(range.Prefix);
