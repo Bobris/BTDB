@@ -18,6 +18,10 @@ holds at most one point entry and may cover the key with a range-tombstone fragm
 `LsmMerger.Entries` and its merged fragments combine a run of components. Splitting fragments at table boundaries
 (`LsmCompaction.Clip`) recomputes `coveredBelow` by a rank query and is not modelled.
 
+`LsmProofs/WalFlush.lean` extends the WAL model with flushes. The newest writer publishes a manifest whose tables
+hold its base and its first own chunks' records, landed or not, and whose WAL start is its next own chunk with its
+epoch. Readers, recovery and takeovers then replay from the newest manifest.
+
 `LsmProofs/Wal.lean` models WAL chunks as immutable create-if-absent objects `wal/{n}` (`CreateChunkAsync`). Each
 writer session has a fresh epoch. A takeover lists the WAL, replays its contiguous prefix and fences it with epoch
 markers (`BecomeWriterAsync`). Readers, recovery and takeovers replay names in order up to the first missing one
@@ -31,9 +35,8 @@ acknowledges the longest prefix of its planned chunks that landed with its conte
 
 Not modelled in `Wal.lean`:
 
-- multi-chunk records, generations and flushes. `restart_agrees` covers a manifest's WAL start that the full replay
-  reaches. A start whose own earlier chunks never landed (their records are in tables) is argued in
-  `../ImplementationPlan.md`, section 14;
+- multi-chunk records and generations. Flushes are in `WalFlush.lean`, for starts in the flushing writer's own
+  range; a start in the replayed region before them preserves the replay (`restart_agrees`);
 - manifest fencing, which the model replaces by fresh, increasing epochs;
 - record encoding. A record is an opaque `Nat`.
 
@@ -46,6 +49,9 @@ Not modelled in `Wal.lean`:
 | `Wal.fixed_keeps_acknowledged` | With the fixed rule, each writer's replayed base plus its acknowledged chunks is a prefix of every replay that stops at its first missing name. |
 | `Wal.fixed_replays_one_history` | With the fixed rule, every replay is empty or a prefix of one writer's history. |
 | `Wal.restart_agrees`, `Wal.fixed_restart_replays` | Restarting replay at a name the full replay reaches unbroken and in its writer's own range, with only that writer's epoch, applies exactly what the full replay applies there. That is the context a manifest records (`WalStartEpoch`), so both results above hold for readers starting at a manifest. |
+| `WalFlush.flush_keeps_acknowledged` | With flushes, every acknowledged history is a prefix of every replay from the newest manifest that stops at its first missing name, tables included. |
+| `WalFlush.flush_replays_one_history` | With flushes, every replay from the newest manifest, tables included, is empty or a prefix of one writer's history. |
+| `WalFlush.flush_of_unlanded_chunk` | A flush whose own chunk never landed is reachable, and readers see its record from the tables: the case `restart_agrees` cannot cover. |
 | `Wal.fixed_commits` | The fixed rule still lets a writer take over, write and acknowledge, so the results above are not vacuous. |
 | `Counts.total_telescopes` | Over a consistent stack of components, the count contributions at a key sum to `[exists on top] − [exists below]`, so counts and ranks add across components (L5). |
 | `Counts.merge_final`, `merge_consistent`, `merge_total` | The component `LsmMerger` makes from a run reaches the same state at the key, is consistent with the state below the run, and contributes the same count. |

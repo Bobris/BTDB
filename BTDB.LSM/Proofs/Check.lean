@@ -13,3 +13,6 @@ open Lsm
 #print axioms Counts.merge_total
 #print axioms Wal.restart_agrees
 #print axioms Wal.fixed_restart_replays
+#print axioms WalFlush.flush_keeps_acknowledged
+#print axioms WalFlush.flush_replays_one_history
+#print axioms WalFlush.flush_of_unlanded_chunk

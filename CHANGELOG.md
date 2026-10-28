@@ -20,8 +20,8 @@
     - bounds from the owner cover every completed receipt;
     - background merging never leaves a split unreadable.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
-    - across writer takeovers every acknowledged commit stays in every replay, and every replay is a prefix of one
-      writer's history;
+    - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
+      prefix of one writer's history;
     - counted entries add up across components, and the compaction merge preserves each key's state and count.
 
 ### Fixed
