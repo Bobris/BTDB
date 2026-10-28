@@ -284,6 +284,14 @@ public class KeyValueDBCrashSimulationTest
         Assert.True(recoveries > total, "Recovery should do file operations to crash in.");
     }
 
+    /// DurableTransactions applies to each batched transaction too: every commit that returned survives a crash, even
+    /// before its batch is published.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryCrashOfDurableBatchedCommitsKeepsThem(int seed) => await CrashEverywhere(seed, true, true);
+
     /// With Snappy compression, as by default, compressed keys and values are in the log and the key indexes.
     [Theory]
     [InlineData(1)]
