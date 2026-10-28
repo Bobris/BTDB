@@ -22,7 +22,7 @@ public partial interface IDispatcher
             {
                 return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
             }
-            throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
+            throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }
 
         return &Consume;

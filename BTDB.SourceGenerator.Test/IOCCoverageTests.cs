@@ -322,7 +322,7 @@ public class IOCCoverageTests : GeneratorTestsBase
             public delegate Logger LoggerFactory(int level, string? name);
             """);
         var code = GetSource(sources, "TestNamespace.LoggerFactory.g.cs");
-        Assert.Contains("typeof(Func<int,string,global::TestNamespace.Logger>)", code);
+        Assert.Contains("typeof(global::System.Func<int,string,global::TestNamespace.Logger>)", code);
         var generated = sources.Keys.ToArray();
         Assert.Equal(["TestNamespace.LoggerFactory.g.cs"], generated);
     }

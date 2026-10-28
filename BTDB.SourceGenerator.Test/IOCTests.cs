@@ -91,6 +91,35 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyTypesNamedLikeSystemTypesInUserNamespace()
+    {
+        // Before the fix delegate factories named System.Func and dispatchers System.InvalidOperationException without
+        // qualification, so these types of the user's namespace took their place and the generated code did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                public class Func<T1, T2> { }
+                public class Func<T1, T2, T3> { }
+                public class Func<T1, T2, T3, T4> { }
+                public class InvalidOperationException : System.Exception
+                {
+                    public InvalidOperationException(string message, int code) : base(message) { }
+                }
+
+                [BTDB.Generate]
+                public delegate int Factory(int value);
+
+                [BTDB.Generate]
+                public partial interface IDispatcher
+                {
+                    public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container);
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyTypesNamedLikeCompilerServicesInUserNamespace()
     {
         // Generated code lives in the user's namespace, whose types win over its using directives. Before the fix these

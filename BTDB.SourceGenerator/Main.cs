@@ -3120,7 +3120,7 @@ public class SourceGenerator : IIncrementalGenerator
                             {
                                 return global::System.Runtime.CompilerServices.Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
                             }
-                            throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
+                            throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
                         }
 
                         return &Consume;
@@ -3189,8 +3189,8 @@ public class SourceGenerator : IIncrementalGenerator
                 internal static void Register4BTDB()
                 {
                     global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
-                    global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
-                    static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
+                    global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::System.Func<{{funcParams}}{{resultingType}}>), Factory);
+                    static global::System.Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
                     {
                         using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
                         var hasResolvingCtx = ctx.HasResolvingCtx();

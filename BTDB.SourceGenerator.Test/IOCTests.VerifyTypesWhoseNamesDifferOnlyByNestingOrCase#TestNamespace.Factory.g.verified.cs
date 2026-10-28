@@ -13,8 +13,8 @@ static file class FactoryRegistration
     internal static void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Factory), Factory);
-        global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,int>), Factory);
-        static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::System.Func<int,int>), Factory);
+        static global::System.Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
         {
             using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
             var hasResolvingCtx = ctx.HasResolvingCtx();
