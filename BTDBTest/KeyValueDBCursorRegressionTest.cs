@@ -69,6 +69,26 @@ public class KeyValueDBCursorRegressionTest
 
     [Theory]
     [MemberData(nameof(AllKinds))]
+    public void FailedFindNextOrPreviousKeyInvalidatesCursor(string kind)
+    {
+        using var db = Create(kind);
+        Fill(db, [1, 1], [1, 2], [3, 1]);
+        using var tr = db.StartReadOnlyTransaction();
+        using var cursor = tr.CreateCursor();
+        Assert.True(cursor.FindLastKey([1]));
+        Assert.False(cursor.FindNextKey([1]));
+        Assert.False(cursor.IsValid());
+        // Stepping again from the invalid cursor starts at the first key with the prefix.
+        Assert.True(cursor.FindNextKey([1]));
+        Assert.Equal([1, 1], cursor.GetKeySpan(new Span<byte>()).ToArray());
+        Assert.False(cursor.FindPreviousKey([1]));
+        Assert.False(cursor.IsValid());
+        Assert.True(cursor.FindPreviousKey([1]));
+        Assert.Equal([1, 2], cursor.GetKeySpan(new Span<byte>()).ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(AllKinds))]
     public void FailedFindLastKeyInvalidatesCursor(string kind)
     {
         using var db = Create(kind);

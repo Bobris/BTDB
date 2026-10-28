@@ -35,6 +35,9 @@
 
 ### Fixed
 
+- `IKeyValueDBCursor.FindNextKey` and `FindPreviousKey` documented that a failed call leaves the position unchanged.
+  Every implementation invalidates the cursor instead, so a further call starts again from the first or last key
+  with the prefix; the documentation now says so, and a test covers it.
 - Event log: one Publish call could be committed twice. This happened when its first dispatch reached a new topic
   owner after its retry had already committed through the previous owner, because a lane trusted
   `previouslyDispatched = false` for an unknown session. An unknown session's state now always comes from committed

@@ -30,15 +30,19 @@ public interface IKeyValueDBCursor : IDisposable
     bool FindLastKey(in ReadOnlySpan<byte> prefix);
 
     /// <summary>
-    /// Move actual key pointer to previous key from current Position only if still matches provided prefix
+    /// Move actual key pointer to previous key from current Position if it still matches provided prefix. An invalid
+    /// cursor moves to the last key matching the prefix instead, like <see cref="FindLastKey"/>.
     /// </summary>
-    /// <returns>true if there was such previous key, else Position will not move</returns>
+    /// <returns>true if there was such previous key, else false and the cursor is invalid, so calling again starts
+    /// from the last key matching the prefix</returns>
     bool FindPreviousKey(in ReadOnlySpan<byte> prefix);
 
     /// <summary>
-    /// Move actual key pointer to next key from current Position only if still matches provided prefix
+    /// Move actual key pointer to next key from current Position if it still matches provided prefix. An invalid
+    /// cursor moves to the first key matching the prefix instead, like <see cref="FindFirstKey"/>.
     /// </summary>
-    /// <returns>true if there was such next key, else Position will not move</returns>
+    /// <returns>true if there was such next key, else false and the cursor is invalid, so calling again starts
+    /// from the first key matching the prefix</returns>
     bool FindNextKey(in ReadOnlySpan<byte> prefix);
 
     /// <summary>
