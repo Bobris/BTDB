@@ -58,6 +58,48 @@ public class TransactionLogDamageTest
         }
     }
 
+    /// A key length far beyond the file, as damage can leave, ends replay like other damage instead of allocating the
+    /// length or failing the open with OutOfMemoryException.
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(1 << 30)]
+    public async Task KeyLengthBeyondTheFileEndsReplay(int length)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using (var db = new BTreeKeyValueDB(Options(directory)))
+                foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
+                {
+                    using var tr = await db.StartWritingTransaction();
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue([key], [value]);
+                    tr.Commit();
+                }
+
+            var log = Directory.GetFiles(directory, "*.trl").Single();
+            var content = File.ReadAllBytes(log);
+            var at = Enumerable.Range(0, content.Length - 3).Single(i =>
+                content[i] == 0x81 && content[i + 1] == 0x81 && content[i + 2] == 3 && content[i + 3] == 4);
+            var writer = new BTDB.StreamLayer.MemWriter();
+            writer.WriteVInt32(length);
+            File.WriteAllBytes(log, [.. content[..at], .. writer.GetSpan().ToArray(), .. content[(at + 1)..]]);
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            using var reopened = new BTreeKeyValueDB(Options(directory));
+            Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 64 << 20);
+            using var read = reopened.StartReadOnlyTransaction();
+            using var check = read.CreateCursor();
+            Assert.True(check.FindExactKey([1]));
+            Assert.False(check.FindExactKey([3]));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     /// A crash that cut the log after a complete command of a transaction leaves it unfinished at the end of the log.
     /// The next session writes a new log starting with its own transaction; replay drops the unfinished one there and
     /// keeps the new commits. Before the 2026-10-28 fix replay stopped at that start, losing every later commit.

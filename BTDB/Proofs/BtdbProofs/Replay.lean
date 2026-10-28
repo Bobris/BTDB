@@ -3,8 +3,8 @@
 
 A model of `BTreeKeyValueDB.LoadTransactionLogCore`. The log is a list of commands: a transaction start, an
 operation of the open transaction, a commit, or damage, which stands for every command replay cannot apply (an
-unknown command, a length that is negative or does not fit an `int`, a key suffix update with an impossible prefix, a
-ulong index no array can hold, a truncated command). Replay applies a transaction when it reads its commit and stops
+unknown command, a length that is negative, does not fit an `int` or exceeds the rest of the file, a key suffix update
+with an impossible prefix, a ulong index no array can hold, a truncated command). Replay applies a transaction when it reads its commit and stops
 at damage, dropping the open transaction, as after a crash.
 
 * `replay_drops_unfinished`: a log ending inside a transaction replays to the transactions committed before it.

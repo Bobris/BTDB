@@ -63,6 +63,10 @@
 
 ### Fixed
 
+- Replaying a damaged `BTreeKeyValueDB` transaction log allocated whatever key length a command declared before
+  reading the key, so a damaged length could allocate up to 2 GiB, and one beyond the maximum array size failed the
+  open with `OutOfMemoryException` instead of ending replay. A length beyond the rest of the file now counts as
+  damage, like a negative one.
 - `KeyValueDBExportImporter.Import` and `ImportAsync` allocated the key or value size an export declared before
   reading it, so a few bytes of a damaged export could allocate gigabytes or fail with `OutOfMemoryException`
   instead of `EndOfStreamException`. The buffer now grows with the bytes that arrive, as `MemReader` does since its

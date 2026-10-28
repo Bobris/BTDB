@@ -1118,6 +1118,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
 
         Span<byte> trueValue = stackalloc byte[12];
+        // Lengths a command declares are of bytes that follow it in this file; a damaged one can claim more.
+        var fileSize = FileCollection.GetFile(fileId)!.GetSize();
         var readerController = (IMemReader?)replayReader ?? FileCollection.GetFile(fileId)!.GetExclusiveReader();
         var reader = new MemReader(readerController);
         try
@@ -1173,7 +1175,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
                         var valueLen = reader.ReadVInt32();
-                        if (keyLen < 0 || valueLen < 0) return StopReplay(ref next);
+                        if (keyLen < 0 || valueLen < 0 ||
+                            Beyond(fileSize, reader.GetCurrentPosition(), (long)keyLen + valueLen))
+                            return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1208,7 +1212,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyPrefix = reader.ReadVUInt32();
                         var keyLen = reader.ReadVUInt32();
-                        if (keyPrefix > keyLen) return StopReplay(ref next);
+                        if (keyPrefix > keyLen || Beyond(fileSize, reader.GetCurrentPosition(), keyLen))
+                            return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         if (!cursor.FindFirst(key.AsSpan(0, (int)keyPrefix)))
@@ -1229,7 +1234,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     {
                         if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
-                        if (keyLen < 0) return StopReplay(ref next);
+                        if (keyLen < 0 || Beyond(fileSize, reader.GetCurrentPosition(), keyLen))
+                            return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1255,7 +1261,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyLen1 = reader.ReadVInt32();
                         var keyLen2 = reader.ReadVInt32();
-                        if (keyLen1 < 0 || keyLen2 < 0) return StopReplay(ref next);
+                        if (keyLen1 < 0 || keyLen2 < 0 ||
+                            Beyond(fileSize, reader.GetCurrentPosition(), (long)keyLen1 + keyLen2))
+                            return StopReplay(ref next);
                         var key = new byte[keyLen1];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1377,6 +1385,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             return StopReplay(ref next);
         }
     }
+
+    static bool Beyond(ulong fileSize, long position, long length) => length > (long)fileSize - position;
 
     /// Ends replay before the unfinished transaction, whose changes are dropped.
     static bool StopReplay(ref IRootNode? next)
