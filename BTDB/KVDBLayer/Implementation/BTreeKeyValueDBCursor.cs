@@ -644,6 +644,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
             if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
             _cursor!.FastIterate(ref buffer, ref _keyIndex, callback);
+            // Past the last key the cursor is on no key, so a later iteration starts at the first one.
+            if (!_cursor.IsValid()) Invalidate();
         }
         finally
         {
@@ -671,6 +673,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
             if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
             _cursor!.FastIterateNoCursor(ref buffer, ref _keyIndex, callback);
+            if (!_cursor.IsValid()) Invalidate();
         }
         finally
         {

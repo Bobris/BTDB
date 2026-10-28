@@ -48,6 +48,11 @@
 
 ### Fixed
 
+- `BTreeKeyValueDB` and `InMemoryKeyValueDB`: a cursor that `FastIterate` or `FastIterateNoCursor` moved past the
+  last key kept an index past the end. After another cursor's change, iterating again visited nothing, and the
+  in-memory cursor still reported itself valid, so reading or iterating from it threw `InvalidOperationException`.
+  Such a cursor is now invalid, so a later iteration starts at the first key, as in `LsmKeyValueDB`. Found by
+  comparing cursor operations of the three databases.
 - `LsmKeyValueDB`: `FastIterate` from a cursor whose erased key was the last key threw `InvalidOperationException`;
   like `BTreeKeyValueDB`, it now visits nothing. `LsmFastIterateOracleTest` compares `FastIterate` and `KeyHasPrefix`
   with `BTreeKeyValueDB` from current and fuzzy cursors.

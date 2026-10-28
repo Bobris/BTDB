@@ -619,6 +619,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
             EnsureValidCursor();
             _transaction!._btreeRoot!.FastIterate(ref _stack, ref _keyIndex, ref buffer, callback);
+            // Iterating past the last key pops the whole path, so the cursor is no longer on any key.
+            if (_stack.Count == 0) Invalidate();
         }
         finally
         {

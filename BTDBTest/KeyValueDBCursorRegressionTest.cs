@@ -326,4 +326,34 @@ public class KeyValueDBCursorRegressionTest
         Assert.Equal(new byte[] { 9 }, current.SlowGetValue());
         Assert.Equal(0, current.GetKeyIndex());
     }
+
+    /// FastIterate past the last key leaves the cursor on no key, so iterating again starts at the first key. Before
+    /// the fix the in-memory cursor kept an index past the end: iterating again visited nothing or threw.
+    [Theory]
+    [MemberData(nameof(AllKinds))]
+    public void FastIteratePastTheEndInvalidatesCursor(string kind)
+    {
+        using var db = Create(kind);
+        Fill(db, [2], [3]);
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        using var other = tr.CreateCursor();
+        Span<byte> buffer = default;
+        var visited = new System.Collections.Generic.List<long>();
+        cursor.FastIterate(ref buffer, (index, _) =>
+        {
+            visited.Add(index);
+            return false;
+        });
+        Assert.Equal(new long[] { 0, 1 }, visited);
+        Assert.False(cursor.IsValid());
+        Assert.True(other.CreateOrUpdateKeyValue([1], [1]));
+        visited.Clear();
+        cursor.FastIterate(ref buffer, (index, _) =>
+        {
+            visited.Add(index);
+            return false;
+        });
+        Assert.Equal(new long[] { 0, 1, 2 }, visited);
+    }
 }
