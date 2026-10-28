@@ -129,9 +129,56 @@ public class LsmRegressionTest
             Assert.Equal(new[] { value }, cursor.SlowGetValue());
         }
     }
+
+    /// A cursor whose key was erased stays fuzzy between its neighbors. A key suffix update that moves the next or
+    /// previous key past the erased key keeps the key's index, so the cursor stays on the same side of it: renamed
+    /// down, the cursor is right before the new key; renamed up, right after it. Before the fix the cursor kept its
+    /// erased key, so it moved to the other side of the renamed key.
+    [Theory]
+    [InlineData("shrink", "previous", "07FFFF")]
+    [InlineData("shrink", "next", "FF")]
+    [InlineData("shrink", "index", "0")]
+    [InlineData("grow", "previous", "FF09")]
+    [InlineData("grow", "next", "-")]
+    [InlineData("grow", "index", "1")]
+    [InlineData("empty", "previous", "-")]
+    [InlineData("empty", "next", "")]
+    [InlineData("empty", "index", "-1")]
+    public async Task KeySuffixUpdateKeepsFuzzyCursorOnItsSide(string rename, string probe, string expected)
+    {
+        Assert.Equal(expected, await Probe(new BTreeKeyValueDB(new InMemoryFileCollection()), rename, probe));
+        Assert.Equal(expected, await Probe(await LsmKeyValueDB.OpenAsync(new()
+            { Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true }), rename, probe));
+    }
+
+    static async Task<string> Probe(IKeyValueDB db, string rename, string probe)
+    {
+        using (db)
+        {
+            var (keys, erased, key, prefixLen) = rename switch
+            {
+                "shrink" => (new byte[][] { [0x07, 0xFF, 0xFF], [0xFF, 0x01], [0xFF, 0xFF] }, new byte[] { 0xFF, 0x01 },
+                    new byte[] { 0xFF }, 1u),
+                "grow" => ([[0x00], [0xFF], [0xFF, 0x05]], [0xFF, 0x05], [0xFF, 0x09], 1u),
+                _ => ([[0xFF, 0x05], [0xFF, 0xFF]], [0xFF, 0x05], [], 0u)
+            };
+            using var tr = await db.StartWritingTransaction();
+            using var renaming = tr.CreateCursor();
+            using var fuzzy = tr.CreateCursor();
+            foreach (var k in keys) renaming.CreateOrUpdateKeyValue(k, [1]);
+            Assert.True(fuzzy.FindExactKey(erased));
+            fuzzy.EraseCurrent();
+            Assert.Equal(UpdateKeySuffixResult.Updated, renaming.UpdateKeySuffix(key, prefixLen));
+            return probe switch
+            {
+                "previous" => fuzzy.FindPreviousKey([]) ? Convert.ToHexString(fuzzy.SlowGetKey()) : "-",
+                "next" => fuzzy.FindNextKey([]) ? Convert.ToHexString(fuzzy.SlowGetKey()) : "-",
+                _ => fuzzy.GetKeyIndex().ToString()
+            };
+        }
+    }
 }
 
-/// Fails every ranged read while Fail is set.
 sealed class FailingReadStorage(InMemoryLsmStorage inner) : ILsmStorage
 {
     public volatile bool Fail;

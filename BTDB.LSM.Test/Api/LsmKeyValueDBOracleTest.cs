@@ -14,6 +14,29 @@ namespace BTDB.LSM.Test.Api;
 /// return values, cursor validity, keys, values, key indexes, counts, ulongs and an older snapshot.
 public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
 {
+    /// Seeds found by running a thousand more: key suffix updates passing fuzzy cursors.
+    public static IEnumerable<object[]> FoundSeeds()
+    {
+        object[][] shapes =
+        [
+            [1024L, 128, 2, 10_000, 1024, 64L * 1024 * 1024], [512L, 64, 0, 10_000, 64, 64L * 1024 * 1024],
+            [2048L, 256, 4, 10_000, 0, 2048L], [1024L, 128, 1_000_000, 10_000, 1024, 1024L],
+            [4096L, 128, 64, 10_000, 2, 4096L]
+        ];
+        foreach (var seed in new[] { 177, 348, 392, 434, 499, 501, 524, 690, 709, 745, 753, 921, 1064, 1086 })
+        {
+            var shape = shapes[seed % shapes.Length];
+            yield return [seed, shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]];
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(FoundSeeds))]
+    public Task MatchesBTreeKeyValueDBOnFoundSeeds(int seed, long memtableSize, int blockSize,
+        int pointDeleteRangeLimit, int operations, int valueSeparationThreshold, long maxTransactionMemory) =>
+        MatchesBTreeKeyValueDB(seed, memtableSize, blockSize, pointDeleteRangeLimit, operations,
+            valueSeparationThreshold, maxTransactionMemory);
+
     [Theory]
     [InlineData(1, 64 * 1024 * 1024, 32 * 1024, 64, 20_000)]
     [InlineData(2, 1024, 128, 2, 20_000)]
@@ -92,14 +115,19 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
                 else if (choice < 33)
                 {
                     var prefix = RandomPrefix(random);
-                    if (random.Next(2) == 0) Same(step, () => cursor.E.FindFirstKey(prefix), () => cursor.A.FindFirstKey(prefix));
-                    else Same(step, () => cursor.E.FindLastKey(prefix), () => cursor.A.FindLastKey(prefix));
+                    if (random.Next(2) == 0)
+                        Same(step + $" first {Hex(prefix)}", () => cursor.E.FindFirstKey(prefix), () => cursor.A.FindFirstKey(prefix));
+                    else
+                        Same(step + $" last {Hex(prefix)}", () => cursor.E.FindLastKey(prefix), () => cursor.A.FindLastKey(prefix));
                 }
                 else if (choice < 45)
                 {
                     var prefix = RandomPrefix(random);
-                    if (random.Next(2) == 0) Same(step, () => cursor.E.FindNextKey(prefix), () => cursor.A.FindNextKey(prefix));
-                    else Same(step, () => cursor.E.FindPreviousKey(prefix), () => cursor.A.FindPreviousKey(prefix));
+                    if (random.Next(2) == 0)
+                        Same(step + $" next {Hex(prefix)}", () => cursor.E.FindNextKey(prefix), () => cursor.A.FindNextKey(prefix));
+                    else
+                        Same(step + $" previous {Hex(prefix)}", () => cursor.E.FindPreviousKey(prefix),
+                            () => cursor.A.FindPreviousKey(prefix));
                 }
                 else if (choice < 52)
                 {
@@ -257,7 +285,9 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
     void CompareCursor(string step, CursorPair cursor)
     {
         var actualKey = ((LsmKeyValueDBCursor)cursor.A).DebugKey;
-        var expectedIndex = actualKey == null ? -1 : OracleIndex(cursor.E.Transaction, actualKey);
+        // A fuzzy cursor right before a key reports the index of the key before it, also once that key is erased.
+        var expectedIndex = actualKey == null ? -1 : OracleIndex(cursor.E.Transaction, actualKey) -
+            (((LsmKeyValueDBCursor)cursor.A).DebugBefore && Exists(cursor.E.Transaction, actualKey) ? 1 : 0);
         Same(step + " key index", () => expectedIndex, () => cursor.A.GetKeyIndex());
         if (!cursor.E.IsValid())
         {
@@ -275,6 +305,12 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         var key = GetKey(cursor.E);
         Same(step + " key", () => Hex(key), () => Hex(GetKey(cursor.A)));
         Same(step + " value", () => Hex(GetValue(cursor.E)), () => Hex(GetValue(cursor.A)));
+    }
+
+    static bool Exists(IKeyValueDBTransaction transaction, byte[] key)
+    {
+        using var cursor = transaction.CreateCursor();
+        return cursor.FindExactKey(key);
     }
 
     /// Index of key, or for an erased key the index of the key before it, computed by a fresh oracle cursor.

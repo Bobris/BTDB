@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- `LsmKeyValueDB`: a cursor whose key was erased moved to the wrong side of a key that another cursor renamed with
+  `UpdateKeySuffix` past it, so its next and previous keys and its key index differed from `BTreeKeyValueDB`. A key
+  keeps its index when its suffix changes, so such a cursor now stays right before the renamed key, or right after it
+  when the key grew. Found by running the LSM oracle test with a thousand more seeds; the failing seeds are kept.
 - `SetUlong` with an index of 2^31 or more failed with `IndexOutOfRangeException` or a misleading
   `ArgumentOutOfRangeException` from inside the ulong array growth, because `idx + 1` wrapped around. The transactions of
   `BTreeKeyValueDB`, `InMemoryKeyValueDB` and `LsmKeyValueDB` now reject such an index up front, and transaction log

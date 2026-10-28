@@ -9,7 +9,8 @@ namespace BTDB.LSM;
 /// Cursor positioned by key (ImplementationPlan.md, section 7.4). Each move is a seek over the merged view; the key
 /// index is computed by rank and cached until the transaction is modified. After its key is erased the cursor is
 /// fuzzy invalid: it remembers the key, so its index is the rank of the key minus one, next and previous move to the
-/// neighbors of the key, and reading moves to the next key. Creating the key again makes it current again.
+/// neighbors of the key, and reading moves to the next key. Creating the key again makes it current again. A fuzzy
+/// cursor can also sit right before a live key, after a key suffix update moved that key below the cursor's erased key.
 sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 {
     LsmKeyValueDBTransaction? _transaction;
@@ -17,6 +18,8 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     LsmValue _value;
     ReadOnlyMemory<byte>? _resolvedValue;
     bool _removed;
+    // Fuzzy right before the live key _key rather than at the erased key _key.
+    bool _before;
     long _stamp;
     long _index = -1;
     MergingIterator? _iterator;
@@ -49,6 +52,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public IKeyValueDBTransaction Transaction => Tr;
     internal byte[]? DebugKey => _key;
+    internal bool DebugBefore => _before;
     public IKeyValueDBCursorInternal? PrevCursor { get; set; }
     public IKeyValueDBCursorInternal? NextCursor { get; set; }
 
@@ -97,6 +101,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         _value = value;
         _resolvedValue = null;
         _removed = false;
+        _before = false;
         _stamp = Tr.ModificationStamp;
         _index = index;
     }
@@ -105,6 +110,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         _key = null;
         _removed = false;
+        _before = false;
         _index = -1;
         return false;
     }
@@ -115,7 +121,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         var transaction = Tr;
         if (_key == null) throw new InvalidOperationException("Current key is not valid");
         if (!IsRemovedNow()) return;
-        if (transaction.View.SeekGE(_key, false, out var next, out var value))
+        if (transaction.View.SeekGE(_key, _before, out var next, out var value))
         {
             Set(next, value, -1);
             return;
@@ -128,7 +134,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     /// Whether the cursor's key no longer exists; a key erased and created again makes the cursor current again.
     bool IsRemovedNow()
     {
-        if (_stamp == Tr.ModificationStamp) return _removed;
+        if (_before || _stamp == Tr.ModificationStamp) return _removed;
         if (Tr.View.TryGet(_key!, out var value))
         {
             Set(_key!, value, -1);
@@ -172,7 +178,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         var iterator = removed ? null : PositionedIterator();
         if (iterator != null) return SetFromIterator(iterator, iterator.Next(), prefix, index);
         iterator = FreshIterator();
-        return SetFromIterator(iterator, iterator.SeekGE(_key, false), prefix, index);
+        return SetFromIterator(iterator, iterator.SeekGE(_key, _before), prefix, index);
     }
 
     public FindResult Find(scoped in ReadOnlySpan<byte> key, uint prefixLen)
@@ -352,12 +358,36 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         return created;
     }
 
-    /// The key keeps its index when its suffix changes, so cursors on the old key follow it.
+    /// The key keeps its index when its suffix changes, so cursors on the old key follow it, and fuzzy cursors stay on
+    /// their side of it. The renamed key is the only key with the prefix, so a fuzzy cursor's erased key between the
+    /// old and the new key (the new one included) is the only kind the rename can pass: when the key grew, the cursor
+    /// moves to the missing key right after the new one, else it sits right before the new key.
     internal void NotifyRenamed(byte[] oldKey, byte[] newKey)
     {
-        if (_key == null || _removed || !_key.AsSpan().SequenceEqual(oldKey)) return;
-        Tr.View.TryGet(newKey, out var value);
-        Set(newKey, value, -1);
+        if (_key == null) return;
+        if (_key.AsSpan().SequenceEqual(oldKey) && (!_removed || _before))
+        {
+            if (_before)
+            {
+                _key = newKey;
+                return;
+            }
+
+            Tr.View.TryGet(newKey, out var value);
+            Set(newKey, value, -1);
+            return;
+        }
+
+        if (_before) return;
+        var grew = LsmKeys.Compare(oldKey, newKey) < 0;
+        if (grew ? LsmKeys.Compare(_key, oldKey) <= 0 || LsmKeys.Compare(_key, newKey) > 0
+                : LsmKeys.Compare(_key, newKey) < 0 || LsmKeys.Compare(_key, oldKey) >= 0) return;
+        _key = grew ? LsmKeys.Successor(newKey) : newKey;
+        _before = !grew;
+        _removed = true;
+        _stamp = Tr.ModificationStamp;
+        _index = -1;
+        _resolvedValue = null;
     }
 
     public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
