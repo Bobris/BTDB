@@ -424,7 +424,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
                     {
                         WriteStartOfNewTransactionLogFile();
-                        _fileWithTransactionLog!.HardFlush();
+                        HardFlushCurrentTransactionLog();
                         // reinitialize MemWriter because it could be garbage after HardFlush();
                         _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
                         UpdateTransactionLogInBTreeRoot(_lastCommitted);
@@ -434,7 +434,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     if (openUpToCommitUlong.HasValue)
                     {
                         CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration,
-                            ReferenceDurableLastCommitted(), true);
+                            ReferenceDurableLastCommitted()!, true);
                     }
                 }
 
@@ -606,7 +606,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     // Every node starts from the remote inventory. Publish the same header before any local work
                     // can affect allocation; conditional creation reconciles concurrent startup attempts.
                     WriteStartOfNewTransactionLogFile();
-                    _fileWithTransactionLog!.HardFlush();
+                    HardFlushCurrentTransactionLog();
                     await files.PublishTransactionLogHeaderAsync(_fileWithTransactionLog, cancellation).ConfigureAwait(false);
                     AdvanceReplicationStructuralBoundary(_lastCommitted, _fileIdWithTransactionLog,
                         checked((uint)_writerWithTransactionLog.GetCurrentPosition()));
@@ -702,13 +702,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     // A key index points at transaction log commands up to its root's position, so they must be durable before the
     // index is: otherwise a crash could keep the index and lose the commands its values are read from. A writing
-    // transaction may be appending, so the log is flushed only while none is running.
-    IRootNodeInternal ReferenceDurableLastCommitted()
+    // transaction may be appending, so the log is flushed only while none is running; null when the root is then
+    // not durable yet.
+    IRootNodeInternal? ReferenceDurableLastCommitted()
     {
         lock (_writeLock)
         {
             if (_writingTransaction == null) HardFlushTransactionLog();
-            return ReferenceAndGetLastCommitted();
+            var root = ReferenceAndGetLastCommitted();
+            if (_writingTransaction == null || IsDurable((IRootNode)root)) return root;
+            DereferenceRootNodeInternal(root);
+            return null;
         }
     }
 
@@ -1670,11 +1674,29 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         HardFlushTransactionLog();
     }
 
+    // The current transaction log file and the offset up to which it is durable, packed so readers that do not take
+    // the write lock see a consistent pair. Earlier logs became durable when the next one started.
+    long _durableTransactionLog;
+
+    void HardFlushCurrentTransactionLog()
+    {
+        var position = (uint)_writerWithTransactionLog.GetCurrentPosition();
+        _fileWithTransactionLog!.HardFlush();
+        Volatile.Write(ref _durableTransactionLog, ((long)_fileIdWithTransactionLog << 32) | position);
+    }
+
+    bool IsDurable(IRootNode root)
+    {
+        var durable = Volatile.Read(ref _durableTransactionLog);
+        return root.TrLogFileId != _fileIdWithTransactionLog ||
+               (uint)(durable >> 32) == root.TrLogFileId && root.TrLogOffset <= (uint)durable;
+    }
+
     void HardFlushTransactionLog()
     {
         if (_fileWithTransactionLog == null) return;
         _writerWithTransactionLog.Flush();
-        _fileWithTransactionLog.HardFlush();
+        HardFlushCurrentTransactionLog();
         // HardFlush may invalidate the appender's buffer.
         _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
     }
@@ -1856,7 +1878,14 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         // Keep the key index that preserved history starts from, as compaction does.
         var preserveKeyIndexGeneration =
             CalculatePreserveKeyIndexGeneration(CalculatePreserveKeyIndexKeyFromKeyIndexInfos(BuildKeyIndexInfos()));
-        CreateIndexFile(cancellation, preserveKeyIndexGeneration, ReferenceDurableLastCommitted());
+        if (ReferenceDurableLastCommitted() is not { } root)
+        {
+            Logger?.LogWarning("CreateKvi skipped: a writing transaction holds the transaction log, which is not durable " +
+                               "up to the last commit yet.");
+            return;
+        }
+
+        CreateIndexFile(cancellation, preserveKeyIndexGeneration, root);
     }
 
     public IKeyValueDBLogger? Logger { get; set; }
@@ -1946,7 +1975,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 _writerWithTransactionLog.Flush();
                 if (DurableTransactions)
                 {
-                    _fileWithTransactionLog!.HardFlush();
+                    HardFlushCurrentTransactionLog();
                     // Reinitialize MemWriter because its content could be invalid due to HardFlush
                     _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
                 }
@@ -1960,7 +1989,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         EnsureTransactionLogCommandFits(1);
                     _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
                     _writerWithTransactionLog.Flush();
-                    _fileWithTransactionLog!.HardFlush();
+                    HardFlushCurrentTransactionLog();
                     // Reinitialize MemWriter because its content could be invalid due to HardFlush
                     _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
                 }

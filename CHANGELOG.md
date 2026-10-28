@@ -70,8 +70,9 @@
   `CreateKvi` and compaction and flushed to disk, points at transaction log commands of its last commit, which were
   not necessarily flushed, so a crash could keep the index and lose those commands. The log is now flushed before
   the index, and the index's root is taken under the same exclusion of writing transactions; compaction waits for
-  a running writer. `CreateKvi` called during a writing transaction still cannot flush the log under it. Found by
-  simulating crashes at every file operation.
+  a running writer. `CreateKvi` called while a writing transaction holds the log writes an index only when the last
+  commit is already durable (always with `DurableTransactions`), and otherwise skips it with a logged warning. Found
+  by simulating crashes at every file operation, also beside a concurrent writer.
 - Opening a `BTreeKeyValueDB` whose transaction log header had a damaged predecessor ID pointing at a later log
   hung forever following the cycle. The chain walk now requires every predecessor to have a lower file ID, as
   `OpenAsync` already did, and fails the open with `BTDBException` otherwise. Found by flipping header bits.

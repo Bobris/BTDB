@@ -6,7 +6,8 @@ A model of the write order of `BTreeKeyValueDB.CreateKeyIndexFile`. The transact
 root, from which replay continues and before which its values are read from the log.
 
 * `fixed_safe`: with the order since the 2026-10-28 fix, which makes the log durable before the index and takes the
-  root under the same exclusion, every reachable state has its durable index at or before the durable log end.
+  root under the same exclusion, or beside a writer indexes only a commit already durable, every reachable state has
+  its durable index at or before the durable log end.
 * `previous_unsafe`: before the fix, one commit and an index was enough for a crash to keep the index and lose the log
   bytes it points at (`KeyValueDBCrashSimulationTest`).
 -/
@@ -25,6 +26,9 @@ inductive Step : St → St → Prop
   | flush (s : St) : Step s { s with durable := s.written }
   /-- Since the fix: the log is flushed, then the index of the last commit is written and flushed. -/
   | index (s : St) : Step s { s with durable := s.written, index := some s.committed }
+  /-- Since the fix, beside a writer that holds the log: the index only of a last commit that is already durable;
+  otherwise `CreateKvi` writes none. -/
+  | indexBesideWriter (s : St) (h : s.committed ≤ s.durable) : Step s { s with index := some s.committed }
 
 /-- Before the fix: the index of the last commit, without flushing the log. -/
 def previousIndex (s : St) : St := { s with index := some s.committed }
@@ -48,6 +52,10 @@ theorem fixed_inv {s : St} (h : Reach s) : Inv s := by
       refine ⟨Nat.le_refl _, h2, fun p hp => ?_⟩
       simp only [Option.some.injEq] at hp
       subst hp; exact h2
+    | indexBesideWriter h =>
+      refine ⟨h1, h2, fun p hp => ?_⟩
+      simp only [Option.some.injEq] at hp
+      subst hp; exact h
 
 theorem fixed_safe {s : St} (h : Reach s) (p : Nat) (hp : s.index = some p) : p ≤ s.durable := (fixed_inv h).2.2 p hp
 

@@ -288,14 +288,18 @@ public class KeyValueDBCrashSimulationTest
     public async Task EveryCrashOfSplitTransactionsOpensToACommittedState(int seed) =>
         await CrashEverywhere(seed, true, false, true);
 
-    /// A crash at a random file operation while compaction runs beside a durable writer keeps every commit that
-    /// returned before it, and opens to a committed state that takes a later commit.
+    /// A crash at a random file operation while compaction and CreateKvi run beside a writer opens to a committed
+    /// state that takes a later commit, and with durable transactions keeps every commit that returned before it.
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    [InlineData(4)]
-    public async Task CrashWhileCompactingBesideAWriterKeepsDurableCommits(int seed)
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(4, true)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    public async Task CrashWhileCompactingBesideAWriterKeepsDurableCommits(int seed, bool durable)
     {
         var random = new Random(seed);
         for (var round = 0; round < 25; round++)
@@ -306,7 +310,7 @@ public class KeyValueDBCrashSimulationTest
             var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
             using (var db = new BTreeKeyValueDB(Options(files)))
             {
-                db.DurableTransactions = true;
+                db.DurableTransactions = durable;
                 using var stop = new CancellationTokenSource();
                 var compactor = Task.Run(async () =>
                 {
@@ -342,7 +346,7 @@ public class KeyValueDBCrashSimulationTest
             {
                 WriteSnapshot(files, directory, random);
                 var opened = await OpenAndCommit(new OnDiskFileCollection(directory));
-                var acknowledged = done.FindLastIndex(d => d <= files.CrashAt);
+                var acknowledged = durable ? done.FindLastIndex(d => d <= files.CrashAt) : 0;
                 Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
                     $"Seed {seed} round {round} crash {files.CrashAt}: opened {Short(opened)}, not a commit at or after " +
                     $"{acknowledged}, which returned before the crash");
@@ -355,6 +359,46 @@ public class KeyValueDBCrashSimulationTest
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
             }
         }
+    }
+
+    sealed class WarningLogger : IKeyValueDBLogger
+    {
+        public string? LastWarning;
+        public void ReportTransactionLeak(IKeyValueDBTransaction transaction) { }
+        public void CompactionStart(ulong totalWaste) { }
+        public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory) { }
+        public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration,
+            ulong beforeCompressionSize) { }
+        public void TransactionLogCreated(uint fileId) { }
+        public void FileMarkedForDelete(uint fileId) { }
+        public void LogWarning(string message) => LastWarning = message;
+    }
+
+    /// While a writing transaction holds the transaction log, CreateKvi cannot flush it, so it writes a key index only
+    /// when the last commit is already durable, and otherwise skips it with a warning.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreateKviBesideAWriterIndexesOnlyDurableCommits(bool durable)
+    {
+        using var files = new RecordingCollection();
+        var logger = new WarningLogger();
+        using var db = new BTreeKeyValueDB(Options(files));
+        db.Logger = logger;
+        db.DurableTransactions = durable;
+        using (var tr = await db.StartWritingTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([1], [1]);
+            tr.Commit();
+        }
+
+        using var writer = await db.StartWritingTransaction();
+        using (var cursor = writer.CreateCursor()) cursor.CreateOrUpdateKeyValue([2], [2]);
+        var indexes = files.Inner.Enumerate().Count();
+        db.CreateKvi(CancellationToken.None);
+        Assert.Equal(indexes + (durable ? 1 : 0), files.Inner.Enumerate().Count());
+        Assert.Equal(!durable, logger.LastWarning?.StartsWith("CreateKvi skipped") ?? false);
     }
 
     async Task CrashEverywhere(int seed, bool durable, bool batches, bool split = false)
