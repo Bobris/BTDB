@@ -17,6 +17,7 @@ is no `sorry`.
 | File | Models | Code |
 | --- | --- | --- |
 | `Chain.lean` | Level-0 split chain: conditional appends to the writable tail (combined takeover, seal-only writes, owner change), successor creation after the lane's own seal, adopting a helper's header-only successor, header-only successors created by anybody after a seal, candidates reading the tail | `EventLogOwnerLane.AppendAsync`, `CreateSuccessorAsync`, `SetOwnerAsync`, `CreateCandidateAsync`, `EventLogStorageReader.FindTailAsync` |
+| `Bounds.lean` | One versioned topic history; lanes whose conditional writes are dispatched, applied and answered separately; `ValidateAsync` calls answering from a write or a tail check | `EventLogOwnerLane.ValidateAsync`, `WriteAsync`, `SetOwnerAsync` |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
 Every step is atomic and may happen at any time, so the proofs cover all interleavings of the modelled operations,
@@ -40,6 +41,8 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `ExactlyOnce.fixed_call_order` | With the implemented rule, each session's committed sequences are exactly `1, 2, …, k` in history order (contract 8). |
 | `ExactlyOnce.fixed_receipts` | With the implemented rule, every receipt names the record at its offset. |
 | `ExactlyOnce.fixed_commits` | The implemented rule still publishes, so the results above are not vacuous. |
+| `Bounds.current_bounds_stale` | Under the rule before the 2026-10-28 fix, a write dispatched before a bounds call lands, another owner commits, and the late response makes the call answer an end below a completed receipt. |
+| `Bounds.fixed_bounds_fresh` | With the implemented rule, which trusts only a write dispatched after the call started or a tail check, every answer covers every receipt completed before the call. |
 
 ## Finding: a delayed first dispatch was committed again (fixed 2026-10-27)
 

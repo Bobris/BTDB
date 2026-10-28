@@ -403,6 +403,32 @@ public class EventLogOwnerLaneTest
     }
 
     [Fact]
+    public async Task ValidationDoesNotTrustAWriteDispatchedBeforeIt()
+    {
+        var storage = new FaultyEventLogStorage();
+        var a = await Lane(storage, A, Small(4096));
+        await Submit(a, 1, 1, Bytes(0));
+        // A's next write lands, but its response is delayed until B took over and committed offset 2.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var hold = true;
+        storage.AfterMutation = async _ =>
+        {
+            if (!hold) return;
+            hold = false;
+            await gate.Task;
+        };
+        var landed = Submit(a, 1, 2, Bytes(1)).AsTask();
+        var b = await Lane(storage, B, Small(4096));
+        Assert.Equal(2ul, await Submit(b, 2, 1, Bytes(2), resumeFrom: 2));
+        var validation = a.ValidateAsync(default).AsTask();
+        gate.SetResult();
+        Assert.Equal(1ul, await landed);
+        // Before the fix A answered 2 from its late response, below the receipt B had already returned.
+        await Assert.ThrowsAsync<EventLogOwnerLostException>(() => validation);
+        Assert.Equal(3ul, await b.ValidateAsync(default));
+    }
+
+    [Fact]
     public async Task TakeoverOfSealedIdleTailCreatesHeaderOnlySuccessorWithInheritedOwner()
     {
         var storage = new FaultyEventLogStorage();

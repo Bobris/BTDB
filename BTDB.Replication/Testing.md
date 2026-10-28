@@ -323,7 +323,7 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
     the next offset takes over with its first commit without reading;
   - a landed write whose response was lost stays committed even when a takeover follows it;
   - pipelined sequences commit in order, and an unfilled gap fails;
-  - idle-owner validation detects a takeover;
+  - idle-owner validation detects a takeover, and validation does not trust a write dispatched before it;
   - takeover of a sealed idle tail through a header-only successor, including when a helper created it first;
   - oversized records are rejected.
 - `EventLogServiceTest`, with several in-process nodes, an in-process transport with partitions and the real
@@ -360,7 +360,9 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
   - the session rule before the 2026-10-27 fix could commit one Publish call twice when a first dispatch arrived late
     at a new owner (a counterexample);
   - the implemented rule, which derives an unknown session's state from history, commits each transfer once, keeps
-    per-session call order and returns exact receipts.
+    per-session call order and returns exact receipts;
+  - owner validation for bounds trusts only a write dispatched after the call or a tail check, so bounds never end
+    below a completed receipt; the rule before the 2026-10-28 fix did not.
 
 Not covered yet:
 

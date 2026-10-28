@@ -16,7 +16,8 @@
   - `BTDB.Replication/Proofs/`, the event-log commit protocol:
     - the split chain never forks, committed history only grows, and a successful write lands exactly at its writer's
       next offset;
-    - each Publish call commits once, in per-session call order, with exact receipts.
+    - each Publish call commits once, in per-session call order, with exact receipts;
+    - bounds from the owner cover every completed receipt.
   - `BTDB.LSM/Proofs/`, the `LsmKeyValueDB` WAL across writer takeovers: every acknowledged commit stays in every
     replay, and every replay is a prefix of one writer's history.
 
@@ -27,6 +28,10 @@
   `previouslyDispatched = false` for an unknown session. An unknown session's state now always comes from committed
   history from the round's resume offset. A first submission at the owner's next offset still needs no storage read and
   keeps the combined takeover write.
+- Event log: `GetBoundsAsync` could return an end below a receipt another node had already completed. The owner
+  trusted a write still in flight when the call started, or the end of its commit loop. That write could have landed
+  before another owner took over and committed. The owner now trusts only a write dispatched after the call started,
+  or a tail check.
 - `LsmKeyValueDB` writer takeover could lose acknowledged durable commits. Parallel WAL uploads complete out of order,
   so a crashed writer could leave several missing chunk names, and the new writer fenced only the first. Replay then
   stopped at the next hole, and a later takeover fenced it and discarded the new writer's commits. A takeover now

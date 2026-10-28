@@ -298,7 +298,7 @@ A fenced owner that has nothing to write never gets a 412, so it can keep servin
 * A changed version or owner session means that the owner is fenced. It stops, and it closes its subscriptions with a redirect to the owner recorded in the tail metadata.
 * A follower that receives neither a batch nor a validated heartbeat within the bounded interval treats the owner as unreachable. Only then does it read the tail from Blob, to find the current owner and any committed suffix it missed.
 
-`GetBoundsAsync` on a follower asks the owner over HTTP. The owner answers only after a successful conditional write or tail check that started after the request arrived, which gives the freshness required in section 3. A follower falls back to reading the tail from Blob only when the owner is unreachable.
+`GetBoundsAsync` on a follower asks the owner over HTTP. The owner answers only after a successful conditional write or tail check that started after the request arrived, which gives the freshness required in section 3. A write dispatched earlier does not count, even when its response arrives later: it may have landed before another owner took over and committed (`Proofs/EventLogProofs/Bounds.lean`). A follower falls back to reading the tail from Blob only when the owner is unreachable.
 
 Measure the heartbeat interval as part of takeover latency. A best-effort takeover notification from the new owner to the previous owner's endpoint may shorten it, but correctness must not depend on it.
 

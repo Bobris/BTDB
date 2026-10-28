@@ -85,6 +85,10 @@ internal sealed class EventLogOwnerLane
     bool _installed;
     bool _running;
     bool _installRequested;
+    // Conditional writes are numbered when dispatched; a successful one dispatched after a validation started proves
+    // ownership at that time.
+    ulong _writesDispatched;
+    ulong _lastWriteDispatch;
     Exception? _stopReason;
 
     EventLogOwnerLane(IEventLogStorage storage, EventLogStorageReader reader, string topic, EventLogOptions options,
@@ -525,10 +529,11 @@ internal sealed class EventLogOwnerLane
             position += frame.Length;
         }
         if (seal) EventLogFormat.WriteSeal(content.AsSpan(position), next, _splitId + 1);
-        var version = await WriteAsync(EventLogFormat.SplitKey(_topic, _splitId), _version, content)
+        var (version, dispatch) = await WriteAsync(EventLogFormat.SplitKey(_topic, _splitId), _version, content)
             .ConfigureAwait(false);
         lock (_lock)
         {
+            _lastWriteDispatch = dispatch;
             _content = content;
             _version = version;
             _next = next;
@@ -548,9 +553,10 @@ internal sealed class EventLogOwnerLane
         if (seal) EventLogFormat.WriteSeal(content.AsSpan(_headerLength + frame.Length), next, id + 1);
         var key = EventLogFormat.SplitKey(_topic, id);
         string version;
+        ulong dispatch;
         try
         {
-            version = await WriteAsync(key, null, content).ConfigureAwait(false);
+            (version, dispatch) = await WriteAsync(key, null, content).ConfigureAwait(false);
         }
         catch (FencedException fenced) when (!fenced.Committed)
         {
@@ -573,6 +579,7 @@ internal sealed class EventLogOwnerLane
         }
         lock (_lock)
         {
+            _lastWriteDispatch = dispatch;
             _splitId = id;
             _version = version;
             _content = content;
@@ -586,6 +593,8 @@ internal sealed class EventLogOwnerLane
     async Task SetOwnerAsync()
     {
         var key = EventLogFormat.SplitKey(_topic, _splitId);
+        ulong dispatch;
+        lock (_lock) dispatch = ++_writesDispatched;
         var ambiguous = false;
         while (true)
         {
@@ -594,6 +603,7 @@ internal sealed class EventLogOwnerLane
             {
                 lock (_lock)
                 {
+                    _lastWriteDispatch = dispatch;
                     _version = result.Version!;
                     _installed = true;
                 }
@@ -608,6 +618,7 @@ internal sealed class EventLogOwnerLane
                     {
                         lock (_lock)
                         {
+                            _lastWriteDispatch = dispatch;
                             _version = blob.Version;
                             _installed = true;
                         }
@@ -625,19 +636,22 @@ internal sealed class EventLogOwnerLane
     /// <summary>Repeat the exact write until resolved. A rejection after an ambiguous attempt may be our own landed
     /// write: adopt it when the object is exactly our content and session, report committed frames when our content is
     /// a prefix of a contender's version, and otherwise report that the write did not land.</summary>
-    async Task<string> WriteAsync(string key, string? expectedVersion, byte[] content)
+    async Task<(string Version, ulong Dispatch)> WriteAsync(string key, string? expectedVersion, byte[] content)
     {
+        ulong dispatch;
+        lock (_lock) dispatch = ++_writesDispatched;
         var ambiguous = false;
         while (true)
         {
             var result = await _storage.WriteAsync(key, expectedVersion, content, Self, null, CancellationToken.None)
                 .ConfigureAwait(false);
-            if (result.Outcome == EventLogWriteOutcome.Applied) return result.Version!;
+            if (result.Outcome == EventLogWriteOutcome.Applied) return (result.Version!, dispatch);
             if (result.Outcome == EventLogWriteOutcome.Rejected)
             {
                 if (!ambiguous) throw new FencedException(false);
                 var blob = await _storage.ReadAsync(key, CancellationToken.None).ConfigureAwait(false);
-                if (blob != null && blob.Owner == Self && blob.Content.Span.SequenceEqual(content)) return blob.Version;
+                if (blob != null && blob.Owner == Self && blob.Content.Span.SequenceEqual(content))
+                    return (blob.Version, dispatch);
                 throw new FencedException(blob != null && blob.Content.Span.StartsWith(content));
             }
             ambiguous = true;
@@ -674,55 +688,65 @@ internal sealed class EventLogOwnerLane
     }
 
     /// <summary>
-    /// Validate that this lane still owns the tail: the tail version is unchanged and no successor was created by
-    /// anybody else. A write in flight is awaited instead, because its success proves ownership. Returns the durable
-    /// next offset, covering every receipt completed before the call; a fenced lane stops and throws.
+    /// Validate that this lane still owns the tail: a successful write dispatched after the call started, or a tail
+    /// check finding the tail version unchanged and no successor created by anybody else. A write dispatched earlier
+    /// proves nothing: it may have landed before another owner took over and committed. Returns the durable next
+    /// offset, covering every receipt completed before the call (Proofs/EventLogProofs/Bounds.lean); a fenced lane
+    /// stops and throws.
     /// </summary>
     public async ValueTask<ulong> ValidateAsync(CancellationToken cancellation)
     {
-        TaskCompletionSource<bool>? waiter = null;
-        string version;
-        ulong splitId;
-        bool sealedTail;
+        ulong started;
         lock (_lock)
         {
             ThrowIfStopped();
-            if (_running)
-            {
-                waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                _commitWaiters.Add(waiter);
-            }
-            version = _version;
-            splitId = _splitId;
-            sealedTail = _sealed;
+            started = _writesDispatched;
         }
-        if (waiter != null)
+        while (true)
         {
-            await waiter.Task.WaitAsync(cancellation).ConfigureAwait(false);
+            TaskCompletionSource<bool>? waiter = null;
+            string version;
+            ulong splitId;
+            bool sealedTail;
             lock (_lock)
             {
                 ThrowIfStopped();
-                return _next;
+                if (_lastWriteDispatch > started) return _next;
+                if (_running)
+                {
+                    waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _commitWaiters.Add(waiter);
+                }
+                version = _version;
+                splitId = _splitId;
+                sealedTail = _sealed;
             }
-        }
-        var properties = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId), cancellation)
-            .ConfigureAwait(false);
-        var fenced = properties == null || properties.Version != version;
-        if (!fenced && sealedTail)
-        {
-            // A helper's header-only successor still carries this session; the next commit appends to it.
-            var successor = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId + 1), cancellation)
+            if (waiter != null)
+            {
+                await waiter.Task.WaitAsync(cancellation).ConfigureAwait(false);
+                continue;
+            }
+            var properties = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId), cancellation)
                 .ConfigureAwait(false);
-            fenced = successor != null && successor.Owner != Self;
+            var fenced = properties == null || properties.Version != version;
+            if (!fenced && sealedTail)
+            {
+                // A helper's header-only successor still carries this session; the next commit appends to it.
+                var successor = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId + 1), cancellation)
+                    .ConfigureAwait(false);
+                fenced = successor != null && successor.Owner != Self;
+            }
+            lock (_lock)
+            {
+                ThrowIfStopped();
+                if (_lastWriteDispatch > started) return _next;
+                // This lane wrote meanwhile; check its new version.
+                if (_version != version || _splitId != splitId || _running) continue;
+                if (!fenced) return _next;
+            }
+            Stop(new EventLogOwnerLostException($"Topic '{_topic}' was taken over."), null, null);
+            throw new EventLogOwnerLostException($"Topic '{_topic}' was taken over.");
         }
-        lock (_lock)
-        {
-            ThrowIfStopped();
-            if (_version != version || _splitId != splitId || _running) return _next; // a newer commit proves it
-            if (!fenced) return _next;
-        }
-        Stop(new EventLogOwnerLostException($"Topic '{_topic}' was taken over."), null, null);
-        throw new EventLogOwnerLostException($"Topic '{_topic}' was taken over.");
     }
 
     /// <summary>Stop the lane: pending and held records fail with <see cref="EventLogOwnerLostException"/> so publishers

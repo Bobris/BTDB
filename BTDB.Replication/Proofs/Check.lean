@@ -12,3 +12,5 @@ open EventLog
 #print axioms Chain.step_hist_prefix
 #print axioms Chain.step_sealed_stable
 #print axioms ExactlyOnce.fixed_commits
+#print axioms Bounds.current_bounds_stale
+#print axioms Bounds.fixed_bounds_fresh
