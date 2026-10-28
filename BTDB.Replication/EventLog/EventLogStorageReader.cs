@@ -153,7 +153,25 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
     async ValueTask<ulong> SplitFirstOffsetAsync(EventLogObjectInfo info, CancellationToken cancellation)
     {
         var header = new byte[EventLogFormat.SplitHeaderLength(topic)];
-        await storage.ReadRangeAsync(info.Key, info.Version, 0, header, cancellation).ConfigureAwait(false);
+        var version = info.Version;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await storage.ReadRangeAsync(info.Key, version, 0, header, cancellation).ConfigureAwait(false);
+                break;
+            }
+            catch (EventLogVersionChangedException) when (attempt < 3)
+            {
+                // Appends, seals, owner changes and cleanup marks change a split's version but never its header, and
+                // split keys are not reused, so the header of the current version is the one listed. A deleted split
+                // still throws, and a fresh listing resolves it.
+                var properties = await storage.GetPropertiesAsync(info.Key, cancellation).ConfigureAwait(false);
+                if (properties == null) throw;
+                version = properties.Version;
+            }
+        }
+
         return EventLogFormat.ParseSplitHeader(header, topic).FirstOffset;
     }
 

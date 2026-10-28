@@ -52,6 +52,11 @@
 
 ### Fixed
 
+- Event log: while other owners appended to a topic, a lane resolving a publisher session, or any reader, could fail
+  with `EventLogOffsetNotAvailableException` for a committed offset. Locating an offset reads split headers at the
+  version a listing gave, and every append changes the tail split's version, so all retries could meet a changed
+  version. A split's header never changes, so the reader now reads it at the split's current version. Found by
+  publishing from concurrent sessions through competing owners under random storage faults.
 - Descending enumeration of a relation (`ListBy…` with an `AdvancedEnumeratorParam`, including the ordered dictionary
   enumerators), an `IOrderedSet` or an `IOrderedDictionary` returned one key below the range when the caller removed
   the range's first key while enumerating, as code deleting what it lists does. The enumerators stopped by comparing
