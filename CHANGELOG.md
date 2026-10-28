@@ -73,6 +73,10 @@
 
 ### Fixed
 
+- Event store: an event stored with a type name that maps to no type, as after the type was renamed or removed without
+  a mapping, failed with `NullReferenceException` when loaded into a member of a known type such as `List<Item>`,
+  without emitted code, which is the default. Its objects now load as dynamic objects and an unassignable one is
+  reported with `BTDBException`.
 - Event store: a damaged type id in a metadata log could make `EventDeserializer.ProcessMetadataLog` grow its type
   table to that id, so a large one exhausted memory, and other damaged ids failed with `ArgumentOutOfRangeException` or
   `NullReferenceException`; the types a failed log had read stayed behind for the next one. A type id outside what the

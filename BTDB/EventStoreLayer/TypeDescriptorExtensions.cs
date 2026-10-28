@@ -110,8 +110,10 @@ public static class TypeDescriptorExtensions
                         var obj = ctx!.LoadObject(ref reader);
                         Unsafe.As<byte, object?>(ref value) = obj;
                     };
-                var origType = descriptor.GetPreferredType()!;
-                var converter = typeConverterFactory.GetConverter(origType, targetType);
+                // No preferred type when the stored name maps to none, as after a type was renamed or removed: load the
+                // object as stored and assign it if it fits.
+                var origType = descriptor.GetPreferredType();
+                var converter = origType == null ? null : typeConverterFactory.GetConverter(origType, targetType);
                 if (converter != null && origType != targetType)
                 {
                     return (ref reader, ctx, ref value) =>
@@ -132,7 +134,7 @@ public static class TypeDescriptorExtensions
 
                 if (targetType.IsValueType)
                 {
-                    throw new BTDBException("Cannot load " + origType.ToSimpleName() + " as " +
+                    throw new BTDBException("Cannot load " + (origType?.ToSimpleName() ?? descriptor.Name) + " as " +
                                             targetType.ToSimpleName());
                 }
 
@@ -175,7 +177,9 @@ public static class TypeDescriptorExtensions
             {
                 if (descriptor.LoadNeedsHelpWithConversion && asType != typeof(object))
                 {
-                    var origType = descriptor.GetPreferredType()!;
+                    var origType = descriptor.GetPreferredType() ??
+                                   throw new BTDBException("Cannot load " + descriptor.Name + " as " +
+                                                           asType.ToSimpleName());
                     descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, origType);
                     if (origType != asType)
                     {
@@ -200,12 +204,12 @@ public static class TypeDescriptorExtensions
                         .LoadObject))!);
                 if (asType != typeof(object))
                 {
-                    var origType = descriptor.GetPreferredType()!;
-                    var conv = convertorGenerator.GenerateConversion(origType, asType);
+                    var origType = descriptor.GetPreferredType();
+                    var conv = origType == null ? null : convertorGenerator.GenerateConversion(origType, asType);
                     if (conv != null)
                     {
                         ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
-                            .MakeGenericMethod(origType));
+                            .MakeGenericMethod(origType!));
                         conv(ilGenerator);
                     }
                     else

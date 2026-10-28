@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System;
 using BTDB;
 using BTDB.EventStoreLayer;
+using BTDB.KVDBLayer;
 using Xunit;
 using static BTDBTest.EventLayerRoundTripHelper;
 
@@ -122,6 +123,35 @@ public class EventLayerEmitModeTest
             }));
             Assert.Equal(((when, (byte)7), ((1, "s"), TupleKind.B), ((Guid, byte)?)(guid, 3)),
                 (result.DateAndByte, result.NestedWithEnum, result.NullableGuidAndByte));
+        });
+    }
+
+    [Generate]
+    public class RenamedItem
+    {
+        public string? Text { get; set; }
+    }
+
+    [Generate]
+    public class HoldsRenamedItems
+    {
+        public List<RenamedItem>? Items { get; set; }
+    }
+
+    // An event stored with a type name that maps to no type, as after the type was renamed or removed, loads as a dynamic
+    // object. Before the fix loading it into a typed member failed with NullReferenceException.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void ItemsOfAnUnmappedTypeAreReported(EventLayer layer)
+    {
+        RunWithEmitMode(true, () =>
+        {
+            var writeMapper = new RenamingTypeMapper().Map(typeof(RenamedItem), "Gone.RenamedItem");
+            var error = Assert.Throws<BTDBException>(() =>
+                RoundTrip(layer, new HoldsRenamedItems { Items = [new() { Text = "a" }] }, writeMapper));
+            Assert.Contains(nameof(RenamedItem), error.Message);
         });
     }
 }
