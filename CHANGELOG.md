@@ -26,7 +26,9 @@
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;
     - counted entries add up across components, and the compaction merge preserves each key's state and count;
-    - manifest fencing gives every writer session a fresh epoch.
+    - manifest fencing gives every writer session a fresh epoch;
+    - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
+      components.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the

@@ -24,3 +24,6 @@ open Lsm
 #print axioms Reload.fixed_reload_matches
 #print axioms Refresh.current_mixed_state
 #print axioms Refresh.fixed_consistent
+#print axioms Rank.rank_component
+#print axioms Rank.rank_correct
+#print axioms Rank.count_correct

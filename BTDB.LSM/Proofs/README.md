@@ -18,6 +18,11 @@ holds at most one point entry and may cover the key with a range-tombstone fragm
 `LsmMerger.Entries` and its merged fragments combine a run of components. Splitting fragments at table boundaries
 (`LsmCompaction.Clip`) recomputes `coveredBelow` by a rank query and is not modelled.
 
+`LsmProofs/Rank.lean` models `LsmView.RankFrom` and `CountFrom` over a stack of components with range-tombstone
+fragments, sorted and disjoint as `TombstoneSet` keeps them. Point deltas and `CoveredBelow` are taken relative to the
+state below each component, as consistent components store them. `TombstoneSet.Find` is modelled by its result, not
+its binary search.
+
 `LsmProofs/WalFlush.lean` extends the WAL model with flushes. The newest writer publishes a manifest whose tables
 hold its base and its first own chunks' records, landed or not, and whose WAL start is its next own chunk with its
 epoch. Readers, recovery and takeovers then replay from the newest manifest.
@@ -77,6 +82,8 @@ Not modelled in `Wal.lean`:
 | `Wal.fixed_commits` | The fixed rule still lets a writer take over, write and acknowledge, so the results above are not vacuous. |
 | `Counts.total_telescopes` | Over a consistent stack of components, the count contributions at a key sum to `[exists on top] − [exists below]`, so counts and ranks add across components (L5). |
 | `Counts.merge_final`, `merge_consistent`, `merge_total` | The component `LsmMerger` makes from a run reaches the same state at the key, is consistent with the state below the run, and contributes the same count. |
+| `Rank.rank_component` | One component's step of `RankFrom` is exact: the live keys below `x` are its point deltas below `x`, less the `CoveredBelow` of its fragments ending at or before `x`, plus the rank below the component at the start of the fragment containing `x`, else at `x`. |
+| `Rank.rank_correct`, `Rank.count_correct` | `RankFrom` over a stack is the number of live keys below `x`, and `CountFrom`, the sum of `DeltaSum − CoveredSum`, is the number of live keys. |
 
 The fixed rule, as implemented:
 
