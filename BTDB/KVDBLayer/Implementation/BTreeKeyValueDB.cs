@@ -1139,6 +1139,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
                         var valueLen = reader.ReadVInt32();
+                        if (keyLen < 0 || valueLen < 0) return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1193,6 +1194,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     {
                         if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
+                        if (keyLen < 0) return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1218,6 +1220,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyLen1 = reader.ReadVInt32();
                         var keyLen2 = reader.ReadVInt32();
+                        if (keyLen1 < 0 || keyLen2 < 0) return StopReplay(ref next);
                         var key = new byte[keyLen1];
                         reader.ReadBlock(key);
                         var keyBuf = ByteBuffer.NewAsync(key);
@@ -1336,16 +1339,19 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             return afterTemporaryEnd || IsReplication && next == null && reader.Eof &&
                 committed.TrLogFileId == fileId && committed.TrLogOffset == reader.GetCurrentPosition();
         }
-        catch (EndOfStreamException)
+        // A truncated or garbled command ends replay like the end of the log after a crash.
+        catch (Exception e) when (e is EndOfStreamException or InvalidDataException)
         {
-            if (next != null)
-            {
-                next.Dispose();
-                next = null;
-            }
-
-            return false;
+            return StopReplay(ref next);
         }
+    }
+
+    /// Ends replay before the unfinished transaction, whose changes are dropped.
+    static bool StopReplay(ref IRootNode? next)
+    {
+        next?.Dispose();
+        next = null;
+        return false;
     }
 
     async ValueTask<uint> LinkTransactionLogFileIdsAsync(uint latestTrLogFileId, uint stopAt,

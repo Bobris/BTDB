@@ -47,6 +47,9 @@
 
 ### Fixed
 
+- `BTreeKeyValueDB` failed to open when its transaction log held a key or value length that was negative or did not fit
+  an `int`, throwing `ArgumentOutOfRangeException`, `OverflowException` or `InvalidDataException`. Replay now ends at
+  such a command, as it does at other content it cannot apply after a crash, and keeps the transactions before it.
 - Event log: a merged object whose header claimed a record count near `ulong.MaxValue` passed validation, because the
   frame and record counts were added before the bound check and the sum wrapped around. The reader decides from that
   part of the header, before reading the header checksum, whether an offset lies beyond the object, so it skipped the
