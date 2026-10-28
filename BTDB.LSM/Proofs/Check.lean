@@ -27,3 +27,5 @@ open Lsm
 #print axioms Rank.rank_component
 #print axioms Rank.rank_correct
 #print axioms Rank.count_correct
+#print axioms FuzzyCursor.notify_position
+#print axioms FuzzyCursor.notify_kind

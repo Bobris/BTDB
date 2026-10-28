@@ -28,7 +28,8 @@
     - counted entries add up across components, and the compaction merge preserves each key's state and count;
     - manifest fencing gives every writer session a fresh epoch;
     - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
-      components.
+      components;
+    - cursors keep their position when another cursor changes a key suffix.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
@@ -57,7 +58,9 @@
 - `LsmKeyValueDB`: a cursor whose key was erased moved to the wrong side of a key that another cursor renamed with
   `UpdateKeySuffix` past it, so its next and previous keys and its key index differed from `BTreeKeyValueDB`. A key
   keeps its index when its suffix changes, so such a cursor now stays right before the renamed key, or right after it
-  when the key grew. Found by running the LSM oracle test with a thousand more seeds; the failing seeds are kept.
+  when the key grew. A cursor whose erased key was created again by another cursor now follows that key's suffix
+  update like a current cursor. Found by running the LSM oracle test with a thousand more seeds; the failing seeds are
+  kept, and `BTDB.LSM/Proofs/LsmProofs/FuzzyCursor.lean` proves that every cursor keeps its position.
 - `SetUlong` with an index of 2^31 or more failed with `IndexOutOfRangeException` or a misleading
   `ArgumentOutOfRangeException` from inside the ulong array growth, because `idx + 1` wrapped around. The transactions of
   `BTreeKeyValueDB`, `InMemoryKeyValueDB` and `LsmKeyValueDB` now reject such an index up front, and transaction log

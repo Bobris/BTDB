@@ -365,7 +365,8 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     internal void NotifyRenamed(byte[] oldKey, byte[] newKey)
     {
         if (_key == null) return;
-        if (_key.AsSpan().SequenceEqual(oldKey) && (!_removed || _before))
+        // The old key was live, so a cursor remembering it as erased saw it created again and is current on it.
+        if (_key.AsSpan().SequenceEqual(oldKey))
         {
             if (_before)
             {

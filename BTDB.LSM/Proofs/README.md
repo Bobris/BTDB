@@ -23,6 +23,9 @@ fragments, sorted and disjoint as `TombstoneSet` keeps them. Point deltas and `C
 state below each component, as consistent components store them. `TombstoneSet.Find` is modelled by its result, not
 its binary search.
 
+`LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
+erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
+
 `LsmProofs/WalFlush.lean` extends the WAL model with flushes. The newest writer publishes a manifest whose tables
 hold its base and its first own chunks' records, landed or not, and whose WAL start is its next own chunk with its
 epoch. Readers, recovery and takeovers then replay from the newest manifest.
@@ -84,6 +87,7 @@ Not modelled in `Wal.lean`:
 | `Counts.merge_final`, `merge_consistent`, `merge_total` | The component `LsmMerger` makes from a run reaches the same state at the key, is consistent with the state below the run, and contributes the same count. |
 | `Rank.rank_component` | One component's step of `RankFrom` is exact: the live keys below `x` are its point deltas below `x`, less the `CoveredBelow` of its fragments ending at or before `x`, plus the rank below the component at the start of the fragment containing `x`, else at `x`. |
 | `Rank.rank_correct`, `Rank.count_correct` | `RankFrom` over a stack is the number of live keys below `x`, and `CountFrom`, the sum of `DeltaSum − CoveredSum`, is the number of live keys. |
+| `FuzzyCursor.notify_position`, `FuzzyCursor.notify_kind` | After `UpdateKeySuffix` replaces a key by the only key with its prefix, every cursor of the transaction has the position it had, and current cursors stay current and fuzzy ones fuzzy. Before the 2026-10-28 fix a fuzzy cursor kept its erased key, which the renamed key could pass (`LsmRegressionTest.KeySuffixUpdateKeepsFuzzyCursorOnItsSide`), and a cursor whose erased key was created again did not follow it (`CursorOnRecreatedKeyFollowsKeySuffixUpdate`). |
 
 The fixed rule, as implemented:
 

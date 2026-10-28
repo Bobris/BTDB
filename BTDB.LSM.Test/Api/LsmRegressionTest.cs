@@ -151,6 +151,31 @@ public class LsmRegressionTest
             { Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true }), rename, probe));
     }
 
+    /// A cursor whose erased key was created again is current again, so it follows that key's suffix update.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CursorOnRecreatedKeyFollowsKeySuffixUpdate(bool lsm)
+    {
+        IKeyValueDB db = lsm
+            ? await LsmKeyValueDB.OpenAsync(new() { Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true })
+            : new BTreeKeyValueDB(new InMemoryFileCollection());
+        using (db)
+        {
+            using var tr = await db.StartWritingTransaction();
+            using var renaming = tr.CreateCursor();
+            using var follower = tr.CreateCursor();
+            renaming.CreateOrUpdateKeyValue([0x01], [1]);
+            renaming.CreateOrUpdateKeyValue([0xFF, 0x05], [2]);
+            Assert.True(follower.FindExactKey([0xFF, 0x05]));
+            follower.EraseCurrent();
+            renaming.CreateOrUpdateKeyValue([0xFF, 0x05], [3]);
+            Assert.Equal(UpdateKeySuffixResult.Updated, renaming.UpdateKeySuffix([0xFF], 1));
+            Assert.Equal(new byte[] { 0xFF }, follower.SlowGetKey());
+            Assert.Equal(1, follower.GetKeyIndex());
+        }
+    }
+
     static async Task<string> Probe(IKeyValueDB db, string rename, string probe)
     {
         using (db)

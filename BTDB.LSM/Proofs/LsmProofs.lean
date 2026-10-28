@@ -5,3 +5,4 @@ import LsmProofs.Fence
 import LsmProofs.Reload
 import LsmProofs.Refresh
 import LsmProofs.Rank
+import LsmProofs.FuzzyCursor
