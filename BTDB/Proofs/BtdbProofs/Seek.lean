@@ -3,7 +3,7 @@ import BtdbProofs.Cursor
 /-!
 # Seeking the first key of a relation query range
 
-A model of `RelationQueryEnumerator.Seek` (`BTDB/ODBLayer/RelationQuery.cs`), which positions a scan on the first key
+A model of `RelationQueryScanner.Seek` (`BTDB/ODBLayer/RelationQuery.cs`), which positions a scan on the first key
 of a range with a lower bound, using the cursor contract of `Cursor.lean`. The range keys have the prefix `p`; the
 lower bound `start` extends `p`, and with an exclusive bound the keys extending `start` (those whose field equals the
 bound) are skipped. A key passes the lower bound when it is not below `start` and, for an exclusive bound, does not
