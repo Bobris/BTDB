@@ -108,10 +108,14 @@ public class KeyValueDBCrashSimulationTest
         public TransactionLogSizeLimits GetLimits(uint transactionLogFileId) => new(1024, 1300);
     }
 
+    // Set by a test for everything it opens, through its awaits.
+    static readonly AsyncLocal<bool> Compressed = new();
+
     static KeyValueDBOptions Options(IFileCollection files, bool split = false) => new()
     {
-        FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
-        FileSplitSize = 4096, TransactionLogSizeStrategy = split ? new SmallLogs() : null
+        FileCollection = files,
+        Compression = Compressed.Value ? new SnappyCompressionStrategy() : new NoCompressionStrategy(),
+        CompactorScheduler = null, FileSplitSize = 4096, TransactionLogSizeStrategy = split ? new SmallLogs() : null
     };
 
     static string Dump(IKeyValueDB db)
@@ -278,6 +282,17 @@ public class KeyValueDBCrashSimulationTest
         }
 
         Assert.True(recoveries > total, "Recovery should do file operations to crash in.");
+    }
+
+    /// With Snappy compression, as by default, compressed keys and values are in the log and the key indexes.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryCrashOfCompressedDataOpensToACommittedState(int seed)
+    {
+        Compressed.Value = true;
+        await CrashEverywhere(seed, true, false);
     }
 
     /// With small log size limits a transaction is split between files, so a crash can cut it at a file boundary.
