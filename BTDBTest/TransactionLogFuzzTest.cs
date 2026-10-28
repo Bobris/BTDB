@@ -12,31 +12,40 @@ namespace BTDBTest;
 /// keeps.
 public class TransactionLogFuzzTest
 {
-    static KeyValueDBOptions Options(string directory) => new()
+    static KeyValueDBOptions Options(string directory, bool compressed = false) => new()
     {
-        FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
+        FileCollection = new OnDiskFileCollection(directory),
+        Compression = compressed ? new SnappyCompressionStrategy() : new NoCompressionStrategy(),
         CompactorScheduler = null
     };
 
     public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 40));
 
-    static byte[] Bytes(Random random, int length)
+    static byte[] Bytes(Random random, int length, bool compressible)
     {
         var result = new byte[length];
-        random.NextBytes(result);
+        if (compressible) Array.Fill(result, (byte)random.Next(4));
+        else random.NextBytes(result);
         return result;
     }
 
     [Theory]
     [MemberData(nameof(Seeds))]
-    public async Task MutatedLogOpensAndStaysUsable(int seed)
+    public Task MutatedLogOpensAndStaysUsable(int seed) => Fuzz(seed, false);
+
+    /// Compressible values make Snappy store keys and values compressed, so damage hits the decompression too.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public Task MutatedCompressedLogOpensAndStaysUsable(int seed) => Fuzz(seed, true);
+
+    static async Task Fuzz(int seed, bool compressed)
     {
         var random = new Random(seed);
         var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-fuzz-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var db = new BTreeKeyValueDB(Options(directory, compressed)))
             {
                 for (var t = 0; t < 30; t++)
                 {
@@ -63,7 +72,7 @@ public class TransactionLogFuzzTest
                                 tr.SetUlong((uint)random.Next(3), (ulong)random.NextInt64());
                                 break;
                             default:
-                                cursor.CreateOrUpdateKeyValue(key, Bytes(random, random.Next(3) == 0 ? 3000 : random.Next(8)));
+                                cursor.CreateOrUpdateKeyValue(key, Bytes(random, random.Next(3) == 0 ? 3000 : random.Next(8), compressed));
                                 break;
                         }
                     }
@@ -107,7 +116,7 @@ public class TransactionLogFuzzTest
                     File.Delete(other);
                 try
                 {
-                    using (var reopened = new BTreeKeyValueDB(Options(directory)))
+                    using (var reopened = new BTreeKeyValueDB(Options(directory, compressed)))
                     {
                         using (var read = reopened.StartReadOnlyTransaction())
                         using (var check = read.CreateCursor())
@@ -129,7 +138,7 @@ public class TransactionLogFuzzTest
                         tr.Commit();
                     }
 
-                    using (var again = new BTreeKeyValueDB(Options(directory)))
+                    using (var again = new BTreeKeyValueDB(Options(directory, compressed)))
                     using (var read = again.StartReadOnlyTransaction())
                     using (var check = read.CreateCursor())
                         Assert.True(check.FindExactKey([200]));
