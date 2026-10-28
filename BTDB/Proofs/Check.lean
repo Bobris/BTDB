@@ -97,3 +97,6 @@ open Btdb
 #print axioms DictionaryFree.unguarded_never_ends
 #print axioms BonReusedSlot.fixed_loads_each
 #print axioms BonReusedSlot.previous_copies_before
+#print axioms HashSetEntries.skipped_iff_free
+#print axioms HashSetEntries.written_count
+#print axioms HashSetEntries.stricter_check_writes_freed

@@ -57,6 +57,8 @@
     damage makes a container's items run past its pointer;
   - `BTDB/Proofs/`, Bon serializer creation: once no creation of a type runs, the placeholder cached for recursive types
     is gone, also when a creation failed;
+  - `BTDB/Proofs/`, saving a `HashSet`: skipping entries whose `Next` is below `-1` skips exactly the removed ones, so
+    Bon, the event store and ObjectDB write the number of items they announce;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
