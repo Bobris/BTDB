@@ -38,3 +38,7 @@ open Btdb
 #print axioms Boundary.search_correct
 #print axioms Boundary.before_lt_mono
 #print axioms Boundary.before_cut_mono
+#print axioms Boundary.descend
+#print axioms Boundary.child_before
+#print axioms Boundary.child_after
+#print axioms Boundary.cut_key_mono

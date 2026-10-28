@@ -48,10 +48,11 @@ written as a variable-length integer. It justifies the prefix scan that relation
 `BtdbProofs/ReadOnlyCompare.lean` models `ReadOnlyKeyValueDBCursor.Compare`, which compares a key the read-only
 database stores as a node's shared prefix and a suffix, cut to a maximum length, with a search target.
 
-`BtdbProofs/Boundary.lean` models the binary search that `ReadOnlyKeyValueDBCursor.FindBoundary` runs in each node.
+`BtdbProofs/Boundary.lean` models the binary search that `ReadOnlyKeyValueDBCursor.FindBoundary` runs in each node,
+and its descent through branch nodes whose separators are the first keys of all children but the first, as
+`ReadOnlyCreator` writes them.
 
-Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract, and the descent of `FindBoundary`
-through branch nodes.
+Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
 
@@ -70,4 +71,5 @@ through branch nodes.
 | `StringOrdered.high_surrogate_needed` | The planner's exclusion of a prefix ending with a high surrogate (`UsesEncodedStartsWith`) is needed: such a prefix encodes the surrogate alone, so the scan would miss strings that continue the pair. |
 | `ReadOnlyCompare.compare_correct` | `Compare(prefix, suffix, target, maxLength)` equals comparing the first `maxLength` bytes of `prefix ++ suffix` with the target, in every branch of its shortcut. |
 | `Boundary.search_correct`, `Boundary.before_lt_mono`, `Boundary.before_cut_mono` | The node search returns the number of keys below the target, or of keys whose cut to the target's length is not above it, for keys in increasing order. |
+| `Boundary.descend`, `Boundary.child_before`, `Boundary.child_after` | In a branch node the search picks the child holding the boundary, and the boundary of the node is the keys of the children before it, `CountBefore`, plus the boundary inside it. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

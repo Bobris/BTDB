@@ -12,6 +12,9 @@ A model of the node search in `ReadOnlyKeyValueDBCursor.FindBoundary`: `l = 0, r
   between that part and the rest.
 * `before_lt_mono`, `before_cut_mono`: over keys in increasing order both predicates are of that kind, so the search
   returns the number of keys before the boundary.
+* `descend`, `child_before`, `child_after`: in a branch node, whose separators are the first keys of all children but
+  the first, the search picks the child holding the boundary, and the boundary of the node is the keys of the
+  children before it plus the boundary inside it.
 -/
 
 namespace Btdb.Boundary
@@ -115,5 +118,75 @@ theorem before_cut_mono (keys : Nat → List Nat) (hs : Sorted keys) (t : List N
   · have := cut_le t.length _ _ (hs i j h)
     exact not_gt_trans _ _ _ this hj
   · exact hj
+
+/-! ## Descending through a branch node -/
+
+/-- A predicate on keys that holds below some boundary in key order and nowhere above it. -/
+def KeyMono (before : List Nat → Bool) : Prop := ∀ a b, lt a b → before b = true → before a = true
+
+theorem lt_key_mono (t : List Nat) : KeyMono (fun k => cmp k t == .lt) := by
+  intro a b h hb
+  simp only [beq_iff_eq] at hb ⊢
+  exact lt_trans _ _ _ h hb
+
+theorem cut_key_mono (t : List Nat) : KeyMono (fun k => cmp (k.take t.length) t != .gt) := by
+  intro a b h hb
+  simp only [bne_iff_ne, ne_eq] at hb ⊢
+  exact not_gt_trans _ _ _ (cut_le _ _ _ h) hb
+
+theorem takeWhile_none {p : List Nat → Bool} : ∀ ys : List (List Nat), (∀ a ∈ ys, p a = false) → ys.takeWhile p = []
+  | [], _ => rfl
+  | y :: _, h => by simp [List.takeWhile, h y (by simp)]
+
+/-- The keys of a child are below the next separator, the next child's first key: when the separator is before the
+boundary, so is the whole child. -/
+theorem child_before {before : List Nat → Bool} (hm : KeyMono before) {c : List (List Nat)} {s : List Nat}
+    (hc : ∀ k ∈ c, lt k s) (hs : before s = true) : ∀ k ∈ c, before k = true :=
+  fun k hk => hm k s (hc k hk) hs
+
+/-- The keys of a later child are at or above the separator: when it is not before the boundary, neither is the
+child. -/
+theorem child_after {before : List Nat → Bool} (hm : KeyMono before) {c : List (List Nat)} {s : List Nat}
+    (hc : ∀ k ∈ c, lt s k ∨ s = k) (hs : before s = false) : ∀ k ∈ c, before k = false := by
+  intro k hk
+  cases hb : before k with
+  | false => rfl
+  | true =>
+    rcases hc k hk with h | rfl
+    · rw [hm s k h hb] at hs; cases hs
+    · rw [hb] at hs; cases hs
+
+/-- With the children before `l` wholly before the boundary and those after `l` wholly after it, the boundary of the
+node's keys is the keys of the children before `l` plus the boundary inside child `l`: `FindBoundary` adds
+`CountBefore(l)` and descends into child `l`. -/
+theorem descend (before : List Nat → Bool) :
+    ∀ (cs : List (List (List Nat))) (l : Nat) (c : List (List Nat)), cs[l]? = some c →
+      (∀ i d, i < l → cs[i]? = some d → ∀ k ∈ d, before k = true) →
+      (∀ i d, l < i → cs[i]? = some d → ∀ k ∈ d, before k = false) →
+      cs.flatten.takeWhile before = (cs.take l).flatten ++ c.takeWhile before
+  | [], _, _, h, _, _ => by simp at h
+  | d :: cs, 0, c, hc, _, h2 => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hc
+    subst hc
+    have hrest : ∀ k ∈ cs.flatten, before k = false := by
+      intro k hk
+      obtain ⟨e, he, hke⟩ := List.mem_flatten.1 hk
+      obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem he
+      exact h2 (i + 1) cs[i] (by omega) (by simp) k hke
+    simp only [List.flatten_cons, List.take_zero, List.flatten_nil, List.nil_append]
+    rw [List.takeWhile_append]
+    split
+    · rename_i hlen
+      rw [takeWhile_none _ hrest, List.append_nil]
+      exact ((List.takeWhile_prefix before).eq_of_length hlen).symm
+    · rfl
+  | d :: cs, l + 1, c, hc, h1, h2 => by
+    simp only [List.getElem?_cons_succ] at hc
+    have hd := h1 0 d (by omega) rfl
+    simp only [List.flatten_cons, List.take_succ_cons, List.append_assoc]
+    rw [List.takeWhile_append_of_pos hd]
+    congr 1
+    exact descend before cs l c hc (fun i e hi he => h1 (i + 1) e (by omega) (by simpa using he))
+      (fun i e hi he => h2 (i + 1) e (by omega) (by simpa using he))
 
 end Btdb.Boundary
