@@ -41,6 +41,70 @@ public class KeyValueDBConcurrentCompactionTest
         return sum;
     }
 
+    /// A snapshot taken before several compactions reads its own values after them, while the files they were in
+    /// are rewritten, and once it ends compaction can delete those files.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task OldSnapshotReadsItsValuesAfterSeveralCompactions(int seed)
+    {
+        var random = new Random(seed);
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-old-snapshot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var db = new BTreeKeyValueDB(new KeyValueDBOptions
+            {
+                FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
+                CompactorScheduler = null, FileSplitSize = 16 * 1024
+            });
+            byte[] ValueOf(int account, int version) => Enumerable.Repeat((byte)(account ^ version), 500 + account).ToArray();
+            async Task WriteAll(int version)
+            {
+                using var tr = await db.StartWritingTransaction();
+                using var cursor = tr.CreateCursor();
+                for (var a = 0; a < Accounts; a++) cursor.CreateOrUpdateKeyValue(Key(a), ValueOf(a, version));
+                tr.Commit();
+            }
+
+            await WriteAll(0);
+            using var old = db.StartReadOnlyTransaction();
+            for (var version = 1; version <= 6; version++)
+            {
+                await WriteAll(version);
+                if (random.Next(2) == 0) await db.Compact(CancellationToken.None);
+                await db.Compact(CancellationToken.None);
+            }
+
+            using (var cursor = old.CreateCursor())
+                for (var a = 0; a < Accounts; a++)
+                {
+                    Assert.True(cursor.FindExactKey(Key(a)));
+                    var buffer = Span<byte>.Empty;
+                    Assert.Equal(ValueOf(a, 0), cursor.GetValueSpan(ref buffer).ToArray());
+                }
+
+            var filesWhileOld = Directory.GetFiles(directory).Length;
+            old.Dispose();
+            await db.Compact(CancellationToken.None);
+            await db.Compact(CancellationToken.None);
+            Assert.True(Directory.GetFiles(directory).Length <= filesWhileOld);
+            using var current = db.StartReadOnlyTransaction();
+            using var check = current.CreateCursor();
+            for (var a = 0; a < Accounts; a++)
+            {
+                Assert.True(check.FindExactKey(Key(a)));
+                var buffer = Span<byte>.Empty;
+                Assert.Equal(ValueOf(a, 6), check.GetValueSpan(ref buffer).ToArray());
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
