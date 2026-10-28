@@ -22,6 +22,7 @@
     - lease authority, confirmation grants and the handoff drain stay within the provider's lease for any clocks
       within the drift bound;
     - walking TRL headers back from an advertised end returns the files after the current one in order;
+    - a split created where no later split exists reuses no name that merging deleted;
     - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
       skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
@@ -63,6 +64,13 @@
 
 ### Fixed
 
+- Event log: an owner could acknowledge records that were then in no reader's history. It sealed its split and was
+  slow to create the successor with its batch; meanwhile another owner took over, filled that successor and later
+  splits, and merging deleted it. That needs a `DeletionDelay` shorter than the stall, as tests use. The late
+  create-if-absent then landed on the free name, so the first owner acknowledged a batch hidden behind the merged
+  objects. An owner now checks after creating a split that no later split exists, which merging needs before it
+  deletes a split, and is fenced otherwise, so the batch is published again. Found by a reader test failing under
+  machine load.
 - `ReadOnlyKeyValueDB` threw `EndOfStreamException` or `OverflowException` for a damaged header whose counts ran past
   the data, where truncated data is documented to throw `InvalidDataException`. Found by fuzzing damaged images.
 - Replaying a damaged `BTreeKeyValueDB` transaction log allocated whatever key length a command declared before

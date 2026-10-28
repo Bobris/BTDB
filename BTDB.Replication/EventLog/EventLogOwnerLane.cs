@@ -166,7 +166,7 @@ internal sealed class EventLogOwnerLane
                 var content = EventLogFormat.CreateSplit(topic, 1, 0);
                 var result = await CreateOrReconcileAsync(storage, scheduler, options, EventLogFormat.SplitKey(topic, 1),
                     content, self, cancellation).ConfigureAwait(false);
-                if (result != null)
+                if (result != null && !await LaterSplitExistsAsync(storage, topic, 1, cancellation).ConfigureAwait(false))
                     return new(storage, reader, topic, options, scheduler, self,
                         new(1, result, content, EventLogFormat.Parse(content, topic), self), true);
                 continue;
@@ -564,7 +564,8 @@ internal sealed class EventLogOwnerLane
             // when nobody has taken it over, so append to it; otherwise this owner is fenced.
             var blob = await _storage.ReadAsync(key, CancellationToken.None).ConfigureAwait(false);
             var header = EventLogFormat.CreateSplit(_topic, id, _next);
-            if (blob == null || blob.Owner != Self || !blob.Content.Span.SequenceEqual(header))
+            if (blob == null || blob.Owner != Self || !blob.Content.Span.SequenceEqual(header) ||
+                await LaterSplitExistsAsync(_storage, _topic, id, CancellationToken.None).ConfigureAwait(false))
                 throw;
             lock (_lock)
             {
@@ -577,6 +578,10 @@ internal sealed class EventLogOwnerLane
             await AppendAsync(frame, count, seal).ConfigureAwait(false);
             return;
         }
+        // The create may have landed late, after merging deleted a split of this name that others had filled: its
+        // batch is then no part of history.
+        if (await LaterSplitExistsAsync(_storage, _topic, id, CancellationToken.None).ConfigureAwait(false))
+            throw new FencedException(false);
         lock (_lock)
         {
             _lastWriteDispatch = dispatch;
@@ -588,6 +593,20 @@ internal sealed class EventLogOwnerLane
             _sealed = seal;
             _installed = true;
         }
+    }
+
+    /// <summary>
+    /// A split name is free again once merging deleted the split, which needs a later split to exist, and the latest
+    /// split is never deleted (Proofs/EventLogProofs/Merge.lean). So a create that lands while a later split exists
+    /// reused the name of a deleted split, and what it wrote is not history.
+    /// </summary>
+    static async ValueTask<bool> LaterSplitExistsAsync(IEventLogStorage storage, string topic, ulong splitId,
+        CancellationToken cancellation)
+    {
+        await foreach (var info in storage.ListAsync(topic + "/", cancellation).ConfigureAwait(false))
+            if (EventLogFormat.TryParseKey(topic, info.Key, out var level, out var id) && level == 0 && id > splitId)
+                return true;
+        return false;
     }
 
     async Task SetOwnerAsync()

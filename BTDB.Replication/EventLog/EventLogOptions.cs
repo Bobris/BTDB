@@ -66,7 +66,8 @@ public sealed record EventLogOptions
 
     public int MergeLevels { get; init; } = 2;
 
-    /// <summary>Delay between marking a covered object and deleting it; must exceed the longest reader pass.</summary>
+    /// <summary>Delay between marking a covered object and deleting it; must exceed the longest reader pass. Owners
+    /// detect a late create on the name of a deleted split, so writes need no such bound.</summary>
     public TimeSpan DeletionDelay { get; init; } = TimeSpan.FromDays(1);
 
     /// <summary>Largest merged object, its header included; a group that would be larger is not merged. The header

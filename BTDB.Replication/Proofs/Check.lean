@@ -32,3 +32,6 @@ open Replication
 #print axioms Lineage.successors_correct
 #print axioms Attempts.crash_skipped
 #print axioms Attempts.skip_needs_attempts
+#print axioms LateCreate.deleted_has_later
+#print axioms LateCreate.fixed_not_reused
+#print axioms LateCreate.previous_reuses
