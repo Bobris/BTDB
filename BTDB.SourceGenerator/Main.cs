@@ -3904,7 +3904,7 @@ public class SourceGenerator : IIncrementalGenerator
                            return (container, message) =>
                            {
                                var res = nestedFactory(container, null);
-                               {{returnPrefix}}global::System.Runtime.CompilerServices.Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{name}}(global::System.Runtime.CompilerServices.Unsafe.As<{{type}}>(message));{{returnNullLine}}
+                               {{returnPrefix}}global::System.Runtime.CompilerServices.Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{CSharpSyntaxUtilities.EscapeIdentifier(name)}}(global::System.Runtime.CompilerServices.Unsafe.As<{{type}}>(message));{{returnNullLine}}
                            };
                         };
                 """);

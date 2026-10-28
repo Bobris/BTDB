@@ -31,6 +31,39 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyKeywordNamedHandlerMethod()
+    {
+        // Before the fix the dispatcher called the handler method without its verbatim prefix, which did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                [BTDB.Generate]
+                public partial interface IDispatcher
+                {
+                    public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateeventDispatcher(BTDB.IOC.IContainer container);
+                }
+
+                public interface IHandler<in TMessage> : IDispatcher
+                {
+                    void @event(TMessage message);
+                }
+
+                public class Message
+                {
+                }
+
+                public class Handler : IHandler<Message>
+                {
+                    public void @event(Message message)
+                    {
+                    }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyKeywordNamedDispatcherInterface()
     {
         // Before the fix the generated part of the interface and of its containing type were declared without their

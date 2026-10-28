@@ -70,7 +70,7 @@
 
 - Source generator: a dispatcher interface or a containing partial type named with a C# keyword, such as `@event`,
   was declared in the generated part without its `@`, and so were calls of public `[OnSerialize]` and
-  `[OnBeforeRemove]` methods named that way; the generated code did not compile.
+  `[OnBeforeRemove]` methods and of dispatcher handler methods named that way; the generated code did not compile.
 - Source generator: the generated part of a `[Generate]` dispatcher interface nested in other types was written
   outside them and did not compile. It is now nested in partial parts of its containing types, and nesting in a type
   that is not partial is reported as BTDB0052.
