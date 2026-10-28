@@ -27,6 +27,10 @@ the code by inspection.
 the code's XOR of mask bits that are all set is a subtraction from the positive base. Its constants are also taken
 from the code by inspection.
 
+`BtdbProofs/Lengths.lean` connects those models to the branchless length functions `PackUnpack` runs: `LengthVUInt`
+and `LengthVInt` from the leading zero count of the value, and `LengthVUIntByFirstByte` and `LengthVIntByFirstByte`,
+which readers use to decode, from the first byte.
+
 Enums write signed values with `WriteVInt*` and unsigned ones with `WriteVUInt*`, which forward to the 64-bit
 encoders, so they use the encodings above. `KeyRange.byte_encoding` covers the one-byte handlers. Together, every
 handler `RelationQueryKeyRanges.IsOrderPreserving` admits is an encoding for which `lower_correct` and `upper_correct`
@@ -70,6 +74,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `VUInt.vuint_order`, `VUInt.vuint_prefix_free` | A smaller value has a smaller encoding, and no encoding is a proper prefix of another: the "Unsigned" encoding satisfies what `KeyRange` assumes. |
 | `VInt.vint_order`, `VInt.vint_prefix_free` | The same for the "Signed" encoding, negative values included. |
 | `VUInt.encoding`, `VInt.encoding`, `KeyRange.byte_encoding` | Each order-preserving handler's encoding is a `KeyRange.Encoding` over the values of its type. |
+| `Lengths.length_vuint64`, `length_vuint32`, `length_vint64`, `length_vint32` | The branchless `LengthVUInt` and `LengthVInt` for 64- and 32-bit values, including the `LzcToVIntLen` table, give the lengths of the models above. |
+| `Lengths.vuint_first_byte`, `Lengths.vint_first_byte` | The first byte of every encoding gives its length through `LengthVUIntByFirstByte` and `LengthVIntByFirstByte`. |
 | `Cursor.block` | Keys with a common prefix form a contiguous block in key order. |
 | `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `Seek.seek_exact` … `Seek.seek_exclusive_none` | Each branch of `Seek` reaches the first key of the range that passes the lower bound, inclusive or exclusive, or proves there is none. |

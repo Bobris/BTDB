@@ -1,6 +1,7 @@
 import BtdbProofs.KeyRange
 import BtdbProofs.VUInt
 import BtdbProofs.VInt
+import BtdbProofs.Lengths
 import BtdbProofs.Cursor
 import BtdbProofs.Seek
 import BtdbProofs.Count

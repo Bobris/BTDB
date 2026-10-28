@@ -51,3 +51,9 @@ open Btdb
 #print axioms Separators.split_branch
 #print axioms Count.window_correct
 #print axioms Count.window_bounds
+#print axioms Lengths.length_vuint64
+#print axioms Lengths.length_vuint32
+#print axioms Lengths.length_vint64
+#print axioms Lengths.length_vint32
+#print axioms Lengths.vuint_first_byte
+#print axioms Lengths.vint_first_byte
