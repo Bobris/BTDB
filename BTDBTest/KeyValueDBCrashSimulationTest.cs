@@ -15,9 +15,9 @@ namespace BTDBTest;
 /// the state after one of its commits, and a commit made after that open survives the next one.
 public class KeyValueDBCrashSimulationTest
 {
-    sealed class RecordingCollection : IFileCollection
+    sealed class RecordingCollection(IFileCollection? inner = null) : IFileCollection
     {
-        public readonly InMemoryFileCollection Inner = new();
+        public readonly IFileCollection Inner = inner ?? new InMemoryFileCollection();
         readonly Dictionary<uint, string> _hints = new();
         readonly Dictionary<uint, ulong> _flushed = new();
         public int Operations;
@@ -33,6 +33,19 @@ public class KeyValueDBCrashSimulationTest
                 f.RandomRead(bytes, 0, false);
                 return (f.Index.ToString("D8") + "." + _hints[f.Index], bytes, _flushed.GetValueOrDefault(f.Index));
             }).ToList();
+        }
+
+        /// Files already in the folder are durable as they are.
+        public RecordingCollection AdoptExisting(string folder)
+        {
+            foreach (var path in System.IO.Directory.GetFiles(folder))
+            {
+                var index = uint.Parse(Path.GetFileNameWithoutExtension(path));
+                _hints[index] = Path.GetExtension(path)[1..];
+                _flushed[index] = (ulong)new FileInfo(path).Length;
+            }
+
+            return this;
         }
 
         public IFileCollectionFile AddFile(string humanHint)
@@ -163,6 +176,93 @@ public class KeyValueDBCrashSimulationTest
     [InlineData(2)]
     [InlineData(3)]
     public async Task EveryCrashOfBatchedCommitsOpensToACommittedState(int seed) => await CrashEverywhere(seed, false, true);
+
+    static void WriteSnapshot(RecordingCollection files, string directory, Random random)
+    {
+        Directory.CreateDirectory(directory);
+        foreach (var (name, bytes, flushed) in files.Snapshot!)
+            System.IO.File.WriteAllBytes(Path.Combine(directory, name),
+                bytes[..(int)((ulong)random.NextInt64((long)flushed, bytes.Length + 1L))]);
+    }
+
+    static void Copy(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var file in Directory.GetFiles(from)) System.IO.File.Copy(file, Path.Combine(to, Path.GetFileName(file)));
+    }
+
+    static async Task<string> OpenAndCommit(IFileCollection files)
+    {
+        using var db = new BTreeKeyValueDB(Options(files));
+        var opened = Dump(db);
+        using var tr = await db.StartWritingTransaction();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([200], [1]);
+        tr.Commit();
+        return opened;
+    }
+
+    /// A second crash during the open that recovers from the first one, at any of its file operations, still opens
+    /// to what the first crash left, with or without the commit made after that open.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task CrashDuringRecoveryKeepsWhatTheFirstCrashLeft(int seed)
+    {
+        int total;
+        using (var counting = new RecordingCollection())
+        {
+            await Workload(counting, seed, false, false);
+            total = counting.Operations;
+        }
+
+        var recoveries = 0;
+        var random = new Random(seed);
+        var root = Path.Combine(Path.GetTempPath(), "btdb-crash2-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            for (var crash = 0; crash < total; crash++)
+            {
+                using var files = new RecordingCollection { CrashAt = crash };
+                await Workload(files, seed, false, false);
+                var first = Path.Combine(root, $"{crash}");
+                WriteSnapshot(files, first, random);
+                var probe = first + "-probe";
+                Copy(first, probe);
+                string left;
+                int recoveryOperations;
+                using (var recording = new RecordingCollection(new OnDiskFileCollection(probe)).AdoptExisting(probe))
+                {
+                    left = await OpenAndCommit(recording);
+                    recoveryOperations = recording.Operations;
+                }
+
+                for (var second = 0; second < recoveryOperations; second++, recoveries++)
+                {
+                    var during = $"{first}-{second}";
+                    Copy(first, during);
+                    using (var recording = new RecordingCollection(new OnDiskFileCollection(during)) { CrashAt = second }
+                               .AdoptExisting(during))
+                    {
+                        await OpenAndCommit(recording);
+                        var after = during + "-after";
+                        WriteSnapshot(recording, after, random);
+                        using var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(after)));
+                        var opened = Dump(db);
+                        Assert.True(opened == left || opened == (left.Length == 0 ? "C8=01" : left + ";C8=01"),
+                            $"Seed {seed} crash {crash}, then {second} of {recoveryOperations} during recovery: opened " +
+                            $"{Short(opened)} instead of {Short(left)}");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+
+        Assert.True(recoveries > total, "Recovery should do file operations to crash in.");
+    }
 
     async Task CrashEverywhere(int seed, bool durable, bool batches)
     {
