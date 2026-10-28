@@ -26,6 +26,8 @@ open EventLog
 #print axioms StopSettles.previous_hangs
 #print axioms DisposeAttach.fixed_detached
 #print axioms DisposeAttach.previous_keeps_lane
+#print axioms Linger.single_writer_never_lingers
+#print axioms Linger.answering_publishers_fill_bins
 
 open Replication
 

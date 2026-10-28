@@ -25,6 +25,7 @@
     - a split created where no later split exists reuses no name that merging deleted;
     - a stopped owner with no write in flight has given every accepted record its outcome;
     - a topic whose disposal detached its owner lane holds no lane afterwards, whatever takeovers attach later;
+    - one writer awaiting each commit never makes the adaptive commit window of the owner or WAL uploader nonzero;
     - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
       skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
