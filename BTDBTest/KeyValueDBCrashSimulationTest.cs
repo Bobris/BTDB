@@ -95,10 +95,15 @@ public class KeyValueDBCrashSimulationTest
     static string Short(string state) => string.Join(";", state.Split(';', StringSplitOptions.RemoveEmptyEntries)
         .Select(p => p.Split('=')).Select(p => $"{p[0]}={p[1][..Math.Min(4, p[1].Length)]}x{p[1].Length / 2}"));
 
-    static KeyValueDBOptions Options(IFileCollection files) => new()
+    sealed class SmallLogs : ITransactionLogSizeStrategy
+    {
+        public TransactionLogSizeLimits GetLimits(uint transactionLogFileId) => new(1024, 1300);
+    }
+
+    static KeyValueDBOptions Options(IFileCollection files, bool split = false) => new()
     {
         FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
-        FileSplitSize = 4096
+        FileSplitSize = 4096, TransactionLogSizeStrategy = split ? new SmallLogs() : null
     };
 
     static string Dump(IKeyValueDB db)
@@ -120,31 +125,34 @@ public class KeyValueDBCrashSimulationTest
     // Commits, compactions and key index writes; returns the state after every commit and the file operations done
     // when it returned.
     static async Task<(List<string> States, List<int> Done)> Workload(RecordingCollection files, int seed,
-        bool durable, bool batches = false)
+        bool durable, bool batches = false, bool split = false)
     {
         var random = new Random(seed);
         var states = new List<string> { "" };
         var done = new List<int> { 0 };
         // Every commit's state, also of batched commits that are not published yet.
         var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        using var db = new BTreeKeyValueDB(Options(files));
+        using var db = new BTreeKeyValueDB(Options(files, split));
         db.DurableTransactions = durable;
         for (var t = 0; t < 30; t++)
         {
             using (var tr = await db.StartWritingTransaction(batches && random.Next(3) != 0))
             {
                 using var cursor = tr.CreateCursor();
-                var key = new[] { (byte)random.Next(10) };
-                if (random.Next(4) == 0 && cursor.FindExactKey(key))
+                for (var op = split ? random.Next(1, 5) : 1; op > 0; op--)
                 {
-                    cursor.EraseCurrent();
-                    model.Remove(Convert.ToHexString(key));
-                }
-                else
-                {
-                    var value = Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray();
-                    cursor.CreateOrUpdateKeyValue(key, value);
-                    model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                    var key = new[] { (byte)random.Next(10) };
+                    if (random.Next(4) == 0 && cursor.FindExactKey(key))
+                    {
+                        cursor.EraseCurrent();
+                        model.Remove(Convert.ToHexString(key));
+                    }
+                    else
+                    {
+                        var value = Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray();
+                        cursor.CreateOrUpdateKeyValue(key, value);
+                        model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                    }
                 }
 
                 if (batches && random.Next(4) == 0) db.FinishTransactionBatchAfterCurrentTransaction();
@@ -264,14 +272,22 @@ public class KeyValueDBCrashSimulationTest
         Assert.True(recoveries > total, "Recovery should do file operations to crash in.");
     }
 
-    async Task CrashEverywhere(int seed, bool durable, bool batches)
+    /// With small log size limits a transaction is split between files, so a crash can cut it at a file boundary.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryCrashOfSplitTransactionsOpensToACommittedState(int seed) =>
+        await CrashEverywhere(seed, true, false, true);
+
+    async Task CrashEverywhere(int seed, bool durable, bool batches, bool split = false)
     {
         int total;
         List<string> states;
         List<int> done;
         using (var counting = new RecordingCollection())
         {
-            (states, done) = await Workload(counting, seed, durable, batches);
+            (states, done) = await Workload(counting, seed, durable, batches, split);
             total = counting.Operations;
         }
 
@@ -279,7 +295,7 @@ public class KeyValueDBCrashSimulationTest
         for (var crash = 0; crash < total; crash++)
         {
             using var files = new RecordingCollection { CrashAt = crash };
-            await Workload(files, seed, durable, batches);
+            await Workload(files, seed, durable, batches, split);
             var directory = Path.Combine(Path.GetTempPath(), "btdb-crash-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             try
@@ -288,7 +304,7 @@ public class KeyValueDBCrashSimulationTest
                     System.IO.File.WriteAllBytes(Path.Combine(directory, name),
                         bytes[..(int)((ulong)random.NextInt64((long)flushed, bytes.Length + 1L))]);
                 string opened;
-                using (var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory))))
+                using (var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory), split)))
                 {
                     opened = Dump(db);
                     using var tr = await db.StartWritingTransaction();
@@ -307,7 +323,7 @@ public class KeyValueDBCrashSimulationTest
                         $"Seed {seed} crash {crash}/{total}: lost commit {acknowledged}, which returned before the crash");
                 }
 
-                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory), split));
                 Assert.True((opened.Length == 0 ? "C8=01" : opened + ";C8=01") == Dump(again),
                     $"Seed {seed} crash {crash}/{total}: the commit after the reopen is lost");
             }
