@@ -378,16 +378,25 @@ public class LsmWriterHandoffTest
 
         var hooked = new CreateHookingStorage(storage);
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fiveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         hooked.BeforeCreate = async key =>
         {
-            if (key == WalKey(5)) await gate.Task;
+            if (key == WalKey(5))
+            {
+                fiveStarted.TrySetResult();
+                await gate.Task;
+            }
+
             if (key == WalKey(6)) await storage.CreateAsync(key, stale, default);
         };
         using (var second = await LsmKeyValueDB.OpenAsync(Options(hooked)))
         {
             // The marker takes name 4, and the first own chunk 5 waits until twenty small commits are queued, so they
             // share the next upload: chunks 6, 7 and so on. The stale chunk takes name 6 and fences this writer.
+            // The commits are written once chunk 5's upload has started, so none of them joins its batch, and the
+            // next round holds chunk 7 too.
             await Write(second, 1000, 1, 100);
+            await fiveStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             for (var i = 0; i < 20; i++) await Write(second, 2000 + i * 3, 3, 101 + (ulong)i);
             gate.SetResult();
             var deadline = Stopwatch.StartNew();
@@ -396,14 +405,10 @@ public class LsmWriterHandoffTest
         }
 
         Assert.Contains(WalKey(7), storage.Keys("wal/"));
-        // Replay keeps the commits in chunk 5 and nothing of the second writer after the stale chunk, so the visible
-        // commits are a prefix of the second writer's commits. Before the fix it also applied chunk 7, whose commits
-        // follow the missing ones of chunk 6. A few small commits may share chunk 5 with the first one.
+        // Replay keeps chunk 5 and nothing of the second writer after the stale chunk. Before the fix it also
+        // applied chunk 7, whose commits follow the missing ones of chunk 6.
         using var third = await LsmKeyValueDB.OpenAsync(Options(storage));
-        var visible = Enumerable.Range(0, 20).Select(i => Exists(third, 2000 + i * 3)).ToArray();
-        var prefix = visible.TakeWhile(v => v).Count();
-        Assert.DoesNotContain(true, visible.Skip(prefix));
-        Assert.True(prefix < 20);
-        Assert.Equal((31 + prefix * 3, 100UL + (ulong)prefix), Read(third));
+        Assert.DoesNotContain(true, Enumerable.Range(0, 20).Select(i => Exists(third, 2000 + i * 3)));
+        Assert.Equal((31, 100UL), Read(third));
     }
 }

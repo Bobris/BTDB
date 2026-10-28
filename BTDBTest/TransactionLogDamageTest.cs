@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using Xunit;
 
@@ -19,7 +20,7 @@ public class TransactionLogDamageTest
     [InlineData(1, 0x7F)] // value length -1, read as an inline value
     [InlineData(0, 0x7F)] // key length -1
     [InlineData(0, 0xFF)] // key length that overflows an int
-    public void DamagedLengthEndsReplayAtThePreviousTransaction(int field, byte damage)
+    public async Task DamagedLengthEndsReplayAtThePreviousTransaction(int field, byte damage)
     {
         var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -29,7 +30,7 @@ public class TransactionLogDamageTest
             {
                 foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
                 {
-                    using var tr = db.StartWritingTransaction().Result;
+                    using var tr = await db.StartWritingTransaction();
                     using var cursor = tr.CreateCursor();
                     cursor.CreateOrUpdateKeyValue([key], [value]);
                     tr.Commit();
@@ -58,7 +59,7 @@ public class TransactionLogDamageTest
     }
 
     [Fact]
-    public void KeySuffixUpdateWithPrefixLongerThanKeyEndsReplay()
+    public async Task KeySuffixUpdateWithPrefixLongerThanKeyEndsReplay()
     {
         var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -66,14 +67,14 @@ public class TransactionLogDamageTest
         {
             using (var db = new BTreeKeyValueDB(Options(directory)))
             {
-                using (var tr = db.StartWritingTransaction().Result)
+                using (var tr = await db.StartWritingTransaction())
                 {
                     using var cursor = tr.CreateCursor();
                     cursor.CreateOrUpdateKeyValue([7, 2], [9]);
                     tr.Commit();
                 }
 
-                using (var tr = db.StartWritingTransaction().Result)
+                using (var tr = await db.StartWritingTransaction())
                 {
                     using var cursor = tr.CreateCursor();
                     Assert.Equal(UpdateKeySuffixResult.Updated, cursor.UpdateKeySuffix([7, 3], 1));
@@ -105,7 +106,7 @@ public class TransactionLogDamageTest
     [Theory]
     [InlineData(new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFF })]
     [InlineData(new byte[] { 0xF0, 0x80, 0x00, 0x00, 0x00 })]
-    public void UlongIndexBeyondAnyArrayEndsReplay(byte[] index)
+    public async Task UlongIndexBeyondAnyArrayEndsReplay(byte[] index)
     {
         var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -113,14 +114,14 @@ public class TransactionLogDamageTest
         {
             using (var db = new BTreeKeyValueDB(Options(directory)))
             {
-                using (var tr = db.StartWritingTransaction().Result)
+                using (var tr = await db.StartWritingTransaction())
                 {
                     using var cursor = tr.CreateCursor();
                     cursor.CreateOrUpdateKeyValue([1], [2]);
                     tr.Commit();
                 }
 
-                using (var tr = db.StartWritingTransaction().Result)
+                using (var tr = await db.StartWritingTransaction())
                 {
                     tr.SetUlong(3, 77);
                     tr.Commit();
@@ -147,10 +148,10 @@ public class TransactionLogDamageTest
     }
 
     [Fact]
-    public void SetUlongRejectsIndexBeyondAnyArray()
+    public async Task SetUlongRejectsIndexBeyondAnyArray()
     {
         using var db = new InMemoryKeyValueDB();
-        using var tr = db.StartWritingTransaction().Result;
+        using var tr = await db.StartWritingTransaction();
         Assert.Throws<ArgumentOutOfRangeException>(() => tr.SetUlong(uint.MaxValue, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => tr.SetUlong(1u << 31, 1));
     }
