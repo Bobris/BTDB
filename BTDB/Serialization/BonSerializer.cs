@@ -63,6 +63,7 @@ public class BonSerializerFactory : ISerializerFactory
             return;
         }
 
+        EnsureSerializationStack();
         var type = obj.GetType();
         var typePtr = type.TypeHandle.Value;
         _cache.TryGetValue(typePtr, out var serializer);
@@ -88,6 +89,15 @@ public class BonSerializerFactory : ISerializerFactory
 
             serializer!(ref ctx, ref Unsafe.As<object, byte>(ref obj));
         }
+    }
+
+    // Bon stores values, not references, so a reference cycle nests without end: fail with an exception instead of
+    // overflowing the stack, which ends the process.
+    static void EnsureSerializationStack()
+    {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+            throw new InsufficientExecutionStackException(
+                "Bon serialization nests too deep. Bon stores values, not references, so it cannot serialize a reference cycle.");
     }
 
     [DebuggerStepThrough]
@@ -585,6 +595,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return;
                 }
 
+                EnsureSerializationStack();
                 AsCtx(ref ctx).Builder.StartClass(persistNameUtf8);
                 for (var i = 0; i < fieldSerializers.Length; i++)
                 {

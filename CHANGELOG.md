@@ -79,6 +79,9 @@
 
 ### Fixed
 
+- Bon serialization: a reference cycle, which Bon cannot store as it keeps values and not references, overflowed the
+  stack and ended the process. Serialization now fails with `InsufficientExecutionStackException` saying so, as
+  deserialization of too deep data already did.
 - Bon serialization: a `char` member was serialized, as its UTF-16 code unit, but deserializing it failed with
   `NotSupportedException`. It now loads.
 - Bon: a damaged `DateTime` whose ticks are out of range failed with `ArgumentException` from `DateTime.FromBinary`

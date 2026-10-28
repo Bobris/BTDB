@@ -737,5 +737,44 @@ public class BonSerializerCoverageTest
         Assert.Equal('x', result.Maybe);
     }
 
+    [Generate]
+    public class CycleNode
+    {
+        public CycleNode? Next { get; set; }
+    }
+
+    // Before the fix a reference cycle, which Bon cannot store, overflowed the stack and ended the process.
+    [Fact]
+    public void ReferenceCycleFailsWithException()
+    {
+        var node = new CycleNode();
+        node.Next = node;
+        var list = new List<object>();
+        list.Add(list);
+        // Run on a thread of its own so a regression crashes no more than the default stack the fix relies on.
+        var errors = new List<Exception?>();
+        foreach (var value in new object[] { node, list })
+        {
+            Exception? error = null;
+            var thread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    var builder = new BonBuilder();
+                    BonSerializerFactory.Serialize(ref builder, value);
+                }
+                catch (Exception e)
+                {
+                    error = e;
+                }
+            });
+            thread.Start();
+            thread.Join();
+            errors.Add(error);
+        }
+
+        Assert.All(errors, e => Assert.IsType<InsufficientExecutionStackException>(e));
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
