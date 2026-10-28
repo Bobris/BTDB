@@ -363,7 +363,9 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
   - the implemented rule, which derives an unknown session's state from history, commits each transfer once, keeps
     per-session call order and returns exact receipts;
   - owner validation for bounds trusts only a write dispatched after the call or a tail check, so bounds never end
-    below a completed receipt; the rule before the 2026-10-28 fix did not.
+    below a completed receipt; the rule before the 2026-10-28 fix did not;
+  - background merging keeps every split readable from an existing object under concurrent, stale mergers, and never
+    deletes the latest split.
 
 Not covered yet:
 

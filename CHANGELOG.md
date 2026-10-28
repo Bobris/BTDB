@@ -17,7 +17,8 @@
     - the split chain never forks, committed history only grows, and a successful write lands exactly at its writer's
       next offset;
     - each Publish call commits once, in per-session call order, with exact receipts;
-    - bounds from the owner cover every completed receipt.
+    - bounds from the owner cover every completed receipt;
+    - background merging never leaves a split unreadable.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
     - across writer takeovers every acknowledged commit stays in every replay, and every replay is a prefix of one
       writer's history;

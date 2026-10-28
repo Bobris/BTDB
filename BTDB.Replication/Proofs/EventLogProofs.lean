@@ -1,3 +1,4 @@
 import EventLogProofs.ExactlyOnce
 import EventLogProofs.Chain
 import EventLogProofs.Bounds
+import EventLogProofs.Merge
