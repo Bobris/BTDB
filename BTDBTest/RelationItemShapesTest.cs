@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -193,5 +195,41 @@ public class RelationItemShapesTest : ObjectDbTestBase
         var read = readTr.GetRelation<ITupleRowTable>().FindById(1);
         Assert.Equal(((when, (byte)7), ((1, "s"), TupleKind.B), ((Guid, byte)?)(guid, 3)),
             (read.DateAndByte, read.NestedWithEnum, read.NullableGuidAndByte));
+    }
+
+    // A damaged stored value can name a version the relation never had. Before the fix reading it failed with
+    // IndexOutOfRangeException or NullReferenceException instead of reporting the damage.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(1000)]
+    public void DamagedValueVersionIsReported(uint version)
+    {
+        byte[] prefix;
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<ITupleRowTable>();
+            table.Insert(new() { Id = 1 });
+            prefix = ((IRelationDbManipulator)table).RelationInfo.Prefix;
+            tr.Commit();
+        }
+
+        using (var tr = _lowDb.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.FindFirstKey(prefix));
+            var buffer = Span<byte>.Empty;
+            var value = cursor.GetValueSpan(ref buffer).ToArray();
+            var writer = new MemWriter();
+            writer.WriteVUInt32(version);
+            var reader = MemReader.CreateFromPinnedSpan(value);
+            reader.SkipVUInt32();
+            writer.WriteBlock(value.AsSpan((int)reader.GetCurrentPosition()));
+            cursor.SetValue(writer.GetSpan());
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartReadOnlyTransaction();
+        Assert.Throws<BTDBException>(() => readTr.GetRelation<ITupleRowTable>().FindById(1));
     }
 }

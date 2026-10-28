@@ -234,6 +234,9 @@ public class RelationInfo
 
         internal RelationLoader GetValueLoader(uint version)
         {
+            // The version comes from the stored value, which damage can change to one the relation never had.
+            if (version >= (uint)_valueLoaders.Length || _owner._relationVersions[version] == null)
+                throw new BTDBException($"Relation {_owner.Name} has no version {version}; the stored value is damaged.");
             RelationLoader? res;
             do
             {
