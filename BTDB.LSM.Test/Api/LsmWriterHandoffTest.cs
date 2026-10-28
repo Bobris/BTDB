@@ -333,11 +333,12 @@ public class LsmWriterHandoffTest
         try
         {
             // Before the fix both fencing manifests were equal, so the second takeover took the first one's manifest
-            // for its own and both wrote with one epoch. Now the second is fenced and takes over again after it.
+            // for its own and both wrote with one epoch. Now the second is fenced and takes over again after it; when
+            // that lands during the first one's takeover, the first is fenced too and takes over once more.
             var fences = storage.Keys("manifest/").Skip(before)
                 .Select(key => LsmManifest.Decode(storage.Peek(key)!, key)).ToArray();
-            Assert.Equal(2, fences.Length);
-            Assert.True(fences[0].WriterEpoch < fences[1].WriterEpoch);
+            Assert.True(fences.Length >= 2);
+            for (var i = 1; i < fences.Length; i++) Assert.True(fences[i - 1].WriterEpoch < fences[i].WriterEpoch);
         }
         finally
         {
