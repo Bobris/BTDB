@@ -31,6 +31,33 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyKeywordNamedDependenciesAndNamespace()
+    {
+        // Before the fix keyword named dependencies were assigned without their verbatim prefix, which did not compile,
+        // and the metadata namespace kept the prefix, which the runtime type name does not have.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace @event
+            {
+                public interface @class
+                {
+                }
+
+                [BTDB.Generate]
+                public class @object : @class
+                {
+                    public @object(int @int)
+                    {
+                    }
+
+                    [BTDB.IOC.Dependency] public string @base { get; set; } = "";
+                    [BTDB.IOC.Dependency] public int @this;
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSimpleParametersLessClassThatIsObsolete()
     {
         // language=cs

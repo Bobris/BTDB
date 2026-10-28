@@ -66,6 +66,10 @@
 
 ### Fixed
 
+- Source generator: a `[Dependency]` property or field named with a C# keyword, such as `@base` or `@event`, was
+  assigned without its `@`, so the generated code did not compile. A class in a namespace written with `@`, such as
+  `@event`, also got that `@` in `ClassMetadata.Namespace` and so in its default persisted name, which the runtime
+  name of the type does not have. Found by a test of keyword identifiers.
 - Event log: a disposed `EventLogService` could keep owning a topic. A submit from a peer that was taking over the
   topic when the service was disposed attached its new owner lane after disposal had stopped the old one, so nothing
   stopped it and its heartbeats kept writing; publishers on other nodes went to the disposed node until its owner

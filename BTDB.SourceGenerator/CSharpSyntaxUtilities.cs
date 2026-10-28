@@ -13,6 +13,13 @@ static class CSharpSyntaxUtilities
     public const string DoubleFormatString = "G17";
     public const string SingleFormatString = "G9";
 
+    /// Writes a symbol name as code: reserved keywords need the verbatim prefix their declaration used.
+    public static string EscapeIdentifier(string name) =>
+        SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None ? "@" + name : name;
+
+    /// The runtime name of a namespace written as code: verbatim prefixes are not part of it.
+    public static string UnescapeNamespace(string name) => name.Replace("@", "");
+
     // Format a literal in C# format -- works around https://github.com/dotnet/roslyn/issues/58705
     public static string FormatLiteral(object? value, TypeRef type)
     {

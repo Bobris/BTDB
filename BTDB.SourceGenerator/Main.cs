@@ -3322,7 +3322,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
                 else
                 {
-                    propertyCode.Append($"res.{name} = ");
+                    propertyCode.Append($"res.{CSharpSyntaxUtilities.EscapeIdentifier(name)} = ");
                     propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                     propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
                 }
@@ -3456,7 +3456,7 @@ public class SourceGenerator : IIncrementalGenerator
                         var metadata = new global::BTDB.Serialization.ClassMetadata();
                         metadata.Name = "{generationInfo.Name}{GenericParams(generationInfo)}";
                         metadata.Type = typeof({generationInfo.FullName});
-                        metadata.Namespace = "{generationInfo.Namespace ?? ""}";
+                        metadata.Namespace = "{CSharpSyntaxUtilities.UnescapeNamespace(generationInfo.Namespace ?? "")}";
                 """);
             if (generationInfo.PersistedName != null)
             {
