@@ -88,6 +88,9 @@
 
 ### Fixed
 
+- Event store: a dictionary held by an `object` member failed to load with "Cannot find collection metadata for
+  IDictionary", the type preferred for it, as only that exact type was looked up. The dictionary types the generator
+  registers for declared members, which all create a `Dictionary`, are now tried too, as lists already did.
 - Event store: storing again a list of byte arrays loaded without its type, whose items are objects, overflowed the
   stack and ended the process. The byte array descriptor, and the ObjectDB byte array field handlers, converted a
   value of another type with the two types of the conversion swapped, so the conversion asked to save that type

@@ -99,6 +99,9 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                _valueDescriptor!.Equals(o._valueDescriptor!, equalities);
     }
 
+    static readonly Type[] DictionaryDefinitionsToTry =
+        [typeof(Dictionary<,>), typeof(IDictionary<,>), typeof(IReadOnlyDictionary<,>)];
+
     public Type GetPreferredType()
     {
         if (_type == null)
@@ -177,6 +180,18 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
 
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType);
+        if (collectionMetadata == null && targetType.IsGenericType && targetType.GenericTypeArguments.Length == 2)
+        {
+            // The generator registers the dictionary types members are declared with, which all create a Dictionary,
+            // so a dictionary held by an object member still loads as the IDictionary preferred for it.
+            foreach (var definition in DictionaryDefinitionsToTry)
+            {
+                collectionMetadata =
+                    ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(targetType.GenericTypeArguments));
+                if (collectionMetadata != null) break;
+            }
+        }
+
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
         var keyLoad = _keyDescriptor!.GenerateLoadEx(collectionMetadata.ElementKeyType, typeConverterFactory);

@@ -454,4 +454,24 @@ public class EventStore2CoverageTest
         Assert.Null(read.ReadOnly["y"]);
         Assert.Equal("v", read.Immutable!["k"]);
     }
+
+    [Generate]
+    public class WithDictionaryInObject
+    {
+        public Dictionary<int, double>? Typed { get; set; }
+        public object? Any { get; set; }
+    }
+
+    // Before the fix a dictionary in an object member failed to load with "Cannot find collection metadata for
+    // IDictionary", the type preferred for it, although the generator registered the Dictionary of another member.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void DictionaryInObjectMemberLoads(EventLayer layer)
+    {
+        var read = (WithDictionaryInObject)RoundTrip(layer,
+            new WithDictionaryInObject { Any = new Dictionary<int, double> { [1] = 1.5 } })!;
+        Assert.Equal(1.5, Assert.IsAssignableFrom<IDictionary<int, double>>(read.Any)[1]);
+    }
 }

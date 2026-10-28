@@ -172,6 +172,7 @@ public class EventLayerEmitModeTest
             coverage.ListDeclaredOnlyAsReadOnlyLoads(layer);
             coverage.ReadOnlyIPAddressStoresAsObject(layer);
             coverage.WideNullableMemberLoadsAsPlain(layer);
+            coverage.DictionaryInObjectMemberLoads(layer);
         });
     }
 }
