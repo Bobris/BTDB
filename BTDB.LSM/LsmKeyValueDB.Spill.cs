@@ -29,7 +29,9 @@ public sealed partial class LsmKeyValueDB
         public WalCommitMetadata Metadata => metadata;
         public TaskCompletionSource Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        /// Set by the worker while it publishes the request; a request it has not started can be withdrawn.
+        /// Set once the worker starts publishing the request. From then on its manifest may land, even after a failed
+        /// attempt, so the request is never withdrawn and its objects are never discarded; a request the worker has not
+        /// started can be withdrawn.
         public bool Started { get; set; }
     }
 
@@ -125,8 +127,23 @@ public sealed partial class LsmKeyValueDB
             RequestWork();
             while (Task.WaitAny([request.Done.Task], 100) < 0)
             {
-                if (!_isWriter) throw new LsmWriterFencedException("The writer lease was lost before the commit.");
-                ThrowIfWorkerKeepsFailing();
+                if (!_isWriter && Withdraw(request))
+                {
+                    request = null;
+                    throw new LsmWriterFencedException("The writer lease was lost; the transaction was not committed.");
+                }
+
+                try
+                {
+                    ThrowIfWorkerKeepsFailing();
+                }
+                catch (BTDBException) when (IsStarted(request))
+                {
+                    // The commit may have landed. Stop being the writer, which fails the request as possibly
+                    // committed; the next writer reads the outcome from storage.
+                    _ = LoseWriterAsync(new LsmWriterFencedException(
+                        "Background work keeps failing while a commit is being published."));
+                }
             }
 
             request.Done.Task.GetAwaiter().GetResult();
@@ -148,6 +165,11 @@ public sealed partial class LsmKeyValueDB
     bool Withdraw(IngestRequest request)
     {
         lock (_ingestRequests) return !request.Started && _ingestRequests.Remove(request);
+    }
+
+    bool IsStarted(IngestRequest request)
+    {
+        lock (_ingestRequests) return request.Started;
     }
 
     /// Queues the private objects of a rolled back or failed spilled transaction for deletion; no reader ever saw them.
@@ -175,27 +197,21 @@ public sealed partial class LsmKeyValueDB
             request.Started = true;
         }
 
-        try
-        {
-            var state = _state;
-            // The transaction held the writer slot since it sealed the shared memtable, so the mutable memtable is
-            // still empty and has no WAL chunk: its generation becomes the transaction's.
-            if (!state.Memtable.IsEmpty)
-                throw new InvalidOperationException("BTDB.LSM spilled commit found a non-empty memtable.");
-            var metadata = request.Metadata;
-            var version = request.Run.Length == 0
-                ? state.Version
-                : state.Version.WithLevel0Runs([request.Run, .. state.Version.Level0Runs]);
-            PublishVersion(version, [],
-                request.ValueFiles,
-                new(state.Memtable, state.MemtableGeneration, metadata.CommitUlong, metadata.Ulongs,
-                    metadata.TransactionNumber), committed: true);
-        }
-        catch
-        {
-            lock (_ingestRequests) request.Started = false;
-            throw;
-        }
+        // A failure leaves the request queued and the worker retries it; a failed attempt may still have published its
+        // manifest.
+        var state = _state;
+        // The transaction held the writer slot since it sealed the shared memtable, so the mutable memtable is
+        // still empty and has no WAL chunk: its generation becomes the transaction's.
+        if (!state.Memtable.IsEmpty)
+            throw new InvalidOperationException("BTDB.LSM spilled commit found a non-empty memtable.");
+        var metadata = request.Metadata;
+        var version = request.Run.Length == 0
+            ? state.Version
+            : state.Version.WithLevel0Runs([request.Run, .. state.Version.Level0Runs]);
+        PublishVersion(version, [],
+            request.ValueFiles,
+            new(state.Memtable, state.MemtableGeneration, metadata.CommitUlong, metadata.Ulongs,
+                metadata.TransactionNumber), committed: true);
 
         lock (_ingestRequests) _ingestRequests.Remove(request);
         long durable;
@@ -206,7 +222,8 @@ public sealed partial class LsmKeyValueDB
         return true;
     }
 
-    /// Fails spilled commits waiting for the worker when the writer role ends.
+    /// Fails spilled commits waiting for the worker when the writer role ends. A commit the worker started publishing
+    /// may have committed (BTDB.LSM/Proofs, Wal.lean, unacknowledged_replayed for the WAL counterpart).
     void FailIngestRequests(Exception reason)
     {
         IngestRequest[] requests;
@@ -216,6 +233,10 @@ public sealed partial class LsmKeyValueDB
             _ingestRequests.Clear();
         }
 
-        foreach (var request in requests) request.Done.TrySetException(reason);
+        foreach (var request in requests)
+            request.Done.TrySetException(request.Started
+                ? new LsmWriterFencedException(
+                    "The writer lease was lost while the commit was being published; it may have committed.")
+                : reason);
     }
 }

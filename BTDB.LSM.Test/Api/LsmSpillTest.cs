@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Storage;
@@ -235,6 +236,80 @@ public class LsmSpillTest
         // Sealing the shared memtable may have flushed one run of its own.
         Assert.InRange(Level0Runs(db) - runsBefore, 1, 2);
         Assert.Equal(model, Content(db));
+    }
+
+    sealed class ShiftedClock : TimeProvider
+    {
+        public TimeSpan Offset;
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+    }
+
+    /// Once armed, the next manifest create times out and lands only after the writer's read back missed it, and the
+    /// clock jumps past the lease while renewals fail, as when the writer pauses during a commit.
+    sealed class LateManifestStorage(InMemoryLsmStorage inner, ShiftedClock clock) : ILsmStorage
+    {
+        public bool Armed;
+        bool _renewalsFail;
+        (string Key, byte[] Content)? _delayed;
+
+        public async ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content,
+            CancellationToken cancellation)
+        {
+            if (!Armed || !key.StartsWith("manifest/", StringComparison.Ordinal))
+                return await inner.CreateAsync(key, content, cancellation);
+            Armed = false;
+            _delayed = (key, content.ToArray());
+            _renewalsFail = true;
+            clock.Offset += TimeSpan.FromMinutes(1);
+            return LsmWriteOutcome.Ambiguous;
+        }
+
+        public async ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation)
+        {
+            var content = await inner.TryReadAsync(key, cancellation);
+            if (_delayed is { } delayed && delayed.Key == key)
+            {
+                _delayed = null;
+                await inner.CreateAsync(delayed.Key, delayed.Content, cancellation);
+            }
+
+            return content;
+        }
+
+        public ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation) => inner.ReadRangeAsync(key, offset, destination, cancellation);
+        public void ReadRange(string key, long offset, Span<byte> destination) => inner.ReadRange(key, offset, destination);
+        public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
+        public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
+        public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
+        public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) =>
+            _renewalsFail ? ValueTask.FromResult(false) : inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
+        public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
+    }
+
+    [Fact]
+    public async Task SpilledCommitWhoseManifestMayHaveLandedIsNotReportedAsNotCommitted()
+    {
+        var storage = new InMemoryLsmStorage();
+        var clock = new ShiftedClock();
+        var lossy = new LateManifestStorage(storage, clock);
+        var random = new Random(9);
+        var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        using (var db = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
+               {
+                   Storage = lossy, TimeProvider = clock, AcquireWriterLeaseOnOpen = true
+               }))
+        {
+            using var tr = await db.StartWritingTransaction();
+            WriteLarge(tr, random, model);
+            lossy.Armed = true;
+            // The manifest lands after the writer lost its lease. Before the fix the commit reported that the lease was
+            // lost before the commit.
+            var error = Assert.Throws<LsmWriterFencedException>(() => tr.Commit());
+            Assert.Contains("may have committed", error.Message);
+        }
+
+        using var reopened = await LsmKeyValueDB.OpenAsync(Options(storage, false));
+        Assert.Equal(model, Content(reopened));
     }
 
     [Fact]

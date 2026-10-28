@@ -19,3 +19,4 @@ open Lsm
 #print axioms Fence.current_shares_epoch
 #print axioms Fence.fixed_fresh_epochs
 #print axioms Fence.late_create_after_deletion
+#print axioms Wal.unacknowledged_replayed

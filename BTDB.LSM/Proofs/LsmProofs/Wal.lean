@@ -24,6 +24,7 @@ chunk.
 * `current_replays_a_gap`: replay applies a writer's chunk after its displaced predecessor.
 * `fixed_keeps_acknowledged`: every acknowledged history is a prefix of every replay.
 * `fixed_replays_one_history`: every replay is a prefix of one writer's history.
+* `unacknowledged_replayed`: a chunk its writer never acknowledged can still be replayed by the next writer.
 -/
 
 namespace Lsm.Wal
@@ -807,5 +808,17 @@ theorem fixed_commits : ∃ σ, Reach .fixed σ ∧ ∃ W s, σ.writers 1 = some
   have r5 := Reach.step r4 (Step.landData _ 1 0 _ rfl (by decide) rfl)
   have r6 := Reach.step r5 (Step.ack _ 1 _ 1 rfl (by decide) (by decide))
   exact ⟨_, r6, _, _, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- A chunk can land without its writer ever acknowledging it, and the next takeover replays it: a commit whose
+durability wait failed may still be history. -/
+theorem unacknowledged_replayed : ∃ σ, Reach .fixed σ ∧ ∃ W₁ W₂, σ.writers 1 = some W₁ ∧ W₁.acked = 0 ∧
+    σ.writers 2 = some W₂ ∧ W₂.base = [1] := by
+  have r1 := Reach.step Reach.init (Step.begin (r := .fixed) init 0 RS.init [0] rfl rfl (by intro x; simp [init]))
+  have r2 := Reach.step r1 (Step.landFence _ 1 0 _ rfl (by simp) rfl)
+  have r3 := Reach.step r2 (Step.activate _ 1 _ rfl (by decide))
+  have r4 := Reach.step r3 (Step.plan _ 1 _ [1] rfl rfl)
+  have r5 := Reach.step r4 (Step.landData _ 1 0 _ rfl (by decide) rfl)
+  have r6 := Reach.step r5 (Step.begin _ 2 ⟨1, 1, false, [1]⟩ [2] rfl rfl (by intro x; simp [init, upd]; omega))
+  exact ⟨_, r6, _, _, rfl, rfl, rfl, rfl⟩
 
 end Lsm.Wal

@@ -612,7 +612,9 @@ D3).
   lost, are searched for by one background unit after the takeover, not on its critical path.
 * **Losing the lease:** if renewal fails or the local deadline passes, the instance fences itself permanently for that
   epoch. Commit of an active writing transaction throws. `WaitForDurabilityAsync` throws for commits that were not yet
-  durable; they were never acknowledged as durable, and the new writer will not see them. The instance discards its
+  durable; they were never acknowledged as durable, but a chunk still in flight may land, so the new writer may see
+  them (`Proofs/LsmProofs/Wal.lean`, `unacknowledged_replayed`). A spilled commit the worker has not started publishing
+  fails as not committed; one it started may have committed and fails saying so, and its objects are never discarded. The instance discards its
   non-durable memtable state, rebuilds its read state from storage and becomes a reader. A later
   `StartWritingTransaction` waits for the lease again.
 * **Safety:** each writer session has a fresh epoch. It writes WAL chunks and manifest edits with create-if-absent under

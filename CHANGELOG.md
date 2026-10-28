@@ -66,6 +66,11 @@
 - `LsmKeyValueDB` with a `DeletionGracePeriod` below a minute deleted replaced manifests at once. That freed their
   names, so a predecessor's or a concurrent takeover's delayed manifest create could take one again, and readers
   probing manifest names could load it. Replaced manifests now always stay for a minute.
+- `LsmKeyValueDB` could report a spilled commit as not committed although it committed. When the writer lost its lease
+  while the worker was publishing the commit's manifest, the commit failed with "lost before the commit", but the
+  manifest could still land. A retry then applied the transaction twice. When background work kept failing, the
+  commit also withdrew a request whose manifest might land and deleted its tables. A commit the worker started is now
+  never withdrawn, and if the writer stops it fails saying it may have committed.
 
 ## 35.13.0
 
