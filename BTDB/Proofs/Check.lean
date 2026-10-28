@@ -116,3 +116,5 @@ open Btdb
 #print axioms SkipOnce.previous_shifted
 #print axioms CountCache.fixed_count
 #print axioms CountCache.previous_stale
+#print axioms MergeCycle.fixed_ends
+#print axioms MergeCycle.previous_never_ends

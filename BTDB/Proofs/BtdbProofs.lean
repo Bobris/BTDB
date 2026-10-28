@@ -31,3 +31,4 @@ import BtdbProofs.EmittedTry
 import BtdbProofs.DeserializerPlaceholder
 import BtdbProofs.SkipOnce
 import BtdbProofs.CountCache
+import BtdbProofs.MergeCycle
