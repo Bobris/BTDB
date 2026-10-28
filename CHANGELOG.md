@@ -20,7 +20,8 @@
     - bounds from the owner cover every completed receipt;
     - background merging never leaves a split unreadable;
     - lease authority, confirmation grants and the handoff drain stay within the provider's lease for any clocks
-      within the drift bound.
+      within the drift bound;
+    - walking TRL headers back from an advertised end returns the files after the current one in order.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;

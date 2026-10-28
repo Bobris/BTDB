@@ -28,3 +28,5 @@ open Replication
 #print axioms Lease.lease_safe
 #print axioms Lease.grant_within_lease
 #print axioms Lease.drained_grants_expired
+#print axioms Lineage.walk_links
+#print axioms Lineage.successors_correct

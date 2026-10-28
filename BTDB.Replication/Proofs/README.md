@@ -21,6 +21,7 @@ is no `sorry`.
 | `Bounds.lean` | One versioned topic history; lanes whose conditional writes are dispatched, applied and answered separately; `ValidateAsync` calls answering from a write or a tail check | `EventLogOwnerLane.ValidateAsync`, `WriteAsync`, `SetOwnerAsync` |
 | `Merge.lean` | Splits and any number of merged levels (`MergeLevels`) with fan-out `F`; merges once a later split exists; deletions justified by a covering object that existed at some point, as concurrent and deposed mergers with stale listings and verification caches decide | `EventLogMerger.RunPassAsync`, `IsGarbageAsync` |
 | `ReplicationProofs/Lease.lean` | Monotone node clocks within the drift bound; the lease deadline from request dispatch, confirmation grants and the handoff drain bound, with the code's integer rounding | `LeaseAuthority.UsableDuration`, `BoundPeerWindow`, `CanGrant`; `ConfirmationGrants`; the poll evidence window in `ReplicationNodeCoordinator` |
+| `ReplicationProofs/Lineage.lean` | The walk back over native TRL headers (`PreviousFileId`) from an advertised end to the current file | `TrlLineage.SuccessorsAsync` |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
 Every step is atomic and may happen at any time, so the proofs cover all interleavings of the modelled operations,
@@ -55,6 +56,7 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `Lease.lease_safe` | While the local clock is below request dispatch plus `UsableDuration`, the provider-guaranteed lease still holds. |
 | `Lease.grant_within_lease` | A grant issued while `CanGrant` held covers only real times at which the lease holds, however the follower's and leader's clocks drift within the bound. |
 | `Lease.drained_grants_expired` | Once the leader's clock reaches the drain bound of every grant it issued, no follower holds any of them, so the lease can move. |
+| `Lineage.walk_links`, `Lineage.successors_correct` | When the walk succeeds it returns the files after the current one through the end in ascending order, each following its predecessor, and it always terminates. |
 | `Bounds.fixed_bounds_fresh` | With the implemented rule, which trusts only a write dispatched after the call started or a tail check, every answer covers every receipt completed before the call. |
 
 ## Finding: a delayed first dispatch was committed again (fixed 2026-10-27)
