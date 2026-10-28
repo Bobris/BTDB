@@ -104,12 +104,16 @@ public class KeyValueDBCrashSimulationTest
         return string.Join(";", parts);
     }
 
-    // Commits, compactions and key index writes; returns the state after every commit.
-    static async Task<List<string>> Workload(RecordingCollection files, int seed)
+    // Commits, compactions and key index writes; returns the state after every commit and the file operations done
+    // when it returned.
+    static async Task<(List<string> States, List<int> Done)> Workload(RecordingCollection files, int seed,
+        bool durable)
     {
         var random = new Random(seed);
         var states = new List<string> { "" };
+        var done = new List<int> { 0 };
         using var db = new BTreeKeyValueDB(Options(files));
+        db.DurableTransactions = durable;
         for (var t = 0; t < 30; t++)
         {
             using (var tr = await db.StartWritingTransaction())
@@ -122,23 +126,29 @@ public class KeyValueDBCrashSimulationTest
             }
 
             states.Add(Dump(db));
+            done.Add(files.Operations);
             if (t % 7 == 6) await db.Compact(CancellationToken.None);
             if (t % 11 == 10) db.CreateKvi(CancellationToken.None);
         }
 
-        return states;
+        return (states, done);
     }
 
+    /// With durable transactions a crash also keeps every commit that returned before it.
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public async Task EveryCrashOpensToACommittedStateAndKeepsLaterCommits(int seed)
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public async Task EveryCrashOpensToACommittedStateAndKeepsLaterCommits(int seed, bool durable)
     {
         int total;
         List<string> states;
+        List<int> done;
         using (var counting = new RecordingCollection())
         {
-            states = await Workload(counting, seed);
+            (states, done) = await Workload(counting, seed, durable);
             total = counting.Operations;
         }
 
@@ -146,7 +156,7 @@ public class KeyValueDBCrashSimulationTest
         for (var crash = 0; crash < total; crash++)
         {
             using var files = new RecordingCollection { CrashAt = crash };
-            await Workload(files, seed);
+            await Workload(files, seed, durable);
             var directory = Path.Combine(Path.GetTempPath(), "btdb-crash-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             try
@@ -167,6 +177,13 @@ public class KeyValueDBCrashSimulationTest
                 Assert.True(states.Contains(opened), $"Seed {seed} crash {crash}/{total}: opened {Short(opened)}, " +
                     "which no commit made; files at the crash: " +
                     string.Join(", ", files.Snapshot!.Select(f => $"{f.Name} {f.Bytes.Length} flushed {f.Flushed}")));
+                if (durable)
+                {
+                    var acknowledged = done.FindLastIndex(d => d <= crash);
+                    Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
+                        $"Seed {seed} crash {crash}/{total}: lost commit {acknowledged}, which returned before the crash");
+                }
+
                 using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
                 Assert.True((opened.Length == 0 ? "C8=01" : opened + ";C8=01") == Dump(again),
                     $"Seed {seed} crash {crash}/{total}: the commit after the reopen is lost");
