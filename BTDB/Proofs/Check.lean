@@ -33,3 +33,4 @@ open Btdb
 #print axioms Seek.seek_last_next_none
 #print axioms StringOrdered.starts_with_correct
 #print axioms StringOrdered.high_surrogate_needed
+#print axioms StringOrdered.encOpt_prefix_free

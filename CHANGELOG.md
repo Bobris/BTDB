@@ -30,7 +30,8 @@
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
     first key passing the lower bound or, descending, at the last key within the upper bound; an ordinal
-    `StartsWith` scans exactly the keys of the strings with the prefix.
+    `StartsWith` scans exactly the keys of the strings with the prefix, and string keys, null included, are prefix
+    free, so an ordinal equality can be part of a key prefix.
 
 ### Fixed
 

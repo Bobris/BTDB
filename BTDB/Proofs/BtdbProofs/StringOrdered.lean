@@ -14,6 +14,8 @@ The relation query planner scans the keys starting with the encoded prefix for a
 * `starts_with_correct`: for such `s`, a string's encoding starts with the encoded prefix exactly when the string
   starts with `s`.
 * `high_surrogate_needed`: without the exclusion the scan would miss strings that continue the surrogate pair.
+* `encOpt_prefix_free`: no key of a string or null is a prefix of another's, so an ordinal equality can be part of a
+  key prefix (`UsesEncodedEquals`).
 -/
 
 namespace Btdb.StringOrdered
@@ -105,6 +107,25 @@ theorem toks_bound : ∀ s, Units s → ∀ t ∈ toks s, 1 ≤ t ∧ t < 2 ^ 64
       · omega
       · exact toks_bound (d :: rest) (fun x hx => hs x (List.mem_cons_of_mem c hx)) t h
 
+/-- Tokens stay below the null key's token. -/
+theorem toks_le : ∀ s, Units s → ∀ t ∈ toks s, t ≤ 0x110000
+  | [], _, _, h => by simp [toks] at h
+  | [c], hs, t, h => by
+    have := hs c (by simp); simp [toks] at h; omega
+  | c :: d :: rest, hs, t, h => by
+    have hc := hs c (by simp)
+    have hd := hs d (by simp)
+    by_cases hp : (isHigh c && isLow d) = true
+    · simp only [isHigh, isLow, Bool.and_eq_true, decide_eq_true_eq] at hp
+      simp only [toks, isHigh, isLow, hp, decide_true, Bool.and_self, ite_true, List.mem_cons] at h
+      rcases h with rfl | h
+      · omega
+      · exact toks_le rest (fun x hx => hs x (by simp [hx])) t h
+    · simp only [toks, hp, Bool.false_eq_true, ite_false, List.mem_cons] at h
+      rcases h with rfl | h
+      · omega
+      · exact toks_le (d :: rest) (fun x hx => hs x (List.mem_cons_of_mem c hx)) t h
+
 /-- No token's encoding starts with a zero byte. -/
 theorem vuint_head (t : Nat) (h1 : 1 ≤ t) (h2 : t < 2 ^ 64) : ∃ b r, vuint t = b :: r ∧ b ≠ 0 := by
   obtain ⟨f1, -, -, -, -, -, -⟩ := facts t h2
@@ -157,6 +178,71 @@ theorem starts_with_correct (s str : List Nat) (hs : Units s) (hstr : Units str)
     unfold enc prefixEnc
     rw [toks_append s t he, List.flatMap_append, List.append_assoc]
     exact List.prefix_append _ _
+
+/-- `WriteStringOrdered`, including null. -/
+def encOpt : Option (List Nat) → List Nat
+  | some s => enc s
+  | none => vuint 0x110001
+
+/-- Equal keys are equal strings: no string's encoding is a prefix of another's, null included, so an equality on a
+string field can be part of a key prefix. -/
+theorem encOpt_prefix_free (a b : Option (List Nat)) (ha : ∀ s, a = some s → Units s) (hb : ∀ s, b = some s → Units s)
+    (h : encOpt a <+: encOpt b) : a = b := by
+  have tokens_eq : ∀ s t, Units s → Units t → enc s <+: enc t → s = t := by
+    intro s t hs ht hst
+    have hp := tokens_prefix _ _ (toks_bound s hs) (toks_bound t ht)
+      ((List.prefix_append _ _).trans hst)
+    obtain ⟨r, hr⟩ := hp
+    cases r with
+    | nil =>
+      rw [← untok_toks s hs, ← untok_toks t ht, ← hr, List.append_nil]
+    | cons x r =>
+      exfalso
+      have hx := toks_bound t ht x (by rw [← hr]; simp)
+      obtain ⟨c, r', hc, hc0⟩ := vuint_head x hx.1 hx.2
+      unfold enc prefixEnc at hst
+      rw [← hr, List.flatMap_append, List.flatMap_cons, hc, List.append_assoc,
+        List.prefix_append_right_inj] at hst
+      simp at hst
+      exact hc0 hst.symm
+  have null_vs : ∀ t, Units t → ¬ (encOpt none <+: enc t) ∧ ¬ (enc t <+: encOpt none) := by
+    intro t ht
+    have hn : (0x110001 : Nat) < 2 ^ 64 := by decide
+    constructor
+    · intro h
+      cases htok : toks t with
+      | nil =>
+        simp only [encOpt, enc, prefixEnc, htok, List.flatMap_nil, List.nil_append] at h
+        have := h.length_le
+        simp [vuint, len, be] at this
+      | cons x r =>
+        have hx := toks_bound t ht x (by rw [htok]; simp)
+        have hx' := toks_le t ht x (by rw [htok]; simp)
+        simp only [encOpt, enc, prefixEnc, htok, List.flatMap_cons, List.append_assoc] at h
+        rcases List.prefix_or_prefix_of_prefix h (List.prefix_append _ _) with h' | h'
+        · have := vuint_prefix_free hn hx.2 h'; omega
+        · have := vuint_prefix_free hx.2 hn h'; omega
+    · intro h
+      cases htok : toks t with
+      | nil =>
+        simp only [encOpt, enc, prefixEnc, htok, List.flatMap_nil, List.nil_append] at h
+        simp [vuint, len, be, base] at h
+      | cons x r =>
+        have hx := toks_bound t ht x (by rw [htok]; simp)
+        have hx' := toks_le t ht x (by rw [htok]; simp)
+        simp only [encOpt, enc, prefixEnc, htok, List.flatMap_cons, List.append_assoc] at h
+        rcases List.prefix_or_prefix_of_prefix ((List.prefix_append _ _).trans h) (List.prefix_refl _) with h' | h'
+        · have := vuint_prefix_free hx.2 hn h'; omega
+        · have := vuint_prefix_free hn hx.2 h'; omega
+  cases a with
+  | none =>
+    cases b with
+    | none => rfl
+    | some t => exact absurd h (null_vs t (hb t rfl)).1
+  | some s =>
+    cases b with
+    | none => exact absurd h (null_vs s (ha s rfl)).2
+    | some t => rw [tokens_eq s t (ha s rfl) (hb t rfl) h]
 
 /-- The exclusion is needed: a prefix ending with a high surrogate encodes it alone, while a string continuing with
 the low surrogate encodes the pair as one token. -/
