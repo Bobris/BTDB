@@ -18,3 +18,4 @@ import BtdbProofs.FileGuid
 import BtdbProofs.TrlChain
 import BtdbProofs.KviDurability
 import BtdbProofs.PreservedIndex
+import BtdbProofs.HintNames

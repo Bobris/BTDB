@@ -83,3 +83,6 @@ open Btdb
 #print axioms PreservedIndex.previous_drops_preserved
 #print axioms Replay.replay_split
 #print axioms KviDurability.is_durable_sound
+#print axioms HintNames.terminates
+#print axioms HintNames.unique_keeps_free_name
+#print axioms HintNames.run_nodup

@@ -48,6 +48,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
+  - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
+    unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
     listed keys, and the index comparison used before leaves the range.
   - `BTDB/Proofs/`, transaction log replay: a log ended by damage or inside a transaction replays to exactly the
@@ -72,7 +74,8 @@
 - Source generator: generated types whose names differ only by case, such as `Item` and `ITEM`, or a delegate or
   dispatcher interface nested in a class with the same name as one outside it, got the same generated file name. The
   generator then failed with `ArgumentException` and generated nothing for the whole project. Nested delegates and
-  interfaces are now named after their containing types, and a file name taken ignoring case gets a numeric suffix.
+  interfaces are now named after their containing types, and a file name taken ignoring case gets a numeric suffix
+  (`BTDB/Proofs/BtdbProofs/HintNames.lean`).
 - Source generator: a type named `Unsafe`, `RuntimeHelpers`, `UnsafeAccessorAttribute`, `UnsafeAccessorKind`,
   `InvalidOperationException` or a generic `Func` in the namespace of a generated type broke the generated code, which
   lives in that namespace and named those `System` types without qualification. It now names them with `global::`.
