@@ -79,6 +79,10 @@
 
 ### Fixed
 
+- ObjectDB: storing an object that contains itself through inline objects, like a node whose `Next` is the node,
+  overflowed the stack and ended the process, as each inline object is written with a writer context of its own. It
+  now fails with `BTDBException` naming the type, and the transaction stays usable. Make one of the objects a stored
+  object or reference it through `IIndirect<T>`.
 - Bon serialization: a reference cycle, which Bon cannot store as it keeps values and not references, overflowed the
   stack and ended the process. Serialization now fails with `InsufficientExecutionStackException` saying so, as
   deserialization of too deep data already did.

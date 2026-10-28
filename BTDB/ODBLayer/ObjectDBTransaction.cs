@@ -28,6 +28,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     Dictionary<ulong, object>? _dirtyObjSet;
     HashSet<TableInfo>? _updatedTables;
+    // The inline objects being written, outermost first: each gets a writer context of its own, so a reference cycle
+    // through them would nest until the stack overflows.
+    StructList<object> _inlineObjectsInWrite;
     List<Action>? _rollbackActions;
 
     public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr, bool readOnly)
@@ -155,11 +158,27 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 $"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
         }
 
+        for (var i = 0u; i < _inlineObjectsInWrite.Count; i++)
+        {
+            if (!ReferenceEquals(_inlineObjectsInWrite[i], @object)) continue;
+            _owner.ActualOptions.ThrowBTDBException(
+                $"Object of type {@object.GetType().ToSimpleName()} contains itself through inline objects, which cannot store a reference cycle. Make one of them a stored object or reference it through IIndirect<T>.");
+        }
+
         EnsureClientTypeNotNull(ti!);
         IfNeededPersistTableInfo(ti);
         writer.WriteVUInt32(ti.Id);
         writer.WriteVUInt32(ti.ClientTypeVersion);
-        ti.Saver(this, null, ref writer, @object);
+        _inlineObjectsInWrite.Add(@object);
+        try
+        {
+            ti.Saver(this, null, ref writer, @object);
+        }
+        finally
+        {
+            _inlineObjectsInWrite[_inlineObjectsInWrite.Count - 1] = null!;
+            _inlineObjectsInWrite.Pop();
+        }
     }
 
     void IfNeededPersistTableInfo(TableInfo tableInfo)
