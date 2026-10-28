@@ -1397,19 +1397,16 @@ public class BonSerializerFactory : ISerializerFactory
         }
 
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(type);
-        if (collectionMetadata == null && type.SpecializationOf(typeof(List<>)) is { } listType)
+        delegate*<object> subclassCreator = null;
+        foreach (var definition in (ReadOnlySpan<Type>)[typeof(List<>), typeof(HashSet<>), typeof(Dictionary<,>)])
         {
-            collectionMetadata = ReflectionMetadata.FindCollectionByType(listType);
-        }
-
-        if (collectionMetadata == null && type.SpecializationOf(typeof(HashSet<>)) is { } hashSetType)
-        {
-            collectionMetadata = ReflectionMetadata.FindCollectionByType(hashSetType);
-        }
-
-        if (collectionMetadata == null && type.SpecializationOf(typeof(Dictionary<,>)) is { } dictType)
-        {
-            collectionMetadata = ReflectionMetadata.FindCollectionByType(dictType);
+            if (collectionMetadata != null || type.SpecializationOf(definition) is not { } baseType) continue;
+            collectionMetadata = ReflectionMetadata.FindCollectionByType(baseType);
+            if (collectionMetadata == null || baseType == type) continue;
+            // The base collection's metadata creates the base type, which a member of the subclass cannot hold: create
+            // the subclass from its own metadata, and add to it as to the base, or do not support it.
+            if (ReflectionMetadata.FindByType(type) is { } subclassMetadata) subclassCreator = subclassMetadata.Creator;
+            else collectionMetadata = null;
         }
 
         if (collectionMetadata is { ElementValueType: null } listMetadata)
@@ -1434,6 +1431,7 @@ public class BonSerializerFactory : ISerializerFactory
                     context.StorageSize = elementSize;
                     context.ElementTypeDeserializer = elementTypeDeserializer;
                     context.Metadata = listMetadata;
+                    context.SubclassCreator = subclassCreator;
                     context.Result = null!;
                     context.Factory = ctx.Factory;
 
@@ -1445,7 +1443,9 @@ public class BonSerializerFactory : ISerializerFactory
                         ref var context = ref Unsafe.As<byte, ListDeserializerCtx>(ref value);
                         ref var arrayBon = ref Unsafe.AsRef<ArrayBon>((void*)context.ArrayBonPtr);
                         var count = arrayBon.Items;
-                        var res = context.Metadata.Creator(count);
+                        var res = context.SubclassCreator != null
+                            ? context.SubclassCreator()
+                            : context.Metadata.Creator(count);
                         context.Result = res;
                         for (var i = 0u; i < count; i++)
                         {
@@ -1498,6 +1498,7 @@ public class BonSerializerFactory : ISerializerFactory
                     context.ValueStoragePtr = 0;
                     context.ValueTypeDeserializer = valueTypeDeserializer;
                     context.Metadata = dictMetadata;
+                    context.SubclassCreator = subclassCreator;
                     context.Result = null!;
                     context.Factory = ctx.Factory;
                     context.ValueStackAllocator = valueStackAllocator;
@@ -1517,7 +1518,9 @@ public class BonSerializerFactory : ISerializerFactory
                         ref var context = ref Unsafe.As<byte, DictDeserializerCtx>(ref value);
 
                         ref var dictBon = ref Unsafe.AsRef<Bon.Bon>((void*)context.DictBonPtr);
-                        var res = context.Metadata.Creator(dictBon.Items / 2);
+                        var res = context.SubclassCreator != null
+                            ? context.SubclassCreator()
+                            : context.Metadata.Creator(dictBon.Items / 2);
                         context.Result = res;
                         BonDeserializerCtx subCtx = new() { Factory = context.Factory, Bon = ref dictBon };
                         while (dictBon.Items > 0)
@@ -1769,6 +1772,7 @@ public class BonSerializerFactory : ISerializerFactory
         internal uint StorageSize;
         internal Deserialize ElementTypeDeserializer;
         internal CollectionMetadata Metadata;
+        internal unsafe delegate*<object> SubclassCreator;
         internal object Result;
         internal ISerializerFactory Factory;
         internal IntPtr ArrayBonPtr;
@@ -1783,6 +1787,7 @@ public class BonSerializerFactory : ISerializerFactory
         internal nint ValueStoragePtr;
         internal Deserialize ValueTypeDeserializer;
         internal CollectionMetadata Metadata;
+        internal unsafe delegate*<object> SubclassCreator;
         internal object Result;
         internal ISerializerFactory Factory;
         internal IntPtr DictBonPtr;

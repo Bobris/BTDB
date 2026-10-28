@@ -83,6 +83,10 @@
 
 ### Fixed
 
+- Bon serialization: a member typed as a registered subclass of `List`, `HashSet` or `Dictionary` was deserialized
+  into the base collection, so the member held an object of a type it cannot hold, which calling the subclass's
+  members on reads past. It is now created as the subclass and filled as the base collection; members the subclass
+  adds are still not stored.
 - Bon serialization: a null class or `Tuple` was reported as not loaded, so a member kept the value its constructor
   gave it and a tuple holding a null class item, like `(long, Item?)?`, loaded as null. They now load as null. Found
   by a new serializer-level fuzz test.

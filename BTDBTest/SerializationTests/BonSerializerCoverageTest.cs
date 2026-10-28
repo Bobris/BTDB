@@ -831,5 +831,36 @@ public class BonSerializerCoverageTest
         Assert.Null(result.Boxed);
     }
 
+    [Generate]
+    public class NumberList : List<int>
+    {
+    }
+
+    [Generate]
+    public class CountsByName : Dictionary<string, int>
+    {
+    }
+
+    [Generate]
+    public class WithCollectionSubclasses
+    {
+        public NumberList? Numbers { get; set; }
+        public CountsByName? Counts { get; set; }
+    }
+
+    // Before the fix a member typed as a subclass of List, HashSet or Dictionary got the base collection, an object of
+    // another type than the member's.
+    [Fact]
+    public void CollectionSubclassMembersLoadAsTheSubclass()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder,
+            new WithCollectionSubclasses { Numbers = [1, 2], Counts = new() { ["a"] = 1 } });
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithCollectionSubclasses)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal([1, 2], Assert.IsType<NumberList>(result.Numbers));
+        Assert.Equal(1, Assert.IsType<CountsByName>(result.Counts)["a"]);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
