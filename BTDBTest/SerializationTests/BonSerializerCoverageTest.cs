@@ -597,5 +597,50 @@ public class BonSerializerCoverageTest
         }
     }
 
+    [Generate]
+    public class NullItemsItem
+    {
+        public int X { get; set; }
+    }
+
+    [Generate]
+    public class WithNullItems
+    {
+        public List<string?>? Strings { get; set; }
+        public string?[]? Array { get; set; }
+        public List<NullItemsItem?>? Items { get; set; }
+        public List<byte[]?>? Blobs { get; set; }
+        public Dictionary<int, string?>? Map { get; set; }
+        public List<int?>? Ints { get; set; }
+        public string? Initialized { get; set; } = "init";
+        public byte[]? Bytes { get; set; } = [9];
+    }
+
+    // Before the fix a null string in a list or dictionary loaded as the item before it, a null byte array was written
+    // as an empty one, and a null member kept the value its constructor gave it.
+    [Fact]
+    public void NullItemsAndMembersRoundTrip()
+    {
+        var value = new WithNullItems
+        {
+            Strings = ["a", null, "b"], Array = ["c", null], Items = [new() { X = 1 }, null], Blobs = [[1], null],
+            Map = new() { [1] = "x", [2] = null }, Ints = [1, null, 3], Initialized = null, Bytes = null
+        };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithNullItems)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(value.Strings, result.Strings);
+        Assert.Equal(value.Array, result.Array);
+        Assert.Equal(1, result.Items![0]!.X);
+        Assert.Null(result.Items[1]);
+        Assert.Equal([1], result.Blobs![0]);
+        Assert.Null(result.Blobs[1]);
+        Assert.Equal(value.Map, result.Map);
+        Assert.Equal(value.Ints, result.Ints);
+        Assert.Null(result.Initialized);
+        Assert.Null(result.Bytes);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }

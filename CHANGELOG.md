@@ -77,6 +77,10 @@
 
 ### Fixed
 
+- Bon serialization: deserializing a `List`, array or `Dictionary` gave a null string or byte array item the value of
+  the item before it, as items reuse one storage slot that a null item left unwritten. A null `byte[]` was written as
+  an empty array, and a null string or byte array member kept the value the constructor gave it. Null items and
+  members now load as null.
 - ObjectDB: removing an object of a recursive type that keeps its children in an `IDictionary`, such as a tree node,
   left the dictionaries below the first one in the database. Detecting what needs freeing reports a type whose
   detection is in progress as needing nothing, and the dictionary kept that answer for its values. It now asks again

@@ -200,7 +200,9 @@ public class BonSerializerFactory : ISerializerFactory
         {
             return static (ref SerializerCtx ctx, ref byte value) =>
             {
-                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, byte[]>(ref value));
+                // A null array would otherwise convert to an empty span and load as an empty array.
+                if (Unsafe.As<byte, byte[]?>(ref value) is { } bytes) AsCtx(ref ctx).Builder.Write(bytes);
+                else AsCtx(ref ctx).Builder.WriteNull();
             };
         }
 
@@ -884,6 +886,12 @@ public class BonSerializerFactory : ISerializerFactory
         {
             return static (ref DeserializerCtx ctx, ref byte value) =>
             {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, string?>(ref value) = null;
+                    return true;
+                }
+
                 if (AsCtx(ref ctx).Bon.TryGetString(out var v))
                 {
                     Unsafe.As<byte, string>(ref value) = v;
@@ -901,6 +909,12 @@ public class BonSerializerFactory : ISerializerFactory
         {
             return static (ref DeserializerCtx ctx, ref byte value) =>
             {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, byte[]?>(ref value) = null;
+                    return true;
+                }
+
                 if (AsCtx(ref ctx).Bon.TryGetByteArray(out var v))
                 {
                     Unsafe.As<byte, byte[]>(ref value) = v.ToArray();
@@ -1302,6 +1316,7 @@ public class BonSerializerFactory : ISerializerFactory
             var elementType = listMetadata.ElementKeyType;
             var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
             var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(elementType);
+            var elementSize = RawData.GetSizeAndAlign(elementType).Size;
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
                 if (AsCtx(ref ctx).Bon.TryGetNull())
@@ -1315,6 +1330,7 @@ public class BonSerializerFactory : ISerializerFactory
                     ListDeserializerCtx context;
                     context.ArrayBonPtr = (nint)Unsafe.AsPointer(ref arrayBon);
                     context.StoragePtr = 0;
+                    context.StorageSize = elementSize;
                     context.ElementTypeDeserializer = elementTypeDeserializer;
                     context.Metadata = listMetadata;
                     context.Result = null!;
@@ -1334,6 +1350,10 @@ public class BonSerializerFactory : ISerializerFactory
                         {
                             arrayBon.TryGet(i, out var itemBon);
                             BonDeserializerCtx subCtx = new() { Factory = context.Factory, Bon = ref itemBon };
+                            // The storage is reused for every item: an item that does not load, like a null string,
+                            // must add the default instead of the item before it.
+                            Unsafe.InitBlockUnaligned(ref Unsafe.AsRef<byte>((void*)context.StoragePtr), 0,
+                                context.StorageSize);
                             context.ElementTypeDeserializer(ref AsCtx(ref subCtx),
                                 ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
                             context.Metadata.Adder(res, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
@@ -1357,6 +1377,8 @@ public class BonSerializerFactory : ISerializerFactory
             var valueTypeDeserializer = CreateCachedDeserializerForType(valueType!);
             var keyStackAllocator = ReflectionMetadata.FindStackAllocatorByType(keyType);
             var valueStackAllocator = ReflectionMetadata.FindStackAllocatorByType(valueType);
+            var keySize = RawData.GetSizeAndAlign(keyType).Size;
+            var valueSize = RawData.GetSizeAndAlign(valueType).Size;
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
                 if (AsCtx(ref ctx).Bon.TryGetNull())
@@ -1370,6 +1392,8 @@ public class BonSerializerFactory : ISerializerFactory
                     DictDeserializerCtx context;
                     context.DictBonPtr = (nint)Unsafe.AsPointer(ref dictBon);
                     context.KeyStoragePtr = 0;
+                    context.KeyStorageSize = keySize;
+                    context.ValueStorageSize = valueSize;
                     context.KeyTypeDeserializer = keyTypeDeserializer;
                     context.ValueStoragePtr = 0;
                     context.ValueTypeDeserializer = valueTypeDeserializer;
@@ -1398,6 +1422,11 @@ public class BonSerializerFactory : ISerializerFactory
                         BonDeserializerCtx subCtx = new() { Factory = context.Factory, Bon = ref dictBon };
                         while (dictBon.Items > 0)
                         {
+                            // The storage is reused for every pair, see the list above.
+                            Unsafe.InitBlockUnaligned(ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr), 0,
+                                context.KeyStorageSize);
+                            Unsafe.InitBlockUnaligned(ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr), 0,
+                                context.ValueStorageSize);
                             context.KeyTypeDeserializer(ref AsCtx(ref subCtx),
                                 ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr));
                             context.ValueTypeDeserializer(ref AsCtx(ref subCtx),
@@ -1631,6 +1660,7 @@ public class BonSerializerFactory : ISerializerFactory
     struct ListDeserializerCtx
     {
         internal nint StoragePtr;
+        internal uint StorageSize;
         internal Deserialize ElementTypeDeserializer;
         internal CollectionMetadata Metadata;
         internal object Result;
@@ -1641,6 +1671,8 @@ public class BonSerializerFactory : ISerializerFactory
     struct DictDeserializerCtx
     {
         internal nint KeyStoragePtr;
+        internal uint KeyStorageSize;
+        internal uint ValueStorageSize;
         internal Deserialize KeyTypeDeserializer;
         internal nint ValueStoragePtr;
         internal Deserialize ValueTypeDeserializer;
