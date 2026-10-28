@@ -29,6 +29,8 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
         void ShallowUpdate(Row row);
         bool ShallowUpsert(Row row);
         bool RemoveById(ulong tenant, ulong id);
+        bool UpdateById(ulong tenant, ulong id, uint age, string? name, int payload);
+        bool UpdateByIdPayload(ulong tenant, ulong id, int payload);
         int RemoveById(ulong tenant);
         int RemoveById(ulong tenant, AdvancedEnumeratorParam<ulong> id);
         Row? FindByIdOrDefault(ulong tenant, ulong id);
@@ -72,7 +74,7 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                     Payload = random.Next(100)
                 };
                 var exists = model.ContainsKey((tenant, id));
-                var op = random.Next(10);
+                var op = random.Next(12);
                 log.Add($"{step}: op {op} {tenant}/{id} age {row.Age} name {row.Name ?? "null"} exists {exists}");
                 switch (op)
                 {
@@ -119,6 +121,14 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                         foreach (var r in batch) model[(r.Tenant, r.Id)] = (r.Age, r.Name, r.Payload);
                         break;
                     }
+                    case 10:
+                        Assert.Equal(exists, table.UpdateById(tenant, id, row.Age, row.Name, row.Payload));
+                        if (exists) model[(tenant, id)] = (row.Age, row.Name, row.Payload);
+                        break;
+                    case 11:
+                        Assert.Equal(exists, table.UpdateByIdPayload(tenant, id, row.Payload));
+                        if (exists) model[(tenant, id)] = model[(tenant, id)] with { Payload = row.Payload };
+                        break;
                     case 9:
                         if (random.Next(6) == 0)
                         {
