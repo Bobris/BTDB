@@ -230,12 +230,15 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     {
         try
         {
-            if (!_isWriter || transaction.WriterEpoch != _epoch)
-                throw new LsmWriterFencedException("The writer lease was lost; the transaction was not committed.");
             var rotate = memtable.ApproximateBytes >= MaxTrLogFileSize;
             long generation;
+            // Under the state lock, which losing the writer role also takes to end it, so a commit never publishes
+            // after the instance reloaded its state from storage.
             lock (_stateLock)
             {
+                if (!_isWriter || transaction.WriterEpoch != _epoch)
+                    throw new LsmWriterFencedException("The writer lease was lost; the transaction was not committed.");
+                AfterWriterCheck?.Invoke();
                 var current = _state;
                 generation = current.MemtableGeneration;
                 _state = rotate
@@ -266,6 +269,9 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     }
 
     internal void RevertWritingTransaction() => ReleaseWriter();
+
+    /// Runs in a commit once it found this instance the writer, before it publishes; tests use it to lose the lease there.
+    internal Action? AfterWriterCheck { get; set; }
 
     void ReleaseWriter()
     {

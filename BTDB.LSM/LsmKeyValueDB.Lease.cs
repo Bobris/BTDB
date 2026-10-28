@@ -465,7 +465,8 @@ public sealed partial class LsmKeyValueDB
         {
             if (!_isWriter) return;
             _holdsLease = false;
-            _isWriter = false;
+            // A commit checks and publishes under the state lock, so none publishes after the reload below.
+            lock (_stateLock) _isWriter = false;
             Logger?.LogWarning("BTDB.LSM stopped being the writer: " + reason.Message);
             // A refresh must not run until the reader state is reloaded: its replay still holds the writer's arenas.
             await _refreshLock.WaitAsync();

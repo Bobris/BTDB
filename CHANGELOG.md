@@ -71,6 +71,10 @@
   manifest could still land. A retry then applied the transaction twice. When background work kept failing, the
   commit also withdrew a request whose manifest might land and deleted its tables. A commit the worker started is now
   never withdrawn, and if the writer stops it fails saying it may have committed.
+- `LsmKeyValueDB` could keep showing a commit it lost with the writer lease. A commit that had just found the
+  instance the writer could publish its state after losing the lease reloaded the state from storage, so local
+  transactions saw commits storage did not have until the next refresh. The check and the publish now share the
+  state lock with ending the writer role.
 
 ## 35.13.0
 
