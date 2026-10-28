@@ -361,6 +361,86 @@ public class KeyValueDBCrashSimulationTest
         }
     }
 
+    /// A crash also keeps preserved history: from the preserved commit up to the commit the crash left, the database
+    /// opens at each commit ulong to exactly the state after it.
+    [Theory]
+    [InlineData(1)]
+    public async Task EveryCrashKeepsPreservedHistory(int seed)
+    {
+        async Task<(List<string> States, int Preserve)> HistoryWorkload(RecordingCollection files)
+        {
+            var random = new Random(seed);
+            var preserve = random.Next(1, 20);
+            var states = new List<string> { "" };
+            var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var options = Options(files);
+            options.PreserveHistoryUpToCommitUlong = (ulong)preserve;
+            using var db = new BTreeKeyValueDB(options);
+            for (var t = 1; t <= 30; t++)
+            {
+                using (var tr = await db.StartWritingTransaction())
+                {
+                    using var cursor = tr.CreateCursor();
+                    var key = new[] { (byte)random.Next(10) };
+                    var value = Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray();
+                    cursor.CreateOrUpdateKeyValue(key, value);
+                    model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                    tr.SetCommitUlong((ulong)t);
+                    tr.Commit();
+                }
+
+                states.Add(string.Join(";", model.Select(p => p.Key + "=" + p.Value)));
+                if (t % 6 == 5) await db.Compact(CancellationToken.None);
+                if (t % 7 == 6) db.CreateKvi(CancellationToken.None);
+            }
+
+            return (states, preserve);
+        }
+
+        int total;
+        using (var counting = new RecordingCollection())
+        {
+            await HistoryWorkload(counting);
+            total = counting.Operations;
+        }
+
+        var random = new Random(seed);
+        var root = Path.Combine(Path.GetTempPath(), "btdb-crash-history-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            for (var crash = 0; crash < total; crash++)
+            {
+                using var files = new RecordingCollection { CrashAt = crash };
+                var (states, preserve) = await HistoryWorkload(files);
+                var left = Path.Combine(root, $"{crash}");
+                WriteSnapshot(files, left, random);
+                ulong reached;
+                Copy(left, left + "-probe");
+                var options = Options(new OnDiskFileCollection(left + "-probe"));
+                options.PreserveHistoryUpToCommitUlong = (ulong)preserve;
+                using (var db = new BTreeKeyValueDB(options))
+                using (var tr = db.StartReadOnlyTransaction())
+                    reached = tr.GetCommitUlong();
+                for (var k = preserve; k <= (int)reached; k++)
+                {
+                    var copy = $"{left}-{k}";
+                    Copy(left, copy);
+                    var history = Options(new OnDiskFileCollection(copy));
+                    history.PreserveHistoryUpToCommitUlong = (ulong)preserve;
+                    history.OpenUpToCommitUlong = (ulong)k;
+                    using var db = new BTreeKeyValueDB(history);
+                    Assert.True(states[k] == Dump(db),
+                        $"Seed {seed} crash {crash}/{total}, preserving from {preserve}, reached {reached}: opened at {k} " +
+                        $"as {Short(Dump(db))}, not {Short(states[k])}");
+                }
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
     sealed class WarningLogger : IKeyValueDBLogger
     {
         public string? LastWarning;
