@@ -67,6 +67,9 @@ and its descent through branch nodes whose separators are the first keys of all 
 `BtdbProofs/Creator.lean` models how `ReadOnlyCreator.WriteBranches` groups the children of a level into branch nodes,
 greedily up to `MaxChildren` children and `MaxNodeKeyBytes` bytes of separators.
 
+`BtdbProofs/RangeEnumeration.lean` models how the advanced enumerators of relations, `ODBSet` and `ODBDictionary` end
+a descending range while the caller removes each listed key.
+
 `BtdbProofs/Separators.lean` models how `BTreeBranch.EraseOne` and `CreateOrUpdate` of the in-memory B-tree rebuild a
 branch's separators with array copies, after erasing a key and after splits.
 
@@ -97,6 +100,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Boundary.seek_index` | `SeekIndex` picks the child holding a key index from the children's cumulative counts, and the index lies in it at the remaining offset. |
 | `Creator.flatten_groups`, `Creator.group_fits` | The branches of a level hold its children in order, each once, with at most `MaxChildren` children and at most `MaxNodeKeyBytes` bytes of separators, so the 16-bit separator ends and the child count byte fit. |
 | `Creator.groups_shrink` | Since `Run` rejects keys longer than `MaxNodeKeyBytes`, every branch but the last takes at least two children, so each level is smaller and the loop over levels ends with one root. |
+| `RangeEnumeration.index_stop_leaves_range` | Before the 2026-10-28 fix, a descending enumeration that stopped by comparing key indexes went one key below the range once the caller removed the range's first key, which then reports the index of the key before it (`ObjectDbAdvancedEnumeratorBoundaryTest.RemovingListedItemsKeepsEnumerationInRange`). |
+| `RangeEnumeration.key_stop_lists_range` | Stopping by comparing keys with the bound lists exactly the live keys of the range in descending order while the caller removes each listed key. |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |
