@@ -48,7 +48,8 @@
 - Event log: a merged object whose header claimed a record count near `ulong.MaxValue` passed validation, because the
   frame and record counts were added before the bound check and the sum wrapped around. The reader decides from that
   part of the header, before reading the header checksum, whether an offset lies beyond the object, so it skipped the
-  object and later failed with `EventLogOffsetNotAvailableException`. Such a header is now reported as corrupted.
+  object and later failed with `EventLogOffsetNotAvailableException`. Such a header is now reported as corrupted, and
+  so is a merged header whose level or first offset does not match its name, as the merger already reported it.
 - Upgrading a field between numeric types in IL-emitting mode (`DefaultTypeConvertorGenerator`) now gives what a C#
   cast gives. A `uint` widened to `long` was sign-extended, so `uint.MaxValue` became -1; negative `sbyte`, `short` and
   `int` values widened to `ulong` were zero-extended from 32 bits; and `uint` and `ulong` values converted to `float` or

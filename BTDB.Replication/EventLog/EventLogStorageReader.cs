@@ -116,6 +116,10 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         var prefix = new byte[EventLogFormat.MergedFixedLength(topic)];
         await storage.ReadRangeAsync(info.Key, info.Version, 0, prefix, cancellation).ConfigureAwait(false);
         var merged = EventLogFormat.ParseMergedFixed(prefix, topic);
+        // The prefix decides the walk below before the header checksum is read, so it must match the object's name.
+        if (!EventLogFormat.TryParseKey(topic, info.Key, out var level, out var firstOffset) || merged.Level != level ||
+            merged.FirstOffset != firstOffset)
+            throw new EventLogCorruptedException($"Merged object '{info.Key}' does not match its name.");
         if (offset >= merged.FirstOffset + merged.RecordCount) return (null, merged.LastSplitId);
         if (offset == merged.FirstOffset)
             return (await LoadAsync(info.Key, info, cancellation).ConfigureAwait(false)

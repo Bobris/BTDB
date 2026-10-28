@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB.Replication.EventLog;
 using Xunit;
+using static BTDB.Replication.Test.EventLog.EventLogTestExtensions;
 
 namespace BTDB.Replication.Test.EventLog;
 
@@ -105,6 +107,23 @@ public class EventLogFormatTest
 
     /// The reader decides from the fixed part of a merged header alone whether an offset lies beyond the object,
     /// before the header checksum is read, so its counts must not wrap around in validation.
+    /// A reader that finds an offset beyond a merged object from its header prefix walks on to the splits after it, so a
+    /// prefix that does not match the object's name is reported, as the merger reports it.
+    [Fact]
+    public async Task ReaderReportsMergedPrefixThatDoesNotMatchItsName()
+    {
+        var storage = new InMemoryEventLogStorage();
+        var merged = EventLogFormat.CreateMerged("t", 1, 2, 2,
+            [((ReadOnlyMemory<byte>)Split(2, 2, [[[3], [4]]], true), EventLogFormat.Parse(Split(2, 2, [[[3], [4]]], true), "t"))]);
+        // The first offset in the header says 0 while the name says 2.
+        BitConverter.TryWriteBytes(merged.AsSpan(8 + 1 + 8), 0ul);
+        await storage.WriteAsync(EventLogFormat.SplitKey("t", 1), null, Split(1, 0, [[[1], [2]]], true), null, null, default);
+        await storage.WriteAsync(EventLogFormat.MergedKey("t", 1, 2), null, merged, null, null, default);
+        await storage.WriteAsync(EventLogFormat.SplitKey("t", 3), null, Split(3, 4, [[[5]]], false), null, null, default);
+        await Assert.ThrowsAsync<EventLogCorruptedException>(() =>
+            new EventLogStorageReader(storage, "t").ReadAllAsync(3));
+    }
+
     [Theory]
     [InlineData(ulong.MaxValue)]
     [InlineData(ulong.MaxValue - 1)]
