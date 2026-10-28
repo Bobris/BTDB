@@ -1,7 +1,8 @@
-# Event log proofs
+# Event log and replication proofs
 
-Lean 4 models of the event-log commit protocol in `../EventLog/`, with machine-checked proofs. They use only the
-Lean core library (no Mathlib).
+Lean 4 models of the event-log commit protocol in `../EventLog/` (library `EventLogProofs`) and of replication lease
+authority (library `ReplicationProofs`), with machine-checked proofs. They use only the Lean core library (no
+Mathlib).
 
 ```bash
 lake build                 # checks every proof
@@ -19,6 +20,7 @@ is no `sorry`.
 | `Chain.lean` | Level-0 split chain: conditional appends to the writable tail (combined takeover, seal-only writes, owner change), successor creation after the lane's own seal, adopting a helper's header-only successor, header-only successors created by anybody after a seal, candidates reading the tail, cleanup marks on sealed splits | `EventLogOwnerLane.AppendAsync`, `CreateSuccessorAsync`, `SetOwnerAsync`, `CreateCandidateAsync`, `ValidateAsync`, `EventLogStorageReader.FindTailAsync`, `EventLogMerger` |
 | `Bounds.lean` | One versioned topic history; lanes whose conditional writes are dispatched, applied and answered separately; `ValidateAsync` calls answering from a write or a tail check | `EventLogOwnerLane.ValidateAsync`, `WriteAsync`, `SetOwnerAsync` |
 | `Merge.lean` | Splits and any number of merged levels (`MergeLevels`) with fan-out `F`; merges once a later split exists; deletions justified by a covering object that existed at some point, as concurrent and deposed mergers with stale listings and verification caches decide | `EventLogMerger.RunPassAsync`, `IsGarbageAsync` |
+| `ReplicationProofs/Lease.lean` | Monotone node clocks within the drift bound; the lease deadline from request dispatch, confirmation grants and the handoff drain bound, with the code's integer rounding | `LeaseAuthority.UsableDuration`, `BoundPeerWindow`, `CanGrant`; `ConfirmationGrants`; the poll evidence window in `ReplicationNodeCoordinator` |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
 Every step is atomic and may happen at any time, so the proofs cover all interleavings of the modelled operations,
@@ -50,6 +52,9 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `Merge.torn_listing_ends_early` | A listing returns splits before merged objects, and its later page may return a merged object made after it returned the splits. That object covers every listed split while history continues. Before the 2026-10-28 fix, the reader then reported the end of history. |
 | `Merge.merged_has_successor` | After any merged object that ever existed, history continues with a split readable from an existing object, now and later. The reader therefore walks on from the split after a merged object. |
 | `Bounds.current_bounds_stale` | Under the rule before the 2026-10-28 fix, a write dispatched before a bounds call lands, another owner commits, and the late response makes the call answer an end below a completed receipt. |
+| `Lease.lease_safe` | While the local clock is below request dispatch plus `UsableDuration`, the provider-guaranteed lease still holds. |
+| `Lease.grant_within_lease` | A grant issued while `CanGrant` held covers only real times at which the lease holds, however the follower's and leader's clocks drift within the bound. |
+| `Lease.drained_grants_expired` | Once the leader's clock reaches the drain bound of every grant it issued, no follower holds any of them, so the lease can move. |
 | `Bounds.fixed_bounds_fresh` | With the implemented rule, which trusts only a write dispatched after the call started or a tail check, every answer covers every receipt completed before the call. |
 
 ## Finding: a delayed first dispatch was committed again (fixed 2026-10-27)

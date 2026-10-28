@@ -1,5 +1,8 @@
 name = "EventLogProofs"
-defaultTargets = ["EventLogProofs"]
+defaultTargets = ["EventLogProofs", "ReplicationProofs"]
 
 [[lean_lib]]
 name = "EventLogProofs"
+
+[[lean_lib]]
+name = "ReplicationProofs"

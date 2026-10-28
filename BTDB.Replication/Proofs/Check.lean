@@ -1,4 +1,5 @@
 import EventLogProofs
+import ReplicationProofs
 
 open EventLog
 
@@ -21,3 +22,9 @@ open EventLog
 #print axioms Merge.fresh_listing_end
 #print axioms Merge.torn_listing_ends_early
 #print axioms Merge.merged_has_successor
+
+open Replication
+
+#print axioms Lease.lease_safe
+#print axioms Lease.grant_within_lease
+#print axioms Lease.drained_grants_expired

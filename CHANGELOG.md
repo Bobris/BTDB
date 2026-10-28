@@ -18,11 +18,14 @@
       next offset;
     - each Publish call commits once, in per-session call order, with exact receipts;
     - bounds from the owner cover every completed receipt;
-    - background merging never leaves a split unreadable.
+    - background merging never leaves a split unreadable;
+    - lease authority, confirmation grants and the handoff drain stay within the provider's lease for any clocks
+      within the drift bound.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;
-    - counted entries add up across components, and the compaction merge preserves each key's state and count.
+    - counted entries add up across components, and the compaction merge preserves each key's state and count;
+    - manifest fencing gives every writer session a fresh epoch.
 
 ### Fixed
 

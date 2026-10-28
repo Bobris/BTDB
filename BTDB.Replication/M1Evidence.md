@@ -61,7 +61,8 @@ window in its own clock units by
 
 The leader issues a grant only while `now + B < D`, tracks the maximum `now + B`, stops issuing during drain and
 transfers the lease only after that time. `AuthorityTest.WorstClockRatesKeepPeerExpiryInsideServiceLease` checks
-these inequalities at both rate extremes with integer rounding. No synchronized wall clocks are required.
+these inequalities at both rate extremes with integer rounding, and `Proofs/ReplicationProofs/Lease.lean` proves them
+for every clock within the rate bound. No synchronized wall clocks are required.
 
 Live Azure lease expiry, delayed acquire replies and a 250 ms operational margin are measured in
 [ObjectStorages.md](ObjectStorages.md); lease break is still unqualified.
