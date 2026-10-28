@@ -107,25 +107,38 @@ public class KeyValueDBCrashSimulationTest
     // Commits, compactions and key index writes; returns the state after every commit and the file operations done
     // when it returned.
     static async Task<(List<string> States, List<int> Done)> Workload(RecordingCollection files, int seed,
-        bool durable)
+        bool durable, bool batches = false)
     {
         var random = new Random(seed);
         var states = new List<string> { "" };
         var done = new List<int> { 0 };
+        // Every commit's state, also of batched commits that are not published yet.
+        var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
         using var db = new BTreeKeyValueDB(Options(files));
         db.DurableTransactions = durable;
         for (var t = 0; t < 30; t++)
         {
-            using (var tr = await db.StartWritingTransaction())
+            using (var tr = await db.StartWritingTransaction(batches && random.Next(3) != 0))
             {
                 using var cursor = tr.CreateCursor();
                 var key = new[] { (byte)random.Next(10) };
-                if (random.Next(4) == 0 && cursor.FindExactKey(key)) cursor.EraseCurrent();
-                else cursor.CreateOrUpdateKeyValue(key, Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray());
+                if (random.Next(4) == 0 && cursor.FindExactKey(key))
+                {
+                    cursor.EraseCurrent();
+                    model.Remove(Convert.ToHexString(key));
+                }
+                else
+                {
+                    var value = Enumerable.Repeat((byte)t, random.Next(3) == 0 ? 900 : 4).ToArray();
+                    cursor.CreateOrUpdateKeyValue(key, value);
+                    model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                }
+
+                if (batches && random.Next(4) == 0) db.FinishTransactionBatchAfterCurrentTransaction();
                 tr.Commit();
             }
 
-            states.Add(Dump(db));
+            states.Add(string.Join(";", model.Select(p => p.Key + "=" + p.Value)));
             done.Add(files.Operations);
             if (t % 7 == 6) await db.Compact(CancellationToken.None);
             if (t % 11 == 10) db.CreateKvi(CancellationToken.None);
@@ -141,14 +154,24 @@ public class KeyValueDBCrashSimulationTest
     [InlineData(1, true)]
     [InlineData(2, true)]
     [InlineData(3, true)]
-    public async Task EveryCrashOpensToACommittedStateAndKeepsLaterCommits(int seed, bool durable)
+    public async Task EveryCrashOpensToACommittedStateAndKeepsLaterCommits(int seed, bool durable) =>
+        await CrashEverywhere(seed, durable, false);
+
+    /// Batched transactions publish later, but each commit is in the log: a crash keeps a prefix of the commits.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task EveryCrashOfBatchedCommitsOpensToACommittedState(int seed) => await CrashEverywhere(seed, false, true);
+
+    async Task CrashEverywhere(int seed, bool durable, bool batches)
     {
         int total;
         List<string> states;
         List<int> done;
         using (var counting = new RecordingCollection())
         {
-            (states, done) = await Workload(counting, seed, durable);
+            (states, done) = await Workload(counting, seed, durable, batches);
             total = counting.Operations;
         }
 
@@ -156,7 +179,7 @@ public class KeyValueDBCrashSimulationTest
         for (var crash = 0; crash < total; crash++)
         {
             using var files = new RecordingCollection { CrashAt = crash };
-            await Workload(files, seed, durable);
+            await Workload(files, seed, durable, batches);
             var directory = Path.Combine(Path.GetTempPath(), "btdb-crash-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             try
