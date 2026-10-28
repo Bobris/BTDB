@@ -107,3 +107,6 @@ open Btdb
 #print axioms ConverterStaging.fixed_holds
 #print axioms ConverterStaging.previous_saver_unsafe
 #print axioms ConverterStaging.previous_loader_missing
+#print axioms EmittedTry.previous_rejected
+#print axioms EmittedTry.previous_alone
+#print axioms EmittedTry.fixed_accepted
