@@ -303,6 +303,42 @@ public class TransactionLogSizeStrategyTest
         Assert.Equal(2ul, read.GetCommitUlong());
     }
 
+    /// A command rejected after earlier commands of its transaction, which already started a new log for it, leaves
+    /// none of them applied once the transaction is disposed, also after reopening and further commits.
+    [Fact]
+    public async Task OversizedCommandAfterOthersRollsBackTheWholeTransaction()
+    {
+        using var files = new InMemoryFileCollection();
+        var strategy = new FixedStrategy(1024, 1536);
+        using (var db = Open(files, strategy))
+        {
+            using (var first = await db.StartWritingTransaction(1ul))
+            {
+                Put(first, 1);
+                first.Commit();
+            }
+
+            using (var tr = await db.StartWritingTransaction(2ul))
+            {
+                using var cursor = tr.CreateCursor();
+                for (byte k = 10; k < 14; k++) cursor.CreateOrUpdateKeyValue([k], new byte[300]);
+                Assert.Throws<BTDBException>(() => cursor.CreateOrUpdateKeyValue([20], new byte[2000]));
+            }
+
+            using var next = await db.StartWritingTransaction(3ul);
+            Put(next, 3);
+            next.Commit();
+        }
+
+        Assert.All(files.Enumerate(), f => Assert.InRange(f.GetSize(), 1ul, 1536ul));
+        using var reopened = Open(files, strategy);
+        using var read = reopened.StartReadOnlyTransaction();
+        Assert.Equal(2L, read.GetKeyValueCount());
+        Assert.Equal(3ul, read.GetCommitUlong());
+        using var check = read.CreateCursor();
+        for (byte k = 10; k < 14; k++) Assert.False(check.FindExactKey([k]));
+    }
+
     [Theory]
     [InlineData(1024u, uint.MaxValue)]
     [InlineData(2048u, 1024u)]
