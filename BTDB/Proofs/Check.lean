@@ -35,3 +35,6 @@ open Btdb
 #print axioms StringOrdered.high_surrogate_needed
 #print axioms StringOrdered.encOpt_prefix_free
 #print axioms ReadOnlyCompare.compare_correct
+#print axioms Boundary.search_correct
+#print axioms Boundary.before_lt_mono
+#print axioms Boundary.before_cut_mono

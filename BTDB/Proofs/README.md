@@ -48,7 +48,10 @@ written as a variable-length integer. It justifies the prefix scan that relation
 `BtdbProofs/ReadOnlyCompare.lean` models `ReadOnlyKeyValueDBCursor.Compare`, which compares a key the read-only
 database stores as a node's shared prefix and a suffix, cut to a maximum length, with a search target.
 
-Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
+`BtdbProofs/Boundary.lean` models the binary search that `ReadOnlyKeyValueDBCursor.FindBoundary` runs in each node.
+
+Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract, and the descent of `FindBoundary`
+through branch nodes.
 
 ## Results
 
@@ -66,4 +69,5 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `StringOrdered.encOpt_prefix_free` | No key of a string or null is a prefix of another's, so an ordinal equality on a string field can be part of a key prefix (`UsesEncodedEquals`). |
 | `StringOrdered.high_surrogate_needed` | The planner's exclusion of a prefix ending with a high surrogate (`UsesEncodedStartsWith`) is needed: such a prefix encodes the surrogate alone, so the scan would miss strings that continue the pair. |
 | `ReadOnlyCompare.compare_correct` | `Compare(prefix, suffix, target, maxLength)` equals comparing the first `maxLength` bytes of `prefix ++ suffix` with the target, in every branch of its shortcut. |
+| `Boundary.search_correct`, `Boundary.before_lt_mono`, `Boundary.before_cut_mono` | The node search returns the number of keys below the target, or of keys whose cut to the target's length is not above it, for keys in increasing order. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |
