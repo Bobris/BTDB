@@ -64,4 +64,39 @@ theorem previous_unsafe :
     Reach { written := 5, durable := 0, committed := 5, index := none } ∧ s.index = some 5 ∧ s.durable < 5 :=
   ⟨.step (.step .init (.append ⟨0, 0, 0, none⟩ 5)) (.commit _), rfl, by decide⟩
 
+/-! ## The durability check beside a writer
+
+`IsDurable` decides whether a root is durable from the current log file ID and the durable position the last hard
+flush of that file recorded, read without the write lock, so it may see a file ID that was current a moment ago.
+Logs before the current one are durable as a whole, since a log is hard flushed when the next one starts; the
+current log is durable up to the recorded offset. -/
+
+structure Log where
+  /-- The current transaction log file ID; earlier ones are durable as a whole. -/
+  current : Nat
+  /-- The file and offset the last hard flush of the current log recorded. -/
+  flushedFile : Nat
+  flushedOffset : Nat
+
+/-- Durable bytes of the logs: a position in an earlier log, or in the log the last hard flush recorded, up to the
+offset it recorded. -/
+def Durable (log : Log) (file offset : Nat) : Prop :=
+  file < log.current ∨ (log.flushedFile = file ∧ offset ≤ log.flushedOffset)
+
+/-- `IsDurable` with the current file ID it read, `seen`. -/
+def isDurable (seen : Nat) (log : Log) (file offset : Nat) : Bool :=
+  file != seen || (log.flushedFile == file && decide (offset ≤ log.flushedOffset))
+
+/-- The check accepts only durable roots, also when it read a file ID that a log switch has since made stale. The
+root's log existed before the check read the ID, which only grows, so `file ≤ seen ≤ current`. -/
+theorem is_durable_sound (log : Log) (seen file offset : Nat) (hfile : file ≤ seen) (hseen : seen ≤ log.current)
+    (h : isDurable seen log file offset = true) : Durable log file offset := by
+  unfold isDurable at h
+  unfold Durable
+  by_cases hne : file = seen
+  · subst hne
+    simp only [bne_self_eq_false, Bool.false_or, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
+    exact Or.inr h
+  · exact Or.inl (by omega)
+
 end Btdb.KviDurability

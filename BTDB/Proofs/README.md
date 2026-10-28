@@ -135,6 +135,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
+| `KviDurability.is_durable_sound` | The check `CreateKvi` makes beside a writer accepts only roots whose log bytes are durable, also when it reads a current log ID that a switch has since made stale. |
 | `KviDurability.previous_unsafe` | Before the 2026-10-28 fix one commit and an index were enough for a crash to keep the index and lose the log bytes it points at (`KeyValueDBCrashSimulationTest`). |
 | `PreservedIndex.fixed_keeps_preserved` | Writing a key index keeps the newest one at or before the preserved commit, so history stays openable from it. |
 | `PreservedIndex.previous_drops_preserved` | Before the 2026-10-28 fix `CreateKvi` kept only its new index, so opening at the preserved commit opened a later one (`KeyValueDBHistoryOpenTest`). |

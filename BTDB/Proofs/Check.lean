@@ -82,3 +82,4 @@ open Btdb
 #print axioms PreservedIndex.fixed_keeps_preserved
 #print axioms PreservedIndex.previous_drops_preserved
 #print axioms Replay.replay_split
+#print axioms KviDurability.is_durable_sound
