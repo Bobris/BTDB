@@ -1174,6 +1174,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         var keyPrefix = reader.ReadVUInt32();
                         var keyLen = reader.ReadVUInt32();
+                        if (keyPrefix > keyLen) return StopReplay(ref next);
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
                         if (!cursor.FindFirst(key.AsSpan(0, (int)keyPrefix)))

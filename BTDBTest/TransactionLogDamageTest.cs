@@ -56,4 +56,48 @@ public class TransactionLogDamageTest
             Directory.Delete(directory, true);
         }
     }
+
+    [Fact]
+    public void KeySuffixUpdateWithPrefixLongerThanKeyEndsReplay()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using (var db = new BTreeKeyValueDB(Options(directory)))
+            {
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue([7, 2], [9]);
+                    tr.Commit();
+                }
+
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    using var cursor = tr.CreateCursor();
+                    Assert.Equal(UpdateKeySuffixResult.Updated, cursor.UpdateKeySuffix([7, 3], 1));
+                    tr.Commit();
+                }
+            }
+
+            var log = Directory.GetFiles(directory, "*.trl").Single();
+            var content = File.ReadAllBytes(log);
+            // Prefix length 1 and key length 2 (VUInt), then the new key.
+            var at = Enumerable.Range(0, content.Length - 3).Single(i =>
+                content[i] == 1 && content[i + 1] == 2 && content[i + 2] == 7 && content[i + 3] == 3);
+            content[at] = 5;
+            File.WriteAllBytes(log, content);
+
+            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var read = reopened.StartReadOnlyTransaction();
+            using var check = read.CreateCursor();
+            Assert.True(check.FindExactKey([7, 2]));
+            Assert.False(check.FindExactKey([7, 3]));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
 }
