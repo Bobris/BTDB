@@ -93,3 +93,5 @@ open Btdb
 #print axioms EventMetadataIds.written_index_below_length
 #print axioms EventMetadataIds.written_indices_fill
 #print axioms EventMetadataIds.large_index_rejected
+#print axioms DictionaryFree.walk_ends
+#print axioms DictionaryFree.unguarded_never_ends

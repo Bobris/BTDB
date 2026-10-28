@@ -22,3 +22,4 @@ import BtdbProofs.HintNames
 import BtdbProofs.SerializerPlaceholder
 import BtdbProofs.BonNesting
 import BtdbProofs.EventMetadataIds
+import BtdbProofs.DictionaryFree

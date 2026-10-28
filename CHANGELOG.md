@@ -49,6 +49,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
+  - `BTDB/Proofs/`, ObjectDB dictionary freeing: it ends and registers each dictionary once, whatever damage makes the
+    dictionaries hold;
   - `BTDB/Proofs/`, event metadata: the checks on type ids reject no metadata log the serializer writes, and reject
     an id the log cannot hold before the type table grows to it;
   - `BTDB/Proofs/`, Bon reading: containers that readers accept nest at most as deep as the data is long, even when
@@ -79,7 +81,7 @@
   left the dictionaries below the first one in the database. Detecting what needs freeing reports a type whose
   detection is in progress as needing nothing, and the dictionary kept that answer for its values. It now asks again
   once detection is over. Freeing also stops at a dictionary it already frees, which damage can make a dictionary hold,
-  instead of recursing until the stack overflows.
+  instead of recursing until the stack overflows (`BTDB/Proofs/BtdbProofs/DictionaryFree.lean`).
 - Event store: `FullNameTypeMapper.ToType` failed with `ArgumentNullException` for a generic type name whose argument
   or definition maps to no type, as after that type was renamed, and asserted on unbalanced names that damage leaves;
   such names now map to no type. Both event store versions, and `EventSerializer.ProcessMetadataLog`, report an unknown

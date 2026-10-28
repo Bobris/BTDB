@@ -93,6 +93,9 @@ of the transaction log and of a key index that points into it.
 `BtdbProofs/PreservedIndex.lean` models which key indexes `BTreeKeyValueDB.CreateIndexFile` keeps when it writes a new
 one under `PreserveHistoryUpToCommitUlong`.
 
+`BtdbProofs/DictionaryFree.lean` models how `ODBDictionaryFieldHandler.FreeContent` frees nested dictionaries
+(`../ODBLayer/`), over any graph of dictionaries damage can leave, with a bound on the nesting it may reach.
+
 `BtdbProofs/EventMetadataIds.lean` models the type ids `EventSerializer` writes into a metadata log and the checks
 `EventDeserializer.ProcessMetadataLog` makes on them (`../EventStore2Layer/`).
 
@@ -153,6 +156,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `PreservedIndex.previous_drops_preserved` | Before the 2026-10-28 fix `CreateKvi` kept only its new index, so opening at the preserved commit opened a later one (`KeyValueDBHistoryOpenTest`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
+| `DictionaryFree.walk_ends` | Skipping a dictionary already registered, freeing ends within one more level of nesting than there are dictionaries, whatever they hold, and registers each one once. |
+| `DictionaryFree.unguarded_never_ends` | Without that check a dictionary damaged to hold itself is walked without end, which overflowed the stack once the 2026-10-28 fix freed nested dictionaries of recursive types (`ObjectDbTableFreeContentTest.FreeEndsOnDictionaryHoldingItself`). |
 | `EventMetadataIds.written_index_below_length`, `EventMetadataIds.written_indices_fill` | Every type id the serializer writes passes the deserializer's length check, and the ids fill the type table without gaps, so the checks reject no valid metadata log. |
 | `EventMetadataIds.large_index_rejected` | A type id whose index the log cannot hold, as damage leaves, is rejected before the table grows to it (`EventStore2CoverageTest.DamagedMetadataTypeIdIsReported`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
