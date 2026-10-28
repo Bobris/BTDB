@@ -24,7 +24,17 @@ public class KeyValueDBCrashSimulationTest
         public int CrashAt = -1;
         public List<(string Name, byte[] Bytes, ulong Flushed)>? Snapshot;
 
-        void Operation()
+        // Each operation is counted, and a crash snapshot taken, atomically with its effect, as other threads run too.
+        void Operation(Action effect)
+        {
+            lock (this)
+            {
+                OperationLocked();
+                effect();
+            }
+        }
+
+        void OperationLocked()
         {
             if (Operations++ != CrashAt) return;
             Snapshot = Inner.Enumerate().Select(f =>
@@ -50,9 +60,12 @@ public class KeyValueDBCrashSimulationTest
 
         public IFileCollectionFile AddFile(string humanHint)
         {
-            Operation();
-            var file = Inner.AddFile(humanHint);
-            _hints[file.Index] = humanHint;
+            IFileCollectionFile file = null!;
+            Operation(() =>
+            {
+                file = Inner.AddFile(humanHint);
+                _hints[file.Index] = humanHint;
+            });
             return new File(this, file);
         }
 
@@ -73,22 +86,17 @@ public class KeyValueDBCrashSimulationTest
             public IMemWriter GetExclusiveAppenderWriter() => inner.GetExclusiveAppenderWriter();
             public ulong GetSize() => inner.GetSize();
 
-            void Flushed(Action flush)
+            void Flushed(Action flush) => owner.Operation(() =>
             {
-                owner.Operation();
                 flush();
                 owner._flushed[inner.Index] = inner.GetSize();
-            }
+            });
 
             public void HardFlush() => Flushed(inner.HardFlush);
             public void HardFlushTruncateSwitchToReadOnlyMode() => Flushed(inner.HardFlushTruncateSwitchToReadOnlyMode);
             public void HardFlushTruncateSwitchToDisposedMode() => Flushed(inner.HardFlushTruncateSwitchToDisposedMode);
 
-            public void Remove()
-            {
-                owner.Operation();
-                inner.Remove();
-            }
+            public void Remove() => owner.Operation(inner.Remove);
         }
     }
 
@@ -279,6 +287,75 @@ public class KeyValueDBCrashSimulationTest
     [InlineData(3)]
     public async Task EveryCrashOfSplitTransactionsOpensToACommittedState(int seed) =>
         await CrashEverywhere(seed, true, false, true);
+
+    /// A crash at a random file operation while compaction runs beside a durable writer keeps every commit that
+    /// returned before it, and opens to a committed state that takes a later commit.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task CrashWhileCompactingBesideAWriterKeepsDurableCommits(int seed)
+    {
+        var random = new Random(seed);
+        for (var round = 0; round < 25; round++)
+        {
+            using var files = new RecordingCollection { CrashAt = random.Next(10, 120) };
+            var states = new List<string> { "" };
+            var done = new List<int> { 0 };
+            var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            using (var db = new BTreeKeyValueDB(Options(files)))
+            {
+                db.DurableTransactions = true;
+                using var stop = new CancellationTokenSource();
+                var compactor = Task.Run(async () =>
+                {
+                    while (!stop.IsCancellationRequested)
+                    {
+                        await db.Compact(CancellationToken.None);
+                        if (Random.Shared.Next(3) == 0) db.CreateKvi(CancellationToken.None);
+                    }
+                });
+                for (var t = 0; t < 40 && files.Snapshot == null; t++)
+                {
+                    using (var tr = await db.StartWritingTransaction())
+                    {
+                        using var cursor = tr.CreateCursor();
+                        var key = new[] { (byte)random.Next(10) };
+                        var value = Enumerable.Repeat((byte)t, random.Next(2) == 0 ? 900 : 4).ToArray();
+                        cursor.CreateOrUpdateKeyValue(key, value);
+                        model[Convert.ToHexString(key)] = Convert.ToHexString(value);
+                        tr.Commit();
+                    }
+
+                    states.Add(string.Join(";", model.Select(p => p.Key + "=" + p.Value)));
+                    lock (files) done.Add(files.Operations);
+                }
+
+                await stop.CancelAsync();
+                await compactor;
+            }
+
+            if (files.Snapshot == null) continue;
+            var directory = Path.Combine(Path.GetTempPath(), "btdb-crash-concurrent-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                WriteSnapshot(files, directory, random);
+                var opened = await OpenAndCommit(new OnDiskFileCollection(directory));
+                var acknowledged = done.FindLastIndex(d => d <= files.CrashAt);
+                Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
+                    $"Seed {seed} round {round} crash {files.CrashAt}: opened {Short(opened)}, not a commit at or after " +
+                    $"{acknowledged}, which returned before the crash");
+                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                Assert.True((opened.Length == 0 ? "C8=01" : opened + ";C8=01") == Dump(again),
+                    $"Seed {seed} round {round}: the commit after the reopen is lost");
+            }
+            finally
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
+        }
+    }
 
     async Task CrashEverywhere(int seed, bool durable, bool batches, bool split = false)
     {
