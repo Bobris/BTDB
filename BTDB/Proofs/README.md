@@ -120,6 +120,9 @@ holds, caching placeholders for registered classes (`../Serialization/`), over a
 `BtdbProofs/SkipOnce.lean` models where the deserializers of a Bon class's members start reading
 (`../Serialization/BonSerializer.cs`).
 
+`BtdbProofs/CountCache.lean` models the count of a lazy `ODBDictionary` or `ODBSet` read through two instances over the
+same keys (`../ODBLayer/`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -196,6 +199,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `DeserializerPlaceholder.previous_never_ends` | Before the 2026-10-28 fix the lookup by type cached none, so a class holding itself, first reached as a member type, was created without end (`BonSerializerCoverageTest.RecursiveClassFirstReachedAsMemberTypeDeserializes`). |
 | `SkipOnce.fixed_aligned` | When each member deserializer consumes one value, member `i` reads value `i`. |
 | `SkipOnce.previous_shifted` | Before the 2026-10-28 fix a member holding a class of another name consumed two values, so every member after it read the next member's value (`BonSerializerCoverageTest.UnrelatedClassInMemberIsSkippedOnce`). |
+| `CountCache.fixed_count` | Counting the keys on each call, every instance reports the number of keys whatever changes the instances made. |
+| `CountCache.previous_stale` | Before the 2026-10-28 fix an instance's cached count missed a key the other instance added (`ObjectDbLazyCollectionCountTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

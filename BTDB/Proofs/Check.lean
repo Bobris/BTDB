@@ -114,3 +114,5 @@ open Btdb
 #print axioms DeserializerPlaceholder.previous_never_ends
 #print axioms SkipOnce.fixed_aligned
 #print axioms SkipOnce.previous_shifted
+#print axioms CountCache.fixed_count
+#print axioms CountCache.previous_stale

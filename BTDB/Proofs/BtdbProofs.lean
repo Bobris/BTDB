@@ -30,3 +30,4 @@ import BtdbProofs.ConverterStaging
 import BtdbProofs.EmittedTry
 import BtdbProofs.DeserializerPlaceholder
 import BtdbProofs.SkipOnce
+import BtdbProofs.CountCache
