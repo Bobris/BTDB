@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- Relation queries: `Last` and `LastOrDefault` after `Select`, over an ordered or paged query, returned the
+  projection of the last row scanned instead of the last row of the window, for example of a row the filter rejected
+  or the row after `Take`. The projection is now computed from the last row of the window. Found by running the
+  relation query differential test with more seeds.
 - `InMemoryKeyValueDB`: a cursor that called `SetValue` after another cursor inserted a key read the next key once a
   key before it was erased, because the erase kept the tree path `SetValue` had refilled. Found by running the key
   value differential test with more seeds.

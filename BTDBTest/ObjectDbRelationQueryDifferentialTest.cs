@@ -931,6 +931,27 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         }
     }
 
+    /// Last after Select returns the projection of the last row of the window. Before the fix a projection computed
+    /// while scanning kept the values of the last row scanned: one past Take, or the last tested row of the scan.
+    [Fact]
+    public void LastAfterSelectProjectsTheLastRowOfTheWindow()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IDiffRowTable>();
+            for (var i = 0; i < 6; i++)
+                table.Insert(new() { Tenant = (ulong)(i / 2), Code = $"c{i}", Age = 20 + i, Bonus = i % 3 == 0 ? i : null });
+            tr.Commit();
+        }
+
+        using var read = _db.StartReadOnlyTransaction();
+        var rows = read.GetRelation<IDiffRowTable>();
+        Assert.Equal(22, rows.Query<DiffRow>().Take(3).Select(r => r.Age).Last());
+        Assert.Equal(23, rows.Query<DiffRow>().Where(r => r.Bonus != null).OrderBy(r => r.Tenant).Select(r => r.Age).Last());
+        Assert.Equal("c3", rows.Query<DiffRow>().Where(r => r.Bonus != null).OrderBy(r => r.Tenant)
+            .Select(r => new { r.Code }).Last().Code);
+    }
+
     void FillRows(Random random)
     {
         using var tr = _db.StartTransaction();

@@ -375,12 +375,13 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider, IRelationQueryCha
             .ForExecution(_transaction, _loaderInfo);
 
     RelationQueryWindow<T> CreateWindow(RelationQueryExecution execution, RelationQuerySource source,
-        QueryNode? selector, bool keepFrames = false, RelationQueryProjection<T>? projection = null)
+        QueryNode? selector, bool keepFrames = false, RelationQueryProjection<T>? projection = null,
+        bool eagerProjection = true)
     {
         // A projection which cannot throw is computed while scanning when every matching row is returned; Count
         // windows and sorted windows return fewer rows than they test.
         var plan = CompilePlan(execution, source.Filter, selector, true, null, projection?.Selectors,
-            projection is { CanThrow: false } && source.Skip == 0);
+            eagerProjection && projection is { CanThrow: false } && source.Skip == 0);
         var order = RelationQueryOrder.Forward;
         var descending = Array.Empty<bool>();
         if (source.HasOrdering)
@@ -693,9 +694,12 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider, IRelationQueryCha
                     return projection.BuildBoxed(scanner);
                 }
 
-                using var window = CreateWindow(execution, source, null, false, projection);
+                // Last moves the cursor back to its row after the window ends, so the projection is computed from
+                // that row rather than while scanning, which leaves the values of the last row scanned.
+                var last = name.StartsWith("Last", StringComparison.Ordinal);
+                using var window = CreateWindow(execution, source, null, false, projection, !last);
                 if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(false);
-                if (name.StartsWith("Last", StringComparison.Ordinal))
+                if (last)
                 {
                     // Like LINQ, only the last row runs the selector.
                     var lastKey = window.Scanner.Cursor.GetKeySpan(Span<byte>.Empty, true).ToArray();
