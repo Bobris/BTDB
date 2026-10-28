@@ -41,9 +41,9 @@ internal sealed class CountingStorage(IEventLogStorage inner) : IEventLogStorage
     public ValueTask<bool> DeleteAsync(string key, string version, CancellationToken c) { Count(); return inner.DeleteAsync(key, version, c); }
 }
 
-internal sealed class EventLogCluster : IAsyncDisposable
+internal sealed class EventLogCluster(IEventLogStorage? storage = null) : IAsyncDisposable
 {
-    public readonly InMemoryEventLogStorage Storage = new();
+    public readonly IEventLogStorage Storage = storage ?? new InMemoryEventLogStorage();
     public readonly InProcessEventLogTransport Transport = new();
     public readonly Dictionary<string, (EventLogService Service, CountingStorage Storage)> Nodes = new();
     public readonly SystemReplicationScheduler Scheduler = new();
