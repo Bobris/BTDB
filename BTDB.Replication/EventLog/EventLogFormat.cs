@@ -265,17 +265,12 @@ internal static class EventLogFormat
         int frameTable = 0, recordTable = 0;
         if (kind == KindMerged)
         {
-            if (content.Length < position + 22) throw Corrupt("merged header");
-            level = content[position];
-            lastSplitId = BinaryPrimitives.ReadUInt64LittleEndian(content[(position + 1)..]);
-            recordCount = BinaryPrimitives.ReadUInt64LittleEndian(content[(position + 9)..]);
-            frameCount = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(content[(position + 17)..]));
-            if (level == 0 || content[position + 21] != EntryWidth || lastSplitId < splitId) throw Corrupt("merged header");
-            frameTable = position + 22;
-            recordTable = frameTable + frameCount * EntryWidth;
-            var tables = (frameCount + (long)recordCount) * EntryWidth;
-            if (content.Length < frameTable + tables + 4) throw Corrupt("merged header");
-            position = frameTable + (int)tables;
+            var merged = ParseMergedFixed(content, topic);
+            if (content.Length < merged.HeaderLength) throw Corrupt("merged header");
+            (level, lastSplitId, recordCount, frameCount) =
+                (merged.Level, merged.LastSplitId, merged.RecordCount, merged.FrameCount);
+            (frameTable, recordTable) = (merged.FrameTable, merged.RecordTable);
+            position = merged.HeaderLength - 4;
         }
         else if (kind != KindSplit) throw Corrupt("kind");
         VerifyChecksum(content, position, "header checksum");

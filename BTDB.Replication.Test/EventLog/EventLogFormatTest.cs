@@ -107,6 +107,26 @@ public class EventLogFormatTest
 
     /// The reader decides from the fixed part of a merged header alone whether an offset lies beyond the object,
     /// before the header checksum is read, so its counts must not wrap around in validation.
+    /// Every value of a merged header's frame or record count that does not match the content is corruption, whatever
+    /// the arithmetic on it would do.
+    [Theory]
+    [InlineData(0u, 1ul << 62)]
+    [InlineData(0u, (1ul << 62) + 1)]
+    [InlineData(0u, 1ul << 61)]
+    [InlineData(0u, long.MaxValue)]
+    [InlineData(uint.MaxValue, 2ul)]
+    [InlineData(0x8000_0000u, 2ul)]
+    [InlineData(0x4000_0000u, 2ul)]
+    public void MergedCountsThatDoNotFitAreCorruption(uint frameCount, ulong recordCount)
+    {
+        var first = Split(1, 0, [[[1], [2]]], true);
+        var merged = EventLogFormat.CreateMerged("t", 1, 1, 1,
+            [((ReadOnlyMemory<byte>)first, EventLogFormat.Parse(first, "t"))]);
+        BitConverter.TryWriteBytes(merged.AsSpan(8 + 1 + 16 + 9), recordCount);
+        if (frameCount != 0) BitConverter.TryWriteBytes(merged.AsSpan(8 + 1 + 16 + 17), frameCount);
+        Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(merged, "t"));
+    }
+
     /// A reader that finds an offset beyond a merged object from its header prefix walks on to the splits after it, so a
     /// prefix that does not match the object's name is reported, as the merger reports it.
     [Fact]
