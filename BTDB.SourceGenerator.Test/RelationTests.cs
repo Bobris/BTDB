@@ -30,6 +30,36 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyKeywordNamedPublicHooks()
+    {
+        // Before the fix public OnSerialize and OnBeforeRemove methods named with keywords were called without their
+        // verbatim prefix, which did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Row
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnSerialize]
+                public void @event()
+                {
+                }
+
+                [OnBeforeRemove]
+                public bool @fixed(IObjectDBTransaction transaction) => false;
+            }
+
+            public interface IRowTable : IRelation<Row>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationMethodsWithKeywordNamedTypes()
     {
         // Before the fix the parameter types of the implemented methods were written without the verbatim prefix of a

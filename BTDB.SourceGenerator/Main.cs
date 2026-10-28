@@ -3718,7 +3718,7 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         var onSerializeInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
                         metadataCode.Append($"""
-                                        global::System.Runtime.CompilerServices.Unsafe.As<{onSerializeInvokeType}>(@this).{m.Name}();
+                                        global::System.Runtime.CompilerServices.Unsafe.As<{onSerializeInvokeType}>(@this).{CSharpSyntaxUtilities.EscapeIdentifier(m.Name)}();
 
                             """);
                     }
@@ -3823,7 +3823,7 @@ public class SourceGenerator : IIncrementalGenerator
                         var onBeforeRemoveInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
                         var useLocalVal = onBeforeRemoveInvokeType == NormalizeType(generationInfo.FullName);
                         metadataCode.Append($"""
-                                            {maybeOr}{(useLocalVal ? "val" : $"global::System.Runtime.CompilerServices.Unsafe.As<{onBeforeRemoveInvokeType}>(value)")}.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
+                                            {maybeOr}{(useLocalVal ? "val" : $"global::System.Runtime.CompilerServices.Unsafe.As<{onBeforeRemoveInvokeType}>(value)")}.{CSharpSyntaxUtilities.EscapeIdentifier(m.Name)}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
 
                             """);
                     }
