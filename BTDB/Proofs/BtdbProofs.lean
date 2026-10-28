@@ -23,3 +23,4 @@ import BtdbProofs.SerializerPlaceholder
 import BtdbProofs.BonNesting
 import BtdbProofs.EventMetadataIds
 import BtdbProofs.DictionaryFree
+import BtdbProofs.BonReusedSlot

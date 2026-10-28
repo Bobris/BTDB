@@ -95,3 +95,5 @@ open Btdb
 #print axioms EventMetadataIds.large_index_rejected
 #print axioms DictionaryFree.walk_ends
 #print axioms DictionaryFree.unguarded_never_ends
+#print axioms BonReusedSlot.fixed_loads_each
+#print axioms BonReusedSlot.previous_copies_before

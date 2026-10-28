@@ -99,6 +99,9 @@ one under `PreserveHistoryUpToCommitUlong`.
 `BtdbProofs/EventMetadataIds.lean` models the type ids `EventSerializer` writes into a metadata log and the checks
 `EventDeserializer.ProcessMetadataLog` makes on them (`../EventStore2Layer/`).
 
+`BtdbProofs/BonReusedSlot.lean` models how `BonSerializer` loads the items of a list or dictionary through one reused
+storage slot (`../Serialization/`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -160,6 +163,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `DictionaryFree.unguarded_never_ends` | Without that check a dictionary damaged to hold itself is walked without end, which overflowed the stack once the 2026-10-28 fix freed nested dictionaries of recursive types (`ObjectDbTableFreeContentTest.FreeEndsOnDictionaryHoldingItself`). |
 | `EventMetadataIds.written_index_below_length`, `EventMetadataIds.written_indices_fill` | Every type id the serializer writes passes the deserializer's length check, and the ids fill the type table without gaps, so the checks reject no valid metadata log. |
 | `EventMetadataIds.large_index_rejected` | A type id whose index the log cannot hold, as damage leaves, is rejected before the table grows to it (`EventStore2CoverageTest.DamagedMetadataTypeIdIsReported`). |
+| `BonReusedSlot.fixed_loads_each` | Clearing the storage slot before each item, every item of a Bon list or dictionary loads as itself and a null one as null, whatever the item before it was. |
+| `BonReusedSlot.previous_copies_before` | Before the 2026-10-28 fix a null string or byte array item loaded as the item before it (`BonSerializerCoverageTest.NullItemsAndMembersRoundTrip`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |
