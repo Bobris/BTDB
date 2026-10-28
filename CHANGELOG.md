@@ -48,8 +48,8 @@
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
     listed keys, and the index comparison used before leaves the range.
   - `BTDB/Proofs/`, transaction log replay: a log ended by damage or inside a transaction replays to exactly the
-    transactions committed before it, and the transactions a later session appends after a transaction a crash left
-    unfinished are kept.
+    transactions committed before it, the transactions a later session appends after a transaction a crash left
+    unfinished are kept, and splitting the log into files between any two commands changes nothing.
   - `BTDB/Proofs/`, reading a length-prefixed byte array or string: the reader returns a byte array exactly when the
     input holds the declared length and allocates at most four times the larger of the input and 4096 bytes, and a
     string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.

@@ -14,6 +14,7 @@ at damage, dropping the open transaction, as after a crash.
   the complete transactions of the next session replay to all complete transactions. A start drops the open
   transaction, which only a crash leaves behind; `previous_loses_later_commit` shows the rule before the 2026-10-28
   fix, which ended replay there and lost every later commit.
+* `replay_split`: a file boundary anywhere, also inside a transaction, replays like the unsplit log.
 -/
 
 namespace Btdb.Replay
@@ -23,6 +24,8 @@ inductive Cmd (α : Type) where
   | op (a : α)
   | commit
   | damage
+  /-- The end of one log file; replay continues in the next one, also inside a transaction. -/
+  | eof
 
 /-- Replay from `committed` with the open transaction's operations `pending`. -/
 def replay {α : Type} : List (Cmd α) → List (List α) → Option (List α) → List (List α)
@@ -33,6 +36,7 @@ def replay {α : Type} : List (Cmd α) → List (List α) → Option (List α) �
   | .commit :: rest, committed, some pending => replay rest (committed ++ [pending]) none
   | .commit :: _, committed, none => committed
   | .damage :: _, committed, _ => committed
+  | .eof :: rest, committed, pending => replay rest committed pending
 
 /-- A complete transaction as the log writes it. -/
 def tx {α : Type} (ops : List α) : List (Cmd α) := .start :: ops.map .op ++ [.commit]
@@ -116,6 +120,26 @@ theorem replay_after_abandoned {α : Type} (txs later : List (List α)) (part : 
   | nil => simpa using tail []
   | cons t ts => exact tail (t :: ts)
 
+/-- Splitting the log into files at any command boundary, inside a transaction too, as small log size limits do,
+replays to the same transactions. -/
+theorem replay_split {α : Type} (ys : List (Cmd α)) :
+    ∀ (xs : List (Cmd α)) (committed : List (List α)) (pending : Option (List α)),
+      replay (xs ++ Cmd.eof :: ys) committed pending = replay (xs ++ ys) committed pending
+  | [], committed, pending => by simp [replay]
+  | x :: xs, committed, pending => by
+    cases x with
+    | start => simp only [List.cons_append, replay]; exact replay_split ys xs committed (some [])
+    | op a =>
+      cases pending with
+      | none => simp [replay]
+      | some p => simp only [List.cons_append, replay]; exact replay_split ys xs committed (some (p ++ [a]))
+    | commit =>
+      cases pending with
+      | none => simp [replay]
+      | some p => simp only [List.cons_append, replay]; exact replay_split ys xs (committed ++ [p]) none
+    | damage => simp [replay]
+    | eof => simp only [List.cons_append, replay]; exact replay_split ys xs committed pending
+
 /-- Replay before the 2026-10-28 fix: a start inside an unfinished transaction ended replay. -/
 def replayPrevious {α : Type} : List (Cmd α) → List (List α) → Option (List α) → List (List α)
   | [], committed, _ => committed
@@ -126,6 +150,7 @@ def replayPrevious {α : Type} : List (Cmd α) → List (List α) → Option (Li
   | .commit :: rest, committed, some pending => replayPrevious rest (committed ++ [pending]) none
   | .commit :: _, committed, none => committed
   | .damage :: _, committed, _ => committed
+  | .eof :: rest, committed, pending => replayPrevious rest committed pending
 
 /-- Before the fix, the commit of the session after the crash was lost on the next open
 (`TransactionLogDamageTest.CommitsAfterACrashInsideATransactionSurviveTheNextOpen`). -/
