@@ -47,6 +47,8 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `Merge.latest_split_exists` | The latest split, where tail discovery starts, is never deleted. |
 | `Merge.old_listing_ends_early` | A split after the last one of an old listing can be deleted while history continues. Before the 2026-10-28 fix, a reader walking past an old listing took such a missing split for the end of history. |
 | `Merge.fresh_listing_end` | In a listing taken now, the last split is the latest one, so a split missing after it is past the end of history. |
+| `Merge.torn_listing_ends_early` | A listing returns splits before merged objects, and its later page may return a merged object made after it returned the splits. That object covers every listed split while history continues. Before the 2026-10-28 fix, the reader then reported the end of history. |
+| `Merge.merged_has_successor` | After any merged object that ever existed, history continues with a split readable from an existing object, now and later. The reader therefore walks on from the split after a merged object. |
 | `Bounds.current_bounds_stale` | Under the rule before the 2026-10-28 fix, a write dispatched before a bounds call lands, another owner commits, and the late response makes the call answer an end below a completed receipt. |
 | `Bounds.fixed_bounds_fresh` | With the implemented rule, which trusts only a write dispatched after the call started or a tail check, every answer covers every receipt completed before the call. |
 

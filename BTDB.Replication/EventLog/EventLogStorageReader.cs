@@ -38,10 +38,11 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
 
     public string Topic => topic;
 
-    async ValueTask<Listing> ListAsync(bool refresh, CancellationToken cancellation)
+    /// <summary>The cached listing, or a new one; Fresh says it was taken now.</summary>
+    async ValueTask<(Listing Listing, bool Fresh)> ListAsync(bool refresh, CancellationToken cancellation)
     {
         lock (_lock)
-            if (!refresh && _listing != null) return _listing;
+            if (!refresh && _listing != null) return (_listing, false);
         var listing = new Listing(mergeLevels);
         await foreach (var info in storage.ListAsync(topic + "/", cancellation).ConfigureAwait(false))
         {
@@ -50,7 +51,7 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
             else if (level < listing.Merged.Length) listing.Merged[level][number] = info;
         }
         lock (_lock) _listing = listing;
-        return listing;
+        return (listing, true);
     }
 
     /// <summary>Find the latest split by listing and then following seals to successors that already exist.</summary>
@@ -58,7 +59,7 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
     {
         for (var attempt = 0; ; attempt++)
         {
-            var listing = await ListAsync(true, cancellation).ConfigureAwait(false);
+            var (listing, _) = await ListAsync(true, cancellation).ConfigureAwait(false);
             if (listing.Splits.Count == 0)
             {
                 for (var level = 1; level < listing.Merged.Length; level++)
@@ -160,8 +161,8 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         {
             try
             {
-                var result = await TryLocateAsync(await ListAsync(attempt > 0, cancellation).ConfigureAwait(false),
-                    offset, attempt > 0, cancellation).ConfigureAwait(false);
+                var (listing, fresh) = await ListAsync(attempt > 0, cancellation).ConfigureAwait(false);
+                var result = await TryLocateAsync(listing, offset, fresh, cancellation).ConfigureAwait(false);
                 if (result.Found != null || result.AtEnd) return result.Found;
             }
             catch (EventLogVersionChangedException) { }
@@ -170,7 +171,9 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
     }
 
     /// <summary>A missing split after the listing's last one is the end of history only in a listing taken now: merging
-    /// may since have deleted splits that a cached listing never saw (Proofs/EventLogProofs/Merge.lean).</summary>
+    /// may since have deleted splits that a cached listing never saw. A listing returns splits before merged objects, so
+    /// it may show a merged object made after it listed the splits; history always continues after a merged object
+    /// (Proofs/EventLogProofs/Merge.lean).</summary>
     async ValueTask<(EventLogLocated? Found, bool AtEnd)> TryLocateAsync(Listing listing, ulong offset, bool fresh,
         CancellationToken cancellation)
     {
@@ -199,12 +202,17 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
             }
             else high = middle - 1;
         }
-        if (candidate < 0) return (null, first == splits.Count);
-        for (var id = splits.Keys[candidate]; ; id++)
+        if (candidate < 0)
+        {
+            if (first < splits.Count) return (null, false);
+            if (afterSplit == 0) return (null, fresh);
+        }
+        for (var id = candidate < 0 ? afterSplit + 1 : splits.Keys[candidate]; ; id++)
         {
             var located = await LoadAsync(EventLogFormat.SplitKey(topic, id), splits.GetValueOrDefault(id), cancellation)
                 .ConfigureAwait(false);
-            if (located == null) return (null, fresh && id > splits.Keys[^1]);
+            if (located == null)
+                return (null, fresh && id > afterSplit + 1 && (splits.Count == 0 || id > splits.Keys[^1]));
             if (offset < located.Object.NextOffset) return (located, false);
             if (located.Object.Seal == null) return (null, offset == located.Object.NextOffset);
         }

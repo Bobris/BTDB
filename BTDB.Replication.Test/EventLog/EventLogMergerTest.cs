@@ -86,6 +86,26 @@ public class EventLogMergerTest
     }
 
     [Fact]
+    public async Task ReaderWhoseListingSawAMergeAfterTheSplitsReadsOn()
+    {
+        var fixture = new Fixture();
+        await fixture.Start();
+        await fixture.Publish(2);
+        // The listing returns splits 1 and 2; then the history grows and merges before its next page returns the
+        // merged objects, which cover every listed split.
+        fixture.Storage.BetweenListingPages = async () =>
+        {
+            fixture.Storage.BetweenListingPages = null;
+            await fixture.Publish(4);
+            Assert.True((await fixture.Merger().RunPassAsync(default)).Created > 0);
+            await fixture.Publish(2);
+        };
+        // Before the fix the reader read the merged objects and reported the end of history after them.
+        var all = await new EventLogStorageReader(fixture.Storage, Topic).ReadAllAsync();
+        Assert.Equal(Enumerable.Range(0, 8).Select(i => (ulong)i), all.Select(r => r.Offset));
+    }
+
+    [Fact]
     public async Task SplitsMergeIntoTwoLevelsNamedByFirstOffsetAndStayReadable()
     {
         var fixture = new Fixture();

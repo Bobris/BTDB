@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Replication.EventLog;
@@ -132,8 +133,22 @@ internal sealed class FaultyEventLogStorage(TimeProvider? time = null) : IEventL
         CancellationToken cancellation) =>
         MutateAsync(new("owner", key, expectedVersion), () => Inner.SetOwnerAsync(key, expectedVersion, owner, cancellation));
 
-    public IAsyncEnumerable<EventLogObjectInfo> ListAsync(string prefix, CancellationToken cancellation) =>
-        Inner.ListAsync(prefix, cancellation);
+    /// <summary>Runs once a listing returned the splits and before its next page returns merged objects, which sort
+    /// after them.</summary>
+    public Func<ValueTask>? BetweenListingPages { get; set; }
+
+    public async IAsyncEnumerable<EventLogObjectInfo> ListAsync(string prefix,
+        [EnumeratorCancellation] CancellationToken cancellation)
+    {
+        static bool IsMerged(string prefix, string key) => key.AsSpan(prefix.Length).StartsWith("l");
+        var between = BetweenListingPages;
+        await foreach (var info in Inner.ListAsync(prefix, cancellation))
+            if (between == null || !IsMerged(prefix, info.Key)) yield return info;
+        if (between == null) yield break;
+        await between();
+        await foreach (var info in Inner.ListAsync(prefix, cancellation))
+            if (IsMerged(prefix, info.Key)) yield return info;
+    }
 
     public ValueTask<string?> ScheduleDeletionAsync(string key, string version, TimeSpan delay,
         CancellationToken cancellation) => Inner.ScheduleDeletionAsync(key, version, delay, cancellation);

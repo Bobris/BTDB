@@ -39,6 +39,10 @@
   a sealed split walked on to the next split, and when merging had deleted that split since, it reported the end of
   history. Catch-up from storage then stalled, and the owner's scan for an unknown publisher session could miss
   committed records. The end is now concluded only from a fresh listing.
+- Event log: a storage read could also stop early when its listing ran during a merge. A listing returns splits before
+  merged objects, so a listing with several pages can return a merged object that was created after it returned the
+  splits. That object covered every listed split, and the reader reported the end of history after it. The reader now
+  continues with the split after a merged object, because history always continues there.
 - Event log: an idle owner could stop as if it had been taken over. Its tail was sealed, a helper had created the
   header-only successor, and its merger then marked the sealed split for deletion, changing that split's version.
   Validation of a sealed tail now checks only the successor.

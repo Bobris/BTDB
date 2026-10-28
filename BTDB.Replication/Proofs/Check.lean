@@ -19,3 +19,5 @@ open EventLog
 #print axioms Merge.latest_split_exists
 #print axioms Merge.old_listing_ends_early
 #print axioms Merge.fresh_listing_end
+#print axioms Merge.torn_listing_ends_early
+#print axioms Merge.merged_has_successor

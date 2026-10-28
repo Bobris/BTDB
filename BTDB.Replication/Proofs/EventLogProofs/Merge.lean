@@ -16,6 +16,11 @@ modelled.
   (`EventLogStorageReader.TryLocateAsync`).
 * `fresh_listing_end`: in a listing taken now, the last split is the latest one, so a split missing after it is past
   the end of history.
+* `torn_listing_ends_early`: a listing returns splits before merged objects (`l1/` sorts after the digits), and its
+  later page may show a merged object made after it listed the splits. That object covers every listed split while
+  history continues.
+* `merged_has_successor`: after every merged object anyone listed, history continues with a readable split, so a
+  reader walks on from it instead of ending there.
 -/
 
 namespace EventLog.Merge
@@ -45,6 +50,21 @@ inductive Step (L F : Nat) : State → State → Prop
 inductive Reach (L F : Nat) : State → Prop
   | init : Reach L F init
   | step {σ τ : State} : Reach L F σ → Step L F σ τ → Reach L F τ
+
+/-- Steps from one state to a later one. -/
+inductive Steps (L F : Nat) : State → State → Prop
+  | refl (σ : State) : Steps L F σ σ
+  | step {σ τ υ : State} : Steps L F σ τ → Step L F τ υ → Steps L F σ υ
+
+theorem reach_steps {L F : Nat} {σ τ : State} (h : Reach L F σ) (hs : Steps L F σ τ) : Reach L F τ := by
+  induction hs with
+  | refl => exact h
+  | step _ hst ih => exact Reach.step ih hst
+
+theorem steps_splits {L F : Nat} {σ τ : State} (hs : Steps L F σ τ) : σ.splits ≤ τ.splits := by
+  induction hs with
+  | refl => exact Nat.le_refl _
+  | step _ hst ih => cases hst <;> dsimp only <;> omega
 
 /-- An object is covered by an existing object of its own or a higher level. -/
 def Covered (L F : Nat) (obj : Nat → Nat → Bool) (l g : Nat) : Prop :=
@@ -215,5 +235,23 @@ theorem fresh_listing_end {L F : Nat} (hF : 0 < F) {σ : State} (h : Reach L F �
   cases ho : σ.obj 0 g
   · rfl
   · have := hI.splits_lt g (hI.ever_of_obj 0 g ho); omega
+
+/-- A listing returns splits 1 and 2, then three more splits arrive, splits 1 and 2 merge into level-1 object 0 and
+the listing's later page returns it. It covers every listed split, yet split 3 exists and holds history. -/
+theorem torn_listing_ends_early : ∃ σ₀ σ, Reach 1 2 σ₀ ∧ Steps 1 2 σ₀ σ ∧ σ₀.splits = (0 + 1) * 2 ^ 1 ∧
+    σ.obj 1 0 = true ∧ σ.obj 0 2 = true ∧ 2 < σ.splits := by
+  have r2 := Reach.step (Reach.step Reach.init (Step.append (L := 1) (F := 2) init)) (Step.append _)
+  refine ⟨_, _, r2, Steps.step (Steps.step (Steps.refl _) (Step.append _)) (Step.merge _ 1 0 (by decide) ?_),
+    rfl, rfl, rfl, by decide⟩
+  decide
+
+/-- Once a merged object existed, in that state and every later one the split after it is history and readable from
+an existing object. -/
+theorem merged_has_successor {L F : Nat} {σ τ : State} (h : Reach L F σ) (hs : Steps L F σ τ) {l g : Nat}
+    (hl : 1 ≤ l) (hg : σ.ever l g = true) :
+    (g + 1) * F ^ l < τ.splits ∧ ∃ l', l' ≤ L ∧ τ.obj l' ((g + 1) * F ^ l / F ^ l') = true := by
+  have := (reach_inv h).eligible l g hl hg
+  have hlt : (g + 1) * F ^ l < τ.splits := Nat.lt_of_lt_of_le this (steps_splits hs)
+  exact ⟨hlt, coverage (reach_steps h hs) _ hlt⟩
 
 end EventLog.Merge
