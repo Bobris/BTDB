@@ -303,6 +303,19 @@ public class KeyValueDBCrashSimulationTest
         await CrashEverywhere(seed, true, false);
     }
 
+    /// Each seed combines its own options: durable transactions, batching, small split logs and compression.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task EveryCrashWithMixedOptionsOpensToACommittedState(int seed)
+    {
+        var options = new Random(seed * 31);
+        Compressed.Value = options.Next(2) == 0;
+        await CrashEverywhere(seed, options.Next(2) == 0, options.Next(2) == 0, options.Next(2) == 0);
+    }
+
     /// With small log size limits a transaction is split between files, so a crash can cut it at a file boundary.
     [Theory]
     [InlineData(1)]
