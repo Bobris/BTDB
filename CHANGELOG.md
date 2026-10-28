@@ -101,6 +101,8 @@
   first now reports `InvalidDataException`, and the second is treated as missing metadata, like an unknown type id.
 - ObjectDB: a relation row whose stored value was damaged to name a version the relation never had failed to load with
   `IndexOutOfRangeException` or `NullReferenceException`; it now reports the damage with `BTDBException`.
+- Bon serialization: a damaged dictionary whose key came out repeated or null failed to deserialize into a typed
+  dictionary with `ArgumentException`; it now reports `InvalidDataException`, as other damage does.
 - Bon: damaged data could crash the process with a stack overflow. A container pointer damaged to point at its own
   container, or past it, made deserialization recurse through the same values forever. Readers now reject, with
   `InvalidDataException`, a container that does not lie before the pointer to the container holding it, which valid

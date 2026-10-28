@@ -1402,8 +1402,17 @@ public class BonSerializerFactory : ISerializerFactory
                                 ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr));
                             context.ValueTypeDeserializer(ref AsCtx(ref subCtx),
                                 ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr));
-                            context.Metadata.AdderKeyValue(res, ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr),
-                                ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr));
+                            try
+                            {
+                                context.Metadata.AdderKeyValue(res, ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr),
+                                    ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr));
+                            }
+                            // A serialized dictionary has distinct keys that are not null; damage can repeat one or
+                            // turn one into null.
+                            catch (ArgumentException error)
+                            {
+                                throw new InvalidDataException("Bon dictionary has a repeated or null key.", error);
+                            }
                         }
                     }
 

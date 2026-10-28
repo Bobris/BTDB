@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -559,6 +560,40 @@ public class BonSerializerCoverageTest
                 var bon = new Bon(bytes);
                 BonSerializerFactory.Deserialize(ref bon);
             });
+        }
+    }
+
+    [Generate]
+    public class WithDictionary
+    {
+        public Dictionary<string, int>? Map { get; set; }
+    }
+
+    // Before the fix a damaged dictionary with a repeated or null key failed with ArgumentException from Dictionary.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DictionaryWithRepeatedOrNullKeyIsInvalidData(bool nullKey)
+    {
+        var builder = new BonBuilder();
+        builder.StartClass(Encoding.UTF8.GetBytes(ReflectionMetadata.FindByType(typeof(WithDictionary))!.TruePersistedName));
+        builder.WriteKey("Map"u8);
+        builder.StartDictionary();
+        builder.Write("a");
+        builder.Write(1);
+        if (nullKey) builder.WriteNull();
+        else builder.Write("a");
+        builder.Write(2);
+        builder.FinishDictionary();
+        builder.FinishClass();
+        var bon = new Bon(builder.FinishAsMemory());
+        try
+        {
+            BonSerializerFactory.Deserialize(ref bon);
+            Assert.Fail("Damaged dictionary was accepted");
+        }
+        catch (InvalidDataException)
+        {
         }
     }
 

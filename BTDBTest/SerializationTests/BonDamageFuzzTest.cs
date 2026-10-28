@@ -64,7 +64,7 @@ public class BonDamageFuzzTest
                 BonSerializerFactory.Deserialize(ref bon);
             }
             catch (Exception error) when (error is InvalidDataException or EndOfStreamException or NotSupportedException
-                                              or InsufficientExecutionStackException or ArgumentException)
+                                              or InsufficientExecutionStackException)
             {
             }
             catch (Exception error) when (error.GetType().Name == "DebugAssertException")
