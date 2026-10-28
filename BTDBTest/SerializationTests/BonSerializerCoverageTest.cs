@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -640,6 +641,78 @@ public class BonSerializerCoverageTest
         Assert.Equal(value.Ints, result.Ints);
         Assert.Null(result.Initialized);
         Assert.Null(result.Bytes);
+    }
+
+    [Generate]
+    public class WithCollectionInterfaces
+    {
+        public IList<string?>? List { get; set; }
+        public IReadOnlyList<int>? ReadOnlyList { get; set; }
+        public IReadOnlyList<int?>? NullableItems { get; set; }
+        public IEnumerable<int>? Enumerable { get; set; }
+        public IEnumerable<string?>? Lazy { get; set; }
+        public ISet<int>? Set { get; set; }
+        public IDictionary<string, int>? Dictionary { get; set; }
+        public IReadOnlyDictionary<int, string?>? ReadOnlyDictionary { get; set; }
+        public IReadOnlyDictionary<string, int>? WrappedDictionary { get; set; }
+    }
+
+    // Before the fix collection interface members loaded as null, and serializing the collections that collection
+    // expressions make for IReadOnlyList<T> and IEnumerable<T> failed with NotSupportedException.
+    [Fact]
+    public void CollectionInterfacesRoundTrip()
+    {
+        var value = new WithCollectionInterfaces
+        {
+            List = ["a", null], ReadOnlyList = [1, 2], NullableItems = [1, null], Enumerable = [4],
+            Lazy = new[] { "a", null }.Select(x => x), Set = new HashSet<int> { 3 },
+            Dictionary = new Dictionary<string, int> { ["x"] = 1 },
+            ReadOnlyDictionary = new Dictionary<int, string?> { [1] = null, [2] = "y" },
+            WrappedDictionary =
+                new System.Collections.ObjectModel.ReadOnlyDictionary<string, int>(new Dictionary<string, int> { ["m"] = 3 })
+        };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithCollectionInterfaces)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(value.List, result.List);
+        Assert.Equal(value.ReadOnlyList, result.ReadOnlyList);
+        Assert.Equal(value.NullableItems, result.NullableItems);
+        Assert.Equal(value.Enumerable, result.Enumerable);
+        Assert.Equal(value.Lazy, result.Lazy);
+        Assert.Equal(value.Set, result.Set);
+        Assert.Equal(value.Dictionary, result.Dictionary);
+        Assert.Equal(value.ReadOnlyDictionary, result.ReadOnlyDictionary);
+        Assert.Equal(value.WrappedDictionary, result.WrappedDictionary);
+    }
+
+    [Generate]
+    public class EnumerableClass : IEnumerable<int>
+    {
+        public int Start { get; set; }
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            yield return Start;
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [Generate]
+    public class WithEnumerableMember
+    {
+        public IEnumerable<int>? Values { get; set; }
+    }
+
+    [Fact]
+    public void RegisteredClassInCollectionInterfaceStaysClass()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, new WithEnumerableMember { Values = new EnumerableClass { Start = 5 } });
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithEnumerableMember)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(5, Assert.IsType<EnumerableClass>(result.Values).Start);
     }
 
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);

@@ -77,6 +77,12 @@
 
 ### Fixed
 
+- Bon serialization: members typed as a collection interface, such as `IList<T>`, `IReadOnlyList<T>`, `ISet<T>`,
+  `IEnumerable<T>`, `IDictionary<TKey,TValue>` or `IReadOnlyDictionary<TKey,TValue>`, deserialized as null. They now
+  load as the `List`, `HashSet` or `Dictionary` the generated collection metadata creates, and a registered class such
+  a member holds still loads as that class. Serializing such a member also failed with `NotSupportedException` for
+  implementations other than arrays, `List`, `HashSet` and `Dictionary`, like the collections that collection
+  expressions make for `IReadOnlyList<T>` and `IEnumerable<T>`; those are now enumerated.
 - Bon serialization: deserializing a `List`, array or `Dictionary` gave a null string or byte array item the value of
   the item before it, as items reuse one storage slot that a null item left unwritten. A null `byte[]` was written as
   an empty array, and a null string or byte array member kept the value the constructor gave it. Null items and

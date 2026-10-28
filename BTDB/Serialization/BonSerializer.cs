@@ -172,6 +172,11 @@ public class BonSerializerFactory : ISerializerFactory
 
     public unsafe Serialize CreateSerializerForType(Type type)
     {
+        if (type.IsInterface && ReflectionMetadata.FindCollectionByType(type) is { } collectionMetadata)
+        {
+            return CreateCollectionInterfaceSerializer(collectionMetadata);
+        }
+
         if (type == typeof(object) || type.IsInterface)
         {
             return (ref SerializerCtx ctx, ref byte value) =>
@@ -593,6 +598,76 @@ public class BonSerializerFactory : ISerializerFactory
         throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() + " is not supported.");
     }
 
+    delegate void SerializeBoxed(ref SerializerCtx ctx, object? item);
+
+    // A collection interface member can hold any implementation, like the array a collection expression makes for
+    // IReadOnlyList<T>. The implementations Bon serializes keep their output, others are enumerated.
+    Serialize CreateCollectionInterfaceSerializer(CollectionMetadata metadata)
+    {
+        var keySerializer = CreateBoxedSerializer(metadata.ElementKeyType);
+        var valueSerializer = metadata.ElementValueType is { } valueType ? CreateBoxedSerializer(valueType) : null;
+        var serializedDirectly = new ConcurrentDictionary<nint, bool>();
+        return (ref SerializerCtx ctx, ref byte value) =>
+        {
+            var obj = Unsafe.As<byte, object?>(ref value);
+            if (obj == null)
+            {
+                AsCtx(ref ctx).Builder.WriteNull();
+                return;
+            }
+
+            var objType = obj.GetType();
+            if (serializedDirectly.GetOrAdd(objType.TypeHandle.Value, static (_, t) => t.IsArray ||
+                    t.SpecializationOf(typeof(List<>)) != null || t.SpecializationOf(typeof(HashSet<>)) != null ||
+                    t.SpecializationOf(typeof(Dictionary<,>)) != null || ReflectionMetadata.FindByType(t) != null,
+                    objType))
+            {
+                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, obj);
+                return;
+            }
+
+            if (valueSerializer == null)
+            {
+                AsCtx(ref ctx).Builder.StartArray();
+                foreach (var item in (IEnumerable)obj)
+                {
+                    keySerializer(ref ctx, item);
+                }
+
+                AsCtx(ref ctx).Builder.FinishArray();
+                return;
+            }
+
+            if (obj is not IDictionary dictionary)
+                throw new NotSupportedException("BonSerialization of " + objType.ToSimpleName() + " is not supported.");
+            AsCtx(ref ctx).Builder.StartDictionary();
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                keySerializer(ref ctx, entry.Key);
+                valueSerializer(ref ctx, entry.Value);
+            }
+
+            AsCtx(ref ctx).Builder.FinishDictionary();
+        };
+    }
+
+    SerializeBoxed CreateBoxedSerializer(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            var serializer = CreateCachedSerializerForType(type);
+            return (ref SerializerCtx ctx, object? item) => serializer(ref ctx, ref Unsafe.As<object?, byte>(ref item));
+        }
+
+        // A box holds its value after the method table pointer, and a boxed Nullable is null or a box of its value.
+        var valueSerializer = CreateCachedSerializerForType(Nullable.GetUnderlyingType(type) ?? type);
+        return (ref SerializerCtx ctx, object? item) =>
+        {
+            if (item == null) AsCtx(ref ctx).Builder.WriteNull();
+            else valueSerializer(ref ctx, ref RawData.Ref(item, (uint)Unsafe.SizeOf<nint>()));
+        };
+    }
+
     static bool TryGetTupleTypeArguments(Type type, Type tupleType, out Type[] typeArguments)
     {
         if (type.IsGenericType)
@@ -844,6 +919,20 @@ public class BonSerializerFactory : ISerializerFactory
         };
     }
 
+    // A collection interface member can also hold a registered class, which Bon stores by its name.
+    static bool DeserializeNotCollection(ref DeserializerCtx ctx, ref byte value, Type type)
+    {
+        if (type.IsInterface)
+        {
+            var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+            Unsafe.As<byte, object?>(ref value) = type.IsInstanceOfType(res) ? res : null;
+            return true;
+        }
+
+        AsCtx(ref ctx).Bon.Skip();
+        return false;
+    }
+
     public unsafe Deserialize CreateDeserializerForType(Type type)
     {
         if (type == typeof(object))
@@ -855,7 +944,8 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
-        if (type.IsInterface)
+        // A collection interface loads as the collection its metadata creates, as a List<T> for IList<T>.
+        if (type.IsInterface && ReflectionMetadata.FindCollectionByType(type) == null)
         {
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
@@ -1364,8 +1454,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
-                AsCtx(ref ctx).Bon.Skip();
-                return false;
+                return DeserializeNotCollection(ref ctx, ref value, type);
             };
         }
 
@@ -1449,8 +1538,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
-                AsCtx(ref ctx).Bon.Skip();
-                return false;
+                return DeserializeNotCollection(ref ctx, ref value, type);
             };
         }
 
