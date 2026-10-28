@@ -4,3 +4,4 @@ import BtdbProofs.VInt
 import BtdbProofs.Cursor
 import BtdbProofs.Seek
 import BtdbProofs.StringOrdered
+import BtdbProofs.ReadOnlyCompare

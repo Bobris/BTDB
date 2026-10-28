@@ -419,7 +419,7 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
         return ReadOnlyFormat.Span(_db.Begin + offset + lengthOfLength, length);
     }
 
-    // Compares key made of prefix and suffix, cut to maxLength bytes, with target
+    // Compares key made of prefix and suffix, cut to maxLength bytes, with target (BTDB/Proofs, ReadOnlyCompare.lean)
     static int Compare(in ReadOnlySpan<byte> prefix, ReadOnlySpan<byte> suffix, in ReadOnlySpan<byte> target,
         int maxLength)
     {

@@ -34,3 +34,4 @@ open Btdb
 #print axioms StringOrdered.starts_with_correct
 #print axioms StringOrdered.high_surrogate_needed
 #print axioms StringOrdered.encOpt_prefix_free
+#print axioms ReadOnlyCompare.compare_correct

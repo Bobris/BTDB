@@ -32,6 +32,8 @@
     first key passing the lower bound or, descending, at the last key within the upper bound; an ordinal
     `StartsWith` scans exactly the keys of the strings with the prefix, and string keys, null included, are prefix
     free, so an ordinal equality can be part of a key prefix.
+  - `BTDB/Proofs/`, the read-only key value database: comparing a stored key, kept as a node prefix and a suffix and
+    cut to a maximum length, with a search target gives the comparison of the whole cut key.
 
 ### Fixed
 
