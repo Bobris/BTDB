@@ -122,4 +122,51 @@ public class RelationInKeyValueMutationTest(ITestOutputHelper output) : ObjectDb
                 table.ListById(tenant, range).Select(Describe));
         }
     }
+
+    /// Relation queries filter and order by the in-key value and the key fields like LINQ to objects.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void QueriesOverInKeyValueMatchLinq(int seed)
+    {
+        var random = new Random(seed);
+        using (var write = _db.StartTransaction())
+        {
+            var table = write.GetRelation<IRowTable>();
+            for (var i = 0; i < 40; i++)
+                table.Upsert(new Row
+                {
+                    Tenant = (ulong)random.Next(1, 4), Id = (ulong)random.Next(1, 9), Version = random.Next(-3, 6),
+                    Age = (uint)random.Next(20, 24), Payload = random.Next(10)
+                });
+            write.Commit();
+        }
+
+        using var tr = _db.StartReadOnlyTransaction();
+        var rows = tr.GetRelation<IRowTable>();
+        var list = rows.ToList();
+        var tenant = (ulong)random.Next(0, 4);
+        var id = (ulong)random.Next(0, 9);
+        var version = random.Next(-4, 7);
+        var age = (uint)random.Next(19, 25);
+        var cases = new (string, Func<IQueryable<Row>, IQueryable<Row>>)[]
+        {
+            ("tenant and version", q => q.Where(r => r.Tenant == tenant && r.Version > version)),
+            ("tenant, id and version", q => q.Where(r => r.Tenant == tenant && r.Id == id && r.Version <= version)),
+            ("version only", q => q.Where(r => r.Version == version)),
+            ("tenant and id range", q => q.Where(r => r.Tenant == tenant && r.Id >= id && r.Id < id + 3)),
+            ("tenant and age", q => q.Where(r => r.Tenant == tenant && r.Age == age)),
+            ("order by version", q => q.Where(r => r.Tenant == tenant).OrderBy(r => r.Version)),
+            ("order by id descending", q => q.Where(r => r.Tenant == tenant).OrderByDescending(r => r.Id)),
+            ("order by tenant, id, version", q => q.OrderBy(r => r.Tenant).ThenBy(r => r.Id).ThenBy(r => r.Version)),
+            ("paged by key", q => q.Where(r => r.Version != version).OrderBy(r => r.Tenant).ThenBy(r => r.Id).Skip(3).Take(5)),
+            ("age range", q => q.Where(r => r.Tenant == tenant && r.Age > age && r.Payload < 7)),
+        };
+        foreach (var (name, query) in cases)
+        {
+            var expected = query(list.AsQueryable()).Select(Describe).ToList();
+            var actual = query(rows.Query<Row>()).AsEnumerable().Select(Describe).ToList();
+            Assert.True(expected.SequenceEqual(actual),
+                $"{name}: expected {string.Join(" | ", expected)}, actual {string.Join(" | ", actual)}");
+        }
+    }
 }
