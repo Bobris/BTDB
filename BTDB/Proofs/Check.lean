@@ -79,3 +79,5 @@ open Btdb
 #print axioms TrlChain.fixed_refuses_cycle
 #print axioms KviDurability.fixed_safe
 #print axioms KviDurability.previous_unsafe
+#print axioms PreservedIndex.fixed_keeps_preserved
+#print axioms PreservedIndex.previous_drops_preserved

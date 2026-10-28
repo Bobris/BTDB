@@ -90,6 +90,9 @@ over the predecessor IDs in their headers.
 `BtdbProofs/KviDurability.lean` models the write order of `BTreeKeyValueDB.CreateKeyIndexFile`: what a crash keeps
 of the transaction log and of a key index that points into it.
 
+`BtdbProofs/PreservedIndex.lean` models which key indexes `BTreeKeyValueDB.CreateIndexFile` keeps when it writes a new
+one under `PreserveHistoryUpToCommitUlong`.
+
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
@@ -132,6 +135,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
 | `KviDurability.previous_unsafe` | Before the 2026-10-28 fix one commit and an index were enough for a crash to keep the index and lose the log bytes it points at (`KeyValueDBCrashSimulationTest`). |
+| `PreservedIndex.fixed_keeps_preserved` | Writing a key index keeps the newest one at or before the preserved commit, so history stays openable from it. |
+| `PreservedIndex.previous_drops_preserved` | Before the 2026-10-28 fix `CreateKvi` kept only its new index, so opening at the preserved commit opened a later one (`KeyValueDBHistoryOpenTest`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

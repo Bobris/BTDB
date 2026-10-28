@@ -55,6 +55,7 @@
     string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.
   - `BTDB/Proofs/`, database files: the Guid more than half of the files carry is the database's in every listing
     order, so a stray file cannot make the database's own files foreign.
+  - `BTDB/Proofs/`, preserved history: writing a key index keeps the one preserved history opens from.
   - `BTDB/Proofs/`, key index durability: a durable key index never points past the durable transaction log.
   - `BTDB/Proofs/`, the transaction log chain: walking predecessor IDs back from the newest log always ends.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
@@ -62,6 +63,9 @@
 
 ### Fixed
 
+- `BTreeKeyValueDB.CreateKvi` ignored `PreserveHistoryUpToCommitUlong`: it dropped the key index preserved history
+  opens from, so a later `OpenUpToCommitUlong` at the preserved commit silently opened a later commit. It now keeps
+  that key index, as compaction does. Found by opening randomized histories at every preserved commit.
 - A crash after `BTreeKeyValueDB` wrote a key index could open with wrong or unreadable values. The index, written by
   `CreateKvi` and compaction and flushed to disk, points at transaction log commands of its last commit, which were
   not necessarily flushed, so a crash could keep the index and lose those commands. The log is now flushed before

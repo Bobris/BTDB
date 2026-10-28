@@ -1853,7 +1853,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (IsReplication)
             throw new NotSupportedException("Replication publishes KVI through snapshot export, not local KVI creation.");
         if (_readOnly) throw new BTDBException("Database opened in readonly mode");
-        CreateIndexFile(cancellation, 0, ReferenceDurableLastCommitted());
+        // Keep the key index that preserved history starts from, as compaction does.
+        var preserveKeyIndexGeneration =
+            CalculatePreserveKeyIndexGeneration(CalculatePreserveKeyIndexKeyFromKeyIndexInfos(BuildKeyIndexInfos()));
+        CreateIndexFile(cancellation, preserveKeyIndexGeneration, ReferenceDurableLastCommitted());
     }
 
     public IKeyValueDBLogger? Logger { get; set; }
