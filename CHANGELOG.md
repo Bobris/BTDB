@@ -55,11 +55,15 @@
     string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.
   - `BTDB/Proofs/`, database files: the Guid more than half of the files carry is the database's in every listing
     order, so a stray file cannot make the database's own files foreign.
+  - `BTDB/Proofs/`, the transaction log chain: walking predecessor IDs back from the newest log always ends.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 
 ### Fixed
 
+- Opening a `BTreeKeyValueDB` whose transaction log header had a damaged predecessor ID pointing at a later log
+  hung forever following the cycle. The chain walk now requires every predecessor to have a lower file ID, as
+  `OpenAsync` already did, and fails the open with `BTDBException` otherwise. Found by flipping header bits.
 - `BTreeKeyValueDB` could delete its own files on open when one foreign file, or one whose header Guid was damaged,
   came first in the file listing, as `OnDiskFileCollection` lists a directory in no particular order. The first
   listed file decided the database Guid, every file with another Guid counted as foreign, and opening deleted the

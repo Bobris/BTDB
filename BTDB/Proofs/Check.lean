@@ -74,3 +74,6 @@ open Btdb
 #print axioms Replay.previous_loses_later_commit
 #print axioms FileGuid.majority_chosen
 #print axioms FileGuid.previous_picks_foreign
+#print axioms TrlChain.walk_descending
+#print axioms TrlChain.previous_never_ends
+#print axioms TrlChain.fixed_refuses_cycle

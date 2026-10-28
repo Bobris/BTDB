@@ -1393,6 +1393,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
             fileTransactionLog.NextFileId = nextId;
             nextId = currentId;
+            // A successor always gets a higher ID than its predecessor; a damaged link could otherwise loop forever.
+            if (fileTransactionLog.PreviousFileId >= currentId)
+                throw new BTDBException("Transaction-log predecessor must have a lower file ID.");
             currentId = fileTransactionLog.PreviousFileId;
         }
 

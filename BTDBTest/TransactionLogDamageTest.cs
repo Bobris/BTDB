@@ -105,6 +105,43 @@ public class TransactionLogDamageTest
         }
     }
 
+    /// A damaged predecessor link that points back at a later log closes the chain into a cycle: opening fails
+    /// instead of following it forever.
+    [Fact]
+    public async Task PredecessorLinkCycleFailsTheOpen()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var options = Options(directory);
+            options.FileSplitSize = 1024;
+            using (var db = new BTreeKeyValueDB(options))
+                for (var i = 0; i < 12; i++)
+                {
+                    using var tr = await db.StartWritingTransaction();
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue([(byte)i], new byte[300]);
+                    tr.Commit();
+                }
+
+            foreach (var index in Directory.GetFiles(directory, "*.kvi")) File.Delete(index);
+            var logs = Directory.GetFiles(directory, "*.trl").Order().ToArray();
+            Assert.True(logs.Length > 2);
+            var first = File.ReadAllBytes(logs[0]);
+            // "BTDB3", the Guid, the file type, generation 1 (VInt 0x81), then the predecessor ID 0 (VUInt 0x80).
+            Assert.Equal([0x81, 0x80], first[22..24]);
+            first[23] = (byte)(0x80 | logs.Length);
+            File.WriteAllBytes(logs[0], first);
+            await Assert.ThrowsAsync<BTDBException>(() =>
+                Task.Run(() => new BTreeKeyValueDB(Options(directory)).Dispose()).WaitAsync(TimeSpan.FromSeconds(20)));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Fact]
     public async Task KeySuffixUpdateWithPrefixLongerThanKeyEndsReplay()
     {
