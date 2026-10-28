@@ -330,7 +330,7 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (TryGetTupleTypeArguments(type, typeof(ValueTuple), out var valueTupleTypes))
         {
-            var offsets = RawData.GetOffsets(valueTupleTypes);
+            var offsets = RawData.GetValueTupleOffsets(type, valueTupleTypes);
             var serializers = CreateSerializers(valueTupleTypes);
             return (ref SerializerCtx ctx, ref byte value) =>
             {
@@ -1169,7 +1169,7 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (TryGetTupleTypeArguments(type, typeof(ValueTuple), out var valueTupleTypes))
         {
-            var offsets = RawData.GetOffsets(valueTupleTypes);
+            var offsets = RawData.GetValueTupleOffsets(type, valueTupleTypes);
             var deserializers = CreateDeserializers(valueTupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {

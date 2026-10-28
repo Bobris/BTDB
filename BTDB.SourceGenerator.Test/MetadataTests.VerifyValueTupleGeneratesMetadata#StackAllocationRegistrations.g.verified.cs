@@ -7,12 +7,6 @@ using System.Runtime.CompilerServices;
 [global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class StackAllocationRegistrations
 {
-    struct ValueTuple1
-    {
-       public int Item1;
-       public string Item2;
-    }
-
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -25,7 +19,8 @@ static file class StackAllocationRegistrations
             ptr = 0;
         }
 
-        ValueTuple1 valueTuple1 = new();
+        // Measured on the tuple itself: its automatic layout places struct items after primitive ones.
+        (int, string) valueTuple1 = default;
         BTDB.Serialization.ReflectionMetadata.Register(new()
         {
             Type = typeof((int, string)),
@@ -36,14 +31,14 @@ static file class StackAllocationRegistrations
                 {
                     Name = "Item1",
                     Type = typeof(int),
-                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<ValueTuple1, byte>(ref valueTuple1),
+                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<(int, string), byte>(ref valueTuple1),
                         ref global::System.Runtime.CompilerServices.Unsafe.As<int, byte>(ref valueTuple1.Item1)),
                 },
                 new()
                 {
                     Name = "Item2",
                     Type = typeof(string),
-                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<ValueTuple1, byte>(ref valueTuple1),
+                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<(int, string), byte>(ref valueTuple1),
                         ref global::System.Runtime.CompilerServices.Unsafe.As<string, byte>(ref valueTuple1.Item2)),
                 },
             ]

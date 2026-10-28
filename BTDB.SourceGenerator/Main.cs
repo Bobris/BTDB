@@ -2836,23 +2836,6 @@ public class SourceGenerator : IIncrementalGenerator
             {
             """);
 
-        var idx = 0;
-        foreach (var @struct in structs)
-        {
-            idx++;
-            if (@struct.Fields.Count > 0)
-            {
-                factoryCode.Append($$"""
-
-                        struct ValueTuple{{idx}}
-                        {
-                    {{string.Join("\n", @struct.Fields.Select(f => $"       public {f.Type} {f.Name};"))}}
-                        }
-
-                    """);
-            }
-        }
-
         factoryCode.Append($$"""
 
                 [global::System.Runtime.CompilerServices.ModuleInitializer]
@@ -2860,7 +2843,7 @@ public class SourceGenerator : IIncrementalGenerator
                 {
             """);
 
-        idx = 0;
+        var idx = 0;
         foreach (var @struct in structs)
         {
             idx++;
@@ -2880,7 +2863,8 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 factoryCode.Append($$"""
 
-                            ValueTuple{{idx}} valueTuple{{idx}} = new();
+                            // Measured on the tuple itself: its automatic layout places struct items after primitive ones.
+                            {{@struct.FullName}} valueTuple{{idx}} = default;
                             BTDB.Serialization.ReflectionMetadata.Register(new()
                             {
                                 Type = typeof({{@struct.FullName}}),
@@ -2896,8 +2880,8 @@ public class SourceGenerator : IIncrementalGenerator
                                         {
                                             Name = "{{field.Name}}",
                                             Type = typeof({{field.Type}}),
-                                            ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<ValueTuple{{idx}}, byte>(ref valueTuple{{idx}}),
-                                                ref global::System.Runtime.CompilerServices.Unsafe.As<{{field.Type}}, byte>(ref valueTuple{{idx}}.{{field.Name}})),
+                                            ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<{{@struct.FullName}}, byte>(ref valueTuple{{idx}}),
+                                                ref global::System.Runtime.CompilerServices.Unsafe.As<{{field.Type}}, byte>(ref valueTuple{{idx}}.{{(field.Name == "Item8" ? "Rest" : field.Name)}})),
                                         },
                         """);
                 }

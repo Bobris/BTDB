@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB;
 using BTDB.Bon;
@@ -425,6 +426,52 @@ public class BonSerializerCoverageTest
         BonSerializerFactory.Serialize(ref builder, new WithIndexer { Value = 5 });
         var bon = new Bon(builder.FinishAsMemory());
         Assert.Equal(5, ((WithIndexer)BonSerializerFactory.Deserialize(ref bon)!).Value);
+    }
+
+    [Generate]
+    public class StructItemTuples
+    {
+        public (DateTime, byte) DateAndByte { get; set; }
+        public (Guid, int) GuidAndInt { get; set; }
+        public ((int, string), SmallEnum) NestedWithEnum { get; set; }
+        public ((int, string), SmallEnum)? NullableNested { get; set; }
+        public (byte, (byte, byte)) ByteAndPair { get; set; }
+        public (int?, long?, byte) Nullables { get; set; }
+    }
+
+    // ValueTuple has automatic layout, which places struct items after primitive ones. Before the fix the serializer
+    // computed offsets ignoring that, so a DateTime next to a byte came back as default and a nested tuple next to an enum
+    // made it read a string from the enum's bytes.
+    [Fact]
+    public void TuplesWithStructItemsRoundTrip()
+    {
+        var when = new DateTime(2025, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+        var guid = Guid.NewGuid();
+        var value = new StructItemTuples
+        {
+            DateAndByte = (when, 7), GuidAndInt = (guid, 3), NestedWithEnum = ((1, "s"), SmallEnum.B),
+            NullableNested = ((2, "t"), SmallEnum.A), ByteAndPair = (1, (2, 3)), Nullables = (4, null, 5)
+        };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var read = (StructItemTuples)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal((value.DateAndByte, value.GuidAndInt, value.NestedWithEnum, value.NullableNested, value.ByteAndPair,
+            value.Nullables), (read.DateAndByte, read.GuidAndInt, read.NestedWithEnum, read.NullableNested,
+            read.ByteAndPair, read.Nullables));
+    }
+
+    [Fact]
+    public void RegisteredTupleOffsetsAreTheRuntimeOnes()
+    {
+        var tuple = default((DateTime, byte));
+        ref var start = ref Unsafe.As<(DateTime, byte), byte>(ref tuple);
+        var fields = ReflectionMetadata.FindByType(typeof((DateTime, byte)))!.Fields;
+        Assert.Equal((uint)Unsafe.ByteOffset(ref start, ref Unsafe.As<DateTime, byte>(ref tuple.Item1)), fields[0].ByteOffset);
+        Assert.Equal((uint)Unsafe.ByteOffset(ref start, ref tuple.Item2), fields[1].ByteOffset);
+        // A tuple no generated class uses is measured by the runtime.
+        Assert.Equal(new uint[] { 0, 8 },
+            RawData.GetValueTupleOffsets(typeof((sbyte, DateTime)), [typeof(sbyte), typeof(DateTime)]));
     }
 
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);

@@ -205,13 +205,14 @@ public sealed class RawData
             return Combine(keySizeAlign, valueSizeAlign);
         }
 
-        if (type.SpecializationOf(typeof(ValueTuple<,>)) is { } vt2Type)
+        // ValueTuple has automatic layout, which the combination below only approximates; measure it where possible.
+        if (!RuntimeFeature.IsDynamicCodeSupported && type.SpecializationOf(typeof(ValueTuple<,>)) is { } vt2Type)
         {
             var arguments = vt2Type.GetGenericArguments();
             return Combine(GetSizeAndAlign(arguments[0]), GetSizeAndAlign(arguments[1]));
         }
 
-        if (type.SpecializationOf(typeof(ValueTuple<,,>)) is { } vt3Type)
+        if (!RuntimeFeature.IsDynamicCodeSupported && type.SpecializationOf(typeof(ValueTuple<,,>)) is { } vt3Type)
         {
             var arguments = vt3Type.GetGenericArguments();
             return Combine(GetSizeAndAlign(arguments[0]), GetSizeAndAlign(arguments[1]), GetSizeAndAlign(arguments[2]));
@@ -288,6 +289,37 @@ public sealed class RawData
         return (offsets[0], offsets[1]);
     }
 
+    /// <summary>
+    /// Offsets of the items of a ValueTuple. It has automatic layout, where the runtime places struct-typed items after
+    /// primitive ones, which <see cref="GetOffsets"/> does not model; so the layout the source generator measured is used
+    /// when registered, else the runtime's own when it can instantiate generic types.
+    /// </summary>
+    public static uint[] GetValueTupleOffsets(Type tupleType, Type[] itemTypes)
+    {
+        if (ReflectionMetadata.FindByType(tupleType) is { Fields: { } fields } && fields.Length == itemTypes.Length &&
+            Array.TrueForAll(fields, f => f.ByteOffset != null))
+            return Array.ConvertAll(fields, f => f.ByteOffset!.Value);
+        if (RuntimeFeature.IsDynamicCodeSupported && itemTypes.Length is >= 1 and <= 7)
+        {
+            var probe = itemTypes.Length switch
+            {
+                1 => typeof(ValueTupleLayout<>),
+                2 => typeof(ValueTupleLayout<,>),
+                3 => typeof(ValueTupleLayout<,,>),
+                4 => typeof(ValueTupleLayout<,,,>),
+                5 => typeof(ValueTupleLayout<,,,,>),
+                6 => typeof(ValueTupleLayout<,,,,,>),
+                _ => typeof(ValueTupleLayout<,,,,,,>)
+            };
+            return (uint[])probe.MakeGenericType(itemTypes).GetMethod("Offsets")!.Invoke(null, null)!;
+        }
+
+        return GetOffsets(itemTypes);
+    }
+
+    internal static uint OffsetOf<T>(ref byte start, ref T field) =>
+        (uint)Unsafe.ByteOffset(ref start, ref Unsafe.As<T, byte>(ref field));
+
     public static uint[] GetOffsets(params Type[] types)
     {
         var fields = new OffsetField[types.Length];
@@ -348,5 +380,92 @@ public sealed class RawData
     {
         return !RawData.MethodTableOf(type).ContainsGCPointers &&
                RawData.GetSizeAndAlign(type).Size <= 16;
+    }
+}
+
+static class ValueTupleLayout<T1>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1>);
+        ref var s = ref Unsafe.As<ValueTuple<T1>, byte>(ref v);
+        return [RawData.OffsetOf(ref s, ref v.Item1)];
+    }
+}
+
+static class ValueTupleLayout<T1, T2>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2>, byte>(ref v);
+        return [RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2)];
+    }
+}
+
+static class ValueTupleLayout<T1, T2, T3>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2, T3>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2, T3>, byte>(ref v);
+        return [RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2), RawData.OffsetOf(ref s, ref v.Item3)];
+    }
+}
+
+static class ValueTupleLayout<T1, T2, T3, T4>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2, T3, T4>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2, T3, T4>, byte>(ref v);
+        return
+        [
+            RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2), RawData.OffsetOf(ref s, ref v.Item3),
+            RawData.OffsetOf(ref s, ref v.Item4)
+        ];
+    }
+}
+
+static class ValueTupleLayout<T1, T2, T3, T4, T5>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2, T3, T4, T5>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2, T3, T4, T5>, byte>(ref v);
+        return
+        [
+            RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2), RawData.OffsetOf(ref s, ref v.Item3),
+            RawData.OffsetOf(ref s, ref v.Item4), RawData.OffsetOf(ref s, ref v.Item5)
+        ];
+    }
+}
+
+static class ValueTupleLayout<T1, T2, T3, T4, T5, T6>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2, T3, T4, T5, T6>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2, T3, T4, T5, T6>, byte>(ref v);
+        return
+        [
+            RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2), RawData.OffsetOf(ref s, ref v.Item3),
+            RawData.OffsetOf(ref s, ref v.Item4), RawData.OffsetOf(ref s, ref v.Item5), RawData.OffsetOf(ref s, ref v.Item6)
+        ];
+    }
+}
+
+static class ValueTupleLayout<T1, T2, T3, T4, T5, T6, T7>
+{
+    public static uint[] Offsets()
+    {
+        var v = default(ValueTuple<T1, T2, T3, T4, T5, T6, T7>);
+        ref var s = ref Unsafe.As<ValueTuple<T1, T2, T3, T4, T5, T6, T7>, byte>(ref v);
+        return
+        [
+            RawData.OffsetOf(ref s, ref v.Item1), RawData.OffsetOf(ref s, ref v.Item2), RawData.OffsetOf(ref s, ref v.Item3),
+            RawData.OffsetOf(ref s, ref v.Item4), RawData.OffsetOf(ref s, ref v.Item5), RawData.OffsetOf(ref s, ref v.Item6),
+            RawData.OffsetOf(ref s, ref v.Item7)
+        ];
     }
 }
