@@ -40,3 +40,13 @@ public class InMemoryRelationInKeyValueMutationTest(ITestOutputHelper output) : 
 {
     protected override IKeyValueDB CreateKeyValueDB() => new InMemoryKeyValueDB();
 }
+
+public class InMemoryRelationIndexEvolutionTest(ITestOutputHelper output) : RelationIndexEvolutionTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => new InMemoryKeyValueDB();
+}
+
+public class InMemoryRelationSecondaryKeyUpgradeTest(ITestOutputHelper output) : RelationSecondaryKeyUpgradeTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => new InMemoryKeyValueDB();
+}

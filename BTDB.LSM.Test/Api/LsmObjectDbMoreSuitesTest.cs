@@ -211,3 +211,9 @@ public class LsmRelationSnapshotIsolationTest(ITestOutputHelper output) : Relati
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
 }
+
+[Collection(LsmObjectDb.Name)]
+public class LsmRelationIndexEvolutionTest(ITestOutputHelper output) : RelationIndexEvolutionTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
