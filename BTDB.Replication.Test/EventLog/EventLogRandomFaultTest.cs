@@ -172,6 +172,86 @@ public class EventLogRandomFaultTest
 
     static byte[] Payload(int session, int i) => [(byte)session, (byte)i, .. Bytes(i, 10)];
 
+    /// Publishing as above while a merger runs passes that delete merged splits at once and a reader keeps reading the
+    /// whole history: every read is a contiguous prefix of the final history.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public async Task ReadsDuringPublishingAndMergingArePrefixesOfHistory(int seed)
+    {
+        var shared = new Random(seed);
+        var storage = new FaultyEventLogStorage();
+        var options = new EventLogOptions
+        {
+            SplitCap = 256, SealFreeSpace = 64, MergeFanOut = 2, MergeLevels = 2, DeletionDelay = TimeSpan.Zero
+        };
+        var faultsOn = false;
+        storage.Fault = _ =>
+        {
+            if (!faultsOn) return StorageFault.None;
+            lock (shared)
+                return shared.Next(10) switch
+                {
+                    0 => StorageFault.TimeoutWithoutEffect,
+                    1 => StorageFault.LoseResponse,
+                    _ => StorageFault.None
+                };
+        };
+
+        async Task<EventLogOwnerLane> NewLane(Random random) => await EventLogOwnerLane.CreateCandidateAsync(storage,
+            new(storage, Topic), Topic, options, new TestScheduler(), Owners[random.Next(Owners.Length)], default);
+
+        await (await NewLane(shared)).SubmitAsync(9, 1, new byte[] { 9 }, 1, false, 0, CancellationToken.None);
+        faultsOn = true;
+        using var stop = new CancellationTokenSource();
+        var reads = new List<List<string>>();
+        var reader = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                var records = await new EventLogStorageReader(storage, Topic).ReadAllAsync();
+                Assert.Equal(Enumerable.Range(0, records.Count).Select(i => (ulong)i), records.Select(r => r.Offset));
+                lock (reads) reads.Add(records.Select(r => Convert.ToHexString(r.Payload.ToArray())).ToList());
+            }
+        });
+        var merger = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+                await new EventLogMerger(storage, Topic, options, new TestScheduler()).RunPassAsync(default);
+        });
+        await Task.WhenAll(Enumerable.Range(0, 2).Select(session => Task.Run(async () =>
+        {
+            var random = new Random(seed * 17 + session);
+            var lane = await NewLane(random);
+            ulong resumeFrom = 0;
+            for (var i = 0; i < 25; i++)
+            {
+                var sequence = (ulong)i + 1;
+                for (var attempt = 0; ; attempt++)
+                {
+                    Assert.True(attempt < 100, "Too many attempts");
+                    if (random.Next(12) == 0) lane = await NewLane(random);
+                    try
+                    {
+                        resumeFrom = await lane.SubmitAsync((ulong)session + 1, sequence, Payload(session, i), sequence,
+                            true, resumeFrom, CancellationToken.None) + 1;
+                        break;
+                    }
+                    catch (EventLogOwnerLostException)
+                    {
+                        if (lane.IsStopped) lane = await NewLane(random);
+                    }
+                }
+            }
+        })));
+        stop.Cancel();
+        await Task.WhenAll(reader, merger);
+        faultsOn = false;
+        var final = (await new EventLogStorageReader(storage, Topic).ReadAllAsync())
+            .Select(r => Convert.ToHexString(r.Payload.ToArray())).ToList();
+        Assert.Equal(51, final.Count);
+        Assert.All(reads, read => Assert.Equal(final.Take(read.Count), read));
+    }
+
     /// Changes a split's version right after every listing, as concurrent appends to it do.
     sealed class VersionBumpingStorage(InMemoryEventLogStorage inner, string bumpedKey) : IEventLogStorage
     {
