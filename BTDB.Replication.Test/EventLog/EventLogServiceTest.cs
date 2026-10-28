@@ -422,6 +422,33 @@ public class EventLogServiceTest
         Assert.Throws<ArgumentOutOfRangeException>(() => node.GetTopic(Topic));
     }
 
+    public static TheoryData<string> InvalidOptions => new()
+    {
+        nameof(EventLogOptions.TakeoverAttempts), nameof(EventLogOptions.AmbiguousRetryDelay),
+        nameof(EventLogOptions.ContentionBackoff), nameof(EventLogOptions.MergeInterval),
+        nameof(EventLogOptions.DeletionDelay)
+    };
+
+    /// Before the fix these were taken as given: zero takeover attempts never let a node own a topic, zero delays
+    /// retried or merged in a tight loop, and a negative deletion delay failed every merge pass before cleanup.
+    [Theory]
+    [MemberData(nameof(InvalidOptions))]
+    public async Task OptionsTheLogCannotRunWithAreRejected(string option)
+    {
+        await using var cluster = new EventLogCluster();
+        var options = EventLogCluster.FastOptions;
+        options = option switch
+        {
+            nameof(EventLogOptions.TakeoverAttempts) => options with { TakeoverAttempts = 0 },
+            nameof(EventLogOptions.AmbiguousRetryDelay) => options with { AmbiguousRetryDelay = TimeSpan.Zero },
+            nameof(EventLogOptions.ContentionBackoff) => options with { ContentionBackoff = TimeSpan.Zero },
+            nameof(EventLogOptions.MergeInterval) => options with { MergeInterval = TimeSpan.Zero },
+            _ => options with { DeletionDelay = TimeSpan.FromSeconds(-1) }
+        };
+        var node = cluster.Start("a", options);
+        Assert.Throws<ArgumentOutOfRangeException>(() => node.GetTopic(Topic));
+    }
+
     [Fact]
     public async Task RemotePublicationReachesAnIdleRestartedOwner()
     {

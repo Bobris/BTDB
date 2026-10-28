@@ -110,5 +110,14 @@ public sealed record EventLogOptions
             throw new ArgumentOutOfRangeException(nameof(MergeFanOut));
         if (MaxMergedObjectLength <= 0 || MaxMergedObjectLength > EventLogFormat.MaxObjectLength)
             throw new ArgumentOutOfRangeException(nameof(MaxMergedObjectLength));
+        // Zero attempts would never take a topic over; zero delays would retry or merge in a tight loop.
+        if (TakeoverAttempts <= 0) throw new ArgumentOutOfRangeException(nameof(TakeoverAttempts));
+        if (AmbiguousRetryDelay <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(AmbiguousRetryDelay));
+        if (ContentionBackoff <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(ContentionBackoff));
+        if (MergeInterval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(MergeInterval));
+        if (DeletionDelay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(DeletionDelay));
+        if (RecentCacheBytes < 0) throw new ArgumentOutOfRangeException(nameof(RecentCacheBytes));
+        ArgumentNullException.ThrowIfNull(TimeProvider);
+        ArgumentNullException.ThrowIfNull(NewSessionId);
     }
 }

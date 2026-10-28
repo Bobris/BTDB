@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- Event log: some options were not validated. `TakeoverAttempts` of zero never let a node own a topic, so every
+  publication retried forever; a zero `AmbiguousRetryDelay`, `ContentionBackoff` or `MergeInterval` retried or merged
+  in a tight loop; and a negative `DeletionDelay` failed every merge pass before cleanup. Such values now throw
+  `ArgumentOutOfRangeException` when a topic is opened.
 - `LsmKeyValueDB.OpenAsync` accepted options the engine cannot run with. A `WalUploadParallelism` of zero spun forever
   in the WAL upload, a `LeaseSafetyMargin` covering the whole `LeaseDuration` kept every writer takeover retrying, a
   zero `RefreshRetryInterval` spun while waiting for a commit, and a `LevelCount` of one crashed the first compaction.
