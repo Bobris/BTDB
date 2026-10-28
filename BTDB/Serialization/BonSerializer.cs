@@ -1052,7 +1052,8 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
-        if (type == typeof(ushort))
+        // A char is written as its UTF-16 code unit.
+        if (type == typeof(ushort) || type == typeof(char))
         {
             return static (ref DeserializerCtx ctx, ref byte value) =>
             {

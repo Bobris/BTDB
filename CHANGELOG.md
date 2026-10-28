@@ -77,6 +77,8 @@
 
 ### Fixed
 
+- Bon serialization: a `char` member was serialized, as its UTF-16 code unit, but deserializing it failed with
+  `NotSupportedException`. It now loads.
 - Bon: a damaged `DateTime` whose ticks are out of range failed with `ArgumentException` from `DateTime.FromBinary`
   when read or dumped to JSON. It is now reported as `InvalidDataException`, like other damage.
 - Bon: `DumpToJson` failed with `ArgumentException` on a NaN value, which JSON numbers cannot hold. It now writes NaN

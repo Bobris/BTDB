@@ -715,5 +715,27 @@ public class BonSerializerCoverageTest
         Assert.Equal(5, Assert.IsType<EnumerableClass>(result.Values).Start);
     }
 
+    [Generate]
+    public class WithChar
+    {
+        public char Letter { get; set; }
+        public List<char>? Letters { get; set; }
+        public char? Maybe { get; set; }
+    }
+
+    // Before the fix a char member was serialized but its deserializer failed with NotSupportedException.
+    [Fact]
+    public void CharRoundTrips()
+    {
+        var value = new WithChar { Letter = 'Ž', Letters = ['a', '\uffff', '\0'], Maybe = 'x' };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithChar)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal('Ž', result.Letter);
+        Assert.Equal(value.Letters, result.Letters);
+        Assert.Equal('x', result.Maybe);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
