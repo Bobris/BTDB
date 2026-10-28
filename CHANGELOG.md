@@ -69,6 +69,11 @@
 
 ### Fixed
 
+- Bon: damaged data could crash the process with a stack overflow. A container pointer damaged to point at its own
+  container, or past it, made deserialization recurse through the same values forever. Readers now reject a container
+  pointer that does not point before itself with `InvalidDataException`, and deserialization fails with
+  `InsufficientExecutionStackException` instead of overflowing the stack on any nesting deeper than it can take.
+  Found by a fuzz test of damaged Bon.
 - Bon serialization: when creating the serializer or deserializer of a class failed, for example on a member type it
   does not support, the placeholder cached for recursive types stayed behind. Serializing the class again then waited
   for it forever, and deserializing it again made the placeholder deserialize the same value again until the stack

@@ -1116,6 +1116,16 @@ public struct Bon
         }
     }
 
+    // The builder writes a container before every pointer to it. A pointer at or after its own code is damage, which
+    // could make readers recurse through a container that holds itself until the stack overflows.
+    ulong ReadContainerOffset()
+    {
+        var code = _reader.GetCurrentPositionWithoutController() - 1;
+        var ofs = _reader.ReadVUInt64();
+        if (ofs >= code) throw new InvalidDataException("Bon container does not precede its pointer.");
+        return ofs;
+    }
+
     public bool TryGetArray(out ArrayBon bon)
     {
         var b = _reader.PeekUInt8();
@@ -1130,7 +1140,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
@@ -1141,7 +1151,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
@@ -1163,7 +1173,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
@@ -1190,7 +1200,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var ofsKeys = reader2.ReadVUInt64();
@@ -1215,7 +1225,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var ofsKeys = reader2.ReadVUInt64();
@@ -1278,7 +1288,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = _reader.ReadVUInt64();
+                var ofs = ReadContainerOffset();
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();

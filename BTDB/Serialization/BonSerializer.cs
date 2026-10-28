@@ -662,6 +662,8 @@ public class BonSerializerFactory : ISerializerFactory
 
     public object? DeserializeObject(ref DeserializerCtx ctx)
     {
+        // Damaged or hostile data can nest, or loop, deeper than the stack: fail with an exception instead of crashing.
+        RuntimeHelpers.EnsureSufficientExecutionStack();
         switch (AsCtx(ref ctx).Bon.BonType)
         {
             case BonType.Null:
@@ -1467,6 +1469,7 @@ public class BonSerializerFactory : ISerializerFactory
 
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
+                RuntimeHelpers.EnsureSufficientExecutionStack();
                 if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out var name) ||
                     name.Length != persistNameUtf8.Length || !name.SequenceEqual(persistNameUtf8))
                 {
