@@ -66,3 +66,6 @@ open Btdb
 #print axioms RangeEnumeration.key_stop_lists_range
 #print axioms Replay.replay_stops_at_damage
 #print axioms Replay.replay_drops_unfinished
+#print axioms GrowRead.fixed_returns_iff
+#print axioms GrowRead.fixed_alloc_bound
+#print axioms GrowRead.previous_unbounded
