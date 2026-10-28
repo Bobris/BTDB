@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using BTDB;
 using BTDB.Buffer;
 using BTDB.EventStore2Layer;
@@ -385,5 +386,35 @@ public class EventStore2CoverageTest
         Assert.Equal([1, null, 3], read.Numbers);
         Assert.Equal(["a", "b"], read.Names);
         Assert.Equal(["x"], read.Children![0].Names);
+    }
+
+    [Generate]
+    public class ReadOnlyOnlyKid
+    {
+        public string? Name { get; set; }
+    }
+
+    [Generate]
+    public class ReadOnlyOnlyParent
+    {
+        public IReadOnlyList<ReadOnlyOnlyKid>? Children { get; set; }
+        public IReadOnlySet<ReadOnlyOnlyKid>? Others { get; set; }
+    }
+
+    // Before the fix a list of objects declared only as IReadOnlyList<T> or IReadOnlySet<T> failed to load with
+    // "Cannot find collection metadata", as the collection types tried for it left out the read-only ones.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void ListDeclaredOnlyAsReadOnlyLoads(EventLayer layer)
+    {
+        var read = (ReadOnlyOnlyParent)RoundTrip(layer, new ReadOnlyOnlyParent
+        {
+            Children = new List<ReadOnlyOnlyKid> { new() { Name = "x" } },
+            Others = new HashSet<ReadOnlyOnlyKid> { new() { Name = "y" } }
+        })!;
+        Assert.Equal("x", read.Children![0].Name);
+        Assert.Equal("y", read.Others!.Single().Name);
     }
 }

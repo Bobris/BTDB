@@ -132,6 +132,12 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         internal ref MemReader Reader;
     }
 
+    static readonly Type[] CollectionDefinitionsToTry =
+    [
+        typeof(IEnumerable<>), typeof(IList<>), typeof(List<>), typeof(ISet<>), typeof(HashSet<>),
+        typeof(IReadOnlyList<>), typeof(IReadOnlyCollection<>), typeof(IReadOnlySet<>)
+    ];
+
     public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
         if (targetType == typeof(object))
@@ -193,27 +199,13 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         if (collectionMetadata == null)
         {
             var itemType = targetType.IsArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
-            var ienumerableType = typeof(IEnumerable<>).MakeGenericType(itemType);
-            collectionMetadata = ReflectionMetadata.FindCollectionByType(ienumerableType);
-            if (collectionMetadata == null)
+            // The generator registers the collection types members are declared with; the read-only ones create a List
+            // or HashSet too, so a member declared only as IReadOnlyList<T> still loads as the ICollection<T> preferred
+            // for it.
+            foreach (var definition in CollectionDefinitionsToTry)
             {
-                var ilistType = typeof(IList<>).MakeGenericType(itemType);
-                collectionMetadata = ReflectionMetadata.FindCollectionByType(ilistType);
-                if (collectionMetadata == null)
-                {
-                    var listType = typeof(List<>).MakeGenericType(itemType);
-                    collectionMetadata = ReflectionMetadata.FindCollectionByType(listType);
-                    if (collectionMetadata == null)
-                    {
-                        var isetType = typeof(ISet<>).MakeGenericType(itemType);
-                        collectionMetadata = ReflectionMetadata.FindCollectionByType(isetType);
-                        if (collectionMetadata == null)
-                        {
-                            var hashsetType = typeof(HashSet<>).MakeGenericType(itemType);
-                            collectionMetadata = ReflectionMetadata.FindCollectionByType(hashsetType);
-                        }
-                    }
-                }
+                collectionMetadata = ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(itemType));
+                if (collectionMetadata != null) break;
             }
         }
 

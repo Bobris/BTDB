@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -164,6 +165,12 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             to.GetGenericTypeDefinition() == typeof(Dictionary<,>))
         {
             return GetIDictionary2DictionaryConverter(from, to);
+        }
+
+        if (!from.IsValueType && ReflectionMetadata.FindCollectionByType(to) is { ElementValueType: null } toList &&
+            from.IsAssignableTo(typeof(IEnumerable<>).MakeGenericType(toList.ElementKeyType)))
+        {
+            return GetEnumerable2CollectionConverter(toList);
         }
 
         if (from == typeof(byte))
@@ -921,6 +928,35 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         }
 
         return null;
+    }
+
+    // A collection loaded as another one of the same items, like a list that an IReadOnlySet<T> member held as a
+    // HashSet and that came back as a List, is copied into the collection the target's metadata creates.
+    static unsafe Converter GetEnumerable2CollectionConverter(CollectionMetadata toList)
+    {
+        var itemType = toList.ElementKeyType;
+        var slotOffset = RawData.MethodTableOf(itemType.MakeArrayType()).BaseSize - (uint)Unsafe.SizeOf<nint>();
+        return (ref byte fromI, ref byte toI) =>
+        {
+            var fromObject = Unsafe.As<byte, object?>(ref fromI);
+            if (fromObject == null)
+            {
+                Unsafe.As<byte, object?>(ref toI) = null;
+                return;
+            }
+
+            var items = new List<object?>();
+            foreach (var item in (IEnumerable)fromObject) items.Add(item);
+            var result = toList.Creator((uint)items.Count);
+            var slot = Array.CreateInstance(itemType, 1);
+            foreach (var item in items)
+            {
+                slot.SetValue(item, 0);
+                toList.Adder(result, ref RawData.Ref(slot, slotOffset));
+            }
+
+            Unsafe.As<byte, object>(ref toI) = result;
+        };
     }
 
     unsafe Converter? GetIDictionary2DictionaryConverter(Type from, Type to)

@@ -81,6 +81,11 @@
 
 ### Fixed
 
+- Event store: a list of objects in a member declared only as `IReadOnlyList<T>` or `IReadOnlySet<T>`, with no other
+  member of the item type declared as a list or set, failed to load with "Cannot find collection metadata". The
+  collection types tried for it now include the read-only interfaces, whose generated metadata creates a `List` or
+  `HashSet`, and a collection that loads as another one of the same items, like a `List` for an `IReadOnlySet<T>`
+  member, is copied into the collection that member's metadata creates.
 - ObjectDB and the event store: a list member holding a collection other than an array, `List`, `HashSet` or
   `Collection`, like the `ReadOnlyCollection<T>` that `AsReadOnly()` returns or an `ImmutableList<T>`, failed to save
   with "Cannot save type". Any other `IEnumerable<T>` of the item type is now enumerated; the stored format is the
