@@ -233,7 +233,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             var rotate = memtable.ApproximateBytes >= MaxTrLogFileSize;
             long generation;
             // Under the state lock, which losing the writer role also takes to end it, so a commit never publishes
-            // after the instance reloaded its state from storage.
+            // after the instance reloaded its state from storage (BTDB.LSM/Proofs, Reload.lean).
             lock (_stateLock)
             {
                 if (!_isWriter || transaction.WriterEpoch != _epoch)

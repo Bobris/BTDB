@@ -20,3 +20,5 @@ open Lsm
 #print axioms Fence.fixed_fresh_epochs
 #print axioms Fence.late_create_after_deletion
 #print axioms Wal.unacknowledged_replayed
+#print axioms Reload.current_lost_commit_visible
+#print axioms Reload.fixed_reload_matches
