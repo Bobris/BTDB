@@ -52,6 +52,11 @@
 
 ### Fixed
 
+- `MemReader.ReadString`, `ReadByteArray` and `ReadStringValues` allocated the length or count a prefix declared before
+  reading any of it. A few bytes of truncated or hostile input, such as a malformed replication peer message, could
+  therefore allocate gigabytes, or fail with `OutOfMemoryException` instead of `InvalidDataException`. A declared
+  length beyond the buffered bytes now grows the result with the data that arrives, so a too-long prefix fails at
+  the end of the input. Values that fit the buffer are read as before.
 - Event log: while other owners appended to a topic, a lane resolving a publisher session, or any reader, could fail
   with `EventLogOffsetNotAvailableException` for a committed offset. Locating an offset reads split headers at the
   version a listing gave, and every append changes the tail split's version, so all retries could meet a changed

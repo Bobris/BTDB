@@ -534,6 +534,7 @@ public struct MemReader
         if (len > int.MaxValue) throw new InvalidDataException($"Reading String length overflowed with {len}");
         var l = (int)len;
         if (l == 0) return "";
+        if (l > End - Current) return ReadStringBeyondBuffer(l);
         var result = new string('\0', l);
         fixed (char* res = result)
         {
@@ -580,6 +581,34 @@ public struct MemReader
         }
 
         return result;
+    }
+
+    // The declared length exceeds the buffered bytes, so the input may end first: grow the characters as they arrive
+    // instead of allocating a length a truncated or hostile prefix declares. Every character takes at least one byte.
+    string ReadStringBeyondBuffer(int length)
+    {
+        var chars = new char[Math.Min(length, Math.Max(256, (int)(End - Current)))];
+        var i = 0;
+        while (i < length)
+        {
+            var c = ReadVUInt64();
+            var count = c > 0xffff ? 2 : 1;
+            if (c > 0x10ffff) throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+            if (length - i < count) throw new InvalidDataException("Reading String surrogate pair exceeds declared length");
+            if (chars.Length - i < count) Array.Resize(ref chars, (int)Math.Min(length, Math.Max(2L * chars.Length, i + count)));
+            if (count == 2)
+            {
+                c -= 0x10000;
+                chars[i++] = (char)((c >> 10) + 0xD800);
+                chars[i++] = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                chars[i++] = (char)c;
+            }
+        }
+
+        return new(chars, 0, length);
     }
 
     /// <summary>Transcodes a stored string to its ordered representation without allocating a string.</summary>
@@ -1158,9 +1187,27 @@ public struct MemReader
     {
         var length = ReadVUInt32();
         if (length == 0) return null;
-        var bytes = GC.AllocateUninitializedArray<byte>((int)length - 1);
-        ReadBlock(bytes);
-        return bytes;
+        length--;
+        if (length > int.MaxValue) throw new InvalidDataException($"Reading byte array length overflowed with {length}");
+        if (length <= (long)(End - Current))
+        {
+            var bytes = GC.AllocateUninitializedArray<byte>((int)length);
+            ReadBlock(bytes);
+            return bytes;
+        }
+
+        // As in ReadStringBeyondBuffer: grow with the bytes that arrive, not with the declared length.
+        var result = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, Math.Max(4096L, (long)(End - Current))));
+        var filled = 0;
+        while (true)
+        {
+            ReadBlock(result.AsSpan(filled));
+            filled = result.Length;
+            if (filled == length) return result;
+            var grown = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, 2L * filled));
+            result.CopyTo(grown, 0);
+            result = grown;
+        }
     }
 
     public ReadOnlyMemory<byte> ReadByteArrayAsMemory()
@@ -1317,13 +1364,25 @@ public struct MemReader
     public StringValues ReadStringValues()
     {
         var count = ReadVUInt32();
-        var a = new string[count];
-        for (var i = 0u; i < count; i++)
+        if (count <= (long)(End - Current))
         {
-            a[i] = ReadString();
+            var a = new string[count];
+            for (var i = 0u; i < count; i++)
+            {
+                a[i] = ReadString();
+            }
+
+            return new(a);
         }
 
-        return new(a);
+        // Every string takes at least one byte: grow with the strings that arrive, not with the declared count.
+        var list = new System.Collections.Generic.List<string>();
+        for (var i = 0u; i < count; i++)
+        {
+            list.Add(ReadString());
+        }
+
+        return new(list.ToArray());
     }
 
     public void SkipStringValues()

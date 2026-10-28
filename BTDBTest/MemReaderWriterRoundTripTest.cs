@@ -678,6 +678,42 @@ public class MemReaderWriterRoundTripTest
             (ref MemReader reader) => AssertReadAll(ref reader, AllItems, Reference.Offsets, _ => false));
     }
 
+    public delegate void ReadDeclared(ref MemReader reader);
+
+    /// A string, byte array or string list declaring far more than the input holds fails at the end of the input,
+    /// allocating for what was there rather than for the declared length.
+    [Theory]
+    [MemberData(nameof(ReaderKindsData))]
+    public void LengthsBeyondTheInputFailWithoutAllocatingThem(string readerKind)
+    {
+        foreach (var (declared, read) in new (ulong, ReadDeclared)[]
+                 {
+                     (1ul << 28, (ref MemReader r) => r.ReadString()),
+                     (1ul << 28, (ref MemReader r) => r.ReadByteArray()),
+                     (uint.MaxValue, (ref MemReader r) => r.ReadStringValues())
+                 })
+        {
+            var writer = new MemWriter();
+            writer.WriteVUInt64(declared);
+            writer.WriteBlock(Enumerable.Repeat((byte)'a', 100).ToArray());
+            var bytes = writer.GetSpan().ToArray();
+            WithReader(readerKind, bytes, (ref MemReader reader) =>
+            {
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                try
+                {
+                    read(ref reader);
+                    Assert.Fail("Read past the end of the input.");
+                }
+                catch (EndOfStreamException)
+                {
+                }
+
+                Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
+            });
+        }
+    }
+
     [Theory]
     [MemberData(nameof(ReaderKindsData))]
     public void AllItemsCanBeSkippedByAllReaders(string readerKind)

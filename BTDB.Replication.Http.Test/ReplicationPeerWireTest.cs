@@ -30,6 +30,25 @@ public class ReplicationPeerWireTest
             Assert.Equal(request, ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(request)));
     }
 
+    /// A string field declaring far more characters than the message holds is truncated input: decoding fails with
+    /// InvalidDataException without allocating the declared length.
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(1 << 28)]
+    [InlineData(int.MaxValue)]
+    public void StringLongerThanTheMessageFailsWithoutAllocatingIt(int declared)
+    {
+        var writer = new BTDB.StreamLayer.MemWriter();
+        writer.WriteUInt8(1);
+        writer.WriteUInt8((byte)PeerOperation.Connect);
+        writer.WriteVUInt64((ulong)declared + 1);
+        writer.WriteBlock("abc"u8);
+        var bytes = writer.GetSpan().ToArray();
+        var before = System.GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<InvalidDataException>(() => ReplicationPeerWire.DecodeRequest(bytes));
+        Assert.InRange(System.GC.GetAllocatedBytesForCurrentThread() - before, 0, 64 * 1024);
+    }
+
     [Fact]
     public void PresenceViewRoundTripsAndRejectsOversizedValues()
     {
