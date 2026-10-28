@@ -66,6 +66,10 @@
 
 ### Fixed
 
+- Source generator: generated types whose names differ only by case, such as `Item` and `ITEM`, or a delegate or
+  dispatcher interface nested in a class with the same name as one outside it, got the same generated file name. The
+  generator then failed with `ArgumentException` and generated nothing for the whole project. Nested delegates and
+  interfaces are now named after their containing types, and a file name taken ignoring case gets a numeric suffix.
 - Source generator: a type named `Unsafe`, `RuntimeHelpers`, `UnsafeAccessorAttribute` or `UnsafeAccessorKind` in the
   namespace of a generated type broke the generated code, which lives in that namespace and named those
   `System.Runtime.CompilerServices` types without qualification. It now names them with `global::`.

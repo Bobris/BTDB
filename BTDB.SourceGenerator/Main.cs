@@ -2758,6 +2758,8 @@ public class SourceGenerator : IIncrementalGenerator
         ImmutableArray<GenerationInfo> generationInfos)
     {
         var dedupe = new HashSet<string>();
+        // Roslyn requires hint names unique ignoring case, which names of types need not be.
+        var hintNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var collections = new HashSet<CollectionInfo>();
         var structs = new HashSet<GenerationInfo>();
         foreach (var generationInfo in generationInfos)
@@ -2773,11 +2775,11 @@ public class SourceGenerator : IIncrementalGenerator
             if (!dedupe.Add(generationInfo.FullName)) continue;
             if (generationInfo.GenType == GenerationType.Delegate)
             {
-                GenerateDelegateFactory(context, generationInfo);
+                GenerateDelegateFactory(context, hintNames, generationInfo);
             }
             else if (generationInfo.GenType == GenerationType.Interface)
             {
-                GenerateInterfaceFactory(context, generationInfo);
+                GenerateInterfaceFactory(context, hintNames, generationInfo);
             }
             else if (generationInfo.GenType == GenerationType.Class)
             {
@@ -2786,7 +2788,7 @@ public class SourceGenerator : IIncrementalGenerator
                     collections.Add(collectionInfo);
                 }
 
-                GenerateClassFactory(context, generationInfo);
+                GenerateClassFactory(context, hintNames, generationInfo);
             }
             else if (generationInfo.GenType == GenerationType.Struct)
             {
@@ -2794,15 +2796,15 @@ public class SourceGenerator : IIncrementalGenerator
             }
             else if (generationInfo.GenType == GenerationType.RelationIface)
             {
-                GenerateRelationInterfaceFactory(context, generationInfo);
+                GenerateRelationInterfaceFactory(context, hintNames, generationInfo);
             }
         }
 
-        if (collections.Count > 0) GenerateCollectionRegistrations(context, collections);
-        if (structs.Count > 0) GenerateStructStackAllocations(context, structs);
+        if (collections.Count > 0) GenerateCollectionRegistrations(context, hintNames, collections);
+        if (structs.Count > 0) GenerateStructStackAllocations(context, hintNames, structs);
     }
 
-    static void GenerateStructStackAllocations(SourceProductionContext context, HashSet<GenerationInfo> structs)
+    static void GenerateStructStackAllocations(SourceProductionContext context, HashSet<string> hintNames, HashSet<GenerationInfo> structs)
     {
         var factoryCode = new StringBuilder();
         // language=c#
@@ -2899,11 +2901,11 @@ public class SourceGenerator : IIncrementalGenerator
 
             """);
         context.AddSource(
-            $"StackAllocationRegistrations.g.cs",
+            UniqueHintName(hintNames, $"StackAllocationRegistrations.g.cs"),
             SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
-    static void GenerateCollectionRegistrations(SourceProductionContext context, HashSet<CollectionInfo> collections)
+    static void GenerateCollectionRegistrations(SourceProductionContext context, HashSet<string> hintNames, HashSet<CollectionInfo> collections)
     {
         var factoryCode = new StringBuilder();
         // language=c#
@@ -3054,11 +3056,11 @@ public class SourceGenerator : IIncrementalGenerator
 
             """);
         context.AddSource(
-            $"CollectionRegistrations.g.cs",
+            UniqueHintName(hintNames, $"CollectionRegistrations.g.cs"),
             SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
-    static void GenerateInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    static void GenerateInterfaceFactory(SourceProductionContext context, HashSet<string> hintNames, GenerationInfo generationInfo)
     {
         var namespaceLine = "";
         if (generationInfo.Namespace != null)
@@ -3113,11 +3115,11 @@ public class SourceGenerator : IIncrementalGenerator
 
             """);
         context.AddSource(
-            $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
+            UniqueHintName(hintNames, CreateHintName(generationInfo.FullName, removeSpaces: true)),
             SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
-    static void GenerateDelegateFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    static void GenerateDelegateFactory(SourceProductionContext context, HashSet<string> hintNames, GenerationInfo generationInfo)
     {
         var namespaceLine = "";
         if (generationInfo.Namespace != null)
@@ -3201,11 +3203,11 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
+            UniqueHintName(hintNames, CreateHintName(generationInfo.FullName, removeSpaces: true)),
             SourceText.From(code, Encoding.UTF8));
     }
 
-    static void GenerateClassFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    static void GenerateClassFactory(SourceProductionContext context, HashSet<string> hintNames, GenerationInfo generationInfo)
     {
         var namespaceLine = "";
         var isTuple = generationInfo is { Namespace: "System", Name: "Tuple" };
@@ -3921,7 +3923,7 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            CreateHintName(generationInfo.FullName, removeSpaces: true),
+            UniqueHintName(hintNames, CreateHintName(generationInfo.FullName, removeSpaces: true)),
             SourceText.From(code, Encoding.UTF8));
     }
 
@@ -4121,7 +4123,7 @@ public class SourceGenerator : IIncrementalGenerator
             $"Activator<{string.Join(", ", generationInfo.GenericParameters.Select(p => p.Value.FullyQualifiedName))}>.";
     }
 
-    static void GenerateRelationInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    static void GenerateRelationInterfaceFactory(SourceProductionContext context, HashSet<string> hintNames, GenerationInfo generationInfo)
     {
         var code = new StringBuilder();
         // language=c#
@@ -4921,8 +4923,19 @@ public class SourceGenerator : IIncrementalGenerator
         code.Append("}\n");
 
         context.AddSource(
-            CreateHintName(generationInfo.FullName, removeSpaces: false),
+            UniqueHintName(hintNames, CreateHintName(generationInfo.FullName, removeSpaces: false)),
             SourceText.From(code.ToString(), Encoding.UTF8));
+    }
+
+    static string UniqueHintName(HashSet<string> hintNames, string hintName)
+    {
+        if (hintNames.Add(hintName)) return hintName;
+        var stem = hintName.Substring(0, hintName.Length - ".g.cs".Length);
+        for (var i = 2;; i++)
+        {
+            var candidate = $"{stem}_{i}.g.cs";
+            if (hintNames.Add(candidate)) return candidate;
+        }
     }
 
     static string CreateHintName(string fullName, bool removeSpaces)

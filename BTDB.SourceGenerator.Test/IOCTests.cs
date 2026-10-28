@@ -31,6 +31,43 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyTypesWhoseNamesDifferOnlyByNestingOrCase()
+    {
+        // Before the fix the nested delegate got the hint name of the outer one, and the two classes hint names equal
+        // ignoring case, as Roslyn compares them; the generator then failed and generated nothing.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                [BTDB.Generate]
+                public delegate int Factory(int value);
+
+                [BTDB.Generate]
+                public partial interface IDispatcher
+                {
+                    public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container);
+                }
+
+                [BTDB.Generate]
+                public class Item
+                {
+                }
+
+                [BTDB.Generate]
+                public class ITEM
+                {
+                }
+
+                public class Nested
+                {
+                    [BTDB.Generate]
+                    public delegate int Factory(int value);
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyTypesNamedLikeCompilerServicesInUserNamespace()
     {
         // Generated code lives in the user's namespace, whose types win over its using directives. Before the fix these
