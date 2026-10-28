@@ -1900,7 +1900,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 ? implementationProperty.SetMethod.Name
                                 : null;
                         backingName = getterName == null || setterName == null
-                            ? $"<{p.Name}>k__BackingField"
+                            ? $"<{implementationProperty.Name}>k__BackingField"
                             : null;
                         // Getter of computed (read-only) property must stay a getter even when it just returns a field,
                         // because metadata without ByteOffset and setter is what marks the field as computed.
@@ -2513,6 +2513,9 @@ public class SourceGenerator : IIncrementalGenerator
         {
             foreach (var member in GetAllMembersIncludingBase(symbol))
             {
+                // An explicitly implemented property is stored under the name of the interface property it implements,
+                // which the interface members below resolve to it.
+                if (member is IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 }) continue;
                 AddOrReplaceRelationItemMember(member, byKey, members);
             }
 

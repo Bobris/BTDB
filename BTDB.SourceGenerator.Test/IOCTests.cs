@@ -31,6 +31,30 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyExplicitlyImplementedProperty()
+    {
+        // Before the fix the property was listed twice, once with an accessor of a backing field named after the
+        // interface property, which does not exist, so the module initializer failed with MissingFieldException.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                public interface IHasName
+                {
+                    string Name { get; set; }
+                }
+
+                [BTDB.Generate]
+                public class ExplicitName : IHasName
+                {
+                    string IHasName.Name { get; set; } = "";
+                    public int Count { get; set; }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyKeywordNamedHandlerMethod()
     {
         // Before the fix the dispatcher called the handler method without its verbatim prefix, which did not compile.

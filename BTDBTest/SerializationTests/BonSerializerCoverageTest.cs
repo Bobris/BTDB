@@ -356,5 +356,32 @@ public class BonSerializerCoverageTest
         Assert.Throws<NotSupportedException>(() => Serialize(builder, new NotGenerated()));
     }
 
+    public interface IHasName
+    {
+        string Name { get; set; }
+    }
+
+    [Generate]
+    public class ExplicitName : IHasName
+    {
+        string IHasName.Name { get; set; } = "";
+        public int Count { get; set; }
+    }
+
+    // Before the fix the generated metadata accessed a backing field named after the interface property, which the
+    // explicit implementation does not have, so loading the assembly failed with MissingFieldException.
+    [Fact]
+    public void ExplicitlyImplementedPropertyRoundTrips()
+    {
+        var value = new ExplicitName { Count = 3 };
+        ((IHasName)value).Name = "x";
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var read = (ExplicitName)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(3, read.Count);
+        Assert.Equal("x", ((IHasName)read).Name);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
