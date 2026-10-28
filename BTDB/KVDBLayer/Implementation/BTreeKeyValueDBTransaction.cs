@@ -236,6 +236,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     public void SetUlong(uint idx, ulong value)
     {
         ObjectDisposedException.ThrowIf(BTreeRoot == null, this);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(idx, (uint)Array.MaxLength);
         if (BTreeRoot!.GetUlong(idx) != value)
         {
             MakeWritable();

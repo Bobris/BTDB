@@ -320,6 +320,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     public void SetUlong(uint idx, ulong value)
     {
         ThrowIfFinished();
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(idx, (uint)Array.MaxLength);
         if (GetUlong(idx) == value) return;
         MakeWritable();
         var ulongs = new ulong[Math.Max(_ulongs.Length, idx + 1)];

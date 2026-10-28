@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- `SetUlong` with an index of 2^31 or more failed with `IndexOutOfRangeException` or a misleading
+  `ArgumentOutOfRangeException` from inside the ulong array growth, because `idx + 1` wrapped around. The transactions of
+  `BTreeKeyValueDB`, `InMemoryKeyValueDB` and `LsmKeyValueDB` now reject such an index up front, and transaction log
+  replay ends at a damaged ulong index instead of failing to open.
 - `BTreeKeyValueDB` failed to open when its transaction log held a key or value length that was negative or did not fit
   an `int`, or a key suffix update whose prefix was longer than its key, throwing `ArgumentOutOfRangeException`,
   `OverflowException` or `InvalidDataException`. Replay now ends at such a command, as it does at other content it

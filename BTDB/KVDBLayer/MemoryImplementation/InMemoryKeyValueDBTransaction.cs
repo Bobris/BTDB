@@ -176,6 +176,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     public void SetUlong(uint idx, ulong value)
     {
         ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(idx, (uint)Array.MaxLength);
         if (_btreeRoot.GetUlong(idx) != value)
         {
             MakeWritable();

@@ -1261,6 +1261,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     {
                         if (next == null) return false;
                         var idx = reader.ReadVUInt32();
+                        if (idx >= Array.MaxLength) return StopReplay(ref next);
                         var delta = reader.ReadVUInt64();
                         // overflow is expected in case Ulong is decreasing but that should be rare
                         next.SetUlong(idx, unchecked(next.GetUlong(idx) + delta));

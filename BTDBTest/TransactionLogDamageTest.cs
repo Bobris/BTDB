@@ -100,4 +100,58 @@ public class TransactionLogDamageTest
             Directory.Delete(directory, true);
         }
     }
+
+    /// A ulong index the array of ulongs cannot hold, read as uint.MaxValue or 2^31.
+    [Theory]
+    [InlineData(new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFF })]
+    [InlineData(new byte[] { 0xF0, 0x80, 0x00, 0x00, 0x00 })]
+    public void UlongIndexBeyondAnyArrayEndsReplay(byte[] index)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using (var db = new BTreeKeyValueDB(Options(directory)))
+            {
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue([1], [2]);
+                    tr.Commit();
+                }
+
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    tr.SetUlong(3, 77);
+                    tr.Commit();
+                }
+            }
+
+            var log = Directory.GetFiles(directory, "*.trl").Single();
+            var content = File.ReadAllBytes(log);
+            // DeltaUlongs (10), index 3 and delta 77 as VUInts.
+            var at = Enumerable.Range(0, content.Length - 2).Single(i =>
+                content[i] == 10 && content[i + 1] == 3 && content[i + 2] == 77);
+            File.WriteAllBytes(log, [.. content[..(at + 1)], .. index, .. content[(at + 2)..]]);
+
+            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var read = reopened.StartReadOnlyTransaction();
+            using var check = read.CreateCursor();
+            Assert.True(check.FindExactKey([1]));
+            Assert.Equal(0ul, read.GetUlong(3));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void SetUlongRejectsIndexBeyondAnyArray()
+    {
+        using var db = new InMemoryKeyValueDB();
+        using var tr = db.StartWritingTransaction().Result;
+        Assert.Throws<ArgumentOutOfRangeException>(() => tr.SetUlong(uint.MaxValue, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => tr.SetUlong(1u << 31, 1));
+    }
 }
