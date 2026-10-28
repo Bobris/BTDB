@@ -81,6 +81,10 @@
 
 ### Fixed
 
+- ObjectDB: with relations emitted as IL (`IFieldHandler.UseNoEmitForRelations = false`), a `ListBy`, `CountBy` or
+  `AnyBy` method whose key prefix ends with a list, like a secondary key on an `IList<ulong>`, failed with
+  `InvalidProgramException`. The list saver opened a try block, which must start with an empty evaluation stack, while
+  the method's call arguments were on it; it now disposes its enumerator after the loop instead.
 - Event store: an `object` member holding `IPAddress.Loopback`, `IPAddress.Any` or another address .NET keeps as an
   instance of its internal read-only `IPAddress` subclass failed to store, as events describe such a member by its
   runtime type. That type now maps to the `IPAddress` descriptor in both event store versions.

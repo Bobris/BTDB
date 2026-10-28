@@ -173,7 +173,8 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
             .Ldloc(localValue)
             .Callvirt(getEnumeratorMethod)
             .Stloc(localEnumerator)
-            .Try()
+            // No try block: key prefixes are saved with call arguments already on the evaluation stack, and a try
+            // block must start with an empty one, so the enumerator is disposed after the loop instead.
             .Mark(next)
             .Ldloc(localEnumerator)
             .Callvirt(() => default(IEnumerator).MoveNext())
@@ -186,10 +187,8 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
         ilGenerator
             .Br(next)
             .Mark(finish)
-            .Finally()
             .Ldloc(localEnumerator)
             .Callvirt(() => default(IDisposable).Dispose())
-            .EndTry()
             .Mark(trueFinish);
     }
 

@@ -216,4 +216,48 @@ public class ObjectDbIListArrayRegressionTest : ObjectDbTestBase
             IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
         }
     }
+
+    public class EmittedListKeyRow
+    {
+        [PrimaryKey(1)]
+        public ulong Id { get; set; }
+
+        [PrimaryKey(2)]
+        public IList<ulong> Path { get; set; } = null!;
+
+        [SecondaryKey("Key")]
+        public IList<ulong> Key { get; set; } = null!;
+    }
+
+    public interface IEmittedListKeyRowTable : IRelation<EmittedListKeyRow>
+    {
+        IEnumerable<EmittedListKeyRow> ListByKey(IList<ulong> key);
+        int CountByKey(List<ulong> key);
+        bool AnyByKey(IList<ulong> key);
+        IEnumerable<EmittedListKeyRow> ListById(ulong id, IList<ulong> path);
+    }
+
+    // Before the fix a method listing by a key prefix ending with a list failed with InvalidProgramException when the
+    // relation was emitted, as the list saver opened a try block with call arguments on the evaluation stack. The
+    // interface is used by no other test, so its relation is emitted here.
+    [Fact]
+    public void EmittedListingByListKeyPrefixWorks()
+    {
+        var oldUseNoEmitForRelations = IFieldHandler.UseNoEmitForRelations;
+        IFieldHandler.UseNoEmitForRelations = false;
+        try
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IEmittedListKeyRowTable>();
+            table.Upsert(new EmittedListKeyRow { Id = 1, Path = new List<ulong> { 2, 3 }, Key = new List<ulong> { 9 } });
+            Assert.Equal(1ul, table.ListByKey(new List<ulong> { 9 }).Single().Id);
+            Assert.Equal(1, table.CountByKey(new List<ulong> { 9 }));
+            Assert.False(table.AnyByKey(new List<ulong> { 8 }));
+            Assert.Equal(1ul, table.ListById(1, new List<ulong> { 2, 3 }).Single().Id);
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
+        }
+    }
 }
