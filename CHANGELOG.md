@@ -49,6 +49,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
+  - `BTDB/Proofs/`, Bon serializer creation: once no creation of a type runs, the placeholder cached for recursive types
+    is gone, also when a creation failed;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
@@ -77,7 +79,8 @@
 - Bon serialization: when creating the serializer or deserializer of a class failed, for example on a member type it
   does not support, the placeholder cached for recursive types stayed behind. Serializing the class again then waited
   for it forever, and deserializing it again made the placeholder deserialize the same value again until the stack
-  overflowed and the process crashed. The placeholder is now removed, so every attempt fails with the same exception.
+  overflowed and the process crashed. The placeholder is now removed, so every attempt fails with the same exception
+  (`BTDB/Proofs/BtdbProofs/SerializerPlaceholder.lean`).
 - Bon serialization, and ObjectDB and the event store through the generated metadata they use by default (without
   emitted code), lost or misread `ValueTuple` items next to struct-typed ones; values written that way before the fix
   are wrong. `ValueTuple` has

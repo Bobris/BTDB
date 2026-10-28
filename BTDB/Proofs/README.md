@@ -93,6 +93,9 @@ of the transaction log and of a key index that points into it.
 `BtdbProofs/PreservedIndex.lean` models which key indexes `BTreeKeyValueDB.CreateIndexFile` keeps when it writes a new
 one under `PreserveHistoryUpToCommitUlong`.
 
+`BtdbProofs/SerializerPlaceholder.lean` models the placeholder `BonSerializerFactory` caches while it creates a class's
+serializer or deserializer (`../Serialization/BonSerializer.cs`), with creations of one type running concurrently.
+
 `BtdbProofs/HintNames.lean` models `UniqueHintName` of the source generator (`../../BTDB.SourceGenerator/Main.cs`),
 which keeps the names of generated files unique ignoring case, as Roslyn requires: candidates are case-folded keys.
 
@@ -144,6 +147,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `PreservedIndex.previous_drops_preserved` | Before the 2026-10-28 fix `CreateKvi` kept only its new index, so opening at the preserved commit opened a later one (`KeyValueDBHistoryOpenTest`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
+| `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |
+| `SerializerPlaceholder.previous_stale_placeholder` | Before the 2026-10-28 fix one failed creation left the placeholder cached, which hung serialization and overflowed the stack in deserialization (`BonSerializerCoverageTest.SerializingAfterFailedMemberTypeFailsAgain`). |
 | `HintNames.terminates` | `UniqueHintName` finds a free name within one more candidate than names it returned, so its unbounded loop ends. |
 | `HintNames.unique_keeps_free_name` | A requested name nobody took yet is returned unchanged, so generated file names stay as before the 2026-10-28 fix. |
 | `HintNames.run_nodup` | All names a generator run returns differ ignoring case, so types whose names differ only by case no longer make the generator fail (`IOCTests.VerifyTypesWhoseNamesDifferOnlyByNestingOrCase`). |

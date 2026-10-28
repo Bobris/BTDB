@@ -86,3 +86,5 @@ open Btdb
 #print axioms HintNames.terminates
 #print axioms HintNames.unique_keeps_free_name
 #print axioms HintNames.run_nodup
+#print axioms SerializerPlaceholder.fixed_no_stale_placeholder
+#print axioms SerializerPlaceholder.previous_stale_placeholder
