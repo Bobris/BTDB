@@ -170,7 +170,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
             switch (typeCategory)
             {
                 case TypeCategory.BuildIn:
-                    throw new ArgumentOutOfRangeException();
+                    throw new BTDBException("Metadata corrupted");
                 case TypeCategory.Class:
                     descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
                     break;
@@ -190,7 +190,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
                     descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new BTDBException("Metadata corrupted");
             }
 
             while (-typeId - 1 >= _id2InfoNew.Count)

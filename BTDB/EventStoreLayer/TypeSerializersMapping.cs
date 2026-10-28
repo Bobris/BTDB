@@ -59,12 +59,18 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         while (typeId != 0)
         {
             if (typeId < firstTypeId) firstTypeId = typeId;
+            // New type ids continue the known ones and each new type takes some bytes of the block, so with the whole
+            // block in memory a valid id exceeds the known ones by less than its remaining length; anything else is
+            // damage, which could otherwise make the table below exhaust memory.
+            if (reader.Controller is not IMemReader && typeId >= _id2DescriptorMap.Count &&
+                typeId - _id2DescriptorMap.Count > (ulong)(reader.End - reader.Current))
+                throw new BTDBException("Metadata corrupted");
             var typeCategory = (TypeCategory)reader.ReadUInt8();
             ITypeDescriptor descriptor;
             switch (typeCategory)
             {
                 case TypeCategory.BuildIn:
-                    throw new ArgumentOutOfRangeException();
+                    throw new BTDBException("Metadata corrupted");
                 case TypeCategory.Class:
                     descriptor = new ObjectTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader,
                         _typeSerializers.Options.TypeDescriptorOptions);
@@ -85,7 +91,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                     descriptor = new TupleTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new BTDBException("Metadata corrupted");
             }
 
             while (typeId >= _id2DescriptorMap.Count)

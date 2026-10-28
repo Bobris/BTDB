@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 
 namespace BTDB.EventStoreLayer;
@@ -76,14 +75,17 @@ public class FullNameTypeMapper : ITypeNameMapper
                 stack.Peek().End = i;
 
                 var args = new List<Token>();
-                while (stack.Peek().TokenType != TokenType.Left)
+                while (stack.Count > 0 && stack.Peek().TokenType != TokenType.Left)
                     args.Add(stack.Pop());
+                // A name with unbalanced brackets, as damage leaves, names no type.
+                if (stack.Count < 2) return null;
                 stack.Pop();
 
                 int arity = args.Count;
                 var token = stack.Peek();
                 var typeName = name.Substring(token.Start, token.End - token.Start);
                 var genericDefinition = ToTypeInternal(typeName + '`' + arity);
+                if (genericDefinition == null) return null;
 
                 var typeArgs = new Type[arity];
                 for (int j = 0; j < arity; j++)
@@ -96,6 +98,9 @@ public class FullNameTypeMapper : ITypeNameMapper
                         var argTypeName = name.Substring(argToken.Start, argToken.End - argToken.Start);
                         typeArgs[j] = ToTypeInternal(argTypeName);
                     }
+
+                    // A type argument that maps to no type, as after it was renamed, makes the whole name map to none.
+                    if (typeArgs[j] == null) return null;
                 }
 
                 token.Type = genericDefinition.MakeGenericType(typeArgs);
@@ -110,7 +115,7 @@ public class FullNameTypeMapper : ITypeNameMapper
             // create new generic type
             else if (name[i] == '<')
             {
-                Debug.Assert(stack.Peek().TokenType == TokenType.Type);
+                if (stack.Peek().TokenType != TokenType.Type) return null;
                 stack.Peek().TokenType = TokenType.GenericType;
                 stack.Peek().End = i;
                 stack.Push(new Token { TokenType = TokenType.Left });
@@ -118,8 +123,7 @@ public class FullNameTypeMapper : ITypeNameMapper
             }
         }
 
-        Debug.Assert(stack.Count == 1);
-        return stack.Pop().Type;
+        return stack.Count == 1 ? stack.Pop().Type : null;
     }
 
     Type ToTypeInternal(string name)

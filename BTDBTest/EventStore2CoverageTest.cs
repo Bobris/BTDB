@@ -236,4 +236,45 @@ public class EventStore2CoverageTest
         Assert.True(deserializer.Deserialize(out var result, ByteBuffer.NewAsync(data)));
         Assert.Equal("n", Assert.IsType<MetadataProbe>(result).Name);
     }
+
+    // A type argument that maps to no type, as after it was renamed, makes the generic name map to none; before the fix
+    // MakeGenericType failed with ArgumentNullException. Damaged, unbalanced names map to none too.
+    [Theory]
+    [InlineData("System.Collections.Generic.List<Gone.RenamedType>")]
+    [InlineData("Gone.Generic<System.Int32>")]
+    [InlineData("System.Collections.Generic.List<System.Int32>>")]
+    [InlineData("System.Collections.Generic.List<System.Int32<")]
+    [InlineData("System.Collections.Generic.Dictionary<System.Int32<System.String>")]
+    public void UnmappableGenericTypeNameMapsToNoType(string name)
+    {
+        Assert.Null(new FullNameTypeMapper().ToType(name));
+    }
+
+    // Before the fix an unknown type category failed with ArgumentOutOfRangeException.
+    [Fact]
+    public void DamagedMetadataTypeCategoryIsReported()
+    {
+        var writer = new MemWriter();
+        writer.WriteVInt32(-1);
+        writer.WriteUInt8(200);
+        var deserializer = new EventDeserializer();
+        Assert.Throws<BTDBException>(() => deserializer.ProcessMetadataLog(ByteBuffer.NewAsync(writer.GetSpan().ToArray())));
+    }
+
+    // Before the fix a damaged type id made the version 1 store grow its type table to it, exhausting memory for a large
+    // one.
+    [Fact]
+    public void DamagedTypeIdOfVersion1StoreIsReported()
+    {
+        var mapping = new TypeSerializers().CreateMapping();
+        var writer = new MemWriter();
+        writer.WriteVUInt32(3_000_000_000);
+        writer.WriteUInt8((byte)TypeCategory.Enum);
+        var bytes = writer.GetSpan().ToArray();
+        Assert.Throws<BTDBException>(() =>
+        {
+            var reader = MemReader.CreateFromPinnedSpan(bytes);
+            mapping.LoadTypeDescriptors(ref reader);
+        });
+    }
 }
