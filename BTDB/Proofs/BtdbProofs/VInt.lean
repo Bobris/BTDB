@@ -177,4 +177,9 @@ theorem vint_prefix_free {v w : Int} (hv : -2 ^ 63 ≤ v ∧ v < 2 ^ 63) (hw : -
     · have := hi_le_lo (cls v) (by omega) (cls w) (by omega) hlt; omega
     · have := hi_le_lo (cls w) (by omega) (cls v) (by omega) hgt; omega
 
+/-- The "Signed" encoding, for signed enums too, satisfies what `KeyRange` assumes. -/
+theorem encoding : Encoding (fun v => -2 ^ 63 ≤ v ∧ v < 2 ^ 63) vint where
+  prefixFree _ _ dv dw h := vint_prefix_free dv dw h
+  order _ _ dv dw h := vint_order h dv.1 dw.2
+
 end Btdb.VInt

@@ -156,4 +156,11 @@ theorem vuint_prefix_free {v w : Nat} (hv : v < 2 ^ 64) (hw : w < 2 ^ 64) (h : v
     · have := hi_le_lo (len v) (by omega) (len w) (by omega) fv1 hlt; omega
     · have := hi_le_lo (len w) (by omega) (len v) (by omega) fw1 hgt; omega
 
+/-- The "Unsigned" encoding, for unsigned enums too, satisfies what `KeyRange` assumes. -/
+theorem encoding : Encoding (fun v => 0 ≤ v ∧ v < 2 ^ 64) (fun v => vuint v.toNat) where
+  prefixFree v w dv dw h := by
+    have := vuint_prefix_free (by omega) (by omega) h
+    omega
+  order v w dv dw h := vuint_order (by omega) (by omega)
+
 end Btdb.VUInt

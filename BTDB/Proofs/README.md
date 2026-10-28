@@ -27,8 +27,12 @@ the code by inspection.
 the code's XOR of mask bits that are all set is a subtraction from the positive base. Its constants are also taken
 from the code by inspection.
 
-Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLast`), and the single-byte and enum
-encodings.
+Enums write signed values with `WriteVInt*` and unsigned ones with `WriteVUInt*`, which forward to the 64-bit
+encoders, so they use the encodings above. `KeyRange.byte_encoding` covers the one-byte handlers. Together, every
+handler `RelationQueryKeyRanges.IsOrderPreserving` admits is an encoding for which `lower_correct` and `upper_correct`
+hold, over the values of its type.
+
+Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLast`).
 
 ## Results
 
@@ -37,4 +41,5 @@ encodings.
 | `KeyRange.lower_correct` | The lower-bound test accepts a key exactly when its value is above an exclusive bound, or at or above an inclusive one. |
 | `VUInt.vuint_order`, `VUInt.vuint_prefix_free` | A smaller value has a smaller encoding, and no encoding is a proper prefix of another: the "Unsigned" encoding satisfies what `KeyRange` assumes. |
 | `VInt.vint_order`, `VInt.vint_prefix_free` | The same for the "Signed" encoding, negative values included. |
+| `VUInt.encoding`, `VInt.encoding`, `KeyRange.byte_encoding` | Each order-preserving handler's encoding is a `KeyRange.Encoding` over the values of its type. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

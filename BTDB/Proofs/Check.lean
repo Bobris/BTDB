@@ -8,3 +8,6 @@ open Btdb
 #print axioms VUInt.vuint_prefix_free
 #print axioms VInt.vint_order
 #print axioms VInt.vint_prefix_free
+#print axioms KeyRange.byte_encoding
+#print axioms VUInt.encoding
+#print axioms VInt.encoding
