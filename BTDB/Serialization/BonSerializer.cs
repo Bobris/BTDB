@@ -347,7 +347,7 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (TryGetTupleTypeArguments(type, typeof(Tuple), out var tupleTypes))
         {
-            var offsets = AddObjectDataOffset(RawData.GetOffsets(tupleTypes));
+            var offsets = RawData.GetTupleOffsets(type, tupleTypes);
             var serializers = CreateSerializers(tupleTypes);
             return (ref SerializerCtx ctx, ref byte value) =>
             {
@@ -619,16 +619,6 @@ public class BonSerializerFactory : ISerializerFactory
         }
 
         return deserializers;
-    }
-
-    static uint[] AddObjectDataOffset(uint[] offsets)
-    {
-        for (var i = 0; i < offsets.Length; i++)
-        {
-            offsets[i] += (uint)Unsafe.SizeOf<nint>();
-        }
-
-        return offsets;
     }
 
     static Type CreateObjectTupleType(uint count)
@@ -1200,7 +1190,7 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (TryGetTupleTypeArguments(type, typeof(Tuple), out var tupleTypes))
         {
-            var offsets = AddObjectDataOffset(RawData.GetOffsets(tupleTypes));
+            var offsets = RawData.GetTupleOffsets(type, tupleTypes);
             var deserializers = CreateDeserializers(tupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {

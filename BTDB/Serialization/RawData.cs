@@ -317,6 +317,35 @@ public sealed class RawData
         return GetOffsets(itemTypes);
     }
 
+    /// <summary>
+    /// Offsets of the items of a Tuple from the start of the object, laid out by the runtime like any class: the layout
+    /// the source generator measured when registered, else the runtime's own when it can instantiate generic types.
+    /// </summary>
+    public static uint[] GetTupleOffsets(Type tupleType, Type[] itemTypes)
+    {
+        if (ReflectionMetadata.FindByType(tupleType) is { Fields: { } fields } && fields.Length == itemTypes.Length &&
+            Array.TrueForAll(fields, f => f.ByteOffset != null))
+            return Array.ConvertAll(fields, f => f.ByteOffset!.Value);
+        if (RuntimeFeature.IsDynamicCodeSupported && itemTypes.Length is >= 1 and <= 7)
+        {
+            var probe = itemTypes.Length switch
+            {
+                1 => typeof(TupleLayout<>),
+                2 => typeof(TupleLayout<,>),
+                3 => typeof(TupleLayout<,,>),
+                4 => typeof(TupleLayout<,,,>),
+                5 => typeof(TupleLayout<,,,,>),
+                6 => typeof(TupleLayout<,,,,,>),
+                _ => typeof(TupleLayout<,,,,,,>)
+            };
+            return (uint[])probe.MakeGenericType(itemTypes).GetMethod("Offsets")!.Invoke(null, null)!;
+        }
+
+        var offsets = GetOffsets(itemTypes);
+        for (var i = 0; i < offsets.Length; i++) offsets[i] += (uint)Unsafe.SizeOf<nint>();
+        return offsets;
+    }
+
     internal static uint OffsetOf<T>(ref byte start, ref T field) =>
         (uint)Unsafe.ByteOffset(ref start, ref Unsafe.As<T, byte>(ref field));
 
@@ -467,5 +496,152 @@ static class ValueTupleLayout<T1, T2, T3, T4, T5, T6, T7>
             RawData.OffsetOf(ref s, ref v.Item4), RawData.OffsetOf(ref s, ref v.Item5), RawData.OffsetOf(ref s, ref v.Item6),
             RawData.OffsetOf(ref s, ref v.Item7)
         ];
+    }
+}
+
+static class TupleLayout<T1>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2, T3>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2, T3> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2, T3> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item3")]
+    static extern ref T3 Item3(Tuple<T1, T2, T3> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2, T3>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2, T3>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple)), RawData.CalcOffset(tuple, ref Item3(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2, T3, T4>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2, T3, T4> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2, T3, T4> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item3")]
+    static extern ref T3 Item3(Tuple<T1, T2, T3, T4> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item4")]
+    static extern ref T4 Item4(Tuple<T1, T2, T3, T4> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2, T3, T4>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2, T3, T4>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple)), RawData.CalcOffset(tuple, ref Item3(tuple)), RawData.CalcOffset(tuple, ref Item4(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2, T3, T4, T5>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2, T3, T4, T5> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2, T3, T4, T5> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item3")]
+    static extern ref T3 Item3(Tuple<T1, T2, T3, T4, T5> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item4")]
+    static extern ref T4 Item4(Tuple<T1, T2, T3, T4, T5> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item5")]
+    static extern ref T5 Item5(Tuple<T1, T2, T3, T4, T5> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2, T3, T4, T5>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2, T3, T4, T5>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple)), RawData.CalcOffset(tuple, ref Item3(tuple)), RawData.CalcOffset(tuple, ref Item4(tuple)), RawData.CalcOffset(tuple, ref Item5(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2, T3, T4, T5, T6>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item3")]
+    static extern ref T3 Item3(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item4")]
+    static extern ref T4 Item4(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item5")]
+    static extern ref T5 Item5(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item6")]
+    static extern ref T6 Item6(Tuple<T1, T2, T3, T4, T5, T6> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2, T3, T4, T5, T6>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2, T3, T4, T5, T6>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple)), RawData.CalcOffset(tuple, ref Item3(tuple)), RawData.CalcOffset(tuple, ref Item4(tuple)), RawData.CalcOffset(tuple, ref Item5(tuple)), RawData.CalcOffset(tuple, ref Item6(tuple))];
+    }
+}
+
+static class TupleLayout<T1, T2, T3, T4, T5, T6, T7>
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item1")]
+    static extern ref T1 Item1(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item2")]
+    static extern ref T2 Item2(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item3")]
+    static extern ref T3 Item3(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item4")]
+    static extern ref T4 Item4(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item5")]
+    static extern ref T5 Item5(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item6")]
+    static extern ref T6 Item6(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "m_Item7")]
+    static extern ref T7 Item7(Tuple<T1, T2, T3, T4, T5, T6, T7> tuple);
+
+    public static uint[] Offsets()
+    {
+        var tuple = (Tuple<T1, T2, T3, T4, T5, T6, T7>)RuntimeHelpers.GetUninitializedObject(typeof(Tuple<T1, T2, T3, T4, T5, T6, T7>));
+        return [RawData.CalcOffset(tuple, ref Item1(tuple)), RawData.CalcOffset(tuple, ref Item2(tuple)), RawData.CalcOffset(tuple, ref Item3(tuple)), RawData.CalcOffset(tuple, ref Item4(tuple)), RawData.CalcOffset(tuple, ref Item5(tuple)), RawData.CalcOffset(tuple, ref Item6(tuple)), RawData.CalcOffset(tuple, ref Item7(tuple))];
     }
 }

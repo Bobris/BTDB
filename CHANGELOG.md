@@ -75,7 +75,7 @@
   structs with sequential layout. So `(DateTime, byte)` came back with a default `DateTime`, and
   `((int, string), MyEnum)` made the serializer read a string from the enum's bytes and throw. The generator now
   measures the tuple itself, and the serializer uses its layout, or measures the tuple at runtime when no generated code
-  registered it.
+  registered it. `Tuple<>` items, laid out by the runtime the same way, were read at the same wrong offsets.
 - Source generator: an indexer of a `[Generate]` class was stored as a field, named `this[]`, through accessors
   without its index, which do not exist, so serializing the class failed with `MissingMethodException`. Indexers are
   no longer stored, as reflection skips them too.

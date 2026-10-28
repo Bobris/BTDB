@@ -474,5 +474,38 @@ public class BonSerializerCoverageTest
             RawData.GetValueTupleOffsets(typeof((sbyte, DateTime)), [typeof(sbyte), typeof(DateTime)]));
     }
 
+    [Generate]
+    public class StructItemClassTuples
+    {
+        public Tuple<DateTime, byte>? DateAndByte { get; set; }
+        public Tuple<(int, string), SmallEnum>? NestedWithEnum { get; set; }
+        public Tuple<Guid, int, string>? Three { get; set; }
+    }
+
+    // A Tuple is a class whose fields the runtime lays out like ValueTuple's; before the fix the serializer computed
+    // their offsets the same wrong way.
+    [Fact]
+    public void ClassTuplesWithStructItemsRoundTrip()
+    {
+        var when = new DateTime(2025, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+        var value = new StructItemClassTuples
+        {
+            DateAndByte = Tuple.Create(when, (byte)7), NestedWithEnum = Tuple.Create((1, "s"), SmallEnum.B),
+            Three = Tuple.Create(Guid.NewGuid(), 3, "c")
+        };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, value);
+        var bon = new Bon(builder.FinishAsMemory());
+        var read = (StructItemClassTuples)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal((value.DateAndByte, value.NestedWithEnum, value.Three),
+            (read.DateAndByte, read.NestedWithEnum, read.Three));
+
+        // A tuple no generated class uses is measured by the runtime.
+        builder = new();
+        BonSerializerFactory.Serialize(ref builder, Tuple.Create((sbyte)5, when));
+        bon = new(builder.FinishAsMemory());
+        Assert.Equal(Tuple.Create(5L, when).ToString(), BonSerializerFactory.Deserialize(ref bon)!.ToString());
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
