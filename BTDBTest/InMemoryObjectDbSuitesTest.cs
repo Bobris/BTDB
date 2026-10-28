@@ -4,7 +4,6 @@ using Xunit.Abstractions;
 namespace BTDBTest;
 
 /// ObjectDB suites running on InMemoryKeyValueDB, whose cursors otherwise only the key value tests use.
-
 public class InMemoryObjectDbTableTest(ITestOutputHelper output) : ObjectDbTableTest(output)
 {
     protected override IKeyValueDB CreateKeyValueDB() => new InMemoryKeyValueDB();
