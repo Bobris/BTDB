@@ -15,7 +15,7 @@ namespace BTDBTest;
 /// the state after one of its commits, and a commit made after that open survives the next one.
 public class KeyValueDBCrashSimulationTest
 {
-    sealed class RecordingCollection(IFileCollection? inner = null) : IFileCollection
+    internal sealed class RecordingCollection(IFileCollection? inner = null) : IFileCollection
     {
         public readonly IFileCollection Inner = inner ?? new InMemoryFileCollection();
         readonly Dictionary<uint, string> _hints = new();
@@ -193,7 +193,7 @@ public class KeyValueDBCrashSimulationTest
     [InlineData(3)]
     public async Task EveryCrashOfBatchedCommitsOpensToACommittedState(int seed) => await CrashEverywhere(seed, false, true);
 
-    static void WriteSnapshot(RecordingCollection files, string directory, Random random)
+    internal static void WriteSnapshot(RecordingCollection files, string directory, Random random)
     {
         Directory.CreateDirectory(directory);
         foreach (var (name, bytes, flushed) in files.Snapshot!)
