@@ -2,9 +2,9 @@
 # Freeing nested dictionaries ends, also when damage makes them cyclic
 
 `ODBDictionaryFieldHandler.FreeContent` registers a dictionary for deletion and frees the content of its values, which
-can hold further dictionaries. Dictionaries are never shared, but damage can make a dictionary's values hold that
-dictionary, or an enclosing one. Since the 2026-10-28 fix freeing registers each dictionary once and skips one already
-registered (`DBReaderWithFreeInfoCtx.TryRegisterDict`). The model's dictionaries are numbers below `n`, `children d`
+can hold further dictionaries. Values copied between objects can share a dictionary, and damage can make a
+dictionary's values hold that dictionary, or an enclosing one. Since the 2026-10-28 fix freeing registers each
+dictionary once and skips one already registered (`DBReaderWithFreeInfoCtx.TryRegisterDict`). The model's dictionaries are numbers below `n`, `children d`
 lists the dictionaries the values of `d` hold, and fuel bounds the nesting the walk may reach, as the stack does.
 
 * `walk_ends`: with the guard, freeing from any dictionary ends within `n + 1` levels of nesting, whatever the

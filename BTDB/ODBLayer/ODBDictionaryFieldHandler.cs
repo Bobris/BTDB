@@ -455,8 +455,8 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         if (_valuesHandlerDoesNeedFreeContent == null) throw new BTDBException("FreeContent not initialized");
 
         var dictId = reader.ReadVUInt64();
-        // Dictionaries are never shared, so one met again is damage that made a dictionary hold itself; its content is
-        // already being freed, and walking it again would recurse until the stack overflows.
+        // A dictionary met again is already being freed: shared by values copied between objects, or made to hold
+        // itself by damage. Walking it again would free nothing more, and for a cycle recurse until the stack overflows.
         if (ctx is DBReaderWithFreeInfoCtx { } infoCtx ? !infoCtx.TryRegisterDict(dictId) : RegisterDict(ctx!, dictId))
             return;
         if (ValuesNeedFreeContent())
