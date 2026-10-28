@@ -29,6 +29,8 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
         void ShallowUpdate(Row row);
         bool ShallowUpsert(Row row);
         bool RemoveById(ulong tenant, ulong id);
+        int RemoveById(ulong tenant);
+        int RemoveById(ulong tenant, AdvancedEnumeratorParam<ulong> id);
         Row? FindByIdOrDefault(ulong tenant, ulong id);
         IEnumerable<Row> FindByAge(ulong tenant, uint age);
         IEnumerable<Row> FindByName(string? name);
@@ -70,7 +72,7 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                     Payload = random.Next(100)
                 };
                 var exists = model.ContainsKey((tenant, id));
-                var op = random.Next(6);
+                var op = random.Next(8);
                 log.Add($"{step}: op {op} {tenant}/{id} age {row.Age} name {row.Name ?? "null"} exists {exists}");
                 switch (op)
                 {
@@ -92,10 +94,44 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                     case 4:
                         Assert.Equal(!exists, table.ShallowUpsert(row));
                         break;
-                    default:
+                    case 5:
                         Assert.Equal(exists, table.RemoveById(tenant, id));
                         model.Remove((tenant, id));
                         break;
+                    case 6:
+                        if (random.Next(4) == 0)
+                        {
+                            var removed = model.Keys.Where(k => k.Item1 == tenant).ToList();
+                            Assert.Equal(removed.Count, table.RemoveById(tenant));
+                            foreach (var k in removed) model.Remove(k);
+                        }
+
+                        break;
+                    default:
+                    {
+                        var order = random.Next(2) == 0 ? EnumerationOrder.Ascending : EnumerationOrder.Descending;
+                        var from = (ulong)random.Next(1, 8);
+                        var to = (ulong)random.Next(1, 8);
+                        var fromProposition = (KeyProposition)random.Next(3);
+                        var toProposition = (KeyProposition)random.Next(3);
+                        log[^1] += $" remove {order} {fromProposition} {from} {toProposition} {to}";
+                        var removed = model.Keys.Where(k => k.Item1 == tenant &&
+                            fromProposition switch
+                            {
+                                KeyProposition.Included => k.Item2 >= from,
+                                KeyProposition.Excluded => k.Item2 > from,
+                                _ => true
+                            } && toProposition switch
+                            {
+                                KeyProposition.Included => k.Item2 <= to,
+                                KeyProposition.Excluded => k.Item2 < to,
+                                _ => true
+                            }).ToList();
+                        Assert.Equal(removed.Count, table.RemoveById(tenant,
+                            new AdvancedEnumeratorParam<ulong>(order, from, fromProposition, to, toProposition)));
+                        foreach (var k in removed) model.Remove(k);
+                        break;
+                    }
                 }
 
                 // Insert of an existing row and updates of a missing one throw and change nothing.
