@@ -36,11 +36,11 @@ hold, over the values of its type.
 the restriction to keys with the prefix, against the contract of `IKeyValueDBCursor.Find`. The B-tree's own `Find` is
 assumed to meet that contract over all keys.
 
-`BtdbProofs/Seek.lean` models `Seek`, which positions a relation query scan on the first key of a range with a lower
-bound, from that contract and those of `FindNextKey` and `FindLastKey`.
+`BtdbProofs/Seek.lean` models `Seek` and `SeekLast`, which position a relation query scan on the first key of a range
+with a lower bound and on the last key with an upper bound, from that contract and those of `FindNextKey`,
+`FindPreviousKey` and `FindLastKey`.
 
-Not modelled: the B-tree itself, and `SeekLast`, the descending counterpart of `Seek`, which was checked against the
-contract by hand.
+Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
 
@@ -53,4 +53,5 @@ contract by hand.
 | `Cursor.block` | Keys with a common prefix form a contiguous block in key order. |
 | `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `Seek.seek_exact` … `Seek.seek_exclusive_none` | Each branch of `Seek` reaches the first key of the range that passes the lower bound, inclusive or exclusive, or proves there is none. |
+| `Seek.seek_last_inclusive` … `Seek.seek_last_next_none` | Each branch of `SeekLast` reaches the last key of the range not past the upper bound, inclusive or exclusive, or proves there is none. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

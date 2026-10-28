@@ -1,7 +1,7 @@
 import BtdbProofs.Cursor
 
 /-!
-# Seeking the first key of a relation query range
+# Seeking the first and last key of a relation query range
 
 A model of `RelationQueryScanner.Seek` (`BTDB/ODBLayer/RelationQuery.cs`), which positions a scan on the first key
 of a range with a lower bound, using the cursor contract of `Cursor.lean`. The range keys have the prefix `p`; the
@@ -14,6 +14,9 @@ extend it, which is `KeyRange.lowerOk`.
 * `seek_exclusive_kept`, `seek_exclusive`, `seek_exclusive_none`: with an exclusive bound the scan stays on a first
   key that does not extend `start`; otherwise `FindLastKey(start)` and `FindNextKey(p)` reach the first key above
   every key extending it, or prove there is none.
+* `seek_last_inclusive`, `seek_last_previous`, `seek_last_exact`, `seek_last_exact_none`, `seek_last_next_none`:
+  `SeekLast` reaches the last key not past the upper bound, or proves there is none; `not_past_inclusive` reduces an
+  inclusive bound without keys extending it to an exclusive one.
 -/
 
 namespace Btdb.Seek
@@ -47,7 +50,7 @@ theorem above_block : ∀ (s l x : List Nat), s <+: l → ¬ s <+: x → ¬ lt x
           exact above_block s (s ++ t) x' (List.prefix_append _ _)
             (fun h => hx (List.cons_prefix_cons.2 ⟨rfl, h⟩)) hb
 
-variable {S : List Nat → Prop} {p start k n l : List Nat}
+variable {S : List Nat → Prop} {p start stop k n l q : List Nat}
 
 /-- `k` is the first key with property `P`. -/
 def First (P : List Nat → Prop) (k : List Nat) : Prop := P k ∧ ∀ x, P x → x = k ∨ lt k x
@@ -124,5 +127,72 @@ theorem seek_exclusive_none (hlast : S l ∧ start <+: l ∧ ∀ x, S x → star
     · exact hpn hx.1.1.2
     · exact hpn (block p l n x hpl hx.1.1.2 hn.2.1 hnx)
   · exact hn x hx.1.1.1 hlx
+
+/-! ## `SeekLast`: the last key of a range with an upper bound -/
+
+/-- `k` is the last key with property `P`. -/
+def Last (P : List Nat → Prop) (k : List Nat) : Prop := P k ∧ ∀ x, P x → x = k ∨ lt x k
+
+/-- The block keys not past the upper bound `stop` (prefix and encoded bound), as `IsPastStop` decides it: an
+exclusive bound admits the keys below it, an inclusive one also those extending it. -/
+def NotPast (S : List Nat → Prop) (p stop : List Nat) (inclusive : Bool) (x : List Nat) : Prop :=
+  Block S p x ∧ (if inclusive then stop <+: x ∨ ¬ lt stop x else lt x stop)
+
+/-- Inclusive, and `FindLastKey(stop)` found `l`, the last key extending the bound. -/
+theorem seek_last_inclusive (hp : p <+: stop) (hl : Last (fun x => S x ∧ stop <+: x) l) :
+    Last (NotPast S p stop true) l := by
+  refine ⟨⟨⟨hl.1.1, hp.trans hl.1.2⟩, by simp [hl.1.2]⟩, fun x hx => ?_⟩
+  simp only [NotPast, ite_true] at hx
+  rcases hx.2 with h | h
+  · exact hl.2 x ⟨hx.1.1, h⟩
+  · have hsl := not_below_of_prefix stop l hl.1.2
+    rcases trichotomy x stop with h' | rfl | h'
+    · rcases trichotomy stop l with h'' | rfl | h''
+      · exact Or.inr (lt_trans _ _ _ h' h'')
+      · exact Or.inr h'
+      · exact absurd h'' hsl
+    · exact hl.2 x ⟨hx.1.1, List.prefix_refl x⟩
+    · exact absurd h' h
+
+/-- Without keys extending the bound, an inclusive bound admits the same keys as an exclusive one. -/
+theorem not_past_inclusive (hn : ∀ x, S x → ¬ stop <+: x) (x : List Nat) :
+    NotPast S p stop true x ↔ NotPast S p stop false x := by
+  simp only [NotPast, ite_true]
+  constructor
+  · rintro ⟨hb, h | h⟩
+    · exact absurd h (hn x hb.1)
+    · refine ⟨hb, ?_⟩
+      rcases trichotomy x stop with h' | rfl | h'
+      · exact h'
+      · exact absurd (List.prefix_refl x) (hn x hb.1)
+      · exact absurd h' h
+  · rintro ⟨hb, h⟩
+    exact ⟨hb, Or.inr fun h' => lt_irrefl _ (lt_trans _ _ _ h h')⟩
+
+/-- `Find(stop, |p|)` answered Previous `k`: it is the last key below an exclusive bound. -/
+theorem seek_last_previous (hk : IsPrev (Block S p) stop k) : Last (NotPast S p stop false) k :=
+  ⟨⟨hk.1, by simp [hk.2.1]⟩, fun x hx => hk.2.2 x hx.1 (by simpa using hx.2)⟩
+
+/-- `Find(stop, |p|)` answered Exact: `FindPreviousKey(p)` steps to `q`, the last key below the bound. -/
+theorem seek_last_exact (hq : IsPrev S stop q) (hpq : p <+: q) : Last (NotPast S p stop false) q :=
+  ⟨⟨⟨hq.1, hpq⟩, by simp [hq.2.1]⟩, fun x hx => hq.2.2 x hx.1.1 (by simpa using hx.2)⟩
+
+/-- `Find(stop, |p|)` answered Exact, and the previous key is outside the block or missing: nothing is in range. -/
+theorem seek_last_exact_none (hp : p <+: stop)
+    (hq : (IsPrev S stop q ∧ ¬ p <+: q) ∨ ∀ x, S x → ¬ lt x stop) : ∀ x, ¬ NotPast S p stop false x := by
+  intro x hx
+  simp only [NotPast] at hx
+  rcases hq with ⟨hq, hpq⟩ | hq
+  · rcases hq.2.2 x hx.1.1 hx.2 with rfl | hxq
+    · exact hpq hx.1.2
+    · exact hpq (block p x q stop hx.1.2 hp hxq hq.2.1)
+  · exact hq x hx.1.1 hx.2
+
+/-- `Find(stop, |p|)` answered Next or not found: no block key is below the bound, so nothing is in range and
+`FindPreviousKey(p)` fails. -/
+theorem seek_last_next_none (hb : NoBelow (Block S p) stop) : ∀ x, ¬ NotPast S p stop false x := by
+  intro x hx
+  simp only [NotPast] at hx
+  exact hb x hx.1 hx.2
 
 end Btdb.Seek

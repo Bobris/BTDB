@@ -4212,7 +4212,7 @@ sealed class RelationQueryScanner : IDisposable
         return true;
     }
 
-    /// Positions the cursor on the last key of the range.
+    /// Positions the cursor on the last key of the range (BTDB/Proofs, Seek.lean).
     static bool SeekLast(IKeyValueDBCursor cursor, RelationQueryRange range)
     {
         if (range.Stop == null) return cursor.FindLastKey(range.Prefix);

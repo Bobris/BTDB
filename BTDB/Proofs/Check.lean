@@ -25,3 +25,9 @@ open Btdb
 #print axioms Seek.seek_exclusive
 #print axioms Seek.seek_exclusive_none
 #print axioms Seek.seek_exclusive_kept
+#print axioms Seek.seek_last_inclusive
+#print axioms Seek.not_past_inclusive
+#print axioms Seek.seek_last_previous
+#print axioms Seek.seek_last_exact
+#print axioms Seek.seek_last_exact_none
+#print axioms Seek.seek_last_next_none
