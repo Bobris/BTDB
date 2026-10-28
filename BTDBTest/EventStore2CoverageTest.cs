@@ -150,15 +150,15 @@ public class EventStore2CoverageTest
         writer.WriteVInt32(-1);
         writer.WriteUInt8((byte)TypeCategory.BuildIn);
         buffer = writer.GetByteBufferAndReset();
-        Assert.Throws<ArgumentOutOfRangeException>(() => new EventDeserializer().ProcessMetadataLog(buffer));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new EventSerializer().ProcessMetadataLog(buffer));
+        Assert.Throws<BTDBException>(() => new EventDeserializer().ProcessMetadataLog(buffer));
+        Assert.Throws<BTDBException>(() => new EventSerializer().ProcessMetadataLog(buffer));
 
         writer = new MemWriter();
         writer.WriteVInt32(-1);
         writer.WriteUInt8(100);
         buffer = writer.GetByteBufferAndReset();
-        Assert.Throws<ArgumentOutOfRangeException>(() => new EventDeserializer().ProcessMetadataLog(buffer));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new EventSerializer().ProcessMetadataLog(buffer));
+        Assert.Throws<BTDBException>(() => new EventDeserializer().ProcessMetadataLog(buffer));
+        Assert.Throws<BTDBException>(() => new EventSerializer().ProcessMetadataLog(buffer));
     }
 
     [Fact]

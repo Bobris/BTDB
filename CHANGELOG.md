@@ -75,8 +75,8 @@
 
 - Event store: `FullNameTypeMapper.ToType` failed with `ArgumentNullException` for a generic type name whose argument
   or definition maps to no type, as after that type was renamed, and asserted on unbalanced names that damage leaves;
-  such names now map to no type. Both event store versions report an unknown type category in metadata as
-  `BTDBException` ("Metadata corrupted") instead of `ArgumentOutOfRangeException`, and the version 1 store rejects a
+  such names now map to no type. Both event store versions, and `EventSerializer.ProcessMetadataLog`, report an unknown
+  type category in metadata as `BTDBException` ("Metadata corrupted") instead of `ArgumentOutOfRangeException`, and the version 1 store rejects a
   type id its block cannot hold instead of growing its type table to it.
 - Event store: an event stored with a type name that maps to no type, as after the type was renamed or removed without
   a mapping, failed with `NullReferenceException` when loaded into a member of a known type such as `List<Item>`,
