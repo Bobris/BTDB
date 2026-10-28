@@ -108,6 +108,9 @@ save it.
 `BtdbProofs/InlineCycle.lean` models how `ObjectDBTransaction.WriteInlineObject` writes inline objects inside the
 objects holding them (`../ODBLayer/`), over any graph of objects, with a bound on the nesting it may reach.
 
+`BtdbProofs/ConverterStaging.lean` models where converting loaders and savers stage a value
+(`../FieldHandler/Extensions.cs`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -176,6 +179,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `InlineCycle.guarded_ends` | Refusing an object already in the chain of inline objects being written, writing ends within one more level than there are objects, whatever they hold. |
 | `InlineCycle.refuses_self`, `InlineCycle.shared_written` | An object holding itself is refused, while one held in two places with no cycle is written. |
 | `InlineCycle.unguarded_never_ends` | Before the 2026-10-28 fix an object holding itself was written without end, which overflowed the stack (`ObjectDbInlineCycleTest`). |
+| `ConverterStaging.fixed_holds` | The staging chosen for the type a converting loader loads or a converting saver writes always holds a value of that type. |
+| `ConverterStaging.previous_saver_unsafe`, `ConverterStaging.previous_loader_missing` | Before the 2026-10-28 fix savers chose by the source type, staging a 16-byte value in an 8-byte object slot or a reference in an `Int128`, and loaders had nowhere to stage `DateTimeOffset?` (`FieldHandlerUpgradeConversionTest.WideNullableToPlainConversions`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

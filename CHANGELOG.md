@@ -61,6 +61,7 @@
     Bon, the event store and ObjectDB write the number of items they announce;
   - `BTDB/Proofs/`, writing inline ObjectDB objects: refusing an object already being written, writing ends whatever
     the objects hold, refuses a cycle and still writes an object held in two places;
+  - `BTDB/Proofs/`, converting loaders and savers: the staging chosen for the type held always holds a value of it;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes

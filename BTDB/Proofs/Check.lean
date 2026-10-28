@@ -104,3 +104,6 @@ open Btdb
 #print axioms InlineCycle.refuses_self
 #print axioms InlineCycle.shared_written
 #print axioms InlineCycle.unguarded_never_ends
+#print axioms ConverterStaging.fixed_holds
+#print axioms ConverterStaging.previous_saver_unsafe
+#print axioms ConverterStaging.previous_loader_missing
