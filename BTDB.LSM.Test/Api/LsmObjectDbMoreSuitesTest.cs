@@ -205,3 +205,9 @@ public class LsmValueTypePropRefSetterDoubleLoadTest(ITestOutputHelper output) :
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
 }
+
+[Collection(LsmObjectDb.Name)]
+public class LsmRelationSnapshotIsolationTest(ITestOutputHelper output) : RelationSnapshotIsolationTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
