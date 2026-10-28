@@ -32,11 +32,11 @@ public sealed class HttpEventLogPeerTransport : IEventLogPeerTransport, IDisposa
     readonly int _maximumMessageBytes;
 
     /// <param name="maximumMessageBytes">Largest peer message; defaults to the limit for the default
-    /// <see cref="EventLogOptions.MaxRecordSize"/>.</param>
+    /// <see cref="EventLogOptions"/>.</param>
     public HttpEventLogPeerTransport(string apiKey, int? maximumMessageBytes = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(apiKey);
-        var maximum = maximumMessageBytes ?? MaximumMessageBytes(new EventLogOptions().MaxRecordSize);
+        var maximum = maximumMessageBytes ?? MaximumMessageBytes(new EventLogOptions());
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 64 * 1024, nameof(maximumMessageBytes));
         _apiKeyText = apiKey;
         _apiKey = Encoding.UTF8.GetBytes(apiKey);
@@ -46,9 +46,12 @@ public sealed class HttpEventLogPeerTransport : IEventLogPeerTransport, IDisposa
         { Timeout = Timeout.InfiniteTimeSpan };
     }
 
-    /// <summary>A submission carries up to <paramref name="maxRecordSize"/> record bytes; the rest covers framing.</summary>
-    internal static int MaximumMessageBytes(int maxRecordSize) =>
-        (int)Math.Min(int.MaxValue - 1024L, maxRecordSize + 8L * 1024 * 1024);
+    /// <summary>A submission carries up to MaxRecordSize record bytes. A live message carries one committed batch, which
+    /// holds up to an empty split's room or one record of MaxRecordSize. Both hold up to MaxBatchRecords records of 4
+    /// framing bytes each; the rest covers the other fields.</summary>
+    internal static int MaximumMessageBytes(EventLogOptions options) =>
+        (int)Math.Min(int.MaxValue - 1024L, Math.Max(options.MaxRecordSize, options.SplitCap) +
+                                            4L * options.MaxBatchRecords + 8L * 1024 * 1024);
 
     internal bool IsMapped { get; private set; }
 

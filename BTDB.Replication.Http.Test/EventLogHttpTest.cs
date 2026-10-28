@@ -77,6 +77,13 @@ public class EventLogHttpTest
         var bounds = EventLogWire.DecodeBounds(EventLogWire.Encode(new EventLogBoundsResponse(false, new(0, 9), "http://x")));
         Assert.Equal(("http://x", 9ul), (bounds.OwnerEndpoint, bounds.Bounds.Next));
         var live = EventLogWire.Encode(new EventLogLiveMessage(EventLogLiveKind.Batch, 4, [new byte[] { 9 }], "v", null));
+        // A committed batch can fill a split larger than MaxRecordSize; before the fix its live message exceeded the
+        // limit, the subscriber took the owner for unreachable and could take a healthy topic over.
+        var large = new EventLogOptions { MaxRecordSize = 1024 * 1024, SplitCap = 16 * 1024 * 1024 };
+        var batch = Enumerable.Range(0, large.MaxBatchRecords)
+            .Select(_ => (ReadOnlyMemory<byte>)new byte[(large.SplitCap - 64 * 1024) / large.MaxBatchRecords]).ToArray();
+        Assert.True(EventLogWire.Encode(new EventLogLiveMessage(EventLogLiveKind.Batch, 0, batch, "v", null)).Length <=
+                    HttpEventLogPeerTransport.MaximumMessageBytes(large));
         var message = EventLogWire.DecodeLive(live.AsSpan(4));
         Assert.Equal((EventLogLiveKind.Batch, 4ul, "v"), (message.Kind, message.Offset, message.TailVersion));
         var bytes = EventLogWire.Encode(request);

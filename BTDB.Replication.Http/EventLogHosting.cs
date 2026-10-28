@@ -23,7 +23,7 @@ public static class EventLogHosting
         if (services.Any(d => d.ServiceType == typeof(EventLogService)))
             throw new InvalidOperationException("Register only one event log per host.");
         services.TryAddSingleton<IReplicationScheduler, SystemReplicationScheduler>();
-        var maximumMessageBytes = HttpEventLogPeerTransport.MaximumMessageBytes(options.MaxRecordSize);
+        var maximumMessageBytes = HttpEventLogPeerTransport.MaximumMessageBytes(options);
         services.AddSingleton(_ => new HttpEventLogPeerTransport(apiKey, maximumMessageBytes));
         services.AddSingleton(sp => new EventLogService(sp.GetRequiredService<IEventLogStorage>(),
             sp.GetRequiredService<HttpEventLogPeerTransport>(), endpoint, sp.GetRequiredService<IReplicationScheduler>(),

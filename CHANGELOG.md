@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- Event log over HTTP: with `SplitCap` above `MaxRecordSize` plus 8 MiB, a committed batch of small records could
+  exceed the peer message limit, which was derived from `MaxRecordSize` alone. A subscriber then rejected the live
+  message, took the owner for unreachable and could take a healthy topic over. The limit now covers the largest
+  batch the options allow and its per-record framing.
 - Event log: merged objects could exceed `MaxMergedObjectLength`. The merger compared the limit with the bytes of the
   splits it merges, but a merged header indexes every frame and record, so with small records a merged object is up
   to twice its splits' frames. With more merge levels or larger splits, a group of small records could therefore
