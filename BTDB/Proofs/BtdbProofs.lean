@@ -25,3 +25,4 @@ import BtdbProofs.EventMetadataIds
 import BtdbProofs.DictionaryFree
 import BtdbProofs.BonReusedSlot
 import BtdbProofs.HashSetEntries
+import BtdbProofs.InlineCycle

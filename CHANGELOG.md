@@ -59,6 +59,8 @@
     is gone, also when a creation failed;
   - `BTDB/Proofs/`, saving a `HashSet`: skipping entries whose `Next` is below `-1` skips exactly the removed ones, so
     Bon, the event store and ObjectDB write the number of items they announce;
+  - `BTDB/Proofs/`, writing inline ObjectDB objects: refusing an object already being written, writing ends whatever
+    the objects hold, refuses a cycle and still writes an object held in two places;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
@@ -82,7 +84,7 @@
 - ObjectDB: storing an object that contains itself through inline objects, like a node whose `Next` is the node,
   overflowed the stack and ended the process, as each inline object is written with a writer context of its own. It
   now fails with `BTDBException` naming the type, and the transaction stays usable. Make one of the objects a stored
-  object or reference it through `IIndirect<T>`.
+  object or reference it through `IIndirect<T>` (`BTDB/Proofs/BtdbProofs/InlineCycle.lean`).
 - Bon serialization: a reference cycle, which Bon cannot store as it keeps values and not references, overflowed the
   stack and ended the process. Serialization now fails with `InsufficientExecutionStackException` saying so, as
   deserialization of too deep data already did.

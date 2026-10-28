@@ -105,6 +105,9 @@ storage slot (`../Serialization/`).
 `BtdbProofs/HashSetEntries.lean` models the walk over a `HashSet`'s entries with which Bon, the event store and ObjectDB
 save it.
 
+`BtdbProofs/InlineCycle.lean` models how `ObjectDBTransaction.WriteInlineObject` writes inline objects inside the
+objects holding them (`../ODBLayer/`), over any graph of objects, with a bound on the nesting it may reach.
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -170,6 +173,9 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `BonReusedSlot.previous_copies_before` | Before the 2026-10-28 fix a null string or byte array item loaded as the item before it (`BonSerializerCoverageTest.NullItemsAndMembersRoundTrip`). |
 | `HashSetEntries.skipped_iff_free`, `HashSetEntries.written_count` | Skipping entries whose `Next` is below `-1` skips exactly the removed ones, the end of the free list included, so the walk writes the `_count - _freeCount` items the event store and ObjectDB announce before them. |
 | `HashSetEntries.stricter_check_writes_freed` | A check that took only `Next ≤ -3` for removed would write the last removed entry. |
+| `InlineCycle.guarded_ends` | Refusing an object already in the chain of inline objects being written, writing ends within one more level than there are objects, whatever they hold. |
+| `InlineCycle.refuses_self`, `InlineCycle.shared_written` | An object holding itself is refused, while one held in two places with no cycle is written. |
+| `InlineCycle.unguarded_never_ends` | Before the 2026-10-28 fix an object holding itself was written without end, which overflowed the stack (`ObjectDbInlineCycleTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

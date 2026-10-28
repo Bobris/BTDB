@@ -100,3 +100,7 @@ open Btdb
 #print axioms HashSetEntries.skipped_iff_free
 #print axioms HashSetEntries.written_count
 #print axioms HashSetEntries.stricter_check_writes_freed
+#print axioms InlineCycle.guarded_ends
+#print axioms InlineCycle.refuses_self
+#print axioms InlineCycle.shared_written
+#print axioms InlineCycle.unguarded_never_ends
