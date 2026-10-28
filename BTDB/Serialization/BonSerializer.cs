@@ -151,7 +151,17 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 var objSerializer = CreateCachedSerializerForType(typeof(object));
                 _cache.TryAdd(typePtr, objSerializer);
-                serializer = CreateSerializerForType(type);
+                try
+                {
+                    serializer = CreateSerializerForType(type);
+                }
+                catch
+                {
+                    // A placeholder left behind would make every later serialization of the type wait for it forever.
+                    _cache.TryRemove(new KeyValuePair<nint, Serialize>(typePtr, objSerializer));
+                    throw;
+                }
+
                 _cache.TryUpdate(typePtr, serializer, objSerializer);
                 _cache.TryGetValue(typePtr, out serializer);
             }
@@ -805,7 +815,17 @@ public class BonSerializerFactory : ISerializerFactory
                         return true;
                     };
                     _cache2.TryAdd(typePtr, objDeserializer);
-                    deserializer = CreateDeserializerForType(type);
+                    try
+                    {
+                        deserializer = CreateDeserializerForType(type);
+                    }
+                    catch
+                    {
+                        // The placeholder deserializes the same value again, so left behind it would recurse forever.
+                        _cache2.TryRemove(new KeyValuePair<nint, Deserialize>(typePtr, objDeserializer));
+                        throw;
+                    }
+
                     _cache2.TryUpdate(typePtr, deserializer, objDeserializer);
                 }
             }

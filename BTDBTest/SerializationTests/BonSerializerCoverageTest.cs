@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using BTDB;
 using BTDB.Bon;
 using BTDB.Serialization;
@@ -505,6 +506,60 @@ public class BonSerializerCoverageTest
         BonSerializerFactory.Serialize(ref builder, Tuple.Create((sbyte)5, when));
         bon = new(builder.FinishAsMemory());
         Assert.Equal(Tuple.Create(5L, when).ToString(), BonSerializerFactory.Deserialize(ref bon)!.ToString());
+    }
+
+    [Generate]
+    public class WithUnsupportedMember
+    {
+        public decimal Money { get; set; }
+        public int Count { get; set; }
+    }
+
+    [Generate]
+    public class HoldsUnsupportedMember
+    {
+        public WithUnsupportedMember? Inner { get; set; }
+    }
+
+    // Before the fix a failed serializer creation left its placeholder cached, and serializing the type again waited for
+    // it forever.
+    [Fact]
+    public void SerializingAfterFailedMemberTypeFailsAgain()
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var first = attempt == 0;
+            var task = Task.Run(() =>
+            {
+                var builder = new BonBuilder();
+                if (first) BonSerializerFactory.Serialize(ref builder, new HoldsUnsupportedMember { Inner = new() });
+                else BonSerializerFactory.Serialize(ref builder, new WithUnsupportedMember { Count = 2 });
+            });
+            Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))).Wait();
+            Assert.True(task.IsCompleted, $"Attempt {attempt} does not finish");
+            Assert.IsType<NotSupportedException>(task.Exception?.InnerException);
+        }
+    }
+
+    // Before the fix a failed deserializer creation left its placeholder cached, and deserializing the class again made it
+    // deserialize the same value again until the stack overflowed.
+    [Fact]
+    public void DeserializingClassWithUnsupportedMemberFailsEveryTime()
+    {
+        var builder = new BonBuilder();
+        builder.StartClass(Encoding.UTF8.GetBytes(ReflectionMetadata.FindByType(typeof(WithUnsupportedMember))!.TruePersistedName));
+        builder.WriteKey("Count"u8);
+        builder.Write(2);
+        builder.FinishClass();
+        var bytes = builder.FinishAsMemory().ToArray();
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            Assert.Throws<NotSupportedException>(() =>
+            {
+                var bon = new Bon(bytes);
+                BonSerializerFactory.Deserialize(ref bon);
+            });
+        }
     }
 
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);

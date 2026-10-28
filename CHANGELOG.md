@@ -69,6 +69,10 @@
 
 ### Fixed
 
+- Bon serialization: when creating the serializer or deserializer of a class failed, for example on a member type it
+  does not support, the placeholder cached for recursive types stayed behind. Serializing the class again then waited
+  for it forever, and deserializing it again made the placeholder deserialize the same value again until the stack
+  overflowed and the process crashed. The placeholder is now removed, so every attempt fails with the same exception.
 - Bon serialization, and ObjectDB and the event store through the generated metadata they use by default (without
   emitted code), lost or misread `ValueTuple` items next to struct-typed ones; values written that way before the fix
   are wrong. `ValueTuple` has
