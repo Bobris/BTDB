@@ -303,4 +303,35 @@ public class EventStore2CoverageTest
         Assert.Equal(["a"], read.Single);
         Assert.Equal([2, 3], read.Many);
     }
+
+    [Generate]
+    public class WideEventV1
+    {
+        public DateTimeOffset? Offset { get; set; }
+        public decimal? Amount { get; set; }
+    }
+
+    [Generate]
+    public class WideEventV2
+    {
+        public DateTimeOffset Offset { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    // Before the fix a member changed from a value type larger than Int128, like DateTimeOffset?, failed to load with
+    // NotImplementedException.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void WideNullableMemberLoadsAsPlain(EventLayer layer)
+    {
+        var offset = new DateTimeOffset(2020, 1, 2, 3, 4, 5, TimeSpan.FromHours(2));
+        var read = (WideEventV2)RoundTrip(layer, new WideEventV1 { Offset = offset, Amount = 1.5m },
+            new RenamingTypeMapper().Map(typeof(WideEventV1), "Wide"),
+            new RenamingTypeMapper().Map(typeof(WideEventV2), "Wide"))!;
+        Assert.Equal(offset, read.Offset);
+        Assert.Equal(offset.Offset, read.Offset.Offset);
+        Assert.Equal(1.5m, read.Amount);
+    }
 }

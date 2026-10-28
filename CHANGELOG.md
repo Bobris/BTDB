@@ -81,6 +81,12 @@
 
 ### Fixed
 
+- ObjectDB and the event store: changing a member from a value type larger than 16 bytes, like `DateTimeOffset?`,
+  `Guid?` or `decimal?`, to another type, like `DateTimeOffset`, lost its value. ObjectDB reported the field and loaded
+  the default, and the event store failed with `NotImplementedException`. The conversion had staging only for values up
+  to 16 bytes without references; larger ones are now staged in a one-item array. Converting savers also chose their
+  staging by the source type instead of the target type they write, which could hide a reference from the GC or
+  overrun an 8-byte slot.
 - Event store: an event whose objects nest deeper than the stack holds, like a long linked list, overflowed the stack
   and ended the process when stored in either event store version, and when read on a thread with a smaller stack than
   the one that wrote it or from damaged data. Both now fail with `BTDBException`.

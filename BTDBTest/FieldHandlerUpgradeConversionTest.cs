@@ -484,4 +484,41 @@ public class FieldHandlerUpgradeConversionTest : FieldHandlerCoverageTestBase
         Assert.Equal(4, LoggedMessages.Count);
         Assert.All(LoggedMessages, m => Assert.StartsWith("Cannot load ", m));
     }
+
+    [Generate]
+    public class WideV1
+    {
+        public DateTimeOffset? NullableOffsetToOffset { get; set; }
+        public Guid? NullableGuidToGuid { get; set; }
+        public DateTimeOffset? NullOffsetToOffset { get; set; }
+    }
+
+    [Generate]
+    public class WideV2
+    {
+        public DateTimeOffset NullableOffsetToOffset { get; set; }
+        public Guid NullableGuidToGuid { get; set; }
+        public DateTimeOffset NullOffsetToOffset { get; set; }
+    }
+
+    // Before the fix a value type larger than Int128, like DateTimeOffset?, had no staging for its conversion, so the
+    // field was reported and loaded as default.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WideNullableToPlainConversions(bool emit)
+    {
+        using var _ = EmitMode(emit);
+        var offset = new DateTimeOffset(2020, 1, 2, 3, 4, 5, TimeSpan.FromHours(2));
+        var guid = Guid.Parse("01020304-0506-0708-090a-0b0c0d0e0f10");
+        var v2 = StoreAndReloadAs<WideV1, WideV2>(new WideV1
+        {
+            NullableOffsetToOffset = offset, NullableGuidToGuid = guid, NullOffsetToOffset = null
+        }, "Wide");
+        Assert.Equal(offset, v2.NullableOffsetToOffset);
+        Assert.Equal(offset.Offset, v2.NullableOffsetToOffset.Offset);
+        Assert.Equal(guid, v2.NullableGuidToGuid);
+        Assert.Equal(default, v2.NullOffsetToOffset);
+        Assert.Empty(LoggedMessages);
+    }
 }

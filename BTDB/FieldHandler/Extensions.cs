@@ -122,9 +122,18 @@ public static class Extensions
             };
         }
 
-        throw new NotImplementedException("TODO loading convertor from " + fromType.ToSimpleName() + " to " +
-                                          toType.ToSimpleName());
+        var storage = ValueStorage(fromType);
+        return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+        {
+            var temp = Array.CreateInstance(fromType, 1);
+            loader(ref reader, ctx, ref RawData.Ref(temp, storage));
+            converter(ref RawData.Ref(temp, storage), ref value);
+        };
     }
+
+    // A value larger than Int128 or holding references is staged in a one item array, whose item the GC tracks.
+    static uint ValueStorage(Type type) =>
+        RawData.MethodTableOf(type.MakeArrayType()).BaseSize - (uint)Unsafe.SizeOf<nint>();
 
     public static FieldHandlerLoad BuildConvertingLoader(this IFieldHandler handler, Type fromType, Type toType,
         ITypeConverterFactory typeConverterFactory)
@@ -158,8 +167,13 @@ public static class Extensions
             };
         }
 
-        throw new NotImplementedException("TODO loading convertor from " + fromType.ToSimpleName() + " to " +
-                                          toType.ToSimpleName());
+        var storage = ValueStorage(fromType);
+        return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+        {
+            var temp = Array.CreateInstance(fromType, 1);
+            loader(ref reader, ctx, ref RawData.Ref(temp, storage));
+            converter(ref RawData.Ref(temp, storage), ref value);
+        };
     }
 
     public static Layer2Saver BuildConvertingSaver(this ITypeDescriptor descriptor, Type from, Type to,
@@ -173,7 +187,8 @@ public static class Extensions
         }
 
         var saver = descriptor.GenerateSave(to, typeConverterFactory);
-        if (from.IsValueType && !RawData.MethodTableOf(to).ContainsGCPointers &&
+        // The converter writes a value of type `to`, so its staging is chosen by `to`.
+        if (to.IsValueType && !RawData.MethodTableOf(to).ContainsGCPointers &&
             RawData.GetSizeAndAlign(to).Size <= 16)
         {
             return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
@@ -184,7 +199,7 @@ public static class Extensions
             };
         }
 
-        if (!from.IsValueType)
+        if (!to.IsValueType)
         {
             return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
             {
@@ -194,8 +209,13 @@ public static class Extensions
             };
         }
 
-        throw new NotImplementedException("TODO saving convertor from " + from.ToSimpleName() + " to " +
-                                          to.ToSimpleName());
+        var storage = ValueStorage(to);
+        return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+        {
+            var temp = Array.CreateInstance(to, 1);
+            converter(ref value, ref RawData.Ref(temp, storage));
+            saver(ref writer, ctx, ref RawData.Ref(temp, storage));
+        };
     }
 
     public static FieldHandlerSave BuildConvertingSaver(this IFieldHandler fieldHandler, Type from, Type to,
@@ -209,7 +229,8 @@ public static class Extensions
         }
 
         var saver = fieldHandler.Save(to, typeConverterFactory);
-        if (from.IsValueType && !RawData.MethodTableOf(to).ContainsGCPointers &&
+        // The converter writes a value of type `to`, so its staging is chosen by `to`.
+        if (to.IsValueType && !RawData.MethodTableOf(to).ContainsGCPointers &&
             RawData.GetSizeAndAlign(to).Size <= 16)
         {
             return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
@@ -220,7 +241,7 @@ public static class Extensions
             };
         }
 
-        if (!from.IsValueType)
+        if (!to.IsValueType)
         {
             return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
             {
@@ -230,7 +251,12 @@ public static class Extensions
             };
         }
 
-        throw new NotImplementedException("TODO saving convertor from " + from.ToSimpleName() + " to " +
-                                          to.ToSimpleName());
+        var storage = ValueStorage(to);
+        return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+        {
+            var temp = Array.CreateInstance(to, 1);
+            converter(ref value, ref RawData.Ref(temp, storage));
+            saver(ref writer, ctx, ref RawData.Ref(temp, storage));
+        };
     }
 }
