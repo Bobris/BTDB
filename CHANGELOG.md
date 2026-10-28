@@ -24,6 +24,7 @@
     - walking TRL headers back from an advertised end returns the files after the current one in order;
     - a split created where no later split exists reuses no name that merging deleted;
     - a stopped owner with no write in flight has given every accepted record its outcome;
+    - a topic whose disposal detached its owner lane holds no lane afterwards, whatever takeovers attach later;
     - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
       skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
@@ -69,7 +70,7 @@
   topic when the service was disposed attached its new owner lane after disposal had stopped the old one, so nothing
   stopped it and its heartbeats kept writing; publishers on other nodes went to the disposed node until its owner
   timed out. The topic now stops such a lane. Reading the service's disposal token after `DisposeAsync` no longer
-  throws `ObjectDisposedException` in its background work either.
+  throws `ObjectDisposedException` in its background work either (`Proofs/EventLogProofs/DisposeAttach.lean`).
 - Event log: publications could wait forever after their owner stopped. A stop from outside, such as a found
   takeover or the service shutting down, came while a write was carrying a batch of records, which were then in
   neither the queue nor a session, so the stop did not fail them. When that write then failed, its own stop found the

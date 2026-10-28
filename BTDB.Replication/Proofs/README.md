@@ -24,6 +24,7 @@ is no `sorry`.
 | `ReplicationProofs/Lineage.lean` | The walk back over native TRL headers (`PreviousFileId`) from an advertised end to the current file | `TrlLineage.SuccessorsAsync` |
 | `LateCreate.lean` | Split names that merging deletes only while a later split exists, and create-if-absent writes that land at any time | `EventLogOwnerLane.CreateSuccessorAsync`, `CreateCandidateAsync`, `EventLogMerger` deletions |
 | `StopSettles.lean` | An owner lane's queue, the batch a write takes from it, failed or succeeded writes and stops from outside | `EventLogOwnerLane.RunAsync`, `Stop` |
+| `DisposeAttach.lean` | Service disposal (cancel, then detach under the topic lock) racing a takeover that attaches a candidate lane | `EventLogService.DisposeAsync`, `EventLogTopic.Attach`, `ResolveOwnerAsync` |
 | `ReplicationProofs/Attempts.lean` | This node's attempt journal: the last started offset and its count; runs restarting below an event and consuming ascending offsets | `EventAttemptJournal.BeforeAttemptAsync` (`../../BTDB.Replication.EventSourcing/EventPoison.cs`) |
 | `ExactlyOnce.lean` | One versioned topic history of transfer identities `(session, sequence)`; owner lanes with per-session state and queues; publishers with resolved sequences, `ResumeFrom` and `_knownNext`; a network that keeps every submission, so each can arrive late, repeatedly and at any lane | `EventLogOwnerLane.SubmitAsync`, `AcceptLocked`, `ResolveSessionAsync`, `CommitAsync`; `EventLogTopic.PrepareRound`, `Resolve`, `PeerAnswered` |
 
@@ -64,6 +65,8 @@ exactly after the history its writer holds (`append_exact`, `createSucc_exact`).
 | `LateCreate.previous_reuses` | Before the 2026-10-28 fix, a late create of a split that merging had deleted landed on the free name, and its owner acknowledged a batch no reader sees (`EventLogLateCreateTest`). |
 | `StopSettles.fixed_settles` | Once an owner lane is stopped and no write is in flight, every accepted record has its outcome, including a batch whose write failed after a stop from outside. |
 | `StopSettles.previous_hangs` | Before the 2026-10-28 fix, a stop during a write that then failed left the batch's publications pending forever (`EventLogOwnerLaneTest.StopDuringAFailingWriteStillFailsItsBatch`). |
+| `DisposeAttach.fixed_detached` | Once disposal detached a topic's lane, the topic holds no lane, whatever takeovers attach later. |
+| `DisposeAttach.previous_keeps_lane` | Before the 2026-10-28 fix, a takeover attaching after disposal left the disposed service owning the topic (`EventLogServiceTest.OwnerCandidateCreatedDuringDisposalIsStopped`). |
 | `Attempts.crash_skipped` | An event that crashes every run reaching it is skipped by the `Attempts + 1`-th such run at the latest, whatever offsets below it the runs restart from, and no earlier offset is skipped on the way. |
 | `Attempts.skip_needs_attempts` | A skip at an offset needs at least `Attempts` earlier starts of it. |
 | `Bounds.fixed_bounds_fresh` | With the implemented rule, which trusts only a write dispatched after the call started or a tail check, every answer covers every receipt completed before the call. |

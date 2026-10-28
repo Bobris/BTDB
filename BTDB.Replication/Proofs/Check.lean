@@ -24,6 +24,8 @@ open EventLog
 #print axioms Merge.merged_has_successor
 #print axioms StopSettles.fixed_settles
 #print axioms StopSettles.previous_hangs
+#print axioms DisposeAttach.fixed_detached
+#print axioms DisposeAttach.previous_keeps_lane
 
 open Replication
 

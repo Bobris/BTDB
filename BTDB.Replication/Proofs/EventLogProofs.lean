@@ -4,3 +4,4 @@ import EventLogProofs.Bounds
 import EventLogProofs.Merge
 import EventLogProofs.LateCreate
 import EventLogProofs.StopSettles
+import EventLogProofs.DisposeAttach
