@@ -31,6 +31,29 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDispatcherInterfaceNestedInPartialTypes()
+    {
+        // Before the fix the generated part was not nested in the containing types, so it did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                public partial class Outer
+                {
+                    public partial class Inner<T>
+                    {
+                        [BTDB.Generate]
+                        public partial interface IDispatcher
+                        {
+                            public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container);
+                        }
+                    }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyTypesWhoseNamesDifferOnlyByNestingOrCase()
     {
         // Before the fix the nested delegate got the hint name of the outer one, and the two classes hint names equal

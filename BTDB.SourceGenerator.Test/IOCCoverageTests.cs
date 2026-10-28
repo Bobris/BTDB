@@ -366,4 +366,22 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains(": (global::TestNamespace.Level)(1)", code);
         Assert.Contains(": default(int?)", code);
     }
+    [Fact]
+    public void DispatcherInterfaceNestedInNonPartialTypeIsReported()
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic("""
+            namespace TestNamespace
+            {
+                public class Outer
+                {
+                    [BTDB.Generate]
+                    public partial interface IDispatcher
+                    {
+                        public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container);
+                    }
+                }
+            }
+            """, "BTDB0052");
+        Assert.Contains("IDispatcher", diagnostic.GetMessage());
+    }
 }

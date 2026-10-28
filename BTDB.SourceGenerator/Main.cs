@@ -148,6 +148,16 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             var dispatchers = DetectDispatcherInfo(symbol);
                             if (dispatchers.Length == 0) return null;
+                            // The generated part of a nested interface needs a part of each containing type too.
+                            var parents = syntaxContext.Node.Ancestors().OfType<TypeDeclarationSyntax>().ToArray();
+                            if (parents.Any(p => p.Modifiers.All(m => m.ValueText != "partial")))
+                                return GenerationError("BTDB0052",
+                                    $"Interface '{symbol.Name}' with dispatchers can be nested only in partial types",
+                                    symbol.Locations[0]);
+                            var parentDeclarations = parents
+                                .Select(p => p.Modifiers + " " + p.Keyword.ValueText + " " + p.Identifier.ValueText +
+                                             p.TypeParameterList)
+                                .ToArray();
                             var containingNamespace = symbol.ContainingNamespace;
                             var namespaceName = containingNamespace.IsGlobalNamespace
                                 ? null
@@ -157,7 +167,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false,
                                 false, false,
                                 [],
-                                [], [],
+                                [], parentDeclarations,
                                 dispatchers, [], [],
                                 [], [], [],
                                 [], null);
@@ -3077,6 +3087,16 @@ public class SourceGenerator : IIncrementalGenerator
             using System;
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
+
+            """);
+        foreach (var parentDeclaration in generationInfo.ParentDeclarations.Reverse())
+        {
+            factoryCode.Append(parentDeclaration);
+            factoryCode.Append("\n{\n");
+        }
+
+        // language=c#
+        factoryCode.Append($$"""
             public partial interface {{generationInfo.Name}}
             {
             """);
@@ -3114,6 +3134,8 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             """);
+        factoryCode.Append(new string('}', generationInfo.ParentDeclarations.Count));
+        if (generationInfo.ParentDeclarations.Count > 0) factoryCode.Append('\n');
         context.AddSource(
             UniqueHintName(hintNames, CreateHintName(generationInfo.FullName, removeSpaces: true)),
             SourceText.From(factoryCode.ToString(), Encoding.UTF8));

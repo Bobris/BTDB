@@ -66,6 +66,9 @@
 
 ### Fixed
 
+- Source generator: the generated part of a `[Generate]` dispatcher interface nested in other types was written
+  outside them and did not compile. It is now nested in partial parts of its containing types, and nesting in a type
+  that is not partial is reported as BTDB0052.
 - Source generator: generated types whose names differ only by case, such as `Item` and `ITEM`, or a delegate or
   dispatcher interface nested in a class with the same name as one outside it, got the same generated file name. The
   generator then failed with `ArgumentException` and generated nothing for the whole project. Nested delegates and
