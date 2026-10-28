@@ -114,6 +114,9 @@ objects holding them (`../ODBLayer/`), over any graph of objects, with a bound o
 `BtdbProofs/EmittedTry.lean` models the evaluation stack depth of the IL that `ListFieldOrderedHandler` emits to save a
 list key part inside relation methods (`../FieldHandler/`, `../ODBLayer/RelationBuilder.cs`).
 
+`BtdbProofs/DeserializerPlaceholder.lean` models how `BonSerializerFactory` creates the deserializers of the types a type
+holds, caching placeholders for registered classes (`../Serialization/`), over any graph of types.
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -186,6 +189,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ConverterStaging.previous_saver_unsafe`, `ConverterStaging.previous_loader_missing` | Before the 2026-10-28 fix savers chose by the source type, staging a 16-byte value in an 8-byte object slot or a reference in an `Int128`, and loaders had nowhere to stage `DateTimeOffset?` (`FieldHandlerUpgradeConversionTest.WideNullableToPlainConversions`). |
 | `EmittedTry.fixed_accepted` | Saving a list key part without a try block is accepted under any call arguments already pushed and leaves them in place. |
 | `EmittedTry.previous_rejected`, `EmittedTry.previous_alone` | Before the 2026-10-28 fix its try block was accepted only on an empty stack, so emitted `ListBy`, `CountBy` and `AnyBy` methods on a list key failed with `InvalidProgramException` (`ObjectDbIListArrayRegressionTest.EmittedListingByListKeyPrefixWorks`). |
+| `DeserializerPlaceholder.fixed_ends` | With placeholders cached for registered classes, creating a deserializer ends from any type when other types hold no cycle of their own, within `(n + 1) * (R + 2)` levels. |
+| `DeserializerPlaceholder.previous_never_ends` | Before the 2026-10-28 fix the lookup by type cached none, so a class holding itself, first reached as a member type, was created without end (`BonSerializerCoverageTest.RecursiveClassFirstReachedAsMemberTypeDeserializes`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

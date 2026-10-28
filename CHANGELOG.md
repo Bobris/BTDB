@@ -63,6 +63,8 @@
     the objects hold, refuses a cycle and still writes an object held in two places;
   - `BTDB/Proofs/`, converting loaders and savers: the staging chosen for the type held always holds a value of it;
   - `BTDB/Proofs/`, emitted list key saving: without a try block it is valid under any pushed call arguments;
+  - `BTDB/Proofs/`, Bon deserializer creation: with placeholders for registered classes it ends for any types whose
+    other types hold no cycle of their own;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes

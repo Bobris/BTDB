@@ -110,3 +110,5 @@ open Btdb
 #print axioms EmittedTry.previous_rejected
 #print axioms EmittedTry.previous_alone
 #print axioms EmittedTry.fixed_accepted
+#print axioms DeserializerPlaceholder.fixed_ends
+#print axioms DeserializerPlaceholder.previous_never_ends
