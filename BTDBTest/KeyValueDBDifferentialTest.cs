@@ -324,11 +324,18 @@ public class KeyValueDBDifferentialTest
         void StartTransaction()
         {
             _current = _committed.Clone();
-            _tr = _rnd.Next(3) switch
+            // Batched writers reuse one mutable tree and publish it later. While a batch may be pending, a transaction
+            // that upgrades to a writer later would need a retry, so only writers start then.
+            var kind = _rnd.Next(4);
+            if (_batchPending && kind > 1) kind = 0;
+            _batch = kind == 1;
+            _tr = kind switch
             {
                 0 => _holder.Db.StartWritingTransaction().AsTask().GetAwaiter().GetResult(),
+                1 => _holder.Db.StartWritingTransaction(inBatch: true).AsTask().GetAwaiter().GetResult(),
                 _ => _holder.Db.StartTransaction()
             };
+            if (kind == 0) _batchPending = false;
             for (var i = 0; i < _cursors.Length; i++)
             {
                 _cursors[i] = _tr.CreateCursor();
@@ -341,8 +348,11 @@ public class KeyValueDBDifferentialTest
             foreach (var c in _cursors) c!.Dispose();
             if (commit)
             {
+                var finish = _rnd.Next(4) == 0;
+                if (finish) _holder.Db.FinishTransactionBatchAfterCurrentTransaction();
                 _tr!.Commit();
                 _committed = _current;
+                if (_batch) _batchPending = !finish;
             }
 
             _tr!.Dispose();
@@ -870,6 +880,16 @@ public class KeyValueDBDifferentialTest
             }
         }
 
+        // Readers see the published tree; an ordinary writer publishes a pending batch.
+        void PublishBatch()
+        {
+            _holder.Db.StartWritingTransaction().AsTask().GetAwaiter().GetResult().Dispose();
+            _batchPending = false;
+        }
+
+        bool _batch;
+        bool _batchPending;
+
         void MaybeSnapshot()
         {
             if (_snapshotTr != null)
@@ -878,6 +898,7 @@ public class KeyValueDBDifferentialTest
                 return;
             }
 
+            PublishBatch();
             _snapshotTr = _holder.Db.StartReadOnlyTransaction();
             _snapshotModel = _committed.Clone();
         }
@@ -891,6 +912,7 @@ public class KeyValueDBDifferentialTest
 
         void VerifyCommitted()
         {
+            PublishBatch();
             using var tr = _holder.Db.StartReadOnlyTransaction();
             VerifyTransaction(tr, _committed);
         }
