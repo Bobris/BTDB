@@ -1,0 +1,5 @@
+name = "LsmProofs"
+defaultTargets = ["LsmProofs"]
+
+[[lean_lib]]
+name = "LsmProofs"

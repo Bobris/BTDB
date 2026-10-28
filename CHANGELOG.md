@@ -12,10 +12,13 @@
   latency does not grow. The wait ends once pending commits fill a batch. `AdaptiveWalLingerMax = TimeSpan.Zero`
   uploads at once. On Azure, 2–16 concurrent durable writers went from about 8 to 4–4.5 ms at p50 with 1.7–1.9 times
   the throughput, and one writer was unchanged (`DBBenchmark lsm-durable`, BTDB.LSM/Measurements.md section 9).
-- Lean 4 proofs of the event-log commit protocol in `BTDB.Replication/Proofs/` (`lake build`):
-  - the split chain never forks, committed history only grows, and a successful write lands exactly at its writer's
-    next offset;
-  - each Publish call commits once, in per-session call order, with exact receipts.
+- Lean 4 proofs (`lake build`):
+  - `BTDB.Replication/Proofs/`, the event-log commit protocol:
+    - the split chain never forks, committed history only grows, and a successful write lands exactly at its writer's
+      next offset;
+    - each Publish call commits once, in per-session call order, with exact receipts.
+  - `BTDB.LSM/Proofs/`, the `LsmKeyValueDB` WAL across writer takeovers: every acknowledged commit stays in every
+    replay, and every replay is a prefix of one writer's history.
 
 ### Fixed
 
@@ -24,6 +27,16 @@
   `previouslyDispatched = false` for an unknown session. An unknown session's state now always comes from committed
   history from the round's resume offset. A first submission at the owner's next offset still needs no storage read and
   keeps the combined takeover write.
+- `LsmKeyValueDB` writer takeover could lose acknowledged durable commits. Parallel WAL uploads complete out of order,
+  so a crashed writer could leave several missing chunk names, and the new writer fenced only the first. Replay then
+  stopped at the next hole, and a later takeover fenced it and discarded the new writer's commits. A takeover now
+  fences every missing name below the highest one.
+- `LsmKeyValueDB` replay could apply a writer's commits after missing ones. This happened when a predecessor's delayed
+  WAL chunk took one of the new writer's own names. Epoch markers now name the writer's first own chunk, and replay ends
+  that writer's history at the first own name holding a predecessor's chunk. Manifests record the epoch of their WAL
+  start chunk for the same check.
+  - The WAL chunk format version is now 2 and the manifest version 7. Databases written by earlier versions cannot be
+    opened.
 
 ## 35.13.0
 

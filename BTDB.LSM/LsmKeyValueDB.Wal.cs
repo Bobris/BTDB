@@ -20,7 +20,7 @@ public sealed partial class LsmKeyValueDB
     readonly Lock _walLock = new();
     readonly List<PendingRecord> _walPending = [];
     readonly SortedDictionary<long, List<TaskCompletionSource>> _durabilityWaiters = new();
-    readonly Dictionary<long, long> _generationFirstChunk = new();
+    readonly Dictionary<long, (long Chunk, long Epoch)> _generationFirstChunk = new();
     readonly CommitLingerEstimator? _walLinger;
     readonly long _walClockOrigin = Stopwatch.GetTimestamp();
     SemaphoreSlim _walSignal = new(0);
@@ -123,12 +123,12 @@ public sealed partial class LsmKeyValueDB
                 for (var i = 0; i < planned.Count; i++)
                 {
                     numbers[i] = _walNextChunk++;
-                    _generationFirstChunk.TryAdd(planned[i].Generation, numbers[i]);
+                    _generationFirstChunk.TryAdd(planned[i].Generation, (numbers[i], _epoch));
                 }
             }
 
             _walInFlight = planned.Select((chunk, i) => new EncodedChunk(numbers[i],
-                WalFormat.Encode(_epoch, chunk.Generation, false, chunk.Parts))).ToList();
+                WalFormat.Encode(_epoch, chunk.Generation, false, 0, chunk.Parts))).ToList();
             _walInFlightRecords = records.Length;
             _walInFlightTransaction = records[^1].TransactionNumber;
         }

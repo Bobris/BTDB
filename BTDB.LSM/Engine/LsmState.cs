@@ -87,7 +87,7 @@ readonly record struct LsmPendingDeletion(LsmObjectKind Kind, ulong Number, Date
 sealed class LsmManifest
 {
     const ulong Magic = 0x4D4D534C42445442; // "BTDBLSMM"
-    const int FormatVersion = 6;
+    const int FormatVersion = 7;
 
     public long Sequence { get; init; }
     public ulong NextFileNumber { get; init; }
@@ -104,6 +104,9 @@ sealed class LsmManifest
 
     /// First WAL chunk that may hold a record of a generation not yet in tables.
     public long WalStartChunk { get; init; }
+
+    /// Epoch of the writer whose chunk WalStartChunk is; replay starting there ignores lower epochs.
+    public long WalStartEpoch { get; init; }
 
     /// Level 0 tables newest run first, each run sorted by key, then every other level sorted by key.
     public (int Level, ulong FileNumber, long Length)[] Tables { get; init; } = [];
@@ -132,6 +135,7 @@ sealed class LsmManifest
         encoder.WriteVUInt64((ulong)WriterEpoch);
         encoder.WriteVUInt64((ulong)FlushedGeneration);
         encoder.WriteVUInt64((ulong)WalStartChunk);
+        encoder.WriteVUInt64((ulong)WalStartEpoch);
         encoder.WriteVUInt64((ulong)Tables.Length);
         foreach (var (level, fileNumber, length) in Tables)
         {
@@ -198,6 +202,7 @@ sealed class LsmManifest
         var writerEpoch = (long)decoder.ReadVUInt64();
         var flushedGeneration = (long)decoder.ReadVUInt64();
         var walStartChunk = (long)decoder.ReadVUInt64();
+        var walStartEpoch = (long)decoder.ReadVUInt64();
         var tables = new (int, ulong, long)[decoder.ReadVUInt32()];
         for (var i = 0; i < tables.Length; i++)
             tables[i] = (decoder.ReadVUInt32(), decoder.ReadVUInt64(), (long)decoder.ReadVUInt64());
@@ -225,7 +230,7 @@ sealed class LsmManifest
             Sequence = sequence, NextFileNumber = nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = levelCount, Tables = tables,
             ValueFiles = valueFiles, WriterEpoch = writerEpoch, FlushedGeneration = flushedGeneration,
-            WalStartChunk = walStartChunk, PendingDeletions = [.. pending], Level0RunLengths = runLengths
+            WalStartChunk = walStartChunk, WalStartEpoch = walStartEpoch, PendingDeletions = [.. pending], Level0RunLengths = runLengths
         };
     }
 }

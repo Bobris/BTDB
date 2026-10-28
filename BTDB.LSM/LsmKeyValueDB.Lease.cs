@@ -98,7 +98,7 @@ public sealed partial class LsmKeyValueDB
     /// to the database size happens here; orphans of a predecessor are searched for in the background afterwards.
     async ValueTask BecomeWriterAsync(CancellationToken cancellation)
     {
-        var nextChunk = await CatchUpAsync(true, cancellation);
+        var (nextChunk, missing) = await CatchUpAsync(true, cancellation);
         var manifest = _lastManifest;
         var replay = _replay;
         var state = _state;
@@ -117,16 +117,22 @@ public sealed partial class LsmKeyValueDB
 
         // Fence the manifest: the next manifest name now carries this writer's epoch.
         WriteManifest(state.Version, manifest.CommitUlong, manifest.Ulongs, manifest.TransactionNumber,
-            manifest.FlushedGeneration, manifest.WalStartChunk);
-        // Fence the WAL: an epoch marker at the first free name; later stale chunks have a lower epoch.
+            manifest.FlushedGeneration, manifest.WalStartChunk, manifest.WalStartEpoch);
+        // Fence the WAL: an epoch marker at the first free name and at every other name the listing missed below the
+        // next chunk, so a predecessor's request still in flight cannot fill such a hole later and replay always
+        // reaches this writer's chunks. Later stale chunks have a lower epoch; the markers name the first own chunk,
+        // so replay stops this writer's history where a stale chunk took one of its names (BTDB.LSM/Proofs).
         var firstFreeChunk = replay.NextChunk;
-        await CreateChunkAsync(firstFreeChunk, WalFormat.Encode(_epoch, state.MemtableGeneration, true, []));
+        var firstOwnChunk = Math.Max(nextChunk, firstFreeChunk + 1);
+        var marker = WalFormat.Encode(_epoch, state.MemtableGeneration, true, firstOwnChunk, []);
+        await Task.WhenAll(missing.Prepend(firstFreeChunk).Distinct()
+            .Select(number => CreateChunkAsync(number, marker).AsTask()));
         lock (_walLock)
         {
             _walPending.Clear();
             _walPendingBytes = 0;
             _walInFlight = null;
-            _walNextChunk = Math.Max(nextChunk, firstFreeChunk + 1);
+            _walNextChunk = firstOwnChunk;
             _durableTransaction = state.TransactionNumber;
             _generationFirstChunk.Clear();
             foreach (var (generation, chunk) in replay.GenerationFirstChunk) _generationFirstChunk[generation] = chunk;

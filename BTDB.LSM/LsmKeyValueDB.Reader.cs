@@ -41,16 +41,18 @@ public sealed partial class LsmKeyValueDB
 
     /// Continues the reader's replay and publishes the result; requires the refresh lock. A refresh probes the next
     /// manifest and chunk names. A takeover (authoritative) lists them instead, so it surely reaches the newest
-    /// manifest and the end of the WAL. Returns one past the highest WAL chunk name seen. After this instance stopped
-    /// being the writer, its replay does not match its state, so the state is loaded from storage once.
-    async ValueTask<long> CatchUpAsync(bool authoritative, CancellationToken cancellation)
+    /// manifest and the end of the WAL. Returns one past the highest WAL chunk name seen and, for a takeover, the names
+    /// below it that were missing from the first one not replayed on. After this instance stopped being the writer,
+    /// its replay does not match its state, so the state is loaded from storage once.
+    async ValueTask<(long NextChunk, List<long> Missing)> CatchUpAsync(bool authoritative,
+        CancellationToken cancellation)
     {
         if (_replayStale)
         {
             var loaded = await LoadAsync(_options, _cache, OpenTables(), cancellation);
             InstallLoaded(loaded);
             _replayStale = false;
-            return loaded.NextChunk;
+            return (loaded.NextChunk, loaded.MissingChunks);
         }
 
         var replay = _replay;
@@ -79,7 +81,9 @@ public sealed partial class LsmKeyValueDB
             _lastManifest = manifest;
         }
 
-        var nextChunk = authoritative ? await ReplayListedWalAsync(_options, replay, cancellation) : 0;
+        var (nextChunk, missing) = authoritative
+            ? await ReplayListedWalAsync(_options, replay, cancellation)
+            : (0L, new List<long>());
         if (!authoritative)
         {
             // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
@@ -117,7 +121,7 @@ public sealed partial class LsmKeyValueDB
         }
 
         RetireReplacedArenas(previous, published);
-        return nextChunk;
+        return (nextChunk, missing);
     }
 
     /// Refreshes until CommitUlong reaches commitUlong, pausing RefreshRetryInterval between refreshes and doubling

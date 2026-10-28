@@ -15,18 +15,22 @@ public sealed partial class LsmKeyValueDB
 {
     /// Replays WAL chunks into one memtable per generation not yet in tables (ImplementationPlan.md, sections 14
     /// and 15). Used by recovery and kept by readers, which continue it on every refresh.
-    sealed class WalReplay(LsmKeyValueDBOptions options, long flushedGeneration, long nextChunk,
+    sealed class WalReplay(LsmKeyValueDBOptions options, long flushedGeneration, long nextChunk, long epoch,
         WalCommitMetadata metadata)
     {
         readonly List<byte[]> _partial = [];
         long _partialTransaction = -1;
+
+        // The first own chunk of the MaxEpoch writer, and whether a predecessor's chunk took one of its own names.
+        long _firstOwnChunk = nextChunk;
+        bool _broken;
 
         public long FlushedGeneration { get; private set; } = flushedGeneration;
 
         /// Next WAL chunk of the contiguous history to read.
         public long NextChunk { get; set; } = nextChunk;
 
-        public long MaxEpoch { get; private set; }
+        public long MaxEpoch { get; private set; } = epoch;
         public IMemtable? Memtable { get; private set; }
         public long Generation { get; private set; } = -1;
 
@@ -34,7 +38,8 @@ public sealed partial class LsmKeyValueDB
         public List<SealedMemtable> Sealed { get; } = [];
 
         public WalCommitMetadata Metadata { get; private set; } = metadata;
-        public Dictionary<long, long> GenerationFirstChunk { get; } = new();
+        /// The first chunk of each generation with the epoch of its writer.
+        public Dictionary<long, (long Chunk, long Epoch)> GenerationFirstChunk { get; } = new();
 
         /// Starts a round of changes: the current memtable is copied, so snapshots of the previous round never change.
         public void BeginRound()
@@ -46,11 +51,25 @@ public sealed partial class LsmKeyValueDB
         {
             NextChunk = number + 1;
             // A predecessor's chunk that landed after a newer writer's epoch marker is not history. Chunks are
-            // ordered by the epochs of earlier chunks only, never by the manifest's epoch.
-            if (chunk.Epoch < MaxEpoch) return;
+            // ordered by the epochs of earlier chunks only, never by the manifest's epoch. When it took one of the
+            // newer writer's own names, that writer was fenced there, and its later chunks follow a missing one
+            // (BTDB.LSM/Proofs, Wal.lean).
+            if (chunk.Epoch < MaxEpoch)
+            {
+                if (number >= _firstOwnChunk)
+                {
+                    _broken = true;
+                    DropPartial();
+                }
+
+                return;
+            }
+
             if (chunk.Epoch > MaxEpoch)
             {
                 MaxEpoch = chunk.Epoch;
+                _firstOwnChunk = chunk.EpochMarker ? chunk.FirstOwnChunk : number;
+                _broken = false;
                 DropPartial();
             }
 
@@ -60,7 +79,8 @@ public sealed partial class LsmKeyValueDB
                 return;
             }
 
-            GenerationFirstChunk.TryAdd(chunk.Generation, number);
+            if (_broken) return;
+            GenerationFirstChunk.TryAdd(chunk.Generation, (number, chunk.Epoch));
             foreach (var part in chunk.Parts)
             {
                 if (part.First)
@@ -114,7 +134,11 @@ public sealed partial class LsmKeyValueDB
 
             if (NextChunk < manifest.WalStartChunk)
             {
+                // Earlier chunks are in tables; replay continues in the epoch of the writer of the start chunk.
                 NextChunk = manifest.WalStartChunk;
+                MaxEpoch = Math.Max(MaxEpoch, manifest.WalStartEpoch);
+                _firstOwnChunk = manifest.WalStartChunk;
+                _broken = false;
                 DropPartial();
             }
         }
@@ -153,7 +177,10 @@ public sealed partial class LsmKeyValueDB
         /// First WAL chunk name not part of the contiguous replayed prefix.
         public long FirstFreeChunk => Replay.NextChunk;
 
-        public Dictionary<long, long> GenerationFirstChunk => Replay.GenerationFirstChunk;
+        public Dictionary<long, (long Chunk, long Epoch)> GenerationFirstChunk => Replay.GenerationFirstChunk;
+
+        /// WAL chunk names below NextChunk that did not exist when the WAL was listed, from FirstFreeChunk on.
+        public required List<long> MissingChunks { get; init; }
     }
 
     static string WalKey(string prefix, long chunk) => $"{prefix}wal/{chunk:D16}";
@@ -222,16 +249,20 @@ public sealed partial class LsmKeyValueDB
     {
         var (manifest, _) = await ReadNewestManifestAsync(options, cancellation);
         var version = BuildVersion(options, cache, manifest, openTables);
-        var replay = new WalReplay(options, manifest.FlushedGeneration, manifest.WalStartChunk,
+        var replay = new WalReplay(options, manifest.FlushedGeneration, manifest.WalStartChunk, manifest.WalStartEpoch,
             new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs));
-        var nextChunk = await ReplayListedWalAsync(options, replay, cancellation);
-        return new() { Manifest = manifest, Version = version, Replay = replay, NextChunk = nextChunk };
+        var (nextChunk, missing) = await ReplayListedWalAsync(options, replay, cancellation);
+        return new()
+        {
+            Manifest = manifest, Version = version, Replay = replay, NextChunk = nextChunk, MissingChunks = missing
+        };
     }
 
     /// Lists the WAL and replays its contiguous prefix from the replay's next chunk; returns one past the highest
-    /// existing chunk name, which a new writer must not reuse.
-    static async ValueTask<long> ReplayListedWalAsync(LsmKeyValueDBOptions options, WalReplay replay,
-        CancellationToken cancellation)
+    /// existing chunk name, which a new writer must not reuse, and the names below it that did not exist from the
+    /// first one the replay did not read on, which a new writer must fence.
+    static async ValueTask<(long NextChunk, List<long> Missing)> ReplayListedWalAsync(LsmKeyValueDBOptions options,
+        WalReplay replay, CancellationToken cancellation)
     {
         var chunkNumbers = new List<long>();
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "wal/", cancellation))
@@ -255,6 +286,11 @@ public sealed partial class LsmKeyValueDB
             replay.Apply(number, WalFormat.Decode(content, WalKey(options.Prefix, number)));
         }
 
-        return Math.Max(chunkNumbers.Count == 0 ? replay.NextChunk : chunkNumbers[^1] + 1, replay.NextChunk);
+        var next = Math.Max(chunkNumbers.Count == 0 ? replay.NextChunk : chunkNumbers[^1] + 1, replay.NextChunk);
+        var listed = chunkNumbers.ToHashSet();
+        var missing = new List<long>();
+        for (var number = replay.NextChunk; number < next; number++)
+            if (!listed.Contains(number)) missing.Add(number);
+        return (next, missing);
     }
 }

@@ -401,13 +401,14 @@ its size up to 256 KiB, so the per-commit cost must be amortized over many opera
 Each WAL chunk is one immutable object `wal/{chunk}`:
 
 * **Header:** magic, format version, writer epoch, memtable generation, first commit number, and a flag saying whether
-  this chunk starts a new memtable generation.
+  this chunk starts a new memtable generation. An epoch marker also names its writer's first own chunk (section 14).
 * **Records:** commit records, framed with a length and a checksum. A record holds the transaction number, CommitUlong,
   ulong deltas, and the operations with their precomputed `existsBelow` and `coveredBelow`. Readers and recovery replay
   these without any table lookup.
 * A record larger than the chunk limit spans chunks, with continuation flags and the transaction number in every part.
   It becomes visible only once every part through its last is present. Chunks are applied in name order. A chunk with
-  an epoch lower than an earlier chunk's epoch is ignored (section 14).
+  an epoch lower than an earlier chunk's epoch is ignored, and in a name the newer writer owns it also ends that
+  writer's history (section 14).
 
 ### 8.2 Group commit and durability modes
 
@@ -511,7 +512,8 @@ This is modeled on Pebble's blob files and on BTDB's own split between key index
 * `VersionSet` applies edits. An edit can add or remove tables or value files, record "flushed generation g, WAL
   durable through chunk c", record the next file number, record CommitUlong, the ulongs and the transaction number as
   of the flush, or record the writer epoch.
-* Each edit is the object `manifest/{seq}` (create-if-absent; its sequence number is also a fence, section 14). Every
+* Each edit is the object `manifest/{seq}` (create-if-absent; its sequence number is also a fence, section 14). It
+  records the first WAL chunk recovery needs and the epoch of that chunk's writer. Every
   `ManifestCheckpointInterval` edits (default 100), the writer writes a full checkpoint. Opening reads the newest
   checkpoint and the edits after it.
 * A snapshot is a `Version` reference plus references to the memtable roots visible at its creation. It also includes
@@ -591,7 +593,9 @@ D3).
      chunks instead of probing names, so the newest manifest and the highest chunk name are surely seen. Only chunks
      the reader has not replayed yet are read. An incomplete trailing multi-chunk record is discarded. An instance that
      was the writer before reloads from storage once, because its replay lags its state.
-  3. Fence the WAL: create an "epoch" marker chunk at the first free name.
+  3. Fence the WAL: create an "epoch" marker chunk at the first free name and at every other name the listing missed
+     below the highest one. The markers name the first own chunk, one past both the highest listed name and the first
+     free name.
   4. Restore CommitUlong, the ulongs and the transaction number from the manifest plus replayed records, then grant the
      writing transaction.
 
@@ -610,12 +614,23 @@ D3).
   non-durable memtable state, rebuilds its read state from storage and becomes a reader. A later
   `StartWritingTransaction` waits for the lease again.
 * **Safety:** each writer session has a fresh epoch. It writes WAL chunks and manifest edits with create-if-absent under
-  consecutive names. After the epoch edit and epoch marker exist, every write by the predecessor at those names fails
+  consecutive names. After the epoch edit and epoch markers exist, every write by the predecessor at those names fails
   with `Rejected`, and a predecessor that sees `Rejected` stops for good. If a predecessor chunk wins the race for a
   name, its records are legitimate committed history: the new writer replays them and fences at the next name.
   Readers, recovery and catch-up ignore a chunk whose epoch is lower than the epoch of an earlier chunk. This covers
   predecessor parts of a large commit that landed after a gap. The new writer continues after the highest existing
   name.
+  * Every hole below the highest listed name gets a marker. Parallel uploads complete out of order, so a crashed
+    predecessor can leave several holes. Fencing only the first let replay stop at the next hole, and the next
+    takeover fenced that hole and discarded the new writer's acknowledged commits.
+  * A predecessor's request still in flight can take one of the new writer's own names first. That writer is fenced
+    there, but its parallel chunks after that name may land. Replay therefore ends a writer's history at the first own
+    name holding a lower epoch.
+  * A manifest records the epoch of the writer of its WAL start chunk, so replay starting there ignores lower epochs
+    too.
+  * `BTDB.LSM/Proofs/` proves in Lean that every acknowledged commit stays in every replay and that every replay is a
+    prefix of one writer's history, for any interleaving of writers and delayed chunks. Its counterexamples reproduce
+    both earlier failures, as do two `LsmWriterHandoffTest` cases.
 * Ambiguous writes are reconciled as described in section 5. The writer never re-creates a name with different content.
 
 ## 15. Readers in other processes

@@ -9,17 +9,19 @@ namespace BTDB.LSM.Engine;
 /// once its last part is present.
 readonly record struct WalPart(bool First, bool Last, long TransactionNumber, byte[] Payload);
 
-/// Decoded WAL chunk (ImplementationPlan.md, section 8.1).
-sealed record WalChunk(long Epoch, long Generation, bool EpochMarker, List<WalPart> Parts);
+/// Decoded WAL chunk (ImplementationPlan.md, section 8.1). An epoch marker names its writer's first own chunk.
+sealed record WalChunk(long Epoch, long Generation, bool EpochMarker, long FirstOwnChunk, List<WalPart> Parts);
 
-/// WAL chunk format: magic, format version, writer epoch, memtable generation, flags, the record parts and a
-/// checksum of everything before it. Chunks are immutable objects wal/{number}.
+/// WAL chunk format: magic, format version, writer epoch, memtable generation, flags, the first own chunk of the
+/// writer (meaningful in epoch markers), the record parts and a checksum of everything before it. Chunks are
+/// immutable objects wal/{number}.
 static class WalFormat
 {
     const ulong Magic = 0x574D534C42445442; // "BTDBLSMW"
-    const int FormatVersion = 1;
+    const int FormatVersion = 2;
 
-    public static byte[] Encode(long epoch, long generation, bool epochMarker, IReadOnlyList<WalPart> parts)
+    public static byte[] Encode(long epoch, long generation, bool epochMarker, long firstOwnChunk,
+        IReadOnlyList<WalPart> parts)
     {
         var encoder = new LsmEncoder(64 * 1024);
         encoder.WriteUInt64(Magic);
@@ -27,6 +29,7 @@ static class WalFormat
         encoder.WriteVUInt64((ulong)epoch);
         encoder.WriteVUInt64((ulong)generation);
         encoder.WriteByte((byte)(epochMarker ? 1 : 0));
+        encoder.WriteVUInt64((ulong)firstOwnChunk);
         encoder.WriteVUInt64((ulong)parts.Count);
         foreach (var part in parts)
         {
@@ -48,6 +51,7 @@ static class WalFormat
         var epoch = (long)decoder.ReadVUInt64();
         var generation = (long)decoder.ReadVUInt64();
         var epochMarker = decoder.ReadByte() != 0;
+        var firstOwnChunk = (long)decoder.ReadVUInt64();
         var parts = new List<WalPart>();
         for (var count = decoder.ReadVUInt64(); count > 0; count--)
         {
@@ -55,7 +59,7 @@ static class WalFormat
             parts.Add(new((flags & 1) != 0, (flags & 2) != 0, (long)decoder.ReadVUInt64(), decoder.ReadByteArray()));
         }
 
-        return new(epoch, generation, epochMarker, parts);
+        return new(epoch, generation, epochMarker, firstOwnChunk, parts);
     }
 }
 

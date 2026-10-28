@@ -46,6 +46,27 @@ sealed class AccessCountingStorage(InMemoryLsmStorage inner) : ILsmStorage
     public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
 }
 
+/// Runs a hook before each object creation, e.g. to let a predecessor's delayed request land first.
+sealed class CreateHookingStorage(InMemoryLsmStorage inner) : ILsmStorage
+{
+    public Func<string, ValueTask>? BeforeCreate { get; set; }
+
+    public async ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
+    {
+        if (BeforeCreate is { } hook) await hook(key);
+        return await inner.CreateAsync(key, content, cancellation);
+    }
+
+    public ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation) => inner.TryReadAsync(key, cancellation);
+    public ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation) => inner.ReadRangeAsync(key, offset, destination, cancellation);
+    public void ReadRange(string key, long offset, Span<byte> destination) => inner.ReadRange(key, offset, destination);
+    public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
+    public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
+    public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
+    public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
+    public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
+}
+
 /// Handing the writer role between instances (ImplementationPlan.md, section 14).
 public class LsmWriterHandoffTest
 {
@@ -161,5 +182,89 @@ public class LsmWriterHandoffTest
         reader.CreateKvi(default);
         Assert.NotEmpty(storage.Keys("tables/"));
         Assert.Equal((210, 21UL), Read(reader));
+    }
+
+    static string WalKey(long chunk) => $"wal/{chunk:D16}";
+
+    static bool Exists(IKeyValueDB db, int key)
+    {
+        using var tr = db.StartReadOnlyTransaction();
+        using var cursor = tr.CreateCursor();
+        return cursor.FindExactKey(Key(key));
+    }
+
+    /// Writes chunk 0 (the first writer's epoch marker) and one chunk per commit; commit i writes keys 10i..10i+9.
+    static async Task WriteChunks(InMemoryLsmStorage storage, int commits)
+    {
+        using var first = await LsmKeyValueDB.OpenAsync(Options(storage) with { AcquireWriterLeaseOnOpen = true });
+        for (var i = 0; i < commits; i++)
+        {
+            await Write(first, i * 10, 10, (ulong)i + 1);
+            await first.FlushAsync();
+        }
+
+        Assert.Equal(Enumerable.Range(0, commits + 1).Select(n => WalKey(n)), storage.Keys("wal/"));
+    }
+
+    [Fact]
+    public async Task TakeoverFencesEveryHoleSoAcknowledgedCommitsSurviveTheNextOpen()
+    {
+        var storage = new InMemoryLsmStorage();
+        await WriteChunks(storage, 6);
+        // The first writer crashed during its last parallel round: chunks 3 and 5 never landed.
+        await storage.DeleteAsync(WalKey(3), default);
+        await storage.DeleteAsync(WalKey(5), default);
+
+        using (var second = await LsmKeyValueDB.OpenAsync(Options(storage)))
+        {
+            await Write(second, 1000, 10, 100);
+            await second.FlushAsync();
+        }
+
+        // Before the fix the second writer fenced only name 3; replay stopped at the hole at 5 and lost its
+        // acknowledged commit.
+        using var third = await LsmKeyValueDB.OpenAsync(Options(storage));
+        Assert.Equal((30, 100UL), Read(third));
+        Assert.True(Exists(third, 1000));
+    }
+
+    [Fact]
+    public async Task PredecessorChunkInANewWritersNameEndsThatWritersHistory()
+    {
+        var storage = new InMemoryLsmStorage();
+        await WriteChunks(storage, 6);
+        // The first writer's last round, chunks 4 to 6, is still in flight; chunk 6 lands late.
+        var stale = storage.Peek(WalKey(6))!;
+        foreach (var chunk in new[] { 4, 5, 6 }) await storage.DeleteAsync(WalKey(chunk), default);
+
+        var hooked = new CreateHookingStorage(storage);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        hooked.BeforeCreate = async key =>
+        {
+            if (key == WalKey(5)) await gate.Task;
+            if (key == WalKey(6)) await storage.CreateAsync(key, stale, default);
+        };
+        using (var second = await LsmKeyValueDB.OpenAsync(Options(hooked)))
+        {
+            // The marker takes name 4, and the first own chunk 5 waits until twenty small commits are queued, so they
+            // share the next upload: chunks 6, 7 and so on. The stale chunk takes name 6 and fences this writer.
+            await Write(second, 1000, 1, 100);
+            for (var i = 0; i < 20; i++) await Write(second, 2000 + i * 3, 3, 101 + (ulong)i);
+            gate.SetResult();
+            var deadline = Stopwatch.StartNew();
+            while (second.HoldsWriterLease && deadline.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10);
+            Assert.False(second.HoldsWriterLease);
+        }
+
+        Assert.Contains(WalKey(7), storage.Keys("wal/"));
+        // Replay keeps the commits in chunk 5 and nothing of the second writer after the stale chunk, so the visible
+        // commits are a prefix of the second writer's commits. Before the fix it also applied chunk 7, whose commits
+        // follow the missing ones of chunk 6. A few small commits may share chunk 5 with the first one.
+        using var third = await LsmKeyValueDB.OpenAsync(Options(storage));
+        var visible = Enumerable.Range(0, 20).Select(i => Exists(third, 2000 + i * 3)).ToArray();
+        var prefix = visible.TakeWhile(v => v).Count();
+        Assert.DoesNotContain(true, visible.Skip(prefix));
+        Assert.True(prefix < 20);
+        Assert.Equal((31 + prefix * 3, 100UL + (ulong)prefix), Read(third));
     }
 }

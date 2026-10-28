@@ -280,24 +280,27 @@ public sealed partial class LsmKeyValueDB
         {
             // Recovery must start at the first chunk of any later generation; only when no later generation has a
             // chunk yet is the next chunk number the start. Generations up to the flushed one are no longer needed.
-            long walStart;
+            // The start records the epoch of its writer, because replay starting there must still ignore chunks of
+            // earlier writers.
+            (long Chunk, long Epoch) walStart;
             lock (_walLock)
             {
-                walStart = _walNextChunk;
+                walStart = (_walNextChunk, _epoch);
                 foreach (var (generation, first) in _generationFirstChunk)
-                    if (generation > flushed.Generation)
-                        walStart = Math.Min(walStart, first);
+                    if (generation > flushed.Generation && first.Chunk < walStart.Chunk)
+                        walStart = first;
                 foreach (var generation in _generationFirstChunk.Keys.Where(g => g <= flushed.Generation).ToArray())
                     _generationFirstChunk.Remove(generation);
             }
+            if (previousWalStart >= walStart.Chunk) walStart = (previousWalStart, _lastManifest.WalStartEpoch);
             WriteManifest(version, flushed.CommitUlong, flushed.Ulongs, flushed.TransactionNumber,
-                Math.Max(_lastManifest.FlushedGeneration, flushed.Generation),
-                Math.Max(previousWalStart, walStart), dropped, now);
+                Math.Max(_lastManifest.FlushedGeneration, flushed.Generation), walStart.Chunk, walStart.Epoch,
+                dropped, now);
         }
         else
         {
             WriteManifest(version, _lastManifest.CommitUlong, _lastManifest.Ulongs, _lastManifest.TransactionNumber,
-                _lastManifest.FlushedGeneration, previousWalStart, dropped, now);
+                _lastManifest.FlushedGeneration, previousWalStart, _lastManifest.WalStartEpoch, dropped, now);
         }
 
         long sequence;
@@ -364,7 +367,8 @@ public sealed partial class LsmKeyValueDB
     /// Writes the next manifest. It lists every pending deletion: those already waiting, the objects this edit drops
     /// and the manifest it replaces; the caller adds the dropped objects to the waiting ones once it published them.
     void WriteManifest(LsmVersion version, ulong commitUlong, ulong[] ulongs, long transactionNumber,
-        long flushedGeneration, long walStartChunk, IReadOnlyCollection<LsmPendingDeletion>? dropped = null,
+        long flushedGeneration, long walStartChunk, long walStartEpoch,
+        IReadOnlyCollection<LsmPendingDeletion>? dropped = null,
         DateTimeOffset? now = null)
     {
         var previous = _lastManifest;
@@ -393,7 +397,7 @@ public sealed partial class LsmKeyValueDB
         {
             Sequence = ++_manifestSequence, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = version.LevelCount, WriterEpoch = _epoch,
-            FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk,
+            FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk, WalStartEpoch = walStartEpoch,
             Tables = version.AllTables().Select(t => (t.Level, t.Table.FileNumber, t.Table.Length)).ToArray(),
             Level0RunLengths = version.Level0Runs.Select(r => r.Length).ToArray(),
             ValueFiles = version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray(),
