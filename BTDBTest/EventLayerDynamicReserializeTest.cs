@@ -77,4 +77,32 @@ public class EventLayerDynamicReserializeTest
             Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));
         }
     }
+
+    [BTDB.Generate]
+    public class RecursiveHiddenNode
+    {
+        public int Value { get; set; }
+        public RecursiveHiddenNode? Next { get; set; }
+    }
+
+    [BTDB.Generate]
+    public class HoldsRecursiveHiddenNodes
+    {
+        public System.Collections.Generic.List<RecursiveHiddenNode>? Nodes { get; set; }
+    }
+
+    /// Re-serializing dynamic objects is not supported, but before the fix a type holding itself below the root made
+    /// merging its descriptor recurse until the stack overflowed and ended the process; now it fails with an exception.
+    [Fact]
+    public void DynamicRecursiveObjectsFailWithExceptionInsteadOfCrash()
+    {
+        var mapper = new BTDB.EventStoreLayer.FullNameTypeMapper();
+        var hide = new RenamingTypeMapper().Hide(mapper.ToName(typeof(RecursiveHiddenNode)))
+            .Hide(mapper.ToName(typeof(HoldsRecursiveHiddenNodes)));
+        var loaded = EventLayerRoundTripHelper.RoundTrip2(new HoldsRecursiveHiddenNodes
+        {
+            Nodes = [new() { Value = 1, Next = new() { Value = 2 } }]
+        }, readMapper: hide);
+        Assert.NotNull(Record.Exception(() => EventLayerRoundTripHelper.RoundTrip2(loaded, writeMapper: hide)));
+    }
 }

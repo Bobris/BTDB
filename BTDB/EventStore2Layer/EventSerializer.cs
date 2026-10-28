@@ -615,6 +615,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     ITypeDescriptor MergeDescriptor(ITypeDescriptor origDesc)
     {
         var visited = new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        var merged = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         var hasCycle = false;
 
         ITypeDescriptor Old2New(ITypeDescriptor old)
@@ -625,7 +626,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 return new PlaceHolderDescriptor(old);
             }
 
-            visited.Add(origDesc);
+            // Every descriptor met, not only the first: a type holding itself below the first one, like a tree node in
+            // an event, otherwise mapped itself without end.
+            visited.Add(old);
             if (_typeOrDescriptor2Info.TryGetValue(old, out var info))
             {
                 return info.Descriptor;
@@ -640,7 +643,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 }
             }
 
-            return old.CloneAndMapNestedTypes(this, Old2New);
+            var result = old.CloneAndMapNestedTypes(this, Old2New);
+            merged[old] = result;
+            return result;
         }
 
         var res = Old2New(origDesc);
@@ -653,7 +658,8 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             {
                 if (old is PlaceHolderDescriptor descriptor)
                 {
-                    return descriptor.TypeDesc;
+                    // The placeholder stands for the descriptor merged from the one it was met for.
+                    return merged.TryGetValue(descriptor.TypeDesc, out var mergedDesc) ? mergedDesc : descriptor.TypeDesc;
                 }
 
                 if (visited.Contains(old)) return old;

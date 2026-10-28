@@ -87,6 +87,11 @@
 
 ### Fixed
 
+- Event store: re-serializing an object loaded without its type, whose type held itself below the root, overflowed
+  the stack and ended the process. Merging its descriptor recorded only the root as visited, so a cycle below it
+  mapped itself without end. Every descriptor is recorded now, and a placeholder for a cycle resolves to the merged
+  descriptor rather than the one read. Re-serializing such dynamic objects stays unsupported and fails with an
+  exception.
 - Bon serialization: a member holding a class of another name was skipped twice, as reading the class had already
   consumed it, so the deserializer lost the member after it and read the rest out of step. A class derived from the
   member's type, which members of a class's own type store as they are written with the runtime type, now loads as
