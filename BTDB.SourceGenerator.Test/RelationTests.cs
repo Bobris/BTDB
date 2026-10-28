@@ -30,6 +30,39 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationMethodsWithKeywordNamedTypes()
+    {
+        // Before the fix the parameter types of the implemented methods were written without the verbatim prefix of a
+        // type named with a keyword, which did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public enum @enum
+            {
+                @class,
+                @struct
+            }
+
+            public class Row
+            {
+                [PrimaryKey(1)] public @enum Kind { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+            }
+
+            public interface IRowTable : IRelation<Row>
+            {
+                Row FindById(@enum kind, ulong id);
+                IEnumerable<Row> ListById(@enum kind, AdvancedEnumeratorParam<ulong> id);
+                int RemoveById(@enum kind);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationMethodsWithKeywordNamedParameters()
     {
         // Before the fix parameters named with keywords were written without their verbatim prefix, which did not

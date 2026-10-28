@@ -79,9 +79,9 @@
 - Source generator: a type named `Unsafe`, `RuntimeHelpers`, `UnsafeAccessorAttribute`, `UnsafeAccessorKind`,
   `InvalidOperationException` or a generic `Func` in the namespace of a generated type broke the generated code, which
   lives in that namespace and named those `System` types without qualification. It now names them with `global::`.
-- Source generator: relation interface methods whose parameters are named with C# keywords, such as
-  `FindById(ulong @event)` or `ListById(ulong id, AdvancedEnumeratorParam<long> @params)`, generated code that used
-  the names without their `@` and did not compile.
+- Source generator: relation interface methods whose parameters or parameter types are named with C# keywords, such
+  as `FindById(ulong @event)`, `ListById(ulong id, AdvancedEnumeratorParam<long> @params)` or `FindById(@enum kind)`,
+  generated code that used the names without their `@` and did not compile.
 - Source generator: a `[Dependency]` property or field named with a C# keyword, such as `@base` or `@event`, was
   assigned without its `@`, so the generated code did not compile. A class in a namespace written with `@`, such as
   `@event`, also got that `@` in `ClassMetadata.Namespace` and so in its default persisted name, which the runtime

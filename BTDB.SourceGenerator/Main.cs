@@ -1505,7 +1505,8 @@ public class SourceGenerator : IIncrementalGenerator
         SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         SymbolDisplayGenericsOptions.IncludeTypeParameters,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes |
-                              SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+                              SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier |
+                              SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
 
     static string? IfVoidNull(ITypeSymbol methodReturnType)
     {
