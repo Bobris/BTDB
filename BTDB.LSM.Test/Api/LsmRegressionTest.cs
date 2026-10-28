@@ -176,6 +176,29 @@ public class LsmRegressionTest
         }
     }
 
+    /// FastIterate from a cursor whose erased key was the last one has nothing to visit. Before the fix it threw
+    /// InvalidOperationException, while BTreeKeyValueDB returns.
+    [Fact]
+    public async Task FastIterateAfterErasingTheLastKeyVisitsNothing()
+    {
+        using var db = await LsmKeyValueDB.OpenAsync(new()
+            { Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true });
+        using var tr = await db.StartWritingTransaction();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([1], [1]);
+        cursor.CreateOrUpdateKeyValue([2], [2]);
+        cursor.EraseCurrent();
+        var visited = 0;
+        Span<byte> buffer = default;
+        cursor.FastIterate(ref buffer, (_, _) =>
+        {
+            visited++;
+            return false;
+        });
+        Assert.Equal(0, visited);
+        Assert.False(cursor.IsValid());
+    }
+
     static async Task<string> Probe(IKeyValueDB db, string rename, string probe)
     {
         using (db)

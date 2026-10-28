@@ -429,7 +429,18 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         try
         {
             if (_key == null && !FindFirstKey([])) return;
-            EnsureCurrent();
+            // A fuzzy cursor continues from the next key; past the last one there is nothing to iterate.
+            if (IsRemovedNow())
+            {
+                if (!Tr.View.SeekGE(_key!, _before, out var next, out var value))
+                {
+                    Fail();
+                    return;
+                }
+
+                Set(next, value, -1);
+            }
+
             var index = GetKeyIndex();
             while (true)
             {

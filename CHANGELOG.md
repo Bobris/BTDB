@@ -48,6 +48,9 @@
 
 ### Fixed
 
+- `LsmKeyValueDB`: `FastIterate` from a cursor whose erased key was the last key threw `InvalidOperationException`;
+  like `BTreeKeyValueDB`, it now visits nothing. `LsmFastIterateOracleTest` compares `FastIterate` and `KeyHasPrefix`
+  with `BTreeKeyValueDB` from current and fuzzy cursors.
 - Relation queries: `Last` and `LastOrDefault` after `Select`, over an ordered or paged query, returned the
   projection of the last row scanned instead of the last row of the window, for example of a row the filter rejected
   or the row after `Take`. The projection is now computed from the last row of the window. Found by running the
