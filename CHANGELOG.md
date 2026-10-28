@@ -34,7 +34,8 @@
     free, so an ordinal equality can be part of a key prefix.
   - `BTDB/Proofs/`, the read-only key value database: comparing a stored key, kept as a node prefix and a suffix and
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
-    finds the boundary of the keys below the target, also through branch nodes.
+    finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
+    child holding it.
 
 ### Fixed
 

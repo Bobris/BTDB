@@ -15,6 +15,7 @@ A model of the node search in `ReadOnlyKeyValueDBCursor.FindBoundary`: `l = 0, r
 * `descend`, `child_before`, `child_after`: in a branch node, whose separators are the first keys of all children but
   the first, the search picks the child holding the boundary, and the boundary of the node is the keys of the
   children before it plus the boundary inside it.
+* `seek_index`: `SeekIndex` picks the child holding a key index from the children's cumulative counts.
 -/
 
 namespace Btdb.Boundary
@@ -188,5 +189,44 @@ theorem descend (before : List Nat → Bool) :
     congr 1
     exact descend before cs l c hc (fun i e hi he => h1 (i + 1) e (by omega) (by simpa using he))
       (fun i e hi he => h2 (i + 1) e (by omega) (by simpa using he))
+
+/-! ## Finding a key by its index -/
+
+/-- The number of keys in the children before child `k`, `CountBefore(k)`; `CountUpTo(m)` is `before (m + 1)`. -/
+def countBefore (count : Nat → Nat) : Nat → Nat
+  | 0 => 0
+  | k + 1 => countBefore count k + count k
+
+theorem countBefore_mono (count : Nat → Nat) : ∀ i j, i ≤ j → countBefore count i ≤ countBefore count j := by
+  intro i j h
+  induction j with
+  | zero => rw [Nat.le_zero.1 h]; exact Nat.le_refl _
+  | succ j ih =>
+    rcases Nat.lt_or_eq_of_le h with h' | rfl
+    · have := ih (by omega); simp only [countBefore]; omega
+    · exact Nat.le_refl _
+
+/-- `SeekIndex` searches the children `0 … n - 2` for the first whose `CountUpTo` exceeds the remaining index, and takes
+the last child otherwise; the index then lies in that child, at `remaining - CountBefore(l)`. -/
+theorem seek_index (count : Nat → Nat) (n remaining : Nat) (hn : 1 ≤ n)
+    (htotal : remaining < countBefore count n) :
+    let l := search (fun m => countBefore count (m + 1) ≤ remaining) 0 (n - 1)
+    l < n ∧ countBefore count l ≤ remaining ∧ remaining < countBefore count (l + 1) := by
+  intro l
+  have hm : Monotone (fun m => countBefore count (m + 1) ≤ remaining) := by
+    intro i j hij hj
+    simp only [decide_eq_true_eq] at hj ⊢
+    exact Nat.le_trans (countBefore_mono count _ _ (by omega)) hj
+  obtain ⟨_, h2, h3, h4⟩ := search_correct _ hm 0 (n - 1) (Nat.zero_le _)
+  refine ⟨by omega, ?_, ?_⟩
+  · cases hl : l with
+    | zero => simp [countBefore]
+    | succ k =>
+      have := h3 k (Nat.zero_le _) (by omega)
+      simpa using this
+  · by_cases hlast : l < n - 1
+    · have := h4 l (Nat.le_refl _) hlast
+      simpa using this
+    · rw [show l + 1 = n by omega]; exact htotal
 
 end Btdb.Boundary

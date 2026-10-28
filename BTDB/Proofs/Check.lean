@@ -42,3 +42,4 @@ open Btdb
 #print axioms Boundary.child_before
 #print axioms Boundary.child_after
 #print axioms Boundary.cut_key_mono
+#print axioms Boundary.seek_index

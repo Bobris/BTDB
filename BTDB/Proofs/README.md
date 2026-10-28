@@ -72,4 +72,5 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ReadOnlyCompare.compare_correct` | `Compare(prefix, suffix, target, maxLength)` equals comparing the first `maxLength` bytes of `prefix ++ suffix` with the target, in every branch of its shortcut. |
 | `Boundary.search_correct`, `Boundary.before_lt_mono`, `Boundary.before_cut_mono` | The node search returns the number of keys below the target, or of keys whose cut to the target's length is not above it, for keys in increasing order. |
 | `Boundary.descend`, `Boundary.child_before`, `Boundary.child_after` | In a branch node the search picks the child holding the boundary, and the boundary of the node is the keys of the children before it, `CountBefore`, plus the boundary inside it. |
+| `Boundary.seek_index` | `SeekIndex` picks the child holding a key index from the children's cumulative counts, and the index lies in it at the remaining offset. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |
