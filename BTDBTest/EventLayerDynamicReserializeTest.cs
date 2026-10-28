@@ -46,7 +46,8 @@ public class EventLayerDynamicReserializeTest
 
     /// Dynamically loaded collections know their descriptors, so they can be stored again
     /// (their descriptors are merged into serializer's descriptors).
-    /// Re-serialization of DynamicEnum, DynamicObject and nested dynamic lists is not supported yet.
+    /// Re-serialization of DynamicEnum and DynamicObject is not supported yet; nested dynamic lists are since the
+    /// 2026-10-29 fix, which registers the descriptors nested in merged ones.
     [Theory]
     [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
     [InlineData(EventLayer.Mapping, EventLayer.Store1)]
@@ -71,7 +72,7 @@ public class EventLayerDynamicReserializeTest
             EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide));
         foreach (var (name, value) in fields)
         {
-            if (name is not ("Strings" or "Map")) continue; // see limitation above
+            if (name is not ("Strings" or "Map" or "Nested")) continue; // see limitation above
             var expected = typeof(CollectionsOfSimpleValues).GetProperty(name)!.GetValue(original);
             var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, value);
             Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));
@@ -125,5 +126,42 @@ public class EventLayerDynamicReserializeTest
         var blobs = EventLayerScenarios.Fields(EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide))["Blobs"];
         var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, blobs);
         Assert.Equal(ObjectGraphDumper.Dump(original.Blobs), ObjectGraphDumper.Dump(result));
+    }
+
+    [BTDB.Generate]
+    public class HoldsNestedCollections
+    {
+        public System.Collections.Generic.List<int?>? NullableInts { get; set; }
+        public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Nested { get; set; }
+        public System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>? MapOfLists { get; set; }
+        public System.Collections.Generic.List<System.Collections.Generic.Dictionary<int, string>>? ListOfMaps { get; set; }
+        public System.Collections.Generic.List<int?[]>? Deep { get; set; }
+    }
+
+    /// Before the fix storing again dynamically loaded collections of nullables or of collections failed: the store did
+    /// not register the descriptors nested in merged ones, list and dictionary descriptors could not save as object, and
+    /// the nested collections could not load in an object member.
+    [Theory]
+    [InlineData(EventLayer.Store2, EventLayer.Store2)]
+    [InlineData(EventLayer.Store2, EventLayer.Store1)]
+    [InlineData(EventLayer.Store1, EventLayer.Store2)]
+    [InlineData(EventLayer.Mapping, EventLayer.Store2)]
+    [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
+    public void DynamicNestedCollectionsCanBeSerializedAgain(EventLayer readLayer, EventLayer writeLayer)
+    {
+        var original = new HoldsNestedCollections
+        {
+            NullableInts = [1, null], Nested = [[1, 2], []], MapOfLists = new() { ["x"] = [3] },
+            ListOfMaps = [new() { [1] = "a" }], Deep = [[1, null]]
+        };
+        var hide = new RenamingTypeMapper()
+            .Hide(new BTDB.EventStoreLayer.FullNameTypeMapper().ToName(typeof(HoldsNestedCollections)));
+        foreach (var (name, value) in EventLayerScenarios.Fields(
+                     EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide)))
+        {
+            var expected = typeof(HoldsNestedCollections).GetProperty(name)!.GetValue(original);
+            var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, value);
+            Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));
+        }
     }
 }

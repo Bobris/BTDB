@@ -132,6 +132,25 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         internal ref MemReader Reader;
     }
 
+    internal static CollectionMetadata? FindMetadata(Type targetType)
+    {
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType);
+        if (collectionMetadata == null && (targetType.IsArray || targetType.IsGenericType))
+        {
+            var itemType = targetType.IsArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+            // The generator registers the collection types members are declared with; the read-only ones create a List
+            // or HashSet too, so a member declared only as IReadOnlyList<T> still loads as the ICollection<T> preferred
+            // for it.
+            foreach (var definition in CollectionDefinitionsToTry)
+            {
+                collectionMetadata = ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(itemType));
+                if (collectionMetadata != null) break;
+            }
+        }
+
+        return collectionMetadata;
+    }
+
     static readonly Type[] CollectionDefinitionsToTry =
     [
         typeof(IEnumerable<>), typeof(IList<>), typeof(List<>), typeof(ISet<>), typeof(HashSet<>),
@@ -195,20 +214,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             };
         }
 
-        var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType!);
-        if (collectionMetadata == null)
-        {
-            var itemType = targetType.IsArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
-            // The generator registers the collection types members are declared with; the read-only ones create a List
-            // or HashSet too, so a member declared only as IReadOnlyList<T> still loads as the ICollection<T> preferred
-            // for it.
-            foreach (var definition in CollectionDefinitionsToTry)
-            {
-                collectionMetadata = ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(itemType));
-                if (collectionMetadata != null) break;
-            }
-        }
-
+        var collectionMetadata = FindMetadata(targetType);
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + targetType.ToSimpleName());
 
@@ -265,9 +271,15 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
+    // A list saved as object, as the items of a list loaded without its type are, is a list of objects, like the
+    // ListWithDescriptor<object> it loaded as.
+    static Type ItemTypeToSave(Type targetType) =>
+        targetType == typeof(object) ? typeof(object)
+        : targetType.IsSZArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+
     public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
-        var itemType = targetType.IsSZArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+        var itemType = ItemTypeToSave(targetType);
         var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
         var listType = typeof(List<>).MakeGenericType(itemType);
         var arrayType = itemType.MakeArrayType();
@@ -397,7 +409,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         bool forbidSerializationOfLazyDBObjects)
     {
         if (_itemDescriptor!.Sealed) return null;
-        var itemType = targetType.IsSZArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+        var itemType = ItemTypeToSave(targetType);
         var nestedNewDescriptor =
             _itemDescriptor!.GenerateNewDescriptorEx(itemType, typeConverterFactory,
                 forbidSerializationOfLazyDBObjects);

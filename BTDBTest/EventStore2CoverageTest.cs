@@ -474,4 +474,25 @@ public class EventStore2CoverageTest
             new WithDictionaryInObject { Any = new Dictionary<int, double> { [1] = 1.5 } })!;
         Assert.Equal(1.5, Assert.IsAssignableFrom<IDictionary<int, double>>(read.Any)[1]);
     }
+
+    [Generate]
+    public class WithNestedListInObject
+    {
+        public List<List<int>>? Typed { get; set; }
+        public object? Any { get; set; }
+    }
+
+    // Before the fix a nested list in an object member failed to load: its preferred ICollection<ICollection<int>> has
+    // no collection metadata, as no member is declared so. It now loads as the lists of objects it holds.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void NestedListInObjectMemberLoads(EventLayer layer)
+    {
+        var read = (WithNestedListInObject)RoundTrip(layer,
+            new WithNestedListInObject { Any = new List<List<int>> { new() { 1, 2 } } })!;
+        var outer = Assert.IsAssignableFrom<System.Collections.IList>(read.Any);
+        Assert.Equal([1, 2], Assert.IsAssignableFrom<System.Collections.IEnumerable>(outer[0]).Cast<object>().Select(Convert.ToInt32));
+    }
 }

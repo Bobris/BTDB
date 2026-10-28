@@ -316,7 +316,7 @@ public class TypeSerializers : ITypeSerializers
         Type? loadAsType = null;
         try
         {
-            loadAsType = LoadAsType(descriptor);
+            loadAsType = ObjectLoadType.For(descriptor, LoadAsType(descriptor));
         }
         catch (EventSkippedException)
         {

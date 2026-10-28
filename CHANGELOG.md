@@ -89,6 +89,13 @@
 
 ### Fixed
 
+- Event store: a nested collection in an `object` member, like a `List<List<int>>`, failed to load with "Cannot find
+  collection metadata", as no member declares its preferred `ICollection<ICollection<int>>`. Such an `object` member
+  now loads it as the collections of objects it holds, as it does a collection of a type the reader does not know.
+- Event store: storing again a collection loaded without its type that holds nullables or other collections, like
+  `List<int?>` or `List<List<int>>`, failed. The serializer did not register the descriptors nested in a merged one,
+  and list and dictionary descriptors could not save a collection as `object`, the type of the items of a collection
+  loaded without its type. Both are fixed, so such collections, documented as not supported, now round-trip.
 - Event store: a dictionary held by an `object` member failed to load with "Cannot find collection metadata for
   IDictionary", the type preferred for it, as only that exact type was looked up. The dictionary types the generator
   registers for declared members, which all create a `Dictionary`, are now tried too, as lists already did.

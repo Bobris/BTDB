@@ -586,6 +586,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 }
 
                 _typeOrDescriptor2InfoNew[origDesc] = info;
+                RegisterNestedDescriptors(newDesc);
             }
         }
         else
@@ -610,6 +611,19 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         gatherer ??= BuildNestedObjGatherer(info.Descriptor!, type);
 
         gatherer(obj, this);
+    }
+
+    // A descriptor created for a type registers those nested in it; a merged one, of an object loaded without its type,
+    // must too, or storing it fails on a nested one it refers to, like the items of a list of nullables or of lists.
+    void RegisterNestedDescriptors(ITypeDescriptor descriptor)
+    {
+        descriptor.MapNestedTypes(nested =>
+        {
+            if (_typeOrDescriptor2Info.ContainsKey(nested) || _typeOrDescriptor2InfoNew.ContainsKey(nested)) return nested;
+            _typeOrDescriptor2InfoNew[nested] = new() { Id = 0, Descriptor = nested };
+            RegisterNestedDescriptors(nested);
+            return nested;
+        });
     }
 
     ITypeDescriptor MergeDescriptor(ITypeDescriptor origDesc)

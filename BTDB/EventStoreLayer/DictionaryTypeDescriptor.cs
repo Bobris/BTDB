@@ -99,6 +99,24 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                _valueDescriptor!.Equals(o._valueDescriptor!, equalities);
     }
 
+    internal static CollectionMetadata? FindMetadata(Type targetType)
+    {
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType);
+        if (collectionMetadata == null && targetType.IsGenericType && targetType.GenericTypeArguments.Length == 2)
+        {
+            // The generator registers the dictionary types members are declared with, which all create a Dictionary,
+            // so a dictionary held by an object member still loads as the IDictionary preferred for it.
+            foreach (var definition in DictionaryDefinitionsToTry)
+            {
+                collectionMetadata =
+                    ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(targetType.GenericTypeArguments));
+                if (collectionMetadata != null) break;
+            }
+        }
+
+        return collectionMetadata;
+    }
+
     static readonly Type[] DictionaryDefinitionsToTry =
         [typeof(Dictionary<,>), typeof(IDictionary<,>), typeof(IReadOnlyDictionary<,>)];
 
@@ -179,19 +197,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             };
         }
 
-        var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType);
-        if (collectionMetadata == null && targetType.IsGenericType && targetType.GenericTypeArguments.Length == 2)
-        {
-            // The generator registers the dictionary types members are declared with, which all create a Dictionary,
-            // so a dictionary held by an object member still loads as the IDictionary preferred for it.
-            foreach (var definition in DictionaryDefinitionsToTry)
-            {
-                collectionMetadata =
-                    ReflectionMetadata.FindCollectionByType(definition.MakeGenericType(targetType.GenericTypeArguments));
-                if (collectionMetadata != null) break;
-            }
-        }
-
+        var collectionMetadata = FindMetadata(targetType);
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
         var keyLoad = _keyDescriptor!.GenerateLoadEx(collectionMetadata.ElementKeyType, typeConverterFactory);
@@ -265,9 +271,11 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
-        var keyType = targetType.GenericTypeArguments[0];
-        var valueType = targetType.GenericTypeArguments[1];
-        var dictType = typeof(Dictionary<,>).MakeGenericType(targetType.GenericTypeArguments);
+        // A dictionary saved as object, like a value of a dictionary loaded without its type, holds objects.
+        var kvTypes = targetType == typeof(object) ? [typeof(object), typeof(object)] : targetType.GenericTypeArguments;
+        var keyType = kvTypes[0];
+        var valueType = kvTypes[1];
+        var dictType = typeof(Dictionary<,>).MakeGenericType(kvTypes);
         var saveKey = _keyDescriptor!.GenerateSaveEx(keyType, typeConverterFactory);
         var saveValue = _valueDescriptor!.GenerateSaveEx(valueType, typeConverterFactory);
         var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
@@ -336,9 +344,11 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         bool forbidSerializationOfLazyDBObjects)
     {
         if (_keyDescriptor!.Sealed && _valueDescriptor!.Sealed) return null;
-        var keyType = targetType.GenericTypeArguments[0];
-        var valueType = targetType.GenericTypeArguments[1];
-        var dictType = typeof(Dictionary<,>).MakeGenericType(targetType.GenericTypeArguments);
+        // A dictionary saved as object, like a value of a dictionary loaded without its type, holds objects.
+        var kvTypes = targetType == typeof(object) ? [typeof(object), typeof(object)] : targetType.GenericTypeArguments;
+        var keyType = kvTypes[0];
+        var valueType = kvTypes[1];
+        var dictType = typeof(Dictionary<,>).MakeGenericType(kvTypes);
         var saveKey =
             _keyDescriptor!.GenerateNewDescriptorEx(keyType, typeConverterFactory, forbidSerializationOfLazyDBObjects);
         var saveValue =

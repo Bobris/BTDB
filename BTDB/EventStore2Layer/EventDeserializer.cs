@@ -254,7 +254,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         if (IFieldHandler.UseNoEmitForDescriptors)
 #pragma warning disable CS0162 // Unreachable code detected
         {
-            var loadAsType = LoadAsType(descriptor);
+            var loadAsType = ObjectLoadType.For(descriptor, LoadAsType(descriptor));
             var loader = loadAsType == typeof(object)
                 ? descriptor.GenerateLoad(loadAsType, ConverterFactory)
                 : descriptor
@@ -268,7 +268,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         }
         else
         {
-            var loadAsType = LoadAsType(descriptor);
+            var loadAsType = ObjectLoadType.For(descriptor, LoadAsType(descriptor));
             var methodBuilder = ILBuilder.Instance.NewMethod<Layer2Loader>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             try

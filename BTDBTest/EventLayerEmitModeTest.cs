@@ -173,6 +173,8 @@ public class EventLayerEmitModeTest
             coverage.ReadOnlyIPAddressStoresAsObject(layer);
             coverage.WideNullableMemberLoadsAsPlain(layer);
             coverage.DictionaryInObjectMemberLoads(layer);
+            coverage.NestedListInObjectMemberLoads(layer);
+            new EventLayerDynamicReserializeTest().DynamicNestedCollectionsCanBeSerializedAgain(layer, layer);
         });
     }
 }
