@@ -17,3 +17,5 @@ open EventLog
 #print axioms Chain.sealed_tail_validation
 #print axioms Merge.coverage
 #print axioms Merge.latest_split_exists
+#print axioms Merge.old_listing_ends_early
+#print axioms Merge.fresh_listing_end

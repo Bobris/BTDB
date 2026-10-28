@@ -62,6 +62,30 @@ public class EventLogMergerTest
     }
 
     [Fact]
+    public async Task ReaderWithAnOldListingReadsPastSplitsDeletedSinceThen()
+    {
+        var fixture = new Fixture();
+        var options = fixture.Options with { MaxMergedObjectLength = 300 };
+        var lane = await EventLogOwnerLane.CreateCandidateAsync(fixture.Storage, new(fixture.Storage, Topic), Topic,
+            options, new TestScheduler(), A, default);
+        // The second split is too large for its group to merge, so it keeps its version.
+        Assert.Equal(0ul, await lane.SubmitAsync(1, 1, Bytes(0, 30), 1, false, 0, default));
+        Assert.Equal(1ul, await lane.SubmitAsync(1, 2, Bytes(1, 180), 1, false, 0, default));
+        var reader = new EventLogStorageReader(fixture.Storage, Topic);
+        Assert.Equal(2, (await reader.ReadAllAsync()).Count); // caches a listing that ends with sealed split 2
+        for (var i = 2; i < 20; i++)
+            Assert.Equal((ulong)i, await lane.SubmitAsync(1, (ulong)i + 1, Bytes(i, 30), 1, false, 0, default));
+        var merger = new EventLogMerger(fixture.Storage, Topic, options, new TestScheduler());
+        await merger.RunPassAsync(default);
+        fixture.Time.Advance(TimeSpan.FromHours(2));
+        Assert.True((await merger.RunPassAsync(default)).Deleted > 0);
+        Assert.Null(await fixture.Storage.ReadAsync(EventLogFormat.SplitKey(Topic, 3), default));
+        // Before the fix the reader walked from split 2 to the deleted split 3 and reported the end of history.
+        var all = await reader.ReadAllAsync();
+        Assert.Equal(Enumerable.Range(0, 20).Select(i => (ulong)i), all.Select(r => r.Offset));
+    }
+
+    [Fact]
     public async Task SplitsMergeIntoTwoLevelsNamedByFirstOffsetAndStayReadable()
     {
         var fixture = new Fixture();

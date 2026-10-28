@@ -161,7 +161,7 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
             try
             {
                 var result = await TryLocateAsync(await ListAsync(attempt > 0, cancellation).ConfigureAwait(false),
-                    offset, cancellation).ConfigureAwait(false);
+                    offset, attempt > 0, cancellation).ConfigureAwait(false);
                 if (result.Found != null || result.AtEnd) return result.Found;
             }
             catch (EventLogVersionChangedException) { }
@@ -169,7 +169,9 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         throw new EventLogOffsetNotAvailableException($"Offset {offset} of topic '{topic}' is not available.");
     }
 
-    async ValueTask<(EventLogLocated? Found, bool AtEnd)> TryLocateAsync(Listing listing, ulong offset,
+    /// <summary>A missing split after the listing's last one is the end of history only in a listing taken now: merging
+    /// may since have deleted splits that a cached listing never saw (Proofs/EventLogProofs/Merge.lean).</summary>
+    async ValueTask<(EventLogLocated? Found, bool AtEnd)> TryLocateAsync(Listing listing, ulong offset, bool fresh,
         CancellationToken cancellation)
     {
         ulong afterSplit = 0;
@@ -202,7 +204,7 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         {
             var located = await LoadAsync(EventLogFormat.SplitKey(topic, id), splits.GetValueOrDefault(id), cancellation)
                 .ConfigureAwait(false);
-            if (located == null) return (null, id > splits.Keys[^1]);
+            if (located == null) return (null, fresh && id > splits.Keys[^1]);
             if (offset < located.Object.NextOffset) return (located, false);
             if (located.Object.Seal == null) return (null, offset == located.Object.NextOffset);
         }

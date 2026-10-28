@@ -35,6 +35,10 @@
   trusted a write still in flight when the call started, or the end of its commit loop. That write could have landed
   before another owner took over and committed. The owner now trusts only a write dispatched after the call started,
   or a tail check.
+- Event log: a storage read could stop early, as if the history had ended. A reader whose cached listing ended with
+  a sealed split walked on to the next split, and when merging had deleted that split since, it reported the end of
+  history. Catch-up from storage then stalled, and the owner's scan for an unknown publisher session could miss
+  committed records. The end is now concluded only from a fresh listing.
 - Event log: an idle owner could stop as if it had been taken over. Its tail was sealed, a helper had created the
   header-only successor, and its merger then marked the sealed split for deletion, changing that split's version.
   Validation of a sealed tail now checks only the successor.

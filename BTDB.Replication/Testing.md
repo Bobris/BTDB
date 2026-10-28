@@ -344,6 +344,7 @@ has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and 
   - appends after cleanup, and the tail and its group are never merged;
   - identical objects from concurrent and repeated mergers;
   - verification and cleanup after a crash between creation and marking;
+  - a reader with an old cached listing reads past splits deleted since, instead of stopping;
   - merging in the owner service.
 - `AzureEventLogStorageTest` (Azurite):
   - the conditional-write, owner, range, listing and deletion contract;

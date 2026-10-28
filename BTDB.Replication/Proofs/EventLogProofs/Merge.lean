@@ -11,6 +11,11 @@ modelled.
 
 * `coverage`: every split is still readable from some existing object.
 * `latest_split_exists`: the latest split, where tail discovery starts, is never deleted.
+* `old_listing_ends_early`: a split after the last one of an old listing can be deleted while history continues, so
+  a reader walking past an old listing must not take a missing split for the end of history
+  (`EventLogStorageReader.TryLocateAsync`).
+* `fresh_listing_end`: in a listing taken now, the last split is the latest one, so a split missing after it is past
+  the end of history.
 -/
 
 namespace EventLog.Merge
@@ -51,6 +56,7 @@ structure Inv (L F : Nat) (σ : State) : Prop where
   splits : ∀ g, g < σ.splits → σ.ever 0 g = true
   eligible : ∀ l g, 1 ≤ l → σ.ever l g = true → (g + 1) * F ^ l < σ.splits
   ever_of_obj : ∀ l g, σ.obj l g = true → σ.ever l g = true
+  splits_lt : ∀ g, σ.ever 0 g = true → g < σ.splits
 
 theorem div_pow_div (g F a b : Nat) : g / F ^ a / F ^ b = g / F ^ (a + b) := by
   rw [Nat.div_div_eq_div_mul, Nat.pow_add]
@@ -64,6 +70,7 @@ theorem inv_init (L F : Nat) : Inv L F init where
   splits _ h := by simp [init] at h
   eligible _ _ _ h := by simp [init] at h
   ever_of_obj _ _ h := by simp [init] at h
+  splits_lt _ h := by simp [init] at h
 
 /-- Adding an object keeps every coverage. -/
 theorem covered_add {L F : Nat} {obj : Nat → Nat → Bool} {l g l₀ g₀ : Nat} (h : Covered L F obj l g) :
@@ -103,7 +110,11 @@ theorem inv_step {L F : Nat} {σ τ : State} (hI : Inv L F σ) (h : Step L F σ 
       ever_of_obj := fun l g hg => by
         rcases ever_set hg with ⟨rfl, rfl⟩ | hg
         · simp [set_apply]
-        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all }
+        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all
+      splits_lt := fun g hg => by
+        rcases ever_set hg with ⟨_, rfl⟩ | hg
+        · dsimp only; omega
+        · have := hI.splits_lt g hg; dsimp only; omega }
   | merge l₀ g₀ hl h =>
     exact {
       covered := fun l g hlL hg => by
@@ -123,7 +134,11 @@ theorem inv_step {L F : Nat} {σ τ : State} (hI : Inv L F σ) (h : Step L F σ 
       ever_of_obj := fun l g hg => by
         rcases ever_set hg with ⟨rfl, rfl⟩ | hg
         · simp [set_apply]
-        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all }
+        · have := hI.ever_of_obj l g hg; simp only [set_apply]; split <;> simp_all
+      splits_lt := fun g hg => by
+        rcases ever_set hg with ⟨he, rfl⟩ | hg
+        · omega
+        · exact hI.splits_lt g hg }
   | delete l₀ g₀ l₁ hl h =>
     -- The covering object, or one covering it in turn, still exists and is not the deleted one.
     obtain ⟨l₂, h1, h2, h3⟩ := hI.covered l₁ _ hl.2 h
@@ -148,7 +163,8 @@ theorem inv_step {L F : Nat} {σ τ : State} (hI : Inv L F σ) (h : Step L F σ 
         simp only [set_apply] at hg
         split at hg
         · cases hg
-        · exact hI.ever_of_obj l g hg }
+        · exact hI.ever_of_obj l g hg
+      splits_lt := hI.splits_lt }
 
 theorem reach_inv {L F : Nat} {σ : State} (h : Reach L F σ) : Inv L F σ := by
   induction h with
@@ -176,5 +192,28 @@ theorem latest_split_exists {L F : Nat} (hF : 0 < F) {σ : State} (h : Reach L F
   · have := hI.eligible l _ (by omega) (hI.ever_of_obj _ _ hobj)
     have := lt_succ_div_mul (σ.splits - 1) (F ^ l) (Nat.pow_pos hF)
     omega
+
+/-- After a listing of splits 1 and 2, three more splits arrive, splits 3 and 4 merge into a level-1 object and split
+3 is deleted. A reader walking on from split 2 of its old listing finds split 3 missing, although splits 3 to 5 are
+history. -/
+theorem old_listing_ends_early : ∃ σ₀ σ, Reach 1 2 σ₀ ∧ Reach 1 2 σ ∧ σ₀.splits = 2 ∧
+    σ₀.obj 0 1 = true ∧ σ.obj 0 2 = false ∧ 2 < σ.splits ∧ (∀ g, g < σ.splits → ∃ l, l ≤ 1 ∧ σ.obj l (g / 2 ^ l) = true) := by
+  have r1 := Reach.step Reach.init (Step.append (L := 1) (F := 2) init)
+  have r2 := Reach.step r1 (Step.append _)
+  have r3 := Reach.step r2 (Step.append _)
+  have r4 := Reach.step r3 (Step.append _)
+  have r5 := Reach.step r4 (Step.append _)
+  have r6 := Reach.step r5 (Step.merge _ 1 1 (by decide) (by decide))
+  have r7 := Reach.step r6 (Step.delete _ 0 2 1 (by decide) (by decide))
+  exact ⟨_, _, r2, r7, rfl, rfl, rfl, by decide, fun g hg => coverage r7 g hg⟩
+
+/-- In a listing taken now, every split after the last listed one is past the end of history. -/
+theorem fresh_listing_end {L F : Nat} (hF : 0 < F) {σ : State} (h : Reach L F σ) (hs : 0 < σ.splits) :
+    σ.obj 0 (σ.splits - 1) = true ∧ ∀ g, σ.splits ≤ g → σ.obj 0 g = false := by
+  have hI := reach_inv h
+  refine ⟨latest_split_exists hF h hs, fun g hg => ?_⟩
+  cases ho : σ.obj 0 g
+  · rfl
+  · have := hI.splits_lt g (hI.ever_of_obj 0 g ho); omega
 
 end EventLog.Merge
