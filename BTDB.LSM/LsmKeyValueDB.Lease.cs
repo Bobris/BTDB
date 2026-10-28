@@ -391,8 +391,9 @@ public sealed partial class LsmKeyValueDB
 
     /// Stops being the writer without losing acknowledged commits: drains the WAL, then releases the lease before
     /// waiting for background work to stop, so a successor does not wait for a running compaction. Objects that work
-    /// still tries to create are fenced locally. Requires the mode lock and no commit in progress. Commits that cannot
-    /// be uploaded are lost, as when the lease is lost, and reported by the returned task.
+    /// still tries to create are fenced locally. Requires the mode lock and no commit in progress, and the refresh lock
+    /// unless the instance is disposed. Commits that cannot be uploaded may be lost, as when the lease is lost; the
+    /// returned task reports them, and the state is reloaded from storage.
     async Task StepDownAsync()
     {
         _writerStop?.Cancel();
@@ -451,9 +452,25 @@ public sealed partial class LsmKeyValueDB
             _walInFlight = null;
         }
 
-        // The state is the durable state, but the reader replay lags it; the next refresh or takeover reloads.
+        // After a complete upload the state is the durable state, but the reader replay lags it; the next refresh or
+        // takeover reloads. After a failed one it holds commits storage may lack, so it is reloaded now, as when the
+        // lease is lost (BTDB.LSM/Proofs, Reload.lean).
         _replayStale = true;
-        if (uploadError != null) throw new BTDBException("Commits not yet durable were lost: " + uploadError.Message, uploadError);
+        if (uploadError == null) return;
+        if (!_disposed)
+        {
+            try
+            {
+                InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
+                _replayStale = false;
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning("BTDB.LSM could not reload after a failed WAL upload: " + ex.Message);
+            }
+        }
+
+        throw new BTDBException("Commits not yet durable may be lost: " + uploadError.Message, uploadError);
     }
 
     /// Stops being the writer: pending commits that were not durable are lost and their durability waiters fail, the

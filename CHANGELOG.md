@@ -74,7 +74,8 @@
 - `LsmKeyValueDB` could keep showing a commit it lost with the writer lease. A commit that had just found the
   instance the writer could publish its state after losing the lease reloaded the state from storage, so local
   transactions saw commits storage did not have until the next refresh. The check and the publish now share the
-  state lock with ending the writer role.
+  state lock with ending the writer role. `ReleaseWriterLeaseAsync` whose WAL upload failed kept such commits visible
+  too; it now reloads the state from storage, and its error says the commits may be lost.
 
 ## 35.13.0
 

@@ -286,6 +286,24 @@ public class LsmWriterHandoffTest
     }
 
     [Fact]
+    public async Task ReleaseWhoseUploadFailsReloadsTheDurableState()
+    {
+        var storage = new InMemoryLsmStorage();
+        var hooked = new CreateHookingStorage(storage);
+        using var db = await LsmKeyValueDB.OpenAsync(Options(hooked) with { AcquireWriterLeaseOnOpen = true });
+        await Write(db, 0, 10, 1);
+        await db.FlushAsync();
+        hooked.BeforeCreate = key => key.StartsWith("wal/", StringComparison.Ordinal)
+            ? throw new System.IO.IOException("Storage is unreachable.")
+            : ValueTask.CompletedTask;
+        await Write(db, 1000, 1, 2);
+        await Assert.ThrowsAsync<BTDBException>(async () => await db.ReleaseWriterLeaseAsync());
+        // Before the fix the instance kept showing the commit it could not upload.
+        Assert.False(Exists(db, 1000));
+        Assert.Equal((10, 1UL), Read(db));
+    }
+
+    [Fact]
     public async Task TakeoversFromTheSameStateGetDifferentEpochs()
     {
         var storage = new InMemoryLsmStorage();

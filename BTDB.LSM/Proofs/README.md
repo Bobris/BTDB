@@ -28,8 +28,8 @@ replaced manifest frees its name, so the results assume that no manifest create 
 (1 minute) after its dispatch; `late_create_after_deletion` shows why.
 
 `LsmProofs/Reload.lean` models one writer instance: commits publish locally, uploads make the local state durable,
-and losing the role clears the writer flag and then reloads from storage (`CommitWritingTransaction`,
-`LoseWriterAsync`).
+and ending the role clears the writer flag and then reloads from storage (`CommitWritingTransaction`,
+`LoseWriterAsync`, and `StepDownAsync` after a failed upload).
 
 `LsmProofs/Wal.lean` models WAL chunks as immutable create-if-absent objects `wal/{n}` (`CreateChunkAsync`). Each
 writer session has a fresh epoch. A takeover lists the WAL, replays its contiguous prefix and fences it with epoch
@@ -64,7 +64,7 @@ Not modelled in `Wal.lean`:
 | `WalFlush.flush_of_unlanded_chunk` | A flush whose own chunk never landed is reachable, and readers see its record from the tables: the case `restart_agrees` cannot cover. |
 | `Wal.unacknowledged_replayed` | A chunk its writer never acknowledged can land and be replayed by the next writer, so a commit whose durability wait failed may still be history. Before the 2026-10-28 fix, a spilled commit whose manifest might still land was reported as lost before the commit. |
 | `Reload.current_lost_commit_visible` | Before the 2026-10-28 fix, a commit that passed the writer check published after losing the role reloaded the state, so the instance showed a commit storage did not have (`LsmWriterHandoffTest.CommitRacingLeaseLossDoesNotOutliveTheReload`). |
-| `Reload.fixed_reload_matches` | With the check and the publish under the state lock that ending the role also takes, the state after the reload is the durable state. |
+| `Reload.fixed_reload_matches` | With the check and the publish under the state lock that ending the role also takes, the state after the reload is the durable state. Before the 2026-10-28 fix, a release whose WAL upload failed did not reload at all (`ReleaseWhoseUploadFailsReloadsTheDurableState`). |
 | `Fence.current_shares_epoch` | Before the 2026-10-28 fix, two takeovers that read the same state wrote equal fencing manifests. The second took the first one's manifest for its own, and both wrote with one epoch. |
 | `Fence.fixed_fresh_epochs` | With the writer session in every manifest, sessions that fenced in have different epochs, and the one fenced at a later name has the higher epoch: the assumption of `Wal.lean` and `WalFlush.lean`. |
 | `Fence.late_create_after_deletion` | Once a replaced manifest is deleted, a fencing create that lands later takes its name again with an epoch already in use. Before the 2026-10-28 fix, a grace period below a minute deleted replaced manifests at once, so a create delayed by milliseconds could do that. |
