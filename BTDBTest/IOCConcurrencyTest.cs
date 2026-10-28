@@ -115,4 +115,62 @@ public class IOCConcurrencyTest
             foreach (var scope in created) await scope.DisposeAsync();
         }
     }
+
+    public interface IResource;
+
+    public interface IUser;
+
+    public static class DisposalLog
+    {
+        public static readonly System.Collections.Concurrent.ConcurrentQueue<string> Entries = new();
+    }
+
+    [Generate]
+    public class Resource : IResource, System.IDisposable
+    {
+        public void Dispose() => DisposalLog.Entries.Enqueue("resource");
+    }
+
+    [Generate]
+    public class ScopedUser : IUser, System.IAsyncDisposable
+    {
+        public ScopedUser(IResource resource)
+        {
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposalLog.Entries.Enqueue("user");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// A scope disposes its scoped instances once, also those created by many threads at once, and leaves singletons
+    /// to the container, which disposes them after the instances that depend on them.
+    [Fact]
+    public async Task ScopesAndContainerDisposeWhatTheyOwnOnce()
+    {
+        while (DisposalLog.Entries.TryDequeue(out _))
+        {
+        }
+
+        var builder = new ContainerBuilder();
+        builder.RegisterType<Resource>().As<IResource>().SingleInstance();
+        builder.RegisterType<ScopedUser>().As<IUser>().Scoped();
+        var container = builder.Build();
+        var scope = container.CreateScope();
+        using (var barrier = new Barrier(8))
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Factory.StartNew(() =>
+            {
+                barrier.SignalAndWait();
+                return scope.Resolve<IUser>();
+            }, TaskCreationOptions.LongRunning)));
+        await scope.DisposeAsync();
+        await scope.DisposeAsync();
+        Assert.Equal(new[] { "user" }, DisposalLog.Entries.ToArray());
+        container.Resolve<IUser>();
+        await container.DisposeAsync();
+        await container.DisposeAsync();
+        Assert.Equal(new[] { "user", "user", "resource" }, DisposalLog.Entries.ToArray());
+    }
 }
