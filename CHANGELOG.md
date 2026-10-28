@@ -81,6 +81,9 @@
 
 ### Fixed
 
+- ObjectDB: inline objects nested deeper than the stack holds, like a long linked list of inline nodes, overflowed the
+  stack and ended the process when written, and when read on a thread with a smaller stack than the one that wrote
+  them or from damaged data. Both now fail with `BTDBException`.
 - ObjectDB: storing an object that contains itself through inline objects, like a node whose `Next` is the node,
   overflowed the stack and ended the process, as each inline object is written with a writer context of its own. It
   now fails with `BTDBException` naming the type, and the transaction stays usable. Make one of the objects a stored

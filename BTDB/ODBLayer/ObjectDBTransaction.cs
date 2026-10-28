@@ -86,6 +86,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     public object ReadInlineObject(ref MemReader reader, IReaderCtx readerCtx, bool skipping)
     {
+        // Damaged data, or objects written on a thread with a larger stack, can nest deeper than this stack holds.
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+            _owner.ActualOptions.ThrowBTDBException("Inline objects nest too deep to read.");
         var tableId = reader.ReadVUInt32();
         var tableVersion = reader.ReadVUInt32();
         var tableInfo = _owner.TablesInfo.FindById(tableId);
@@ -158,6 +161,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 $"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
         }
 
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+            _owner.ActualOptions.ThrowBTDBException(
+                $"Inline objects of type {@object.GetType().ToSimpleName()} nest too deep to write. Make some of them stored objects or reference them through IIndirect<T>.");
         for (var i = 0u; i < _inlineObjectsInWrite.Count; i++)
         {
             if (!ReferenceEquals(_inlineObjectsInWrite[i], @object)) continue;
