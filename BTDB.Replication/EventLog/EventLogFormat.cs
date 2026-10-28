@@ -197,9 +197,8 @@ internal static class EventLogFormat
             recordCount += source.RecordCount;
             expected = source.NextOffset;
         }
-        var headerLength = checked(8 + TopicBytes(topic) + 16 + 1 + 8 + 8 + 4 + 1 +
-                                   (frameCount + (long)recordCount) * EntryWidth + 4);
-        var total = headerLength + frameBytes + EndLength;
+        var total = MergedLength(topic, frameBytes, frameCount, (long)recordCount);
+        var headerLength = total - frameBytes - EndLength;
         if (total > MaxObjectLength) throw new ArgumentException("The merged object is too large.");
         var bytes = new byte[total];
         var span = bytes.AsSpan();
@@ -393,6 +392,11 @@ internal static class EventLogFormat
         ulong RecordCount, int FrameCount, int FrameTable, int RecordTable, int HeaderLength);
 
     public static int MergedFixedLength(string topic) => 8 + TopicBytes(topic) + 16 + 22;
+
+    /// <summary>The length of a merged object of frames of <paramref name="frameBytes"/> bytes in total: its header
+    /// indexes every frame and every record.</summary>
+    public static long MergedLength(string topic, long frameBytes, long frameCount, long recordCount) =>
+        checked(MergedFixedLength(topic) + (frameCount + recordCount) * EntryWidth + 4 + frameBytes + EndLength);
 
     public static MergedHeader ParseMergedFixed(ReadOnlySpan<byte> prefix, string topic)
     {

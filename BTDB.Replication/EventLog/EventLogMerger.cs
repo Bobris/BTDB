@@ -154,7 +154,7 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
         CancellationToken cancellation)
     {
         var sources = new List<(ReadOnlyMemory<byte> Content, EventLogObject Object)>();
-        long length = 0;
+        long frameBytes = 0, frameCount = 0, recordCount = 0;
         for (var id = first; id <= last;)
         {
             var lower = merged.Where(m => m.Object.Level < level && m.Object.FirstSplit == id && m.Object.LastSplit <= last)
@@ -167,8 +167,12 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
             if (!parsed.IsSealed || parsed.SplitId != id || sources.Count > 0 && parsed.FirstOffset != sources[^1].Object.NextOffset)
                 throw new EventLogCorruptedException($"Split {id} of topic '{topic}' does not continue the history.");
             sources.Add((blob.Content, parsed));
-            length += blob.Content.Length;
-            if (length > options.MaxMergedObjectLength) return null;
+            // The merged object's header indexes every frame and record, so it can be twice its sources' frames.
+            foreach (var frame in parsed.Frames) frameBytes += frame.Length;
+            frameCount += parsed.Frames.Count;
+            recordCount += (long)parsed.RecordCount;
+            if (EventLogFormat.MergedLength(topic, frameBytes, frameCount, recordCount) > options.MaxMergedObjectLength)
+                return null;
             id = parsed.LastSplitId + 1;
         }
         var content = EventLogFormat.CreateMerged(topic, level, first, last, sources);

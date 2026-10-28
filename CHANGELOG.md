@@ -42,6 +42,11 @@
 
 ### Fixed
 
+- Event log: merged objects could exceed `MaxMergedObjectLength`. The merger compared the limit with the bytes of the
+  splits it merges, but a merged header indexes every frame and record, so with small records a merged object is up
+  to twice its splits' frames. With more merge levels or larger splits, a group of small records could therefore
+  reach the format's maximum; creating its merged object then threw on every pass, before cleanup, so a topic's old
+  objects were never deleted. The merger now checks the merged object's length, and the option is validated.
 - `IKeyValueDBCursor.FindNextKey` and `FindPreviousKey` documented that a failed call leaves the position unchanged.
   Every implementation invalidates the cursor instead, so a further call starts again from the first or last key
   with the prefix; the documentation now says so, and a test covers it.

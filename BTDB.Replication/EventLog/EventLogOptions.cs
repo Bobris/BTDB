@@ -69,6 +69,8 @@ public sealed record EventLogOptions
     /// <summary>Delay between marking a covered object and deleting it; must exceed the longest reader pass.</summary>
     public TimeSpan DeletionDelay { get; init; } = TimeSpan.FromDays(1);
 
+    /// <summary>Largest merged object, its header included; a group that would be larger is not merged. The header
+    /// indexes every record, so a merged object of small records is up to twice its splits' frames.</summary>
     public long MaxMergedObjectLength { get; init; } = 1L << 30;
 
     /// <summary>How often the owner runs a background merge and cleanup pass. A pass is skipped, without listing
@@ -106,5 +108,7 @@ public sealed record EventLogOptions
         if (MaxPublishRoundsInFlight <= 0) throw new ArgumentOutOfRangeException(nameof(MaxPublishRoundsInFlight));
         if (MergeFanOut is 1 or < 0 || MergeLevels < 0 || MergeLevels > 9)
             throw new ArgumentOutOfRangeException(nameof(MergeFanOut));
+        if (MaxMergedObjectLength <= 0 || MaxMergedObjectLength > EventLogFormat.MaxObjectLength)
+            throw new ArgumentOutOfRangeException(nameof(MaxMergedObjectLength));
     }
 }

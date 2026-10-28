@@ -86,6 +86,29 @@ public class EventLogMergerTest
     }
 
     [Fact]
+    public async Task MergedObjectsStayWithinTheirLimitWhenTheirHeaderIndexesManyRecords()
+    {
+        var fixture = new Fixture();
+        var options = fixture.Options with { SplitCap = 4096, SealFreeSpace = 200 };
+        var lane = await EventLogOwnerLane.CreateCandidateAsync(fixture.Storage, new(fixture.Storage, Topic), Topic,
+            options, new TestScheduler(), A, default);
+        // Empty records submitted together share frames, so the merged header indexes many records per split.
+        await Task.WhenAll(Enumerable.Range(1, 3000)
+            .Select(i => lane.SubmitAsync(1, (ulong)i, Array.Empty<byte>(), 1, false, 0, default).AsTask()));
+        var limit = fixture.Storage.Inner.Keys.Where(k => k == EventLogFormat.SplitKey(Topic, 1) || k == EventLogFormat.SplitKey(Topic, 2))
+            .Sum(k => fixture.Storage.Inner.ReadAsync(k, default).AsTask().Result!.Content.Length);
+        var merger = new EventLogMerger(fixture.Storage, Topic, options with { MaxMergedObjectLength = limit },
+            new TestScheduler());
+        await merger.RunPassAsync(default);
+        // Before the fix the merger compared the limit with the splits' bytes, so it created merged objects above it;
+        // near the format's maximum their creation threw, and every later pass failed before cleanup.
+        foreach (var key in fixture.Keys)
+            if (EventLogFormat.TryParseKey(Topic, key, out var level, out _) && level > 0)
+                Assert.True((await fixture.Storage.ReadAsync(key, default))!.Content.Length <= limit, key);
+        Assert.Equal(3000, (await new EventLogStorageReader(fixture.Storage, Topic).ReadAllAsync()).Count);
+    }
+
+    [Fact]
     public async Task ReaderWhoseListingSawAMergeAfterTheSplitsReadsOn()
     {
         var fixture = new Fixture();
