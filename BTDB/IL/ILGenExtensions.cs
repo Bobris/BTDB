@@ -477,6 +477,12 @@ public static class ILGenExtensions
         return il;
     }
 
+    public static IILGen ConvRUn(this IILGen il)
+    {
+        il.Emit(OpCodes.Conv_R_Un);
+        return il;
+    }
+
     public static IILGen Tail(this IILGen il)
     {
         il.Emit(OpCodes.Tailcall);

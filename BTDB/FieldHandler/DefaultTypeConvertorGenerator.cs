@@ -34,6 +34,15 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         AddConversions(convConvertibleTypes, typeof(byte), ilg => ilg.ConvU1());
         AddConversions(convConvertibleTypes, typeof(double), ilg => ilg.ConvR8());
         AddConversions(convConvertibleTypes, typeof(float), ilg => ilg.ConvR4());
+        // Small integers are int32 on the evaluation stack, so widening follows the source's signedness, and unsigned
+        // integers become floating point through conv.r.un, as C# casts do.
+        _conversions[(typeof(uint), typeof(long))] = ilg => ilg.ConvU8();
+        AddConversions([typeof(sbyte), typeof(short), typeof(int)], typeof(ulong), ilg => ilg.ConvI8());
+        foreach (var from in new[] { typeof(uint), typeof(ulong) })
+        {
+            _conversions[(from, typeof(double))] = ilg => ilg.ConvRUn().ConvR8();
+            _conversions[(from, typeof(float))] = ilg => ilg.ConvRUn().ConvR4();
+        }
         foreach (var m in GetType().GetMethods())
         {
             if (!m.IsStatic) continue;

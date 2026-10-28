@@ -73,7 +73,7 @@ public class EventLayerEmitModeTest
         public long Value { get; set; }
     }
 
-    [Theory(Skip = "DefaultTypeConvertorGenerator converts uint to long using conv.i8 (sign extension)")]
+    [Theory]
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store2)]
     public void UIntUpgradedToLongKeepsValue(EventLayer layer)

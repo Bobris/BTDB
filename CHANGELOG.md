@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- Upgrading a field between numeric types in IL-emitting mode (`DefaultTypeConvertorGenerator`) now gives what a C#
+  cast gives. A `uint` widened to `long` was sign-extended, so `uint.MaxValue` became -1; negative `sbyte`, `short` and
+  `int` values widened to `ulong` were zero-extended from 32 bits; and `uint` and `ulong` values converted to `float` or
+  `double` were read as signed. The no-emit converters already did this right.
 - Event log: some options were not validated. `TakeoverAttempts` of zero never let a node own a topic, so every
   publication retried forever; a zero `AmbiguousRetryDelay`, `ContentionBackoff` or `MergeInterval` retried or merged
   in a tight loop; and a negative `DeletionDelay` failed every merge pass before cleanup. Such values now throw
