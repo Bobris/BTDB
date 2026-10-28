@@ -256,6 +256,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var saveKey = _keyDescriptor!.GenerateSaveEx(keyType, typeConverterFactory);
         var saveValue = _valueDescriptor!.GenerateSaveEx(valueType, typeConverterFactory);
         var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
+        var keyItems = new EnumerableItems(keyType);
+        var valueItems = new EnumerableItems(valueType);
         return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
         {
             var obj = Unsafe.As<byte, object>(ref value);
@@ -299,6 +301,18 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 });
                 writer = localWriter;
             }
+            else if (obj is IDictionary otherDictionary)
+            {
+                // Other dictionaries, like SortedDictionary, ReadOnlyDictionary or ImmutableDictionary, are enumerated.
+                writer.WriteVUInt32((uint)otherDictionary.Count + 1);
+                var keySlot = keyItems.CreateSlot();
+                var valueSlot = valueItems.CreateSlot();
+                foreach (DictionaryEntry entry in otherDictionary)
+                {
+                    saveKey(ref writer, ctx, ref keyItems.SetSlot(keySlot, entry.Key));
+                    saveValue(ref writer, ctx, ref valueItems.SetSlot(valueSlot, entry.Value));
+                }
+            }
             else throw new BTDBException("Cannot save " + objType.ToSimpleName() + " as " + dictType.ToSimpleName());
         };
     }
@@ -316,6 +330,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             _valueDescriptor!.GenerateNewDescriptorEx(valueType, typeConverterFactory,
                 forbidSerializationOfLazyDBObjects);
         var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
+        var keyItems = new EnumerableItems(keyType);
+        var valueItems = new EnumerableItems(valueType);
         return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
         {
             var obj = Unsafe.As<byte, object>(ref value);
@@ -358,6 +374,16 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     saveKey?.Invoke(ctx, ref key);
                     saveValue?.Invoke(ctx, ref value);
                 });
+            }
+            else if (obj is IDictionary otherDictionary)
+            {
+                var keySlot = keyItems.CreateSlot();
+                var valueSlot = valueItems.CreateSlot();
+                foreach (DictionaryEntry entry in otherDictionary)
+                {
+                    saveKey?.Invoke(ctx, ref keyItems.SetSlot(keySlot, entry.Key));
+                    saveValue?.Invoke(ctx, ref valueItems.SetSlot(valueSlot, entry.Value));
+                }
             }
             else throw new BTDBException("Cannot save " + objType.ToSimpleName() + " as " + dictType.ToSimpleName());
         };

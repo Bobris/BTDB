@@ -81,6 +81,9 @@
 
 ### Fixed
 
+- Event store: a dictionary member holding a dictionary other than `Dictionary`, like a `SortedDictionary`,
+  `ReadOnlyDictionary` or `ImmutableDictionary`, failed to store with "Cannot save ... as Dictionary". Any other
+  `IDictionary` is now enumerated; the stored format is the same.
 - Event store: a list of objects in a member declared only as `IReadOnlyList<T>` or `IReadOnlySet<T>`, with no other
   member of the item type declared as a list or set, failed to load with "Cannot find collection metadata". The
   collection types tried for it now include the read-only interfaces, whose generated metadata creates a `List` or

@@ -417,4 +417,41 @@ public class EventStore2CoverageTest
         Assert.Equal("x", read.Children![0].Name);
         Assert.Equal("y", read.Others!.Single().Name);
     }
+
+    [Generate]
+    public class DictionaryValue
+    {
+        public string? Name { get; set; }
+    }
+
+    [Generate]
+    public class WithOtherDictionaries
+    {
+        public IDictionary<int, DictionaryValue>? Sorted { get; set; }
+        public IReadOnlyDictionary<string, int?>? ReadOnly { get; set; }
+        public IDictionary<string, string>? Immutable { get; set; }
+    }
+
+    // Before the fix dictionaries other than Dictionary, like SortedDictionary, ReadOnlyDictionary or
+    // ImmutableDictionary, failed to store with "Cannot save ... as Dictionary".
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void OtherDictionariesStore(EventLayer layer)
+    {
+        var read = (WithOtherDictionaries)RoundTrip(layer, new WithOtherDictionaries
+        {
+            Sorted = new SortedDictionary<int, DictionaryValue> { [2] = new() { Name = "b" }, [1] = new() { Name = "a" } },
+            ReadOnly = new System.Collections.ObjectModel.ReadOnlyDictionary<string, int?>(
+                new Dictionary<string, int?> { ["x"] = 1, ["y"] = null }),
+            Immutable = System.Collections.Immutable.ImmutableDictionary.CreateRange(
+                [new KeyValuePair<string, string>("k", "v")])
+        })!;
+        Assert.Equal("a", read.Sorted![1].Name);
+        Assert.Equal("b", read.Sorted[2].Name);
+        Assert.Equal(1, read.ReadOnly!["x"]);
+        Assert.Null(read.ReadOnly["y"]);
+        Assert.Equal("v", read.Immutable!["k"]);
+    }
 }
