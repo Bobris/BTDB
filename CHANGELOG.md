@@ -41,7 +41,7 @@
   - `BTDB/Proofs/`, the read-only key value database: comparing a stored key, kept as a node prefix and a suffix and
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
-    child holding it.
+    child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 

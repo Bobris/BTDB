@@ -64,6 +64,9 @@ database stores as a node's shared prefix and a suffix, cut to a maximum length,
 and its descent through branch nodes whose separators are the first keys of all children but the first, as
 `ReadOnlyCreator` writes them.
 
+`BtdbProofs/Creator.lean` models how `ReadOnlyCreator.WriteBranches` groups the children of a level into branch nodes,
+greedily up to `MaxChildren` children and `MaxNodeKeyBytes` bytes of separators.
+
 `BtdbProofs/Separators.lean` models how `BTreeBranch.EraseOne` and `CreateOrUpdate` of the in-memory B-tree rebuild a
 branch's separators with array copies, after erasing a key and after splits.
 
@@ -92,6 +95,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Boundary.search_correct`, `Boundary.before_lt_mono`, `Boundary.before_cut_mono` | The node search returns the number of keys below the target, or of keys whose cut to the target's length is not above it, for keys in increasing order. |
 | `Boundary.descend`, `Boundary.child_before`, `Boundary.child_after` | In a branch node the search picks the child holding the boundary, and the boundary of the node is the keys of the children before it, `CountBefore`, plus the boundary inside it. |
 | `Boundary.seek_index` | `SeekIndex` picks the child holding a key index from the children's cumulative counts, and the index lies in it at the remaining offset. |
+| `Creator.flatten_groups`, `Creator.group_fits` | The branches of a level hold its children in order, each once, with at most `MaxChildren` children and at most `MaxNodeKeyBytes` bytes of separators, so the 16-bit separator ends and the child count byte fit. |
+| `Creator.groups_shrink` | Since `Run` rejects keys longer than `MaxNodeKeyBytes`, every branch but the last takes at least two children, so each level is smaller and the loop over levels ends with one root. |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

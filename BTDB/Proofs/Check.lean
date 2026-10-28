@@ -59,3 +59,6 @@ open Btdb
 #print axioms Lengths.vint_first_byte
 #print axioms Unpack.vuint_unpack
 #print axioms Unpack.vint_unpack
+#print axioms Creator.flatten_groups
+#print axioms Creator.group_fits
+#print axioms Creator.groups_shrink

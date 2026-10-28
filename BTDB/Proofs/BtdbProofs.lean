@@ -10,3 +10,4 @@ import BtdbProofs.StringOrdered
 import BtdbProofs.ReadOnlyCompare
 import BtdbProofs.Boundary
 import BtdbProofs.Separators
+import BtdbProofs.Creator
