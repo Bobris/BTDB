@@ -408,5 +408,24 @@ public class BonSerializerCoverageTest
         Assert.Equal(["a", "b"], read.Items!);
     }
 
+    [Generate]
+    public class WithIndexer
+    {
+        readonly int[] _items = new int[4];
+        public int this[int index] { get => _items[index]; set => _items[index] = value; }
+        public int Value { get; set; }
+    }
+
+    // Before the fix the indexer was stored as a field whose accessors lacked the index, so serializing failed with
+    // MissingMethodException.
+    [Fact]
+    public void IndexerIsNotStored()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, new WithIndexer { Value = 5 });
+        var bon = new Bon(builder.FinishAsMemory());
+        Assert.Equal(5, ((WithIndexer)BonSerializerFactory.Deserialize(ref bon)!).Value);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }

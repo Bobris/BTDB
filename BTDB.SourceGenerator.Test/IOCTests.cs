@@ -31,6 +31,25 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIndexerIsNotStored()
+    {
+        // Before the fix the indexer was stored through accessors without the index, which do not exist.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                [BTDB.Generate]
+                public class WithIndexer
+                {
+                    readonly int[] _items = new int[4];
+                    public int this[int index] { get => _items[index]; set => _items[index] = value; }
+                    public int Value { get; set; }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyPublicFieldsOfGenericBase()
     {
         // Before the fix the field accessors used the type argument instead of the type parameter of the base, which the

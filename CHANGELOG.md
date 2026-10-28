@@ -68,6 +68,9 @@
 
 ### Fixed
 
+- Source generator: an indexer of a `[Generate]` class was stored as a field, named `this[]`, through accessors
+  without its index, which do not exist, so serializing the class failed with `MissingMethodException`. Indexers are
+  no longer stored, as reflection skips them too.
 - Source generator: a public field of a generic base class, such as `public List<T>? Items;` in a base of a
   `[Generate]` class, got an accessor typed with the type argument instead of the type parameter, which the runtime
   does not find. Loading the assembly then failed with `MissingFieldException` from its module initializer.

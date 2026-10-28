@@ -1868,7 +1868,8 @@ public class SourceGenerator : IIncrementalGenerator
             })
             .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
-                .Where(p => !p.IsStatic && SerializableType(p.Type))
+                // Indexers store nothing of their own, as reflection skips them too.
+                .Where(p => !p.IsStatic && !p.IsIndexer && SerializableType(p.Type))
                 .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
@@ -1938,7 +1939,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Select(f => f.Type)
             .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
-                .Where(p => !p.IsStatic)
+                .Where(p => !p.IsStatic && !p.IsIndexer)
                 .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
