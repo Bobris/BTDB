@@ -44,6 +44,12 @@ public class LsmRelationInKeyValueMutationTest(ITestOutputHelper output) : Relat
 }
 
 [Collection(LsmObjectDb.Name)]
+public class LsmRelationSecondaryKeyUpgradeTest(ITestOutputHelper output) : RelationSecondaryKeyUpgradeTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
 public class LsmObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output)
     : ObjectDbAdvancedEnumeratorBoundaryTest(output)
 {
