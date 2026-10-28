@@ -298,6 +298,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         var arrayType = itemType.MakeArrayType();
         var saveItem = _itemsHandler.Save(itemType, typeConverterFactory);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
+        var enumerableItems = new EnumerableItems(itemType);
         return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
         {
             var obj = Unsafe.As<byte, object>(ref value);
@@ -392,6 +393,18 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
                     else if (IsCollectionWrapper(objType, itemType))
                     {
                         obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
+                    }
+                    else if (enumerableItems.CanEnumerate(objType))
+                    {
+                        var items = EnumerableItems.Collect(obj);
+                        writer.WriteVUInt32((uint)items.Count);
+                        var slot = enumerableItems.CreateSlot();
+                        foreach (var item in items)
+                        {
+                            saveItem(ref writer, ctx, ref enumerableItems.SetSlot(slot, item));
+                        }
+
+                        return;
                     }
                     else
                     {

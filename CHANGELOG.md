@@ -81,6 +81,10 @@
 
 ### Fixed
 
+- ObjectDB and the event store: a list member holding a collection other than an array, `List`, `HashSet` or
+  `Collection`, like the `ReadOnlyCollection<T>` that `AsReadOnly()` returns or an `ImmutableList<T>`, failed to save
+  with "Cannot save type". Any other `IEnumerable<T>` of the item type is now enumerated; the stored format is the
+  same.
 - ObjectDB: with relations emitted as IL (`IFieldHandler.UseNoEmitForRelations = false`), a `ListBy`, `CountBy` or
   `AnyBy` method whose key prefix ends with a list, like a secondary key on an `IList<ulong>`, failed with
   `InvalidProgramException`. The list saver opened a try block, which must start with an empty evaluation stack, while

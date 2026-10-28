@@ -259,6 +259,7 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
         var arrayType = itemType.MakeArrayType();
         var saveItem = _itemsHandler.Save(itemType, typeConverterFactory);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
+        var enumerableItems = new EnumerableItems(itemType);
         return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
         {
             var obj = Unsafe.As<byte, object>(ref value);
@@ -330,6 +331,16 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                 {
                     writer.WriteVUInt32(1);
                     saveItem(ref writer, ctx, ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+                }
+                else if (enumerableItems.CanEnumerate(objType))
+                {
+                    var items = EnumerableItems.Collect(obj);
+                    writer.WriteVUInt32((uint)items.Count);
+                    var slot = enumerableItems.CreateSlot();
+                    foreach (var item in items)
+                    {
+                        saveItem(ref writer, ctx, ref enumerableItems.SetSlot(slot, item));
+                    }
                 }
                 else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
             }

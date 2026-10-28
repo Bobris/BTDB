@@ -359,4 +359,31 @@ public class EventStore2CoverageTest
         Assert.Equal(System.Net.IPAddress.IPv6Any, read.Many![0]);
         Assert.Equal(System.Net.IPAddress.Parse("1.2.3.4"), read.Many[1]);
     }
+
+    [Generate]
+    public class WithReadOnlyViews
+    {
+        public IReadOnlyList<int?>? Numbers { get; set; }
+        public IList<string>? Names { get; set; }
+        public IList<WithReadOnlyViews>? Children { get; set; }
+    }
+
+    // Before the fix lists other than arrays, List, HashSet and Collection, like a ReadOnlyCollection from AsReadOnly or
+    // an ImmutableList, failed to store with "Cannot save type".
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void ReadOnlyAndImmutableListsStore(EventLayer layer)
+    {
+        var read = (WithReadOnlyViews)RoundTrip(layer, new WithReadOnlyViews
+        {
+            Numbers = new List<int?> { 1, null, 3 }.AsReadOnly(),
+            Names = System.Collections.Immutable.ImmutableArray.Create("a", "b"),
+            Children = System.Collections.Immutable.ImmutableList.Create(new WithReadOnlyViews { Names = ["x"] })
+        })!;
+        Assert.Equal([1, null, 3], read.Numbers);
+        Assert.Equal(["a", "b"], read.Names);
+        Assert.Equal(["x"], read.Children![0].Names);
+    }
 }

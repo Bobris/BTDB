@@ -281,6 +281,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var arrayType = itemType.MakeArrayType();
         var saveItem = _itemDescriptor!.GenerateSaveEx(itemType, typeConverterFactory);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
+        var enumerableItems = new EnumerableItems(itemType);
         return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
         {
             var obj = Unsafe.As<byte, object>(ref value);
@@ -376,9 +377,21 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     return;
                 }
 
-                else if (IsCollectionWrapper(objType, itemType))
+                if (IsCollectionWrapper(objType, itemType))
                 {
                     obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
+                }
+                else if (enumerableItems.CanEnumerate(objType))
+                {
+                    var items = EnumerableItems.Collect(obj);
+                    writer.WriteVUInt32((uint)items.Count + 1);
+                    var slot = enumerableItems.CreateSlot();
+                    foreach (var item in items)
+                    {
+                        saveItem(ref writer, ctx, ref enumerableItems.SetSlot(slot, item));
+                    }
+
+                    return;
                 }
                 else
                 {
@@ -401,6 +414,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
         var listType = typeof(List<>).MakeGenericType(itemType);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
+        var enumerableItems = new EnumerableItems(itemType);
         return (ctx, ref value) =>
         {
             var obj = Unsafe.As<byte, object?>(ref value);
@@ -489,9 +503,19 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     return;
                 }
 
-                else if (IsCollectionWrapper(objType, itemType))
+                if (IsCollectionWrapper(objType, itemType))
                 {
                     obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
+                }
+                else if (enumerableItems.CanEnumerate(objType))
+                {
+                    var slot = enumerableItems.CreateSlot();
+                    foreach (var item in EnumerableItems.Collect(obj))
+                    {
+                        nestedNewDescriptor(ctx, ref enumerableItems.SetSlot(slot, item));
+                    }
+
+                    return;
                 }
                 else
                 {

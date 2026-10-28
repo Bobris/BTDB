@@ -260,4 +260,54 @@ public class ObjectDbIListArrayRegressionTest : ObjectDbTestBase
             IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
         }
     }
+
+    public class ReadOnlyViewRow
+    {
+        [PrimaryKey]
+        public ulong Id { get; set; }
+
+        public IList<int> Values { get; set; } = null!;
+
+        [SecondaryKey("Key")]
+        public IList<ulong> Key { get; set; } = null!;
+    }
+
+    public interface IReadOnlyViewRowTable : IRelation<ReadOnlyViewRow>
+    {
+        ReadOnlyViewRow FindById(ulong id);
+        IEnumerable<ReadOnlyViewRow> ListByKey(IList<ulong> key);
+    }
+
+    // Before the fix an IList<T> holding a ReadOnlyCollection<T> or an ImmutableList<T> failed to save.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void IListPropertyBackedByReadOnlyOrImmutableListShouldWork(bool noEmit)
+    {
+        var oldUseNoEmitForRelations = IFieldHandler.UseNoEmitForRelations;
+        IFieldHandler.UseNoEmitForRelations = noEmit;
+        try
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.GetRelation<IReadOnlyViewRowTable>().Upsert(new ReadOnlyViewRow
+                {
+                    Id = 1, Values = new List<int> { 1, 2 }.AsReadOnly(),
+                    Key = System.Collections.Immutable.ImmutableList.Create(5ul, 6ul)
+                });
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using var tr2 = _db.StartReadOnlyTransaction();
+            var table = tr2.GetRelation<IReadOnlyViewRowTable>();
+            Assert.Equal([1, 2], table.FindById(1).Values);
+            Assert.Equal(1ul, table.ListByKey(new List<ulong> { 5, 6 }).Single().Id);
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
+        }
+    }
 }
