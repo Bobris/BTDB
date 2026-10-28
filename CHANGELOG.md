@@ -18,8 +18,10 @@
       next offset;
     - each Publish call commits once, in per-session call order, with exact receipts;
     - bounds from the owner cover every completed receipt.
-  - `BTDB.LSM/Proofs/`, the `LsmKeyValueDB` WAL across writer takeovers: every acknowledged commit stays in every
-    replay, and every replay is a prefix of one writer's history.
+  - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
+    - across writer takeovers every acknowledged commit stays in every replay, and every replay is a prefix of one
+      writer's history;
+    - counted entries add up across components, and the compaction merge preserves each key's state and count.
 
 ### Fixed
 
