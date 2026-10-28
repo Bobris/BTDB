@@ -77,6 +77,8 @@
 
 ### Fixed
 
+- Bon: a damaged `DateTime` whose ticks are out of range failed with `ArgumentException` from `DateTime.FromBinary`
+  when read or dumped to JSON. It is now reported as `InvalidDataException`, like other damage.
 - Bon: `DumpToJson` failed with `ArgumentException` on a NaN value, which JSON numbers cannot hold. It now writes NaN
   as the string `"NaN"`, as it writes infinities as `"+∞"` and `"-∞"`.
 - ObjectDB and the event store failed with "Cannot save type <>z__ReadOnlySingleElementList" for the list a one-item

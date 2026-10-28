@@ -126,6 +126,18 @@ public class BonCoverageTest
         else Assert.Equal(value, double.Parse(json, System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    // Before the fix ticks out of range, which only damage leaves, failed with ArgumentException.
+    [Fact]
+    public void DamagedDateTimeIsInvalidData()
+    {
+        var buf = Build((ref BonBuilder b) => b.Write(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc))).ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(1), 0x3FFF_FFFF_FFFF_FFFF);
+        var bon = new Bon(buf);
+        Assert.Equal(BonType.DateTime, bon.BonType);
+        Assert.Throws<System.IO.InvalidDataException>(() => new Bon(buf).TryGetDateTime(out _));
+        Assert.Throws<System.IO.InvalidDataException>(() => new Bon(buf).DumpToJson());
+    }
+
     [Fact]
     public void OtherScalarsRejectWrongTypes()
     {

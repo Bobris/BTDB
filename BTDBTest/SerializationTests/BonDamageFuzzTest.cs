@@ -81,9 +81,10 @@ public class BonDamageFuzzTest
                 using var json = new System.Text.Json.Utf8JsonWriter(new MemoryStream());
                 bon.DumpToJson(json);
             }
-            // The JSON writer refuses what damage leaves, such as a key without a value, or nesting past its depth.
+            // The JSON writer refuses what damage leaves, such as a key without a value, or nesting past its depth. Before
+            // the fixes it also failed with ArgumentException on NaN and on a damaged DateTime.
             catch (Exception error) when (error is InvalidDataException or EndOfStreamException or NotSupportedException
-                                              or InvalidOperationException or ArgumentException)
+                                              or InvalidOperationException)
             {
             }
             catch (Exception error) when (error.GetType().Name == "DebugAssertException")

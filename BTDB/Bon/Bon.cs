@@ -198,7 +198,17 @@ public static class Helpers
             case CodeDateTime:
             {
                 reader.Skip1Byte();
-                value = DateTime.FromBinary(reader.ReadInt64LE());
+                var data = reader.ReadInt64LE();
+                try
+                {
+                    value = DateTime.FromBinary(data);
+                }
+                catch (ArgumentException error)
+                {
+                    // Builders write only DateTime.ToBinary, so ticks out of range are damage.
+                    throw new InvalidDataException("Bon DateTime is out of range.", error);
+                }
+
                 return true;
             }
         }
