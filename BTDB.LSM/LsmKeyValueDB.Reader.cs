@@ -60,53 +60,67 @@ public sealed partial class LsmKeyValueDB
         var previous = _state;
         var version = previous.Version;
         var manifestSequence = previous.ManifestSequence;
-        var newer = authoritative
-            ? await ReadNewerManifestAsync(manifestSequence, cancellation)
-            : await FindNewerManifestAsync(manifestSequence, cancellation);
-        if (newer is { } manifest)
+        long nextChunk;
+        List<long> missing;
+        // Once the replay moved to a newer manifest, the published state lags it until this round publishes; a failure
+        // then reloads next time, because the newer manifest may be gone by then (BTDB.LSM/Proofs, Refresh.lean).
+        var advanced = false;
+        try
         {
-            try
+            var newer = authoritative
+                ? await ReadNewerManifestAsync(manifestSequence, cancellation)
+                : await FindNewerManifestAsync(manifestSequence, cancellation);
+            if (newer is { } manifest)
             {
-                version = BuildVersion(_options, _cache, manifest, OpenTables());
-            }
-            catch (BTDBException)
-            {
-                // The probed manifest is already outdated and its tables deleted; take the newest one.
-                (manifest, _) = await ReadNewestManifestAsync(_options, cancellation);
-                version = BuildVersion(_options, _cache, manifest, OpenTables());
-            }
-
-            replay.AdvanceFlushed(manifest);
-            manifestSequence = manifest.Sequence;
-            _lastManifest = manifest;
-        }
-
-        var (nextChunk, missing) = authoritative
-            ? await ReplayListedWalAsync(_options, replay, cancellation)
-            : (0L, new List<long>());
-        if (!authoritative)
-        {
-            // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
-            // WalReadParallelism names at once.
-            for (var window = 1;; window = Math.Min(window * 2, WalReadParallelism))
-            {
-                var numbers = Enumerable.Range(0, window).Select(i => replay.NextChunk + i).ToArray();
-                var complete = true;
-                await foreach (var (number, content) in ReadChunksAsync(_options, numbers, cancellation))
+                try
                 {
-                    if (content == null)
-                    {
-                        complete = false;
-                        break;
-                    }
-
-                    replay.Apply(number, WalFormat.Decode(content, WalKey(_options.Prefix, number)));
+                    version = BuildVersion(_options, _cache, manifest, OpenTables());
+                }
+                catch (BTDBException)
+                {
+                    // The probed manifest is already outdated and its tables deleted; take the newest one.
+                    (manifest, _) = await ReadNewestManifestAsync(_options, cancellation);
+                    version = BuildVersion(_options, _cache, manifest, OpenTables());
                 }
 
-                if (!complete) break;
+                replay.AdvanceFlushed(manifest);
+                advanced = true;
+                manifestSequence = manifest.Sequence;
+                _lastManifest = manifest;
             }
 
-            nextChunk = replay.NextChunk;
+            (nextChunk, missing) = authoritative
+                ? await ReplayListedWalAsync(_options, replay, cancellation)
+                : (0L, new List<long>());
+            if (!authoritative)
+            {
+                // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
+                // WalReadParallelism names at once.
+                for (var window = 1;; window = Math.Min(window * 2, WalReadParallelism))
+                {
+                    var numbers = Enumerable.Range(0, window).Select(i => replay.NextChunk + i).ToArray();
+                    var complete = true;
+                    await foreach (var (number, content) in ReadChunksAsync(_options, numbers, cancellation))
+                    {
+                        if (content == null)
+                        {
+                            complete = false;
+                            break;
+                        }
+
+                        replay.Apply(number, WalFormat.Decode(content, WalKey(_options.Prefix, number)));
+                    }
+
+                    if (!complete) break;
+                }
+
+                nextChunk = replay.NextChunk;
+            }
+        }
+        catch
+        {
+            if (advanced) _replayStale = true;
+            throw;
         }
 
         var (memtable, generation) = replay.Current();

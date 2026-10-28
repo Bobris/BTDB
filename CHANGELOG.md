@@ -76,6 +76,11 @@
   transactions saw commits storage did not have until the next refresh. The check and the publish now share the
   state lock with ending the writer role. `ReleaseWriterLeaseAsync` whose WAL upload failed kept such commits visible
   too; it now reloads the state from storage, and its error says the commits may be lost.
+- `LsmKeyValueDB` readers could publish a state that never existed after a failed refresh. A refresh that found a
+  newer manifest dropped the memtables it flushed and then failed reading the WAL. When the next refresh no longer
+  found that manifest, because it was replaced and deleted and listing was throttled, it published the older tables
+  without those commits under the newer commit metadata, and reads could fail on tables deleted since. Such a failure
+  now reloads the reader from storage on the next refresh.
 
 ## 35.13.0
 

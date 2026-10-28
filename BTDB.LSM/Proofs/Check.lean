@@ -22,3 +22,5 @@ open Lsm
 #print axioms Wal.unacknowledged_replayed
 #print axioms Reload.current_lost_commit_visible
 #print axioms Reload.fixed_reload_matches
+#print axioms Refresh.current_mixed_state
+#print axioms Refresh.fixed_consistent

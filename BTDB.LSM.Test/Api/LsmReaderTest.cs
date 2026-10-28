@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Engine;
@@ -180,6 +181,82 @@ public class LsmReaderTest
     {
         public DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    /// Fails the next WAL chunk read once asked to, as a transient storage error.
+    sealed class FailingWalReadStorage(InMemoryLsmStorage inner) : ILsmStorage
+    {
+        public bool FailNextWalRead;
+
+        public ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation)
+        {
+            if (!FailNextWalRead || !key.StartsWith("wal/", StringComparison.Ordinal))
+                return inner.TryReadAsync(key, cancellation);
+            FailNextWalRead = false;
+            throw new System.IO.IOException("Storage is unreachable.");
+        }
+
+        public ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation) => inner.CreateAsync(key, content, cancellation);
+        public ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation) => inner.ReadRangeAsync(key, offset, destination, cancellation);
+        public void ReadRange(string key, long offset, Span<byte> destination) => inner.ReadRange(key, offset, destination);
+        public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
+        public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
+        public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
+        public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
+        public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
+    }
+
+    [Fact]
+    public async Task RefreshFailingAfterANewerManifestNeverPublishesAMixedState()
+    {
+        var storage = new InMemoryLsmStorage();
+        var time = new ManualTimeProvider();
+        var failing = new FailingWalReadStorage(storage);
+        using var writer = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
+        {
+            MemtableSize = 1 << 20, TimeProvider = time
+        });
+        var random = new Random(8);
+        var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        var models = new Dictionary<ulong, SortedDictionary<string, string>>();
+        async Task CommitRange(ulong from, ulong to)
+        {
+            for (var commit = from; commit <= to; commit++)
+            {
+                model = await Commit(writer, random, commit, model);
+                models[commit] = new(model, StringComparer.Ordinal);
+            }
+
+            await writer.FlushAsync();
+        }
+
+        await CommitRange(1, 20);
+        writer.CreateKvi(default);
+        using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
+        {
+            Storage = failing, MemtableSize = 1 << 20, ManifestListInterval = TimeSpan.FromHours(1)
+        });
+        // The reader holds commits 21 to 40 in its memtable; this refresh also lists manifests, so the next miss does
+        // not list again for an hour.
+        await CommitRange(21, 40);
+        Assert.Equal(40UL, await reader.RefreshAsync());
+        writer.CreateKvi(default);
+        var flushedThem = storage.Keys("manifest/").Max(StringComparer.Ordinal)!;
+        // The refresh reads the manifest that flushed them, drops their memtable from its replay and then fails.
+        failing.FailNextWalRead = true;
+        await Assert.ThrowsAnyAsync<Exception>(async () => await reader.RefreshAsync());
+        // That manifest is replaced twice and deleted.
+        await CommitRange(41, 50);
+        writer.CreateKvi(default);
+        time.Now += TimeSpan.FromMinutes(2);
+        await CommitRange(51, 60);
+        writer.CreateKvi(default);
+        Assert.DoesNotContain(flushedThem, storage.Keys("manifest/"));
+        // Before the fix the next refresh missed the deleted manifest and published the older tables without the
+        // dropped memtable, under the newer commit metadata; reading then failed on tables deleted since.
+        await reader.RefreshAsync();
+        using var tr = reader.StartReadOnlyTransaction();
+        Assert.Equal(models[tr.GetCommitUlong()], Content(tr));
     }
 
     [Fact]
