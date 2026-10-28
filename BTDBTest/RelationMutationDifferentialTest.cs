@@ -60,9 +60,11 @@ public class RelationMutationDifferentialTest(ITestOutputHelper output) : Object
                 if (random.Next(15) == 0)
                 {
                     // Committed rows are read back from storage, on LsmKeyValueDB from flushed tables too.
+                    if (random.Next(4) == 0) _lowDb.FinishTransactionBatchAfterCurrentTransaction();
                     tr.Commit();
                     tr.Dispose();
-                    tr = _db.StartTransaction();
+                    // Writers only from here, half of them batched, reusing one mutable tree between transactions.
+                    tr = _db.StartWritingTransaction(inBatch: random.Next(2) == 0).AsTask().GetAwaiter().GetResult();
                     table = tr.GetRelation<IRowTable>();
                 }
 
