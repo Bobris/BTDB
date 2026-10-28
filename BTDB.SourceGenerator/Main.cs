@@ -2513,9 +2513,6 @@ public class SourceGenerator : IIncrementalGenerator
         {
             foreach (var member in GetAllMembersIncludingBase(symbol))
             {
-                // An explicitly implemented property is stored under the name of the interface property it implements,
-                // which the interface members below resolve to it.
-                if (member is IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 }) continue;
                 AddOrReplaceRelationItemMember(member, byKey, members);
             }
 
@@ -2527,6 +2524,11 @@ public class SourceGenerator : IIncrementalGenerator
                 CollectRelationInterfaceMembers(iface, visitedClassInterfaces, byKey, members);
             }
 
+            // An explicitly implemented property is stored under its own name, as reflection names it, so the interface
+            // property it implements is not stored again.
+            members.RemoveAll(m => m is IPropertySymbol { ContainingType.TypeKind: TypeKind.Interface } p &&
+                                   symbol.FindImplementationForInterfaceMember(p) is IPropertySymbol
+                                       { ExplicitInterfaceImplementations.Length: > 0 });
             return members;
         }
 

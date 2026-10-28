@@ -74,7 +74,8 @@
 - Source generator: a `[Generate]` class implementing an interface property explicitly, such as
   `string IHasName.Name { get; set; }`, listed the property twice, once through a backing field named after the
   interface property, which does not exist. Loading the assembly then failed with `MissingFieldException` from its
-  module initializer. The property is now stored once, under the interface property's name.
+  module initializer, and as a relation item it disagreed with the reflection metadata. The property is now stored
+  once, under its own name, as reflection names it.
 - Source generator: a dispatcher interface or a containing partial type named with a C# keyword, such as `@event`,
   was declared in the generated part without its `@`, and so were calls of public `[OnSerialize]` and
   `[OnBeforeRemove]` methods and of dispatcher handler methods named that way; the generated code did not compile.

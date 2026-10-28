@@ -11,10 +11,10 @@ static file class ExplicitNameRegistration
 {
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.ExplicitName Creator();
-    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Count>k__BackingField")]
-    extern static ref int Field1(global::TestNamespace.ExplicitName @this);
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<TestNamespace.IHasName.Name>k__BackingField")]
-    extern static ref string Field2(global::TestNamespace.ExplicitName @this);
+    extern static ref string Field1(global::TestNamespace.ExplicitName @this);
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Count>k__BackingField")]
+    extern static ref int Field2(global::TestNamespace.ExplicitName @this);
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -36,14 +36,14 @@ static file class ExplicitNameRegistration
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "Count",
-                Type = typeof(int),
+                Name = "TestNamespace.IHasName.Name",
+                Type = typeof(string),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "Name",
-                Type = typeof(string),
+                Name = "Count",
+                Type = typeof(int),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         ];
