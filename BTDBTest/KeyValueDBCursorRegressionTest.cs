@@ -303,4 +303,27 @@ public class KeyValueDBCursorRegressionTest
         Assert.True(cursor.KeyHasPrefix([3]));
         Assert.False(cursor.KeyHasPrefix([2]));
     }
+
+    /// A cursor that set its value after another cursor inserted a key keeps its key when a key before it is erased.
+    /// Before the fix the in-memory cursor kept the tree path SetValue had refilled, so after the erase it read the
+    /// next key.
+    [Theory]
+    [MemberData(nameof(AllKinds))]
+    public void SetValueAfterInsertKeepsKeyWhenEarlierKeyIsErased(string kind)
+    {
+        using var db = Create(kind);
+        Fill(db, [1], [2], [3]);
+        using var tr = db.StartTransaction();
+        using var current = tr.CreateCursor();
+        using var inserting = tr.CreateCursor();
+        using var erasing = tr.CreateCursor();
+        Assert.True(current.FindExactKey([2]));
+        Assert.True(inserting.CreateOrUpdateKeyValue([4], [4]));
+        current.SetValue([9]);
+        Assert.True(erasing.FindExactKey([1]));
+        erasing.EraseCurrent();
+        Assert.Equal(new byte[] { 2 }, current.SlowGetKey());
+        Assert.Equal(new byte[] { 9 }, current.SlowGetValue());
+        Assert.Equal(0, current.GetKeyIndex());
+    }
 }

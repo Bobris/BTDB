@@ -630,9 +630,10 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         if (_modificationForbidden) throw new BTDBException("DB cannot be modified during fast iteration");
         if (_keyIndex == -1) return;
+        // A removal shifts the keys, so a path refilled since the last modification (SetValue) is stale too.
+        _stack.Clear();
         if (!_modifiedFromLastFind)
         {
-            _stack.Clear();
             _modifiedFromLastFind = true;
             _removedCurrent = false;
         }

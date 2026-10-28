@@ -47,6 +47,9 @@
 
 ### Fixed
 
+- `InMemoryKeyValueDB`: a cursor that called `SetValue` after another cursor inserted a key read the next key once a
+  key before it was erased, because the erase kept the tree path `SetValue` had refilled. Found by running the key
+  value differential test with more seeds.
 - `LsmKeyValueDB`: a cursor whose key was erased moved to the wrong side of a key that another cursor renamed with
   `UpdateKeySuffix` past it, so its next and previous keys and its key index differed from `BTreeKeyValueDB`. A key
   keeps its index when its suffix changes, so such a cursor now stays right before the renamed key, or right after it
