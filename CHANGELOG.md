@@ -83,6 +83,9 @@
 
 ### Fixed
 
+- ObjectDB: each instance of a lazy `IDictionary` or `IOrderedSet` cached its count, so after one instance changed
+  the collection, another instance of the same collection, as loading its owner twice in a transaction gives, reported
+  the old count. `Count` is now counted on each call, which takes two seeks.
 - Event store: a dictionary member holding a dictionary other than `Dictionary`, like a `SortedDictionary`,
   `ReadOnlyDictionary` or `ImmutableDictionary`, failed to store with "Cannot save ... as Dictionary". Any other
   `IDictionary` is now enumerated; the stored format is the same.

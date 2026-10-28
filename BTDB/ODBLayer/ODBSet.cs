@@ -32,7 +32,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
     readonly IKeyValueDBTransaction _keyValueTr;
     readonly ulong _id;
     readonly byte[] _prefix;
-    int _count;
 
     // ReSharper disable once MemberCanBePrivate.Global used by FieldHandler.Load
     public ODBSet(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
@@ -49,7 +48,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
         _keyReader = config.KeyReader!;
         _keyWriter = config.KeyWriter!;
         _keyValueTr = _tr.KeyValueDBTransaction;
-        _count = -1;
     }
 
     // ReSharper disable once UnusedMember.Global
@@ -149,7 +147,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
     {
         using var cursor = _keyValueTr.CreateCursor();
         cursor.EraseAll(_prefix);
-        _count = 0;
     }
 
     [SkipLocalsInit]
@@ -181,17 +178,14 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
         }
     }
 
+    // Not cached: another instance of the same collection, as loading its owner twice in a transaction gives, can change
+    // it, and counting takes two seeks.
     public int Count
     {
         get
         {
-            if (_count == -1)
-            {
-                using var cursor = _keyValueTr.CreateCursor();
-                _count = (int)Math.Min(cursor.GetKeyValueCount(_prefix), int.MaxValue);
-            }
-
-            return _count;
+            using var cursor = _keyValueTr.CreateCursor();
+            return (int)Math.Min(cursor.GetKeyValueCount(_prefix), int.MaxValue);
         }
     }
 
@@ -244,9 +238,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
         var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         var keyBytes = KeyToByteArray(key, ref writer);
         using var cursor = _keyValueTr.CreateCursor();
-        var created = cursor.CreateOrUpdateKeyValue(keyBytes, new());
-        if (created) NotifyAdded();
-        return created;
+        return cursor.CreateOrUpdateKeyValue(keyBytes, new());
     }
 
     [SkipLocalsInit]
@@ -258,34 +250,10 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
         if (cursor.FindExactKey(keyBytes))
         {
             cursor.EraseCurrent();
-            NotifyRemoved();
             return true;
         }
 
         return false;
-    }
-
-    void NotifyAdded()
-    {
-        if (_count != -1)
-        {
-            if (_count != int.MaxValue) _count++;
-        }
-    }
-
-    void NotifyRemoved()
-    {
-        if (_count != -1)
-        {
-            if (_count == int.MaxValue)
-            {
-                _count = -1;
-            }
-            else
-            {
-                _count--;
-            }
-        }
     }
 
     public IEnumerator<TKey> GetEnumerator()
@@ -390,8 +358,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
             if (!endCursor.FindPreviousKey(_prefix))
                 return 0;
         }
-
-        _count = -1;
         return startCursor.EraseUpTo(endCursor);
     }
 

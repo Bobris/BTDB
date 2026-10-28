@@ -45,7 +45,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     readonly IKeyValueDBTransaction _keyValueTr;
     readonly ulong _id;
     readonly byte[] _prefix;
-    int _count;
     KeysCollection? _keysCollection;
     ValuesCollection? _valuesCollection;
 
@@ -69,7 +68,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         _valueReader = config.ValueReader!;
         _valueWriter = config.ValueWriter!;
         _keyValueTr = _tr.KeyValueDBTransaction;
-        _count = -1;
     }
 
     // ReSharper disable once UnusedMember.Global
@@ -120,7 +118,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
         cursor.EraseAll(_prefix);
         FreeDictionaryIds(dictIds);
-        _count = 0;
     }
 
     public bool Contains(KeyValuePair<TKey, TValue> item)
@@ -159,17 +156,14 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         return false;
     }
 
+    // Not cached: another instance of the same collection, as loading its owner twice in a transaction gives, can change
+    // it, and counting takes two seeks.
     public int Count
     {
         get
         {
-            if (_count == -1)
-            {
-                using var cursor = _keyValueTr.CreateCursor();
-                _count = (int)Math.Min(cursor.GetKeyValueCount(_prefix), int.MaxValue);
-            }
-
-            return _count;
+            using var cursor = _keyValueTr.CreateCursor();
+            return (int)Math.Min(cursor.GetKeyValueCount(_prefix), int.MaxValue);
         }
     }
 
@@ -252,7 +246,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         }
 
         cursor.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-        NotifyAdded();
     }
 
     [SkipLocalsInit]
@@ -263,7 +256,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         var dictIds = CollectCurrentValueContentToFree(cursor);
         cursor.EraseCurrent();
         FreeDictionaryIds(dictIds);
-        NotifyRemoved();
         return true;
     }
 
@@ -326,10 +318,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 return;
             }
 
-            if (cursor.CreateOrUpdateKeyValue(keyBytes, valueBytes))
-            {
-                NotifyAdded();
-            }
+            cursor.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
     }
 
@@ -342,29 +331,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         {
             var reader = new MemReader(valuePtr, valueSpan.Length);
             return ByteArrayToValue(ref reader);
-        }
-    }
-
-    void NotifyAdded()
-    {
-        if (_count != -1)
-        {
-            if (_count != int.MaxValue) _count++;
-        }
-    }
-
-    void NotifyRemoved()
-    {
-        if (_count != -1)
-        {
-            if (_count == int.MaxValue)
-            {
-                _count = -1;
-            }
-            else
-            {
-                _count--;
-            }
         }
     }
 
@@ -598,8 +564,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             if (!endCursor.FindPreviousKey(_prefix))
                 return 0;
         }
-
-        _count = -1;
         if (startCursor.GetKeyIndex() > endCursor.GetKeyIndex())
             return 0;
         var dictIds = CollectValueContentToFree(startCursor, endCursor);
