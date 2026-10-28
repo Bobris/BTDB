@@ -75,6 +75,11 @@
 
 ### Fixed
 
+- ObjectDB: removing an object of a recursive type that keeps its children in an `IDictionary`, such as a tree node,
+  left the dictionaries below the first one in the database. Detecting what needs freeing reports a type whose
+  detection is in progress as needing nothing, and the dictionary kept that answer for its values. It now asks again
+  once detection is over. Freeing also stops at a dictionary it already frees, which damage can make a dictionary hold,
+  instead of recursing until the stack overflows.
 - Event store: `FullNameTypeMapper.ToType` failed with `ArgumentNullException` for a generic type name whose argument
   or definition maps to no type, as after that type was renamed, and asserted on unbalanced names that damage leaves;
   such names now map to no type. Both event store versions, and `EventSerializer.ProcessMetadataLog`, report an unknown

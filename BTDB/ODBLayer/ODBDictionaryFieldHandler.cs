@@ -455,8 +455,11 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         if (_valuesHandlerDoesNeedFreeContent == null) throw new BTDBException("FreeContent not initialized");
 
         var dictId = reader.ReadVUInt64();
-        ctx!.RegisterDict(dictId);
-        if (_valuesHandlerDoesNeedFreeContent == true)
+        // Dictionaries are never shared, so one met again is damage that made a dictionary hold itself; its content is
+        // already being freed, and walking it again would recurse until the stack overflows.
+        if (ctx is DBReaderWithFreeInfoCtx { } infoCtx ? !infoCtx.TryRegisterDict(dictId) : RegisterDict(ctx!, dictId))
+            return;
+        if (ValuesNeedFreeContent())
         {
             var len = PackUnpack.LengthVUInt(dictId);
             Span<byte> prefix = stackalloc byte[ObjectDB.AllDictionariesPrefixLen + (int)len];
@@ -481,7 +484,25 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         }
     }
 
+    static bool RegisterDict(IReaderCtx ctx, ulong dictId)
+    {
+        ctx.RegisterDict(dictId);
+        return false;
+    }
+
     bool? _valuesHandlerDoesNeedFreeContent;
+    bool _valuesNeedResolved;
+
+    // Detection reports a type whose detection is already in progress as needing no freeing, which is right for the
+    // answer it is computing but not for these values when that type is their own, as in a tree whose nodes keep their
+    // children in this dictionary. So the values are asked again once detection is over.
+    bool ValuesNeedFreeContent()
+    {
+        if (_valuesHandlerDoesNeedFreeContent == true || _valuesNeedResolved) return _valuesHandlerDoesNeedFreeContent == true;
+        _valuesHandlerDoesNeedFreeContent = _valuesHandler.DoesNeedFreeContent(new HashSet<Type>());
+        _valuesNeedResolved = true;
+        return _valuesHandlerDoesNeedFreeContent == true;
+    }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {

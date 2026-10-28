@@ -2247,6 +2247,107 @@ public class ObjectDbTableFreeContentTest : IDisposable
         }
     }
 
+    [Generate]
+    public class TreeNode
+    {
+        public int Value { get; set; }
+        public IDictionary<int, TreeNode>? Children { get; set; }
+    }
+
+    [Generate]
+    public class Tree
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public TreeNode? Root { get; set; }
+    }
+
+    public interface ITreeTable : IRelation<Tree>
+    {
+        void Insert(Tree tree);
+        bool RemoveById(ulong id);
+        Tree FindById(ulong id);
+    }
+
+    static Tree ThreeLevelTree() => new()
+    {
+        Id = 1,
+        Root = new()
+        {
+            Value = 1,
+            Children = new Dictionary<int, TreeNode>
+            {
+                [7] = new() { Value = 2, Children = new Dictionary<int, TreeNode> { [8] = new() { Value = 3 } } }
+            }
+        }
+    };
+
+    // Detecting what TreeNode needs freed reports TreeNode itself, still being detected, as needing nothing; before the
+    // fix the dictionary kept that answer for its values, so removing a tree left the dictionaries below the root.
+    [Fact]
+    public void FreeWorksInTreesKeepingChildrenInDictionaries()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ITreeTable>();
+        table.Insert(ThreeLevelTree());
+        table.RemoveById(1);
+        Assert.Equal(0, CountDictionaryEntries(tr));
+        AssertNoLeaksInDb();
+    }
+
+    static int CountDictionaryEntries(IObjectDBTransaction tr)
+    {
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        var count = 0;
+        if (cursor.FindFirstKey(ObjectDB.AllDictionariesPrefix))
+            do count++;
+            while (cursor.FindNextKey(ObjectDB.AllDictionariesPrefix));
+        return count;
+    }
+
+    // Damage can make a dictionary hold itself; before the fix freeing it recursed until the stack overflowed.
+    [Fact]
+    public void FreeEndsOnDictionaryHoldingItself()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<ITreeTable>().Insert(new()
+            {
+                Id = 1,
+                Root = new()
+                {
+                    Value = 1,
+                    Children = new Dictionary<int, TreeNode> { [7] = new() { Value = 2, Children = new Dictionary<int, TreeNode>() } }
+                }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _lowDb.StartTransaction())
+        {
+            // The only dictionary entry is the root's child, whose value ends with the id of its own empty dictionary;
+            // point that at the root's dictionary.
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.FindFirstKey(ObjectDB.AllDictionariesPrefix));
+            var keyBuffer = Span<byte>.Empty;
+            var valueBuffer = Span<byte>.Empty;
+            var rootId = PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref keyBuffer)[ObjectDB.AllDictionariesPrefixLen..]);
+            var value = cursor.GetValueSpan(ref valueBuffer).ToArray();
+            Assert.Equal(rootId + 1, value[^1]);
+            value[^1] = (byte)rootId;
+            cursor.SetValue(value);
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.True(tr.GetRelation<ITreeTable>().RemoveById(1));
+            Assert.Equal(0, CountDictionaryEntries(tr));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
     [Fact]
     public void FreeWorksTogetherWithRemoveByPrefix()
     {

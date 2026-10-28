@@ -2886,13 +2886,21 @@ public class RelationInfo
 public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
+    readonly HashSet<ulong> _registeredDictionaries;
     HashSet<int>? _seenObjects;
 
     public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
         bool reuseInlineObjectReferencesInNestedFreeContent = false)
+        : this(transaction, freeDictionaries, [.. freeDictionaries], reuseInlineObjectReferencesInNestedFreeContent)
+    {
+    }
+
+    DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
+        HashSet<ulong> registeredDictionaries, bool reuseInlineObjectReferencesInNestedFreeContent)
         : base(transaction)
     {
         _freeDictionaries = freeDictionaries;
+        _registeredDictionaries = registeredDictionaries;
         ReuseInlineObjectReferencesInNestedFreeContent = reuseInlineObjectReferencesInNestedFreeContent;
     }
 
@@ -2903,13 +2911,21 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     internal DBReaderWithFreeInfoCtx CreateNestedContext(
         bool reuseInlineObjectReferencesInNestedFreeContent = false)
     {
-        return new DBReaderWithFreeInfoCtx(Transaction!, _freeDictionaries,
+        return new DBReaderWithFreeInfoCtx(Transaction!, _freeDictionaries, _registeredDictionaries,
             reuseInlineObjectReferencesInNestedFreeContent);
     }
 
     public override void RegisterDict(ulong dictId)
     {
+        TryRegisterDict(dictId);
+    }
+
+    /// Registers a dictionary to free; false when it was registered already.
+    internal bool TryRegisterDict(ulong dictId)
+    {
+        if (!_registeredDictionaries.Add(dictId)) return false;
         _freeDictionaries.Add(dictId);
+        return true;
     }
 
     public override bool SkipObject(ref MemReader reader)
