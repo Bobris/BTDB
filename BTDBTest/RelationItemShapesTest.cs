@@ -150,4 +150,48 @@ public class RelationItemShapesTest : ObjectDbTestBase
             Assert.Equal(Ids(model.Where(r => r.Age == 3 && !tenant2.Take(3).Contains(r)).OrderBy(r => r.Tenant).ThenBy(r => r.Id)), Ids(t.FindByAge(3)));
         }
     }
+
+    public enum TupleKind
+    {
+        A,
+        B
+    }
+
+    [Generate]
+    public class TupleRow
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public (DateTime, byte) DateAndByte { get; set; }
+        public ((int, string), TupleKind) NestedWithEnum { get; set; }
+        public (Guid, byte)? NullableGuidAndByte { get; set; }
+    }
+
+    public interface ITupleRowTable : IRelation<TupleRow>
+    {
+        void Insert(TupleRow row);
+        TupleRow FindById(ulong id);
+    }
+
+    // Before the fix the generated metadata measured tuple layouts on stand-in structs with sequential layout, so
+    // relations stored a DateTime next to a byte as default and cut the end of a Guid next to a byte.
+    [Fact]
+    public void TuplesWithStructItemsRoundTrip()
+    {
+        var when = new DateTime(2025, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+        var guid = Guid.NewGuid();
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<ITupleRowTable>().Insert(new()
+            {
+                Id = 1, DateAndByte = (when, 7), NestedWithEnum = ((1, "s"), TupleKind.B), NullableGuidAndByte = (guid, 3)
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var readTr = _db.StartReadOnlyTransaction();
+        var read = readTr.GetRelation<ITupleRowTable>().FindById(1);
+        Assert.Equal(((when, (byte)7), ((1, "s"), TupleKind.B), ((Guid, byte)?)(guid, 3)),
+            (read.DateAndByte, read.NestedWithEnum, read.NullableGuidAndByte));
+    }
 }
