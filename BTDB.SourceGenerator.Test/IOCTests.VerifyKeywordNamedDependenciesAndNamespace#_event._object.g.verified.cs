@@ -6,14 +6,14 @@ using System.Runtime.CompilerServices;
 
 namespace @event;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class objectRegistration
 {
     static object Creator()
     {
-        return RuntimeHelpers.GetUninitializedObject(typeof(global::@event.@object));
+        return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(global::@event.@object));
     }
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::@event.@object), (container, ctx) =>
@@ -27,7 +27,7 @@ static file class objectRegistration
             return (container2, ctx2) =>
             {
                 var res = new global::@event.@object((int)(f0(container2, ctx2)));
-                res.@base = Unsafe.As<string>(f1(container2, ctx2));
+                res.@base = global::System.Runtime.CompilerServices.Unsafe.As<string>(f1(container2, ctx2));
                 res.@this = (int)(f2(container2, ctx2));
                 return res;
             };
@@ -38,7 +38,7 @@ static file class objectRegistration
         metadata.Namespace = "event";
         metadata.Implements = [typeof(global::@event.@class)];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::@event.@object>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::@event.@object>(metadata);
         metadata.Fields = [
         ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);

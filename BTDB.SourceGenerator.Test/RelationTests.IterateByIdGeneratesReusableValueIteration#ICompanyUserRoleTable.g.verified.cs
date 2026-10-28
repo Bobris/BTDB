@@ -14,7 +14,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 3
 
 namespace BTDB.GeneratedRelations;
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 file class ICompanyUserRoleTableRegistration
 {
     [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
@@ -24,7 +24,7 @@ file class ICompanyUserRoleTableRegistration
         {
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         void global::ICompanyUserRoleTable.IterateById(ulong companyId, global::System.Action<global::CompanyUserRoleIteration> callback, global::CompanyUserRoleIteration value)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -33,7 +33,7 @@ file class ICompanyUserRoleTableRegistration
             base.IterateByPrimaryKeyPrefix<global::CompanyUserRoleIteration>(writer.GetSpan(), 1, 1, callback, value);
         }
     }
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::ICompanyUserRoleTable),

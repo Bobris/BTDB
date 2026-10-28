@@ -2812,7 +2812,7 @@ public class SourceGenerator : IIncrementalGenerator
             #pragma warning disable 612, 618, CS0649, CS8500, SYSLIB0057
             using System;
             using System.Runtime.CompilerServices;
-            [CompilerGenerated]
+            [global::System.Runtime.CompilerServices.CompilerGenerated]
             static file class StackAllocationRegistrations
             {
             """);
@@ -2836,7 +2836,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         factoryCode.Append($$"""
 
-                [ModuleInitializer]
+                [global::System.Runtime.CompilerServices.ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
             """);
@@ -2851,7 +2851,7 @@ public class SourceGenerator : IIncrementalGenerator
                         static void Allocate{{idx}}(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
                         {
                             {{@struct.FullName}} value = default;
-                            ptr = (nint)Unsafe.AsPointer(ref value);
+                            ptr = (nint)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
                             chain(ref ctx);
                             ptr = 0;
                         }
@@ -2877,8 +2877,8 @@ public class SourceGenerator : IIncrementalGenerator
                                         {
                                             Name = "{{field.Name}}",
                                             Type = typeof({{field.Type}}),
-                                            ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple{{idx}}, byte>(ref valueTuple{{idx}}),
-                                                ref Unsafe.As<{{field.Type}}, byte>(ref valueTuple{{idx}}.{{field.Name}})),
+                                            ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<ValueTuple{{idx}}, byte>(ref valueTuple{{idx}}),
+                                                ref global::System.Runtime.CompilerServices.Unsafe.As<{{field.Type}}, byte>(ref valueTuple{{idx}}.{{field.Name}})),
                                         },
                         """);
                 }
@@ -2913,7 +2913,7 @@ public class SourceGenerator : IIncrementalGenerator
             #pragma warning disable 612, 618, CS0649, SYSLIB0057
             using System;
             using System.Runtime.CompilerServices;
-            [CompilerGenerated]
+            [global::System.Runtime.CompilerServices.CompilerGenerated]
             static file class CollectionRegistrations
             {
                 struct DictEntry<TKey, TValue>
@@ -2931,7 +2931,7 @@ public class SourceGenerator : IIncrementalGenerator
                     public T Value;
                 }
 
-                [ModuleInitializer]
+                [global::System.Runtime.CompilerServices.ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
             """);
@@ -2950,13 +2950,13 @@ public class SourceGenerator : IIncrementalGenerator
                                 Type = typeof({{collection.FullName}}),
                                 ElementKeyType = typeof({{collection.KeyType}}),
                                 ElementValueType = typeof({{collection.ValueType}}),
-                                OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
-                                    ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
-                                OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
-                                    ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Key)),
-                                OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
-                                    ref Unsafe.As<{{collection.ValueType}}, byte>(ref e{{idx}}.Value)),
-                                SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>>(),
+                                OffsetNext = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref global::System.Runtime.CompilerServices.Unsafe.As<int, byte>(ref e{{idx}}.Next)),
+                                OffsetKey = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref global::System.Runtime.CompilerServices.Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Key)),
+                                OffsetValue = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref global::System.Runtime.CompilerServices.Unsafe.As<{{collection.ValueType}}, byte>(ref e{{idx}}.Value)),
+                                SizeOfEntry = (uint)global::System.Runtime.CompilerServices.Unsafe.SizeOf<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>>(),
                                 Creator = &Create{{idx}},
                                 AdderKeyValue = &Add{{idx}},
                                 ODBCreator = &ODBCreate{{idx}}
@@ -2969,7 +2969,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                             static void Add{{idx}}(object c, ref byte key, ref byte value)
                             {
-                                Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref key), Unsafe.As<byte, {{collection.ValueType}}>(ref value));
+                                global::System.Runtime.CompilerServices.Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(global::System.Runtime.CompilerServices.Unsafe.As<byte, {{collection.KeyType}}>(ref key), global::System.Runtime.CompilerServices.Unsafe.As<byte, {{collection.ValueType}}>(ref value));
                             }
 
                             static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
@@ -3002,7 +3002,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                                 static void Add{{idx}}(object c, ref byte value)
                                 {
-                                    Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                                    global::System.Runtime.CompilerServices.Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(global::System.Runtime.CompilerServices.Unsafe.As<byte, {{collection.KeyType}}>(ref value));
                                 }
 
                         """);
@@ -3017,11 +3017,11 @@ public class SourceGenerator : IIncrementalGenerator
                                 {
                                     Type = typeof({{collection.FullName}}),
                                     ElementKeyType = typeof({{collection.KeyType}}),
-                                    OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
-                                        ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
-                                    OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
-                                        ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
-                                    SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
+                                    OffsetNext = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                        ref global::System.Runtime.CompilerServices.Unsafe.As<int, byte>(ref e{{idx}}.Next)),
+                                    OffsetKey = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                        ref global::System.Runtime.CompilerServices.Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
+                                    SizeOfEntry = (uint)global::System.Runtime.CompilerServices.Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
                                     Creator = &Create{{idx}},
                                     Adder = &Add{{idx}},
                                     ODBCreator = &ODBCreate{{idx}}
@@ -3034,7 +3034,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                                 static void Add{{idx}}(object c, ref byte value)
                                 {
-                                    Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                                    global::System.Runtime.CompilerServices.Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(global::System.Runtime.CompilerServices.Unsafe.As<byte, {{collection.KeyType}}>(ref value));
                                 }
 
                                 static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
@@ -3096,7 +3096,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
                             {
-                                return Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
+                                return global::System.Runtime.CompilerServices.Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
                             }
                             throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
                         }
@@ -3158,10 +3158,10 @@ public class SourceGenerator : IIncrementalGenerator
             using System;
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
-            [CompilerGenerated]
+            [global::System.Runtime.CompilerServices.CompilerGenerated]
             static file class {{generationInfo.Name}}Registration
             {
-                [ModuleInitializer]
+                [global::System.Runtime.CompilerServices.ModuleInitializer]
                 internal static void Register4BTDB()
                 {
                     global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
@@ -3257,13 +3257,13 @@ public class SourceGenerator : IIncrementalGenerator
                     factoryCode.Append(
                         $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizeType.Replace("global::", "")} {name} parameter of {generationInfo.FullName.Replace("global::", "")}\");");
                     factoryCode.Append("\n            ");
-                    parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
+                    parametersCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
                     parametersCode.Append($"f{parameterIndex}(container2, ctx2))");
                 }
                 else
                 {
                     parametersCode.Append($"f{parameterIndex} != null ? ");
-                    parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
+                    parametersCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
                     parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : " +
                                           (defaultValue ?? $"default({normalizeType})"));
                 }
@@ -3299,31 +3299,31 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         // language=c#
                         additionalDeclarations.Append($"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
+                                [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
                                 extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({generationInfo.FullName} @this);
 
                             """);
                         propertyCode.Append($"FieldRef{name}(res) = ");
-                        propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                        propertyCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                         propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
                     }
                     else
                     {
                         // language=c#
                         additionalDeclarations.Append($"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
+                                [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
                                 extern static void MethodSetter{name}({generationInfo.FullName} @this, {normalizedType} value);
 
                             """);
                         propertyCode.Append($"MethodSetter{name}(res, ");
-                        propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                        propertyCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                         propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
                     }
                 }
                 else
                 {
                     propertyCode.Append($"res.{CSharpSyntaxUtilities.EscapeIdentifier(name)} = ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                    propertyCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                     propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
                 }
 
@@ -3344,7 +3344,7 @@ public class SourceGenerator : IIncrementalGenerator
         }
         else
         {
-            declarations.Append("[CompilerGenerated]\n");
+            declarations.Append("[global::System.Runtime.CompilerServices.CompilerGenerated]\n");
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
@@ -3377,7 +3377,7 @@ public class SourceGenerator : IIncrementalGenerator
 
             // language=c#
             declarations.Append($"""
-                    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
                     extern static {generationInfo.FullName} Constr({constructorParametersText});
 
                 """);
@@ -3405,7 +3405,7 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         // language=c#
                         declarations.Append($"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                                [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
                                 extern public static {nameWithGeneric} Creator();
 
                         """);
@@ -3417,7 +3417,7 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append($$"""
                                 public static object Creator()
                                 {
-                                    return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
+                                    return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
                                 }
 
                         """);
@@ -3431,7 +3431,7 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         // language=c#
                         declarations.Append($"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                            [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
                             extern static {generationInfo.FullName} Creator();
 
                         """);
@@ -3443,7 +3443,7 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append($$"""
                             static object Creator()
                             {
-                                return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
+                                return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
                             }
 
                         """);
@@ -3470,7 +3470,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &{{(reuseConstructorAccessorForMetadata ? "" : ActivatorName(generationInfo))}}{{(reuseConstructorAccessorForMetadata ? "Constr" : "Creator")}};
-                        var dummy = Unsafe.As<{{(isTuple ? "TupleStunt" : generationInfo.FullName)}}>(metadata);
+                        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<{{(isTuple ? "TupleStunt" : generationInfo.FullName)}}>(metadata);
                         metadata.Fields = [
 
                 """);
@@ -3527,7 +3527,7 @@ public class SourceGenerator : IIncrementalGenerator
                             declarations.Append($$"""
                                     public static class FieldAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
-                                        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{{field.BackingName}}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{{field.BackingName}}")]
                                         extern public static ref {{NormalizeType(field.GenericType)}} Field({{ownerAdapterType}} @this);
                                     }
 
@@ -3537,7 +3537,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
                                     extern static ref {normalizedType} Field{fieldIndex}({field.OwnerFullName} @this);
 
                                 """);
@@ -3546,7 +3546,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
                                         extern public static ref {NormalizeType(field.GenericType)} Field{fieldIndex}({nameWithGeneric} @this);
 
                                 """);
@@ -3568,12 +3568,12 @@ public class SourceGenerator : IIncrementalGenerator
                             declarations.Append($$"""
                                     public static class GetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
                                         extern public static {{normalizedGenericType}} Getter({{ownerAdapterType}} @this);
                                     }
                                     static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                     {
-                                        Unsafe.As<byte, {{normalizedType}}>(ref value) = GetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Getter(Unsafe.As<{{field.OwnerFullName}}>(@this));
+                                        global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value) = GetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Getter(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this));
                                     }
 
                                 """);
@@ -3582,11 +3582,11 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($$"""
-                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
                                     extern static {{normalizedType}} Getter{{fieldIndex}}({{field.OwnerFullName}} @this);
                                     static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                     {
-                                        Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this));
+                                        global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this));
                                     }
 
                                 """);
@@ -3595,11 +3595,11 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($$"""
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
                                         extern public static {{NormalizeType(field.GenericType)}} Getter{{fieldIndex}}({{nameWithGeneric}} @this);
                                         public static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                         {
-                                            Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{nameWithGeneric}}>(@this));
+                                            global::System.Runtime.CompilerServices.Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value) = Getter{{fieldIndex}}(global::System.Runtime.CompilerServices.Unsafe.As<{{nameWithGeneric}}>(@this));
                                         }
 
                                 """);
@@ -3621,12 +3621,12 @@ public class SourceGenerator : IIncrementalGenerator
                             declarations.Append($$"""
                                     public static class SetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
                                         extern public static void Setter({{ownerAdapterType}} @this, {{normalizedGenericType}} value);
                                     }
                                     static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                     {
-                                        SetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Setter(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
+                                        SetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Setter(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this), global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value));
                                     }
 
                                 """);
@@ -3635,11 +3635,11 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($$"""
-                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
                                     extern static void Setter{{fieldIndex}}({{field.OwnerFullName}} @this, {{normalizedType}} value);
                                     static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                     {
-                                        Setter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
+                                        Setter{{fieldIndex}}(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this), global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value));
                                     }
 
                                 """);
@@ -3648,11 +3648,11 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($$"""
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
                                         extern public static void Setter{{fieldIndex}}({{nameWithGeneric}} @this, {{NormalizeType(field.GenericType)}} value);
                                         public static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                         {
-                                            Setter{{fieldIndex}}(Unsafe.As<{{nameWithGeneric}}>(@this), Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value));
+                                            Setter{{fieldIndex}}(global::System.Runtime.CompilerServices.Unsafe.As<{{nameWithGeneric}}>(@this), global::System.Runtime.CompilerServices.Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value));
                                         }
 
                                 """);
@@ -3693,7 +3693,7 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         var onSerializeInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
                         metadataCode.Append($"""
-                                        Unsafe.As<{onSerializeInvokeType}>(@this).{m.Name}();
+                                        global::System.Runtime.CompilerServices.Unsafe.As<{onSerializeInvokeType}>(@this).{m.Name}();
 
                             """);
                     }
@@ -3704,7 +3704,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
                                     extern static void OnSerialize{methodIndex}({generationInfo.FullName} @this);
 
                                 """);
@@ -3713,7 +3713,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
                                         extern public static void OnSerialize{methodIndex}({nameWithGeneric} @this);
 
                                 """);
@@ -3721,7 +3721,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                         // language=c#
                         metadataCode.Append($"""
-                                        {ActivatorName(generationInfo)}OnSerialize{methodIndex}(Unsafe.As<{generationInfo.FullName}>(@this));
+                                        {ActivatorName(generationInfo)}OnSerialize{methodIndex}(global::System.Runtime.CompilerServices.Unsafe.As<{generationInfo.FullName}>(@this));
 
                             """);
                     }
@@ -3784,7 +3784,7 @@ public class SourceGenerator : IIncrementalGenerator
                 metadataCode.Append($$"""
                                 return (transaction, value) =>
                                 {
-                                    var val = Unsafe.As<{{generationInfo.FullName}}>(value);
+                                    var val = global::System.Runtime.CompilerServices.Unsafe.As<{{generationInfo.FullName}}>(value);
                                     var res = false;
 
                     """);
@@ -3798,7 +3798,7 @@ public class SourceGenerator : IIncrementalGenerator
                         var onBeforeRemoveInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
                         var useLocalVal = onBeforeRemoveInvokeType == NormalizeType(generationInfo.FullName);
                         metadataCode.Append($"""
-                                            {maybeOr}{(useLocalVal ? "val" : $"Unsafe.As<{onBeforeRemoveInvokeType}>(value)")}.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
+                                            {maybeOr}{(useLocalVal ? "val" : $"global::System.Runtime.CompilerServices.Unsafe.As<{onBeforeRemoveInvokeType}>(value)")}.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
 
                             """);
                     }
@@ -3810,7 +3810,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
                                     extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
@@ -3819,7 +3819,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             // language=c#
                             declarations.Append($"""
-                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
                                         extern public static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
@@ -3879,7 +3879,7 @@ public class SourceGenerator : IIncrementalGenerator
                            return (container, message) =>
                            {
                                var res = nestedFactory(container, null);
-                               {{returnPrefix}}Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));{{returnNullLine}}
+                               {{returnPrefix}}global::System.Runtime.CompilerServices.Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{name}}(global::System.Runtime.CompilerServices.Unsafe.As<{{type}}>(message));{{returnNullLine}}
                            };
                         };
                 """);
@@ -3912,7 +3912,7 @@ public class SourceGenerator : IIncrementalGenerator
             using System;
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
-            {{declarations}}    [ModuleInitializer]
+            {{declarations}}    [global::System.Runtime.CompilerServices.ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
             {{registerFactoryCode}}    }
@@ -4036,13 +4036,13 @@ public class SourceGenerator : IIncrementalGenerator
             var isReference = parameter.IsReference;
             if (!parameter.Optional)
             {
-                sb.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
+                sb.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
                 sb.Append($"f{paramIocIndex}(container, null))!");
             }
             else
             {
                 sb.Append($"f{paramIocIndex} != null ? ");
-                sb.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
+                sb.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
                 sb.Append($"f{paramIocIndex}(container, null)) : " +
                           (parameter.DefaultValue ?? $"default({normalizeType})"));
             }
@@ -4160,7 +4160,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         // language=c#
         var declarations = new StringBuilder();
-        declarations.Append("[CompilerGenerated]\n");
+        declarations.Append("[global::System.Runtime.CompilerServices.CompilerGenerated]\n");
         declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
         var implName = $"Impl{generationInfo.Name.Substring(1)}";
         var (indexOfInKeyValue, primaryKeyFields, secondaryKeys, valueFields) = BuildIndexInfo(generationInfo);
@@ -4177,7 +4177,7 @@ public class SourceGenerator : IIncrementalGenerator
             // language=C#
             declarations.Append($$"""
 
-                        [SkipLocalsInit]
+                        [global::System.Runtime.CompilerServices.SkipLocalsInit]
                         {{method.ResultType ?? "void"}} {{method.DefinedInType}}.{{method.Name}}({{string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Identifier}"))}})
                         {
 
@@ -4909,7 +4909,7 @@ public class SourceGenerator : IIncrementalGenerator
         code.Append(declarations);
 
         // language=c#
-        code.Append("    [ModuleInitializer]\n");
+        code.Append("    [global::System.Runtime.CompilerServices.ModuleInitializer]\n");
         code.Append("    internal static unsafe void Register4BTDB()\n");
         code.Append("    {\n");
         code.Append(

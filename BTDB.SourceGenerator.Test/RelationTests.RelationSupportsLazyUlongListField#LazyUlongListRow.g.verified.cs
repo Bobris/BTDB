@@ -4,16 +4,16 @@
 using System;
 using System.Runtime.CompilerServices;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class LazyUlongListRowRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::LazyUlongListRow Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Id>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Id>k__BackingField")]
     extern static ref ulong Field1(global::LazyUlongListRow @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Values>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Values>k__BackingField")]
     extern static ref global::BTDB.ODBLayer.ILazyUlongList Field2(global::LazyUlongListRow @this);
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::LazyUlongListRow), (container, ctx) =>
@@ -30,7 +30,7 @@ static file class LazyUlongListRowRegistration
         metadata.Namespace = "";
         metadata.Implements = [];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::LazyUlongListRow>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::LazyUlongListRow>(metadata);
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {

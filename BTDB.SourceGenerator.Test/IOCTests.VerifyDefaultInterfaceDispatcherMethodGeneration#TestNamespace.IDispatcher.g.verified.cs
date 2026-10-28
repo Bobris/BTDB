@@ -20,7 +20,7 @@ public partial interface IDispatcher
         {
             if (VerifyHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {
-                return Unsafe.As<object>(handler.Execute!(container, message));
+                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
             }
             throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }
@@ -40,7 +40,7 @@ public partial interface IDispatcher
         {
             if (ConsumeHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {
-                return Unsafe.As<object>(handler.Execute!(container, message));
+                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
             }
             throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }

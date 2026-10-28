@@ -11,7 +11,7 @@ using BTDB.ODBLayer;
 // Field: Values global::BTDB.ODBLayer.ILazyUlongList reference
 
 namespace BTDB.GeneratedRelations;
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 file class ILazyUlongListTableRegistration
 {
     [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
@@ -21,13 +21,13 @@ file class ILazyUlongListTableRegistration
         {
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         void global::ILazyUlongListTable.Insert(global::LazyUlongListRow row)
         {
             base.InsertUniqueOrThrow(row);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         global::LazyUlongListRow global::ILazyUlongListTable.FindById(ulong id)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -36,7 +36,7 @@ file class ILazyUlongListTableRegistration
             return base.FindByIdOrDefault<global::LazyUlongListRow>(writer.GetSpan(), true, 0);
         }
     }
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::ILazyUlongListTable),

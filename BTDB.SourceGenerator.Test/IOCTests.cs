@@ -31,6 +31,32 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyTypesNamedLikeCompilerServicesInUserNamespace()
+    {
+        // Generated code lives in the user's namespace, whose types win over its using directives. Before the fix these
+        // types took the place of the ones from System.Runtime.CompilerServices, and the generated code did not compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace
+            {
+                public static class Unsafe { }
+                public static class RuntimeHelpers { }
+                public class UnsafeAccessorAttribute : System.Attribute { }
+                public class UnsafeAccessorKind { }
+                public interface IDependency { }
+
+                [BTDB.Generate]
+                public class Service
+                {
+                    public Service(IDependency dependency) { }
+                    [BTDB.IOC.Dependency] public string Other { private get; set; } = "";
+                    public int Value { get; set; }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyKeywordNamedDependenciesAndNamespace()
     {
         // Before the fix keyword named dependencies were assigned without their verbatim prefix, which did not compile,

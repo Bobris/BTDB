@@ -4,16 +4,16 @@
 using System;
 using System.Runtime.CompilerServices;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class CompanyUserRoleIterationRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::CompanyUserRoleIteration Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UserId>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<UserId>k__BackingField")]
     extern static ref ulong Field1(global::CompanyUserRoleIteration @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<RoleId>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<RoleId>k__BackingField")]
     extern static ref ulong Field2(global::CompanyUserRoleIteration @this);
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::CompanyUserRoleIteration), (container, ctx) =>
@@ -30,7 +30,7 @@ static file class CompanyUserRoleIterationRegistration
         metadata.Namespace = "";
         metadata.Implements = [];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::CompanyUserRoleIteration>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::CompanyUserRoleIteration>(metadata);
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {

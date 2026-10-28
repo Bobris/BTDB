@@ -15,7 +15,7 @@ using BTDB.ODBLayer;
 // Field: int int
 
 namespace BTDB.GeneratedRelations;
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 file class IRowTableRegistration
 {
     [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
@@ -25,19 +25,19 @@ file class IRowTableRegistration
         {
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         void global::TestNamespace.IRowTable.Insert(global::TestNamespace.Row @object)
         {
             base.InsertUniqueOrThrow(@object);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         bool global::TestNamespace.IRowTable.Upsert(global::TestNamespace.Row @object)
         {
             return base.Upsert(@object);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         global::TestNamespace.Row global::TestNamespace.IRowTable.FindById(ulong @event, long @long)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -47,7 +47,7 @@ file class IRowTableRegistration
             return base.FindByIdOrDefault<global::TestNamespace.Row>(writer.GetSpan(), true, 0);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::TestNamespace.Row> global::TestNamespace.IRowTable.FindByClass(string @class)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -57,7 +57,7 @@ file class IRowTableRegistration
             return (global::System.Collections.Generic.IEnumerable<global::TestNamespace.Row>)base.FindBySecondaryKey<global::TestNamespace.Row>(remappedSecondaryKeyIndex, writer.GetSpan(), 0);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::TestNamespace.Row> global::TestNamespace.IRowTable.ListById(ulong @event, global::BTDB.ODBLayer.AdvancedEnumeratorParam<long> @params)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -79,7 +79,7 @@ file class IRowTableRegistration
             return new global::BTDB.ODBLayer.RelationAdvancedEnumerator<global::TestNamespace.Row>(this, @params.Order, @params.StartProposition, prefixLen, startKeyBytes, @params.EndProposition, endKeyBytes, 0);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::TestNamespace.Row> global::TestNamespace.IRowTable.ScanByClass(global::BTDB.ODBLayer.Constraint<string> @class)
         {
             var c_c = new ConstraintInfo[1];
@@ -87,7 +87,7 @@ file class IRowTableRegistration
             return ScanBySecondaryKeyPrefix<global::TestNamespace.Row>(0, c_c, 0u);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         ulong global::TestNamespace.IRowTable.GatherById(global::System.Collections.Generic.ICollection<global::TestNamespace.Row> @out, long skip, long take, global::BTDB.ODBLayer.Constraint<ulong> @event)
         {
             var c_c = new ConstraintInfo[1];
@@ -95,7 +95,7 @@ file class IRowTableRegistration
             return GatherByPrimaryKey(0, c_c, @out, skip, take, null);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         bool global::TestNamespace.IRowTable.UpdateById(ulong @event, long @long, int @int)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -130,7 +130,7 @@ file class IRowTableRegistration
             return true;
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         int global::TestNamespace.IRowTable.RemoveByIdPartial(ulong @event, int maxCount)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -139,7 +139,7 @@ file class IRowTableRegistration
             return (int)base.RemoveByPrimaryKeyPrefixPartial(writer.GetSpan(), maxCount);
         }
 
-        [SkipLocalsInit]
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
         void global::TestNamespace.IRowTable.IterateById(ulong @event, global::System.Action<global::TestNamespace.RowInt> @delegate, global::TestNamespace.RowInt @object)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
@@ -148,7 +148,7 @@ file class IRowTableRegistration
             base.IterateByPrimaryKeyPrefix<global::TestNamespace.RowInt>(writer.GetSpan(), 1, 1, @delegate, @object);
         }
     }
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::TestNamespace.IRowTable),

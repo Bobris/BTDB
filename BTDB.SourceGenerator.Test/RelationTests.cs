@@ -586,7 +586,7 @@ public class RelationTests : GeneratorTestsBase
             .SourceText
             .ToString();
 
-        Assert.Contains("return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.CostCenterDb));",
+        Assert.Contains("return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.CostCenterDb));",
             costCenterSource);
         Assert.DoesNotContain("extern static global::TestNamespace.CostCenterDb Creator();", costCenterSource);
 
@@ -594,7 +594,7 @@ public class RelationTests : GeneratorTestsBase
             .SourceText
             .ToString();
 
-        Assert.Contains("return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.JobCategoryDb));",
+        Assert.Contains("return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.JobCategoryDb));",
             jobCategorySource);
         Assert.DoesNotContain("extern static global::TestNamespace.JobCategoryDb Creator();", jobCategorySource);
     }

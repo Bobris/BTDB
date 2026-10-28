@@ -6,20 +6,20 @@ using System.Runtime.CompilerServices;
 
 namespace TestNamespace;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class RowRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.Row Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<event>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<event>k__BackingField")]
     extern static ref ulong Field1(global::TestNamespace.Row @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<long>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<long>k__BackingField")]
     extern static ref long Field2(global::TestNamespace.Row @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<class>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<class>k__BackingField")]
     extern static ref string Field3(global::TestNamespace.Row @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<int>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<int>k__BackingField")]
     extern static ref int Field4(global::TestNamespace.Row @this);
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Row), (container, ctx) =>
@@ -36,7 +36,7 @@ static file class RowRegistration
         metadata.Namespace = "TestNamespace";
         metadata.Implements = [];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::TestNamespace.Row>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.Row>(metadata);
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {

@@ -6,14 +6,14 @@ using System.Runtime.CompilerServices;
 
 namespace TestNamespace;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class RowIntRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.RowInt Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<int>k__BackingField")]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<int>k__BackingField")]
     extern static ref int Field1(global::TestNamespace.RowInt @this);
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.RowInt), (container, ctx) =>
@@ -30,7 +30,7 @@ static file class RowIntRegistration
         metadata.Namespace = "TestNamespace";
         metadata.Implements = [];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::TestNamespace.RowInt>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.RowInt>(metadata);
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {

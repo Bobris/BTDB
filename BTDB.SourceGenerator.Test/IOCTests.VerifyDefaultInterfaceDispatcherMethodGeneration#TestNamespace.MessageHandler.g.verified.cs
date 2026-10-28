@@ -6,12 +6,12 @@ using System.Runtime.CompilerServices;
 
 namespace TestNamespace;
 
-[CompilerGenerated]
+[global::System.Runtime.CompilerServices.CompilerGenerated]
 static file class MessageHandlerRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.MessageHandler Creator();
-    [ModuleInitializer]
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.MessageHandler), (container, ctx) =>
@@ -28,7 +28,7 @@ static file class MessageHandlerRegistration
         metadata.Namespace = "TestNamespace";
         metadata.Implements = [typeof(global::TestNamespace.IHandler<global::TestNamespace.Message>), typeof(global::TestNamespace.IDispatcher)];
         metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::TestNamespace.MessageHandler>(metadata);
+        var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.MessageHandler>(metadata);
         metadata.Fields = [
         ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
@@ -37,7 +37,7 @@ static file class MessageHandlerRegistration
            return (container, message) =>
            {
                var res = nestedFactory(container, null);
-               Unsafe.As<global::TestNamespace.IHandler<global::TestNamespace.Message>>(res).Verify(Unsafe.As<global::TestNamespace.Message>(message));
+               global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.IHandler<global::TestNamespace.Message>>(res).Verify(global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.Message>(message));
                return null;
            };
         };
@@ -46,7 +46,7 @@ static file class MessageHandlerRegistration
            return (container, message) =>
            {
                var res = nestedFactory(container, null);
-               Unsafe.As<global::TestNamespace.MessageHandler>(res).Consume(Unsafe.As<global::TestNamespace.Message>(message));
+               global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.MessageHandler>(res).Consume(global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.Message>(message));
                return null;
            };
         };

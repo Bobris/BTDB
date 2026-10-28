@@ -66,6 +66,9 @@
 
 ### Fixed
 
+- Source generator: a type named `Unsafe`, `RuntimeHelpers`, `UnsafeAccessorAttribute` or `UnsafeAccessorKind` in the
+  namespace of a generated type broke the generated code, which lives in that namespace and named those
+  `System.Runtime.CompilerServices` types without qualification. It now names them with `global::`.
 - Source generator: relation interface methods whose parameters are named with C# keywords, such as
   `FindById(ulong @event)` or `ListById(ulong id, AdvancedEnumeratorParam<long> @params)`, generated code that used
   the names without their `@` and did not compile.
