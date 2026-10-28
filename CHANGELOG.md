@@ -21,7 +21,9 @@
     - background merging never leaves a split unreadable;
     - lease authority, confirmation grants and the handoff drain stay within the provider's lease for any clocks
       within the drift bound;
-    - walking TRL headers back from an advertised end returns the files after the current one in order.
+    - walking TRL headers back from an advertised end returns the files after the current one in order;
+    - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
+      skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;

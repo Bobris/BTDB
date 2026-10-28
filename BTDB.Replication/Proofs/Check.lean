@@ -30,3 +30,5 @@ open Replication
 #print axioms Lease.drained_grants_expired
 #print axioms Lineage.walk_links
 #print axioms Lineage.successors_correct
+#print axioms Attempts.crash_skipped
+#print axioms Attempts.skip_needs_attempts
