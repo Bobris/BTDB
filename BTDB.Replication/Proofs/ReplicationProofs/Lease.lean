@@ -81,7 +81,7 @@ theorem within {S ρ d : Nat} {L P : Nat → Nat} (hL : Clock S ρ L) (hP : Cloc
 
 /-- A grant issued when `CanGrant` held covers only real times at which the lease holds. -/
 theorem grant_within_lease {S ρ m G d : Nat} {L P : Nat → Nat} (hL : Clock S ρ L) (hP : Clock S ρ P) (hρ : ρ < S)
-    {td tp tg t : Nat} (hdg : td ≤ tg) (hpg : tp ≤ tg) (hpt : tp ≤ t)
+    {td tp tg t : Nat} (hpg : tp ≤ tg)
     (hgrant : L tg + bound S ρ d < L td + usable S ρ m G) (he : P t < P tp + d) : t < td + G := by
   have hS : 0 < S := by omega
   by_cases htd : t < td
