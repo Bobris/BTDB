@@ -87,6 +87,9 @@ files with another Guid are foreign and deleted on open.
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
+`BtdbProofs/KviDurability.lean` models the write order of `BTreeKeyValueDB.CreateKeyIndexFile`: what a crash keeps
+of the transaction log and of a key index that points into it.
+
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
@@ -127,6 +130,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `FileGuid.previous_picks_foreign` | Before the 2026-10-28 fix the first listed file decided, so one foreign or damaged file listed first made every database file foreign, and opening deleted them (`KeyValueDBFileInfosTest.ForeignFileListedFirstDoesNotDeleteTheDatabase`). |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
+| `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
+| `KviDurability.previous_unsafe` | Before the 2026-10-28 fix one commit and an index were enough for a crash to keep the index and lose the log bytes it points at (`KeyValueDBCrashSimulationTest`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

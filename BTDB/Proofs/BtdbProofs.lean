@@ -16,3 +16,4 @@ import BtdbProofs.Replay
 import BtdbProofs.GrowRead
 import BtdbProofs.FileGuid
 import BtdbProofs.TrlChain
+import BtdbProofs.KviDurability

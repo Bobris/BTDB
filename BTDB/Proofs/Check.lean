@@ -77,3 +77,5 @@ open Btdb
 #print axioms TrlChain.walk_descending
 #print axioms TrlChain.previous_never_ends
 #print axioms TrlChain.fixed_refuses_cycle
+#print axioms KviDurability.fixed_safe
+#print axioms KviDurability.previous_unsafe

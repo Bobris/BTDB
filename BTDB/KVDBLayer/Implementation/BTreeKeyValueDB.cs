@@ -433,7 +433,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     // When not opening history commit, compaction will create KVI file
                     if (openUpToCommitUlong.HasValue)
                     {
-                        CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
+                        CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration,
+                            ReferenceDurableLastCommitted(), true);
                     }
                 }
 
@@ -692,9 +693,39 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return await ReplaceBTreeValues(cancellation, newPositionMap, targetFileId);
     }
 
-    long[] IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
+    async ValueTask<long[]> IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation,
+        long preserveKeyIndexGeneration)
     {
-        return CreateIndexFile(cancellation, preserveKeyIndexGeneration);
+        return CreateIndexFile(cancellation, preserveKeyIndexGeneration,
+            await ReferenceDurableLastCommittedAsync().ConfigureAwait(false));
+    }
+
+    // A key index points at transaction log commands up to its root's position, so they must be durable before the
+    // index is: otherwise a crash could keep the index and lose the commands its values are read from. A writing
+    // transaction may be appending, so the log is flushed only while none is running.
+    IRootNodeInternal ReferenceDurableLastCommitted()
+    {
+        lock (_writeLock)
+        {
+            if (_writingTransaction == null) HardFlushTransactionLog();
+            return ReferenceAndGetLastCommitted();
+        }
+    }
+
+    async ValueTask<IRootNodeInternal> ReferenceDurableLastCommittedAsync()
+    {
+        lock (_writeLock)
+        {
+            if (_writingTransaction == null)
+            {
+                HardFlushTransactionLog();
+                return ReferenceAndGetLastCommitted();
+            }
+        }
+
+        using var transaction = await StartWritingTransactionCore(false, default).ConfigureAwait(false);
+        HardFlushTransactionLog();
+        return ReferenceAndGetLastCommitted();
     }
 
     MemWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
@@ -702,10 +733,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return StartPureValuesFile(out fileId);
     }
 
-    long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
+    long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration, IRootNodeInternal root,
         bool fullSpeed = false)
     {
-        var root = ReferenceAndGetLastCommitted();
         try
         {
             var idxFileId = CreateKeyIndexFile((IRootNode)root, cancellation, fullSpeed);
@@ -1823,7 +1853,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (IsReplication)
             throw new NotSupportedException("Replication publishes KVI through snapshot export, not local KVI creation.");
         if (_readOnly) throw new BTDBException("Database opened in readonly mode");
-        CreateIndexFile(cancellation, 0);
+        CreateIndexFile(cancellation, 0, ReferenceDurableLastCommitted());
     }
 
     public IKeyValueDBLogger? Logger { get; set; }

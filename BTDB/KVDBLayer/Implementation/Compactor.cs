@@ -166,7 +166,7 @@ class Compactor
             if (IsWasteSmall(totalWaste, maxInOneFile))
             {
                 if (anyTrl || _keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.FileSplitSize / 4))
-                    _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                    await _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration).ConfigureAwait(false);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
             }
@@ -192,7 +192,8 @@ class Compactor
                 }
             } while (!IsWasteSmall(totalWaste, maxInOneFile));
 
-            var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+            var usedFileGens = await _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration)
+                .ConfigureAwait(false);
             for (var i = (int)toRemoveFileIds.Count - 1; i >= 0; i--)
             {
                 if (usedFileGens.IndexOf(_keyValueDB.FileCollection.FileInfoByIdx(toRemoveFileIds[i])?.Generation ??

@@ -38,7 +38,7 @@ interface IKeyValueDBInternal : IKeyValueDB
     ValueTask<long> ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
         uint targetFileId);
 
-    long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
+    ValueTask<long[]> CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
     MemWriter StartPureValuesFile(out uint fileId);
     bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
     long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey);
