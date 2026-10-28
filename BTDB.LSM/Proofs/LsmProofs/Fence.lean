@@ -17,6 +17,9 @@ its own. `Rule.fixed` adds the session's random number (`WriterSession`), modell
 * `current_shares_epoch`: under the current rule, two sessions fence in with the same epoch at the same name.
 * `fixed_fresh_epochs`: under the fixed rule, sessions that fenced in have different epochs, and the one fenced at the
   later name has the higher epoch. That is the assumption of `Wal.lean` and `WalFlush.lean`.
+* `late_create_after_deletion`: the writer deletes a replaced manifest after `ManifestRetention`, which frees its
+  name. A fencing create that lands after that takes the name again with an epoch already in use, so the results
+  above assume that no manifest create lands later than `ManifestRetention` after its dispatch.
 -/
 
 namespace Lsm.Fence
@@ -178,5 +181,26 @@ theorem fixed_fresh_epochs {σ : State} (h : Reach .fixed σ) {s t f e f' e' : N
     cases hq
     exact absurd rfl hst
   · exact Nat.ne_of_gt (fresh_of_lt hI ht hs hgt)
+
+/-! ## Deleting replaced manifests -/
+
+/-- The steps above, and deleting a manifest once a later name exists. -/
+inductive StepD (r : Rule) : State → State → Prop
+  | step {σ τ : State} : Step r σ τ → StepD r σ τ
+  | delete (σ : State) (n n' : Nat) (M : Man) (hlt : n < n') (hn' : σ.man n' = some M) :
+      StepD r σ { σ with man := upd σ.man n none }
+
+inductive ReachD (r : Rule) : State → Prop
+  | init : ReachD r init
+  | step {σ τ : State} : ReachD r σ → StepD r σ τ → ReachD r τ
+
+/-- Session 1 fences in at name 1 and writes name 2, and name 1 is deleted. Session 2 read the empty database before
+session 1 fenced in; its create lands late, takes the free name 1, and session 2 writes with session 1's epoch. -/
+theorem late_create_after_deletion : ∃ σ, ReachD .fixed σ ∧ σ.fenced 1 = some (1, 1) ∧ σ.fenced 2 = some (1, 1) := by
+  have r1 := ReachD.step ReachD.init (StepD.step (Step.fence (r := .fixed) init 0 0 0 ⟨0, 0, 0⟩ rfl rfl))
+  have r2 := ReachD.step r1 (StepD.step (Step.write _ 1 1 0 1 1 ⟨1, 1, 0⟩ rfl rfl ⟨rfl, rfl⟩ rfl))
+  have r3 := ReachD.step r2 (StepD.delete _ 1 2 ⟨1, 1, 0⟩ (by decide) rfl)
+  have r4 := ReachD.step r3 (StepD.step (Step.fence _ 0 0 0 ⟨0, 0, 0⟩ rfl rfl))
+  exact ⟨_, r4, rfl, rfl⟩
 
 end Lsm.Fence

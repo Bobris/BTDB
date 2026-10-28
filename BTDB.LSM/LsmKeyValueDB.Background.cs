@@ -519,8 +519,9 @@ public sealed partial class LsmKeyValueDB
         var now = _options.TimeProvider.GetUtcNow();
         var grace = _options.DeletionGracePeriod;
         // Snapshots never read manifests, and a reader whose next manifest is gone lists the newest one, so replaced
-        // manifests stay only briefly; few of them keep listings at takeover cheap.
-        var manifestGrace = grace < ManifestRetention ? grace : ManifestRetention;
+        // manifests stay only briefly; few of them keep listings at takeover cheap. They stay that long even with a
+        // shorter grace period: deleting one frees its name, and a delayed create landing there would take it again
+        // with an epoch already in use (BTDB.LSM/Proofs, Fence.lean).
         HashSet<ulong>? referenced = null;
         var deletable = new List<ObsoleteObject>();
         lock (_obsoleteObjects)
@@ -530,7 +531,7 @@ public sealed partial class LsmKeyValueDB
             {
                 var o = _obsoleteObjects[i];
                 if (o.ObsoleteAt > oldestLive ||
-                    now - o.Since < (o.Kind == LsmObjectKind.Manifest ? manifestGrace : grace)) continue;
+                    now - o.Since < (o.Kind == LsmObjectKind.Manifest ? ManifestRetention : grace)) continue;
                 _obsoleteObjects.RemoveAt(i);
                 // Never delete what the current version references, whatever led to the entry.
                 var version = _state.Version;

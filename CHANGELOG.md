@@ -63,6 +63,9 @@
   state wrote equal fencing manifests, so the second took the first one's manifest for its own lost response. Their
   parallel WAL uploads could then interleave in one history. Every manifest now records a random number of its writer
   session, so the second takeover is fenced and takes over again with a higher epoch. The manifest version is now 8.
+- `LsmKeyValueDB` with a `DeletionGracePeriod` below a minute deleted replaced manifests at once. That freed their
+  names, so a predecessor's or a concurrent takeover's delayed manifest create could take one again, and readers
+  probing manifest names could load it. Replaced manifests now always stay for a minute.
 
 ## 35.13.0
 

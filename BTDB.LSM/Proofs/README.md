@@ -23,8 +23,9 @@ hold its base and its first own chunks' records, landed or not, and whose WAL st
 epoch. Readers, recovery and takeovers then replay from the newest manifest.
 
 `LsmProofs/Fence.lean` models how a takeover gets its epoch: one more than the highest it read, fenced by creating
-the next manifest name, where equal content counts as its own lost response. Reads may be arbitrarily old. Deleting
-replaced manifest names is not modelled.
+the next manifest name, where equal content counts as its own lost response. Reads may be arbitrarily old. Deleting a
+replaced manifest frees its name, so the results assume that no manifest create lands later than `ManifestRetention`
+(1 minute) after its dispatch; `late_create_after_deletion` shows why.
 
 `LsmProofs/Wal.lean` models WAL chunks as immutable create-if-absent objects `wal/{n}` (`CreateChunkAsync`). Each
 writer session has a fresh epoch. A takeover lists the WAL, replays its contiguous prefix and fences it with epoch
@@ -59,6 +60,7 @@ Not modelled in `Wal.lean`:
 | `WalFlush.flush_of_unlanded_chunk` | A flush whose own chunk never landed is reachable, and readers see its record from the tables: the case `restart_agrees` cannot cover. |
 | `Fence.current_shares_epoch` | Before the 2026-10-28 fix, two takeovers that read the same state wrote equal fencing manifests. The second took the first one's manifest for its own, and both wrote with one epoch. |
 | `Fence.fixed_fresh_epochs` | With the writer session in every manifest, sessions that fenced in have different epochs, and the one fenced at a later name has the higher epoch: the assumption of `Wal.lean` and `WalFlush.lean`. |
+| `Fence.late_create_after_deletion` | Once a replaced manifest is deleted, a fencing create that lands later takes its name again with an epoch already in use. Before the 2026-10-28 fix, a grace period below a minute deleted replaced manifests at once, so a create delayed by milliseconds could do that. |
 | `Wal.fixed_commits` | The fixed rule still lets a writer take over, write and acknowledge, so the results above are not vacuous. |
 | `Counts.total_telescopes` | Over a consistent stack of components, the count contributions at a key sum to `[exists on top] − [exists below]`, so counts and ranks add across components (L5). |
 | `Counts.merge_final`, `merge_consistent`, `merge_total` | The component `LsmMerger` makes from a run reaches the same state at the key, is consistent with the state below the run, and contributes the same count. |

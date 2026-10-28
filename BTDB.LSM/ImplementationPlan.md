@@ -668,8 +668,10 @@ D3).
 * **Writer-side candidates:** tables and value files that are not in the current version and not referenced by any
   in-process snapshot, and WAL chunks covered by a flushed generation.
 * The writer deletes a candidate only when it is older than `DeletionGracePeriod` (default 1 day). That is also the
-  longest a transaction in another process may keep its snapshot. Replaced manifests are deleted after at most 1
-  minute: snapshots never read manifests, and a reader whose next manifest is gone lists the newest one.
+  longest a transaction in another process may keep its snapshot. Replaced manifests are deleted after 1 minute, also
+  with a shorter grace period: snapshots never read manifests, and a reader whose next manifest is gone lists the
+  newest one. Deleting a manifest frees its name, so manifest fencing assumes that no manifest create lands later than
+  that minute after its dispatch (`Proofs/LsmProofs/Fence.lean`).
 * Every manifest lists the pending deletions with the time they became obsolete, rounded up to a 64th of the grace
   period and stored as runs of consecutive numbers. A new writer continues with them, so a takeover never restarts the
   period. An unreferenced table or value file that a manifest does not list was never published and is deleted at

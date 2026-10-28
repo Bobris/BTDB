@@ -176,6 +176,39 @@ public class LsmReaderTest
         public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + offset;
     }
 
+    sealed class ManualTimeProvider : TimeProvider
+    {
+        public DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public async Task ReplacedManifestsStayForTheRetentionEvenWithoutGracePeriod()
+    {
+        var storage = new InMemoryLsmStorage();
+        var time = new ManualTimeProvider();
+        using var writer = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
+        {
+            MemtableSize = 1 << 20, DeletionGracePeriod = TimeSpan.Zero, TimeProvider = time
+        });
+        var random = new Random(6);
+        var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        for (var commit = 1; commit <= 20; commit++) model = await Commit(writer, random, (ulong)commit, model);
+        writer.CreateKvi(default);
+        var replaced = storage.Keys("manifest/");
+        for (var commit = 21; commit <= 40; commit++) model = await Commit(writer, random, (ulong)commit, model);
+        writer.CreateKvi(default);
+        // Before the fix a zero grace period deleted replaced manifests at once, so a delayed create could take their
+        // names again.
+        Assert.All(replaced, key => Assert.Contains(key, storage.Keys("manifest/")));
+        time.Now += TimeSpan.FromMinutes(2);
+        for (var commit = 41; commit <= 60; commit++) model = await Commit(writer, random, (ulong)commit, model);
+        writer.CreateKvi(default);
+        Assert.All(replaced, key => Assert.DoesNotContain(key, storage.Keys("manifest/")));
+        using var tr = writer.StartReadOnlyTransaction();
+        Assert.Equal(model, Content(tr));
+    }
+
     static LsmManifest NewestManifest(InMemoryLsmStorage storage)
     {
         var key = storage.Keys("manifest/").Max(StringComparer.Ordinal)!;

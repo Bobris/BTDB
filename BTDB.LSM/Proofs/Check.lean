@@ -18,3 +18,4 @@ open Lsm
 #print axioms WalFlush.flush_of_unlanded_chunk
 #print axioms Fence.current_shares_epoch
 #print axioms Fence.fixed_fresh_epochs
+#print axioms Fence.late_create_after_deletion

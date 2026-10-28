@@ -22,25 +22,30 @@ public class LsmFormatTest(ITestOutputHelper output)
         BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 128, Level0CompactionTrigger = 2,
         LevelBaseBytes = 2048, LevelMultiplier = 2, LevelCount = 4, TargetFileSize = 1024, PointDeleteRangeLimit = 2,
         ValueSeparationThreshold = 64, WalChunkTargetSize = 1024, DeletionGracePeriod = TimeSpan.Zero,
-        BlockCacheSize = 1 << 20, TimeProvider = FixedTime.Instance, WriterSession = 1
+        BlockCacheSize = 1 << 20, TimeProvider = SampleTime.Instance, WriterSession = 1
     };
 
-    /// Manifests record when objects became obsolete, so the sample needs a fixed clock to be deterministic.
-    sealed class FixedTime : TimeProvider
+    /// Manifests record when objects became obsolete, so the sample needs a clock it sets itself to be deterministic.
+    sealed class SampleTime : TimeProvider
     {
-        public static readonly FixedTime Instance = new();
+        public static readonly SampleTime Instance = new();
+        public static readonly DateTimeOffset Start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now = Start;
 
-        public override DateTimeOffset GetUtcNow() => new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     /// Writes the sample and returns its content as seen by the writer; the writer then crashes, so the last commits
     /// stay only in the WAL.
     static async Task<SortedDictionary<string, string>> WriteSample(InMemoryLsmStorage storage)
     {
+        SampleTime.Instance.Now = SampleTime.Start;
         var db = await LsmKeyValueDB.OpenAsync(Options(storage, true));
         var random = new Random(7);
         for (var commit = 1; commit <= 160; commit++)
         {
+            // A minute per commit, so replaced manifests outlive their retention and are deleted.
+            SampleTime.Instance.Now = SampleTime.Start + TimeSpan.FromMinutes(commit);
             using var tr = await db.StartWritingTransaction();
             using var cursor = tr.CreateCursor();
             for (var op = 0; op < 10; op++)
@@ -180,8 +185,8 @@ public class LsmFormatTest(ITestOutputHelper output)
     }
 
     /// Every damaged object is either reported with BTDBException or not needed at all; the database never returns
-    /// wrong content. Tables, WAL chunks and the manifest are always fully read, so their damage is always reported;
-    /// value files may hold dead values that no key references.
+    /// wrong content. Tables, WAL chunks and the newest manifest are always fully read, so their damage is always
+    /// reported; value files may hold dead values that no key references, and replaced manifests wait for deletion.
     [Theory]
     [InlineData("flip")]
     [InlineData("truncate")]
@@ -192,6 +197,7 @@ public class LsmFormatTest(ITestOutputHelper output)
         var random = new Random(11);
         var cases = 0;
         var reported = 0;
+        var newestManifest = original.Keys("manifest/").Max(StringComparer.Ordinal);
         foreach (var key in original.Keys("").Where(k => k != "LOCK"))
         {
             var content = original.Peek(key)!;
@@ -216,7 +222,7 @@ public class LsmFormatTest(ITestOutputHelper output)
                     continue;
                 }
 
-                Assert.True(key.StartsWith("values/"),
+                Assert.True(key.StartsWith("values/") || key.StartsWith("manifest/") && key != newestManifest,
                     $"{damage} of {key} at {position} of {content.Length} was not reported");
                 Assert.Equal(expected, actual);
             }
