@@ -32,6 +32,13 @@ public class EventLogClusterChaosTest
         var storage = new FaultyEventLogStorage();
         var faults = random.Next(4) * 4; // percent of storage mutations that time out or lose their response
         var faultRandom = new Random(-seed);
+        // Some creates stall, as a slow request does, so a late successor create can meet a merged and deleted name.
+        storage.BeforeMutation = operation =>
+        {
+            int stall;
+            lock (faultRandom) stall = operation.Kind == "create" && faultRandom.Next(5) == 0 ? faultRandom.Next(1, 100) : 0;
+            return stall == 0 ? default : new(Task.Delay(stall));
+        };
         storage.Fault = _ =>
         {
             lock (faultRandom)
@@ -46,7 +53,7 @@ public class EventLogClusterChaosTest
         var options = EventLogCluster.FastOptions with
         {
             SplitCap = 512, SealFreeSpace = 128, MergeFanOut = 2, MergeLevels = 2,
-            MergeInterval = TimeSpan.FromMilliseconds(20), DeletionDelay = TimeSpan.FromMilliseconds(random.Next(0, 50))
+            MergeInterval = TimeSpan.FromMilliseconds(20), DeletionDelay = TimeSpan.FromMilliseconds(random.Next(2) * random.Next(0, 50))
         };
         var services = Names.Select(name => cluster.Start(name, options)).ToArray();
         var generations = new int[Names.Length];
@@ -168,14 +175,20 @@ public class EventLogClusterChaosTest
 
         await Task.Delay(300);
         await readStop.CancelAsync();
-        foreach (var reader in readers)
+        var seens = new List<List<EventLogRecord>>();
+        foreach (var reader in readers) seens.Add(await reader.WaitAsync(TimeSpan.FromSeconds(30)));
+        // A publication cut short by a restart has an unknown outcome and may still land after the history above was
+        // read, so readers are compared with the history read after they stopped.
+        var latest = await new EventLogStorageReader(cluster.Storage, Topic, options.MergeLevels).ReadAllAsync();
+        Assert.True(records.Select(r => Convert.ToHexString(r.Payload.Span))
+            .SequenceEqual(latest.Take(records.Count).Select(r => Convert.ToHexString(r.Payload.Span))), $"Seed {seed}: history changed");
+        foreach (var seen in seens)
         {
-            var seen = await reader.WaitAsync(TimeSpan.FromSeconds(30));
-            Assert.True(seen.Count <= records.Count, $"Seed {seed}: reader saw more than stored");
+            Assert.True(seen.Count <= latest.Count, $"Seed {seed}: reader saw more than stored");
             for (var i = 0; i < seen.Count; i++)
             {
                 Assert.Equal((ulong)i, seen[i].Offset);
-                Assert.True(records[i].Payload.Span.SequenceEqual(seen[i].Payload.Span), $"Seed {seed}: read {i}");
+                Assert.True(latest[i].Payload.Span.SequenceEqual(seen[i].Payload.Span), $"Seed {seed}: read {i}");
             }
         }
     }

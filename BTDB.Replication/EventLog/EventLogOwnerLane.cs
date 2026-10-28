@@ -782,27 +782,38 @@ internal sealed class EventLogOwnerLane
     void Stop(Exception reason, List<Pending>? failedBatch, List<Pending>? batch)
     {
         List<Pending> failed;
+        var alreadyStopped = false;
         lock (_lock)
         {
-            if (_stopReason != null) return;
-            _stopReason = reason;
-            failed = [.. _queue];
-            _queue.Clear();
-            _queuedCost = 0;
-            _batchFull?.TrySetResult();
-            foreach (var state in _sessions.Values)
+            if (_stopReason != null)
             {
-                foreach (var held in state.Held.Values)
-                {
-                    held.GapTimer?.Dispose();
-                    failed.Add(held);
-                }
-                state.Held.Clear();
-                state.Pending.Clear();
+                // Stopped meanwhile, as the service does when it gives up the topic or shuts down. The batch being
+                // written was in neither the queue nor a session then, so its records still need their outcome.
+                alreadyStopped = true;
+                reason = _stopReason;
+                failed = failedBatch != null ? [.. failedBatch] : [];
             }
-            if (failedBatch != null) failed.AddRange(failedBatch);
-            CompleteWaitersLocked(false);
-            _running = false;
+            else
+            {
+                _stopReason = reason;
+                failed = [.. _queue];
+                _queue.Clear();
+                _queuedCost = 0;
+                _batchFull?.TrySetResult();
+                foreach (var state in _sessions.Values)
+                {
+                    foreach (var held in state.Held.Values)
+                    {
+                        held.GapTimer?.Dispose();
+                        failed.Add(held);
+                    }
+                    state.Held.Clear();
+                    state.Pending.Clear();
+                }
+                if (failedBatch != null) failed.AddRange(failedBatch);
+                CompleteWaitersLocked(false);
+                _running = false;
+            }
         }
         var lost = reason as EventLogOwnerLostException ?? new EventLogOwnerLostException(reason.Message);
         if (batch != null && failedBatch == null)
@@ -813,6 +824,7 @@ internal sealed class EventLogOwnerLane
             for (var i = 0; i < batch.Count; i++) batch[i].Completion.TrySetResult(first + (ulong)i);
         }
         foreach (var pending in failed) pending.Completion.TrySetException(lost);
+        if (alreadyStopped) return;
         _stoppedCompletion.TrySetResult();
         Stopped?.Invoke(reason);
     }

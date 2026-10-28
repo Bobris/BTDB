@@ -22,6 +22,8 @@ open EventLog
 #print axioms Merge.fresh_listing_end
 #print axioms Merge.torn_listing_ends_early
 #print axioms Merge.merged_has_successor
+#print axioms StopSettles.fixed_settles
+#print axioms StopSettles.previous_hangs
 
 open Replication
 

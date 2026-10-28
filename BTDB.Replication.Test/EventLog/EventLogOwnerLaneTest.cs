@@ -475,6 +475,28 @@ public class EventLogOwnerLaneTest
     }
 
     [Fact]
+    public async Task StopDuringAFailingWriteStillFailsItsBatch()
+    {
+        var storage = new FaultyEventLogStorage();
+        var lane = await Lane(storage, A);
+        await Submit(lane, 1, 1, Bytes(0));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = operation =>
+        {
+            blocked.TrySetResult();
+            return new(gate.Task);
+        };
+        var submit = Submit(lane, 1, 2, Bytes(1)).AsTask();
+        await blocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        lane.Stop();
+        gate.SetException(new TimeoutException("storage request failed"));
+        // Before the fix the batch was in neither the queue nor a session when the lane stopped, and the failed write
+        // found the lane already stopped, so the publication never completed.
+        await Assert.ThrowsAsync<EventLogOwnerLostException>(() => submit.WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    [Fact]
     public async Task TooLargeRecordIsRejectedBeforeAcceptance()
     {
         var storage = new FaultyEventLogStorage();

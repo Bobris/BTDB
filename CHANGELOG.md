@@ -23,6 +23,7 @@
       within the drift bound;
     - walking TRL headers back from an advertised end returns the files after the current one in order;
     - a split created where no later split exists reuses no name that merging deleted;
+    - a stopped owner with no write in flight has given every accepted record its outcome;
     - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
       skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
@@ -64,6 +65,12 @@
 
 ### Fixed
 
+- Event log: publications could wait forever after their owner stopped. A stop from outside, such as a found
+  takeover or the service shutting down, came while a write was carrying a batch of records, which were then in
+  neither the queue nor a session, so the stop did not fail them. When that write then failed, its own stop found the
+  lane already stopped and returned, so the batch never got an outcome and its publishers never resubmitted it. The
+  lane now fails such a batch too, so publishers resubmit it to the next owner. Found as rare hangs of the cluster
+  chaos test under load (`Proofs/EventLogProofs/StopSettles.lean`).
 - Event log: an owner could acknowledge records that were then in no reader's history. It sealed its split and was
   slow to create the successor with its batch; meanwhile another owner took over, filled that successor and later
   splits, and merging deleted it. That needs a `DeletionDelay` shorter than the stall, as tests use. The late
