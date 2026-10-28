@@ -6,3 +6,4 @@ import BtdbProofs.Seek
 import BtdbProofs.StringOrdered
 import BtdbProofs.ReadOnlyCompare
 import BtdbProofs.Boundary
+import BtdbProofs.Separators
