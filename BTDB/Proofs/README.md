@@ -78,7 +78,8 @@ branch's separators with array copies, after erasing a key and after splits.
 
 `BtdbProofs/GrowRead.lean` models how `MemReader.ReadByteArray` reads a declared length beyond the buffered bytes:
 it starts with the buffered bytes (at least 4096, at most the length), reads, and doubles up to the length until the
-array is full or the input ends.
+array is full or the input ends. It also models `ReadStringBeyondBuffer`, which grows a character array when the next
+one or two UTF-16 units do not fit.
 
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
@@ -112,6 +113,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Replay.replay_stops_at_damage`, `Replay.replay_drops_unfinished` | A log of complete transactions followed by part of one more, ended by damage (followed by anything) or by the end of the log, replays to exactly the complete transactions. Since the 2026-10-28 fixes, negative or oversized lengths, impossible key suffix updates and impossible ulong indexes count as damage instead of failing the open (`TransactionLogDamageTest`). |
 | `GrowRead.fixed_returns_iff` | The loop returns the array exactly when the input holds the declared length. |
 | `GrowRead.fixed_alloc_bound` | Whatever length the prefix declares, the loop allocates at most `4 · max(A, 4096)` bytes in all, where `A` is what the input holds. |
+| `GrowRead.string_alloc_bound` | Decoding characters from `A` bytes, each taking at least one byte, allocates at most `6 · max(A, 256)` characters in all, whatever length the prefix declares. |
 | `GrowRead.previous_unbounded` | Before the 2026-10-28 fix the reader allocated the declared length at once, beyond any such bound (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |

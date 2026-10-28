@@ -9,6 +9,12 @@ more bytes. The loop allocates `s = min L (max 4096 b)` bytes and reads them, fa
 * `outcome_iff`, `fixed_returns_iff`: the loop returns the array exactly when the input holds the declared length.
 * `alloc_bound`, `fixed_alloc_bound`: it allocates at most `4 · max A 4096` bytes in all, whatever `L` declares.
 * `previous_unbounded`: allocating the declared length exceeds every such bound for some prefix.
+
+`ReadStringBeyondBuffer` does the same for strings. It starts with `min L (max 256 b)` characters. Each read decodes
+one or two UTF-16 units (a surrogate pair) from at least as many bytes, and fails before allocating when they would
+pass `L`. When they do not fit, the array grows to `min L (max (2 · cap) (i + count))`.
+
+* `string_alloc_bound`: decoding characters from `A` bytes allocates at most `6 · max A 256` characters in all.
 -/
 
 namespace Btdb.GrowRead
@@ -86,5 +92,66 @@ def previousAlloc (L : Nat) : Nat := L
 
 theorem previous_unbounded (A : Nat) : ∃ L, 4 * max A 4096 < previousAlloc L :=
   ⟨4 * max A 4096 + 1, by unfold previousAlloc; omega⟩
+
+/-- The string loop's array length, characters allocated in all, and characters filled. -/
+structure St where
+  cap : Nat
+  total : Nat
+  filled : Nat
+
+/-- Decode `count` units: grow first when they do not fit. -/
+def step (L : Nat) (st : St) (count : Nat) : St :=
+  if st.cap - st.filled < count then
+    let cap := min L (max (2 * st.cap) (st.filled + count))
+    ⟨cap, st.total + cap, st.filled + count⟩
+  else ⟨st.cap, st.total, st.filled + count⟩
+
+def run (L : Nat) : St → List Nat → St
+  | st, [] => st
+  | st, count :: rest => run L (step L st count) rest
+
+/-- The array holds what was filled and grows at most to the declared length and twice what is filled; the total is
+at most twice the array, or three times once the array reached the declared length, which happens at most once. -/
+def Inv (L c0 : Nat) (st : St) : Prop :=
+  st.filled ≤ st.cap ∧ st.cap ≤ L ∧ st.cap ≤ max c0 (2 * st.filled) ∧
+    (st.total ≤ 2 * st.cap ∨ (st.cap = L ∧ st.total ≤ 3 * L))
+
+theorem step_inv (L c0 count : Nat) (st : St) (h : Inv L c0 st) (hc : 0 < count)
+    (hfit : st.filled + count ≤ L) : Inv L c0 (step L st count) := by
+  unfold Inv at h ⊢
+  unfold step
+  by_cases hg : st.cap - st.filled < count
+  · simp only [hg, ite_true]
+    omega
+  · simp only [hg, ite_false]
+    omega
+
+theorem step_filled (L count : Nat) (st : St) : (step L st count).filled = st.filled + count := by
+  unfold step; split <;> rfl
+
+theorem run_inv (L c0 : Nat) : ∀ (counts : List Nat) (st : St), Inv L c0 st → (∀ c ∈ counts, 0 < c) →
+    st.filled + counts.sum ≤ L → Inv L c0 (run L st counts) ∧ (run L st counts).filled = st.filled + counts.sum
+  | [], st, h, _, _ => ⟨h, by simp [run]⟩
+  | count :: rest, st, h, hpos, hfit => by
+    have hc := hpos count (by simp)
+    simp only [List.sum_cons] at hfit
+    have h' := step_inv L c0 count st h hc (by omega)
+    have ih := run_inv L c0 rest (step L st count) h' (fun c hm => hpos c (by simp [hm]))
+      (by rw [step_filled]; omega)
+    refine ⟨ih.1, ?_⟩
+    rw [run, ih.2, step_filled, List.sum_cons]
+    omega
+
+/-- Decoding characters that take at least one byte each from `A` bytes, starting with the buffered `b ≤ A` bytes,
+allocates at most `6 · max A 256` characters, whatever length `L` the prefix declares. -/
+theorem string_alloc_bound (L A b : Nat) (counts : List Nat) (hL : 0 < L) (hb : b ≤ A)
+    (hpos : ∀ c ∈ counts, 0 < c) (hfit : counts.sum ≤ L) (hbytes : counts.sum ≤ A) :
+    (run L ⟨min L (max 256 b), min L (max 256 b), 0⟩ counts).total ≤ 6 * max A 256 := by
+  have h0 : Inv L (min L (max 256 b)) ⟨min L (max 256 b), min L (max 256 b), 0⟩ := by
+    unfold Inv; simp only; omega
+  have ⟨hinv, hfilled⟩ := run_inv L _ counts _ h0 hpos (by simp only; omega)
+  simp only [Nat.zero_add] at hfilled
+  unfold Inv at hinv
+  omega
 
 end Btdb.GrowRead

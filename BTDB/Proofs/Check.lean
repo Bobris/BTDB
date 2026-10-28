@@ -69,3 +69,4 @@ open Btdb
 #print axioms GrowRead.fixed_returns_iff
 #print axioms GrowRead.fixed_alloc_bound
 #print axioms GrowRead.previous_unbounded
+#print axioms GrowRead.string_alloc_bound

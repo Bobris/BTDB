@@ -47,9 +47,9 @@
     listed keys, and the index comparison used before leaves the range.
   - `BTDB/Proofs/`, transaction log replay: a log ended by damage or inside a transaction replays to exactly the
     transactions committed before it.
-  - `BTDB/Proofs/`, reading a length-prefixed byte array: the reader returns it exactly when the input holds the
-    declared length and allocates at most four times the larger of the input and 4096 bytes, whatever the prefix
-    declares.
+  - `BTDB/Proofs/`, reading a length-prefixed byte array or string: the reader returns a byte array exactly when the
+    input holds the declared length and allocates at most four times the larger of the input and 4096 bytes, and a
+    string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 
