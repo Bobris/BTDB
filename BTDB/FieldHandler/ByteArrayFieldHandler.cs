@@ -122,7 +122,7 @@ public class ByteArrayFieldHandler : IFieldHandler
             };
         }
 
-        return this.BuildConvertingSaver(typeof(byte[]), asType, typeConverterFactory);
+        return this.BuildConvertingSaver(asType, typeof(byte[]), typeConverterFactory);
     }
 
     protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)

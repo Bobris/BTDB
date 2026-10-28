@@ -88,6 +88,10 @@
 
 ### Fixed
 
+- Event store: storing again a list of byte arrays loaded without its type, whose items are objects, overflowed the
+  stack and ended the process. The byte array descriptor, and the ObjectDB byte array field handlers, converted a
+  value of another type with the two types of the conversion swapped, so the conversion asked to save that type
+  again. They now convert the value to the byte array they save.
 - Event store: re-serializing an object loaded without its type, whose type held itself below the root, overflowed
   the stack and ended the process. Merging its descriptor recorded only the root as visited, so a cycle below it
   mapped itself without end. Every descriptor is recorded now, and a placeholder for a cycle resolves to the merged

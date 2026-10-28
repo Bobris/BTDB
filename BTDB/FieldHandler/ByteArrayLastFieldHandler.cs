@@ -124,6 +124,6 @@ public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
             };
         }
 
-        return this.BuildConvertingSaver(typeof(byte[]), asType, typeConverterFactory);
+        return this.BuildConvertingSaver(asType, typeof(byte[]), typeConverterFactory);
     }
 }

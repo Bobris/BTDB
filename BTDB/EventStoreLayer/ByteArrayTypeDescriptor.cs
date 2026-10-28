@@ -142,7 +142,9 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
             };
         }
 
-        return this.BuildConvertingSaver(typeof(byte[]), targetType, typeConverterFactory);
+        // The value of targetType converts to the byte array this saves, as a list loaded without its type holds
+        // its byte arrays as objects.
+        return this.BuildConvertingSaver(targetType, typeof(byte[]), typeConverterFactory);
     }
 
     public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,

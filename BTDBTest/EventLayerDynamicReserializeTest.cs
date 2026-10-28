@@ -105,4 +105,25 @@ public class EventLayerDynamicReserializeTest
         }, readMapper: hide);
         Assert.NotNull(Record.Exception(() => EventLayerRoundTripHelper.RoundTrip2(loaded, writeMapper: hide)));
     }
+
+    [BTDB.Generate]
+    public class HoldsBlobs
+    {
+        public System.Collections.Generic.List<byte[]>? Blobs { get; set; }
+    }
+
+    /// Before the fix storing a dynamically loaded list of byte arrays again overflowed the stack and ended the
+    /// process, as the byte array descriptor converted its object items with the types of the conversion swapped.
+    [Theory]
+    [InlineData(EventLayer.Store2, EventLayer.Store2)]
+    [InlineData(EventLayer.Store2, EventLayer.Store1)]
+    [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
+    public void DynamicListOfByteArraysCanBeSerializedAgain(EventLayer readLayer, EventLayer writeLayer)
+    {
+        var original = new HoldsBlobs { Blobs = [[1, 2], []] };
+        var hide = new RenamingTypeMapper().Hide(new BTDB.EventStoreLayer.FullNameTypeMapper().ToName(typeof(HoldsBlobs)));
+        var blobs = EventLayerScenarios.Fields(EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide))["Blobs"];
+        var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, blobs);
+        Assert.Equal(ObjectGraphDumper.Dump(original.Blobs), ObjectGraphDumper.Dump(result));
+    }
 }
