@@ -6,3 +6,5 @@ open Btdb
 #print axioms KeyRange.upper_correct
 #print axioms VUInt.vuint_order
 #print axioms VUInt.vuint_prefix_free
+#print axioms VInt.vint_order
+#print axioms VInt.vint_prefix_free

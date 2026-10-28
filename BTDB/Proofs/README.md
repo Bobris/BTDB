@@ -22,8 +22,13 @@ requires of the handlers it admits (`RelationQueryKeyOrderTest` checks the handl
 every 64-bit value: a length marker in the top bits, then the value in big-endian bytes. Its constants are taken from
 the code by inspection.
 
-Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLast`), and the other order-preserving
-encodings (`UnsafePackVInt` for "Signed", single bytes and enums).
+`BtdbProofs/VInt.lean` models `PackUnpack.UnsafePackVInt`, the key encoding of the "Signed" field handler, for every
+64-bit value. Values fall into 15 classes of one length and sign; a class encodes `base + v` in big-endian bytes, where
+the code's XOR of mask bits that are all set is a subtraction from the positive base. Its constants are also taken
+from the code by inspection.
+
+Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLast`), and the single-byte and enum
+encodings.
 
 ## Results
 
@@ -31,4 +36,5 @@ encodings (`UnsafePackVInt` for "Signed", single bytes and enums).
 | --- | --- |
 | `KeyRange.lower_correct` | The lower-bound test accepts a key exactly when its value is above an exclusive bound, or at or above an inclusive one. |
 | `VUInt.vuint_order`, `VUInt.vuint_prefix_free` | A smaller value has a smaller encoding, and no encoding is a proper prefix of another: the "Unsigned" encoding satisfies what `KeyRange` assumes. |
+| `VInt.vint_order`, `VInt.vint_prefix_free` | The same for the "Signed" encoding, negative values included. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |
