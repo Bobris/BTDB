@@ -29,6 +29,10 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
         IEnumerable<Item> ListByGroup(ulong companyId, ulong groupId, AdvancedEnumeratorParam<ulong> id);
         IEnumerable<Item> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
         IEnumerable<Item> ListByGroup(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
+        int CountById(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
+        int CountByGroup(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
+        bool AnyById(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
+        bool AnyByGroup(ulong companyId, AdvancedEnumeratorParam<ulong> groupId);
     }
 
     public static IEnumerable<object[]> Boundaries()
@@ -109,5 +113,56 @@ public class ObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output) : 
 
         Assert.Equal(expected, result.Select(item => (item.GroupId, item.Id)));
         Assert.Equal(expected.Length, result.Count());
+    }
+
+    /// Counting by key indices (`CountWithProposition`, modelled in BTDB/Proofs/BtdbProofs/Count.lean) agrees with
+    /// enumeration and with the bounds for every pair of propositions, on a partial key whose groups have several items.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CountMatchesEnumerationForAllPropositions(bool secondaryKey)
+    {
+        var groups = new (ulong Company, ulong Group, ulong Ids)[] { (0, 5, 1), (1, 1, 2), (1, 2, 1), (1, 4, 3), (2, 0, 1) };
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IItemTable>();
+            foreach (var (company, group, ids) in groups)
+                for (ulong id = 1; id <= ids; id++)
+                    table.Upsert(new Item { CompanyId = company, GroupId = group, Id = id });
+            tr.Commit();
+        }
+
+        using var read = _db.StartReadOnlyTransaction();
+        var items = read.GetRelation<IItemTable>();
+        var propositions = new[] { KeyProposition.Ignored, KeyProposition.Included, KeyProposition.Excluded };
+        foreach (var startProposition in propositions)
+        foreach (var endProposition in propositions)
+            for (ulong start = 0; start <= 5; start++)
+            for (ulong end = 0; end <= 5; end++)
+            {
+                var bounds = new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, start, startProposition,
+                    end, endProposition);
+                var expected = groups.Where(g => g.Company == 1 &&
+                        startProposition switch
+                        {
+                            KeyProposition.Included => g.Group >= start,
+                            KeyProposition.Excluded => g.Group > start,
+                            _ => true
+                        } &&
+                        endProposition switch
+                        {
+                            KeyProposition.Included => g.Group <= end,
+                            KeyProposition.Excluded => g.Group < end,
+                            _ => true
+                        })
+                    .Sum(g => (int)g.Ids);
+                var listed = (secondaryKey ? items.ListByGroup(1, bounds) : items.ListById(1, bounds)).Count();
+                var counted = secondaryKey ? items.CountByGroup(1, bounds) : items.CountById(1, bounds);
+                var any = secondaryKey ? items.AnyByGroup(1, bounds) : items.AnyById(1, bounds);
+                var description = $"{startProposition} {start}, {endProposition} {end}";
+                Assert.True(expected == listed, $"listed {listed} of {expected} for {description}");
+                Assert.True(expected == counted, $"counted {counted} of {expected} for {description}");
+                Assert.True((expected > 0) == any, $"any {any} for {expected} for {description}");
+            }
     }
 }

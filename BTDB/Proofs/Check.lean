@@ -49,3 +49,5 @@ open Btdb
 #print axioms Separators.shrink_later
 #print axioms Separators.split_child
 #print axioms Separators.split_branch
+#print axioms Count.window_correct
+#print axioms Count.window_bounds

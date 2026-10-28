@@ -40,6 +40,11 @@ assumed to meet that contract over all keys.
 with a lower bound and on the last key with an upper bound, from that contract and those of `FindNextKey`,
 `FindPreviousKey` and `FindLastKey`.
 
+`BtdbProofs/Count.lean` models `RelationDBManipulator.CountWithProposition`, which counts the keys of an advanced
+enumerator parameter range from the key indices `Find` reaches for each bound, after moving an included end and an
+excluded start to the last key extending them (`FindLastKeyWithPrefix`). It backs the generated `CountBy` and `AnyBy`
+methods and bounds the items `RemoveByIdAdvancedParam` visits.
+
 `BtdbProofs/StringOrdered.lean` models `MemWriter.WriteStringOrderedPrefix` and `WriteStringOrdered`, the key encoding
 of the "StringOrderable" handler, over UTF-16 code units: a surrogate pair is one token, every other unit its own, each
 written as a variable-length integer. It justifies the prefix scan that relation queries use for an ordinal
@@ -69,6 +74,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `Seek.seek_exact` … `Seek.seek_exclusive_none` | Each branch of `Seek` reaches the first key of the range that passes the lower bound, inclusive or exclusive, or proves there is none. |
 | `Seek.seek_last_inclusive` … `Seek.seek_last_next_none` | Each branch of `SeekLast` reaches the last key of the range not past the upper bound, inclusive or exclusive, or proves there is none. |
+| `Count.window_correct`, `Count.window_bounds` | A key's index lies between the start and end index `CountWithProposition` computes exactly when the key is in the range, for every pair of propositions, and that window lies within the prefix, so `Math.Max(0, endIndex - startIndex + 1)` is the number of keys in the range. An excluded start skips every key extending the start bytes; an included end keeps every key extending the end bytes. |
 | `StringOrdered.starts_with_correct` | For a prefix that does not end with a high surrogate, a string's key starts with the encoded prefix exactly when the string starts with the prefix (ordinal). |
 | `StringOrdered.encOpt_prefix_free` | No key of a string or null is a prefix of another's, so an ordinal equality on a string field can be part of a key prefix (`UsesEncodedEquals`). |
 | `StringOrdered.high_surrogate_needed` | The planner's exclusion of a prefix ending with a high surrogate (`UsesEncodedStartsWith`) is needed: such a prefix encodes the surrogate alone, so the scan would miss strings that continue the pair. |

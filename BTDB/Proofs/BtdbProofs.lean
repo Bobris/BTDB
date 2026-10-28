@@ -3,6 +3,7 @@ import BtdbProofs.VUInt
 import BtdbProofs.VInt
 import BtdbProofs.Cursor
 import BtdbProofs.Seek
+import BtdbProofs.Count
 import BtdbProofs.StringOrdered
 import BtdbProofs.ReadOnlyCompare
 import BtdbProofs.Boundary
