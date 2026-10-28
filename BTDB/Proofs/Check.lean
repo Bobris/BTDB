@@ -31,3 +31,5 @@ open Btdb
 #print axioms Seek.seek_last_exact
 #print axioms Seek.seek_last_exact_none
 #print axioms Seek.seek_last_next_none
+#print axioms StringOrdered.starts_with_correct
+#print axioms StringOrdered.high_surrogate_needed

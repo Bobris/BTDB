@@ -3435,6 +3435,8 @@ sealed class RelationQueryCompiler
 
     // Encodings of both string formats keep a prefix property, except that a trailing high surrogate of the prefix
     // could be combined with the next char into one code point.
+    // A prefix ending with a high surrogate encodes it alone, unlike strings continuing the pair (BTDB/Proofs,
+    // StringOrdered.lean).
     static bool UsesEncodedStartsWith(StringMethodQueryNode node)
     {
         return node is { Operation: QueryStringOp.StartsWith, Comparison: StringComparison.Ordinal, Argument: string s } &&

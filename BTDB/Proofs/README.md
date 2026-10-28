@@ -40,6 +40,11 @@ assumed to meet that contract over all keys.
 with a lower bound and on the last key with an upper bound, from that contract and those of `FindNextKey`,
 `FindPreviousKey` and `FindLastKey`.
 
+`BtdbProofs/StringOrdered.lean` models `MemWriter.WriteStringOrderedPrefix` and `WriteStringOrdered`, the key encoding
+of the "StringOrderable" handler, over UTF-16 code units: a surrogate pair is one token, every other unit its own, each
+written as a variable-length integer. It justifies the prefix scan that relation queries use for an ordinal
+`StartsWith`.
+
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
 ## Results
@@ -54,4 +59,6 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `Seek.seek_exact` … `Seek.seek_exclusive_none` | Each branch of `Seek` reaches the first key of the range that passes the lower bound, inclusive or exclusive, or proves there is none. |
 | `Seek.seek_last_inclusive` … `Seek.seek_last_next_none` | Each branch of `SeekLast` reaches the last key of the range not past the upper bound, inclusive or exclusive, or proves there is none. |
+| `StringOrdered.starts_with_correct` | For a prefix that does not end with a high surrogate, a string's key starts with the encoded prefix exactly when the string starts with the prefix (ordinal). |
+| `StringOrdered.high_surrogate_needed` | The planner's exclusion of a prefix ending with a high surrogate (`UsesEncodedStartsWith`) is needed: such a prefix encodes the surrogate alone, so the scan would miss strings that continue the pair. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |
