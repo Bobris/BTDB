@@ -65,6 +65,7 @@
   - `BTDB/Proofs/`, emitted list key saving: without a try block it is valid under any pushed call arguments;
   - `BTDB/Proofs/`, Bon deserializer creation: with placeholders for registered classes it ends for any types whose
     other types hold no cycle of their own;
+  - `BTDB/Proofs/`, Bon member deserializers: each consuming one value keeps every member on its own value;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes

@@ -117,6 +117,9 @@ list key part inside relation methods (`../FieldHandler/`, `../ODBLayer/Relation
 `BtdbProofs/DeserializerPlaceholder.lean` models how `BonSerializerFactory` creates the deserializers of the types a type
 holds, caching placeholders for registered classes (`../Serialization/`), over any graph of types.
 
+`BtdbProofs/SkipOnce.lean` models where the deserializers of a Bon class's members start reading
+(`../Serialization/BonSerializer.cs`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -191,6 +194,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `EmittedTry.previous_rejected`, `EmittedTry.previous_alone` | Before the 2026-10-28 fix its try block was accepted only on an empty stack, so emitted `ListBy`, `CountBy` and `AnyBy` methods on a list key failed with `InvalidProgramException` (`ObjectDbIListArrayRegressionTest.EmittedListingByListKeyPrefixWorks`). |
 | `DeserializerPlaceholder.fixed_ends` | With placeholders cached for registered classes, creating a deserializer ends from any type when other types hold no cycle of their own, within `(n + 1) * (R + 2)` levels. |
 | `DeserializerPlaceholder.previous_never_ends` | Before the 2026-10-28 fix the lookup by type cached none, so a class holding itself, first reached as a member type, was created without end (`BonSerializerCoverageTest.RecursiveClassFirstReachedAsMemberTypeDeserializes`). |
+| `SkipOnce.fixed_aligned` | When each member deserializer consumes one value, member `i` reads value `i`. |
+| `SkipOnce.previous_shifted` | Before the 2026-10-28 fix a member holding a class of another name consumed two values, so every member after it read the next member's value (`BonSerializerCoverageTest.UnrelatedClassInMemberIsSkippedOnce`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

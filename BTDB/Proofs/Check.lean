@@ -112,3 +112,5 @@ open Btdb
 #print axioms EmittedTry.fixed_accepted
 #print axioms DeserializerPlaceholder.fixed_ends
 #print axioms DeserializerPlaceholder.previous_never_ends
+#print axioms SkipOnce.fixed_aligned
+#print axioms SkipOnce.previous_shifted
