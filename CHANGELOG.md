@@ -83,6 +83,10 @@
 
 ### Fixed
 
+- Bon serialization: deserializing a class that holds itself, like a tree node, overflowed the stack and ended the
+  process when the class was first reached as a member type, such as the values of a dictionary, rather than by its
+  name. Only the lookup by name put a placeholder in the cache while a class's deserializer was created; the lookup by
+  type now does too.
 - ObjectDB: each instance of a lazy `IDictionary` or `IOrderedSet` cached its count, so after one instance changed
   the collection, another instance of the same collection, as loading its owner twice in a transaction gives, reported
   the old count. `Count` is now counted on each call, which takes two seeks.

@@ -738,13 +738,50 @@ public class BonSerializerFactory : ISerializerFactory
     {
         var typePtr = type.TypeHandle.Value;
         _cache2.TryGetValue(typePtr, out var deserializer);
-        if (deserializer == null)
+        if (deserializer != null) return deserializer;
+        if (type.IsValueType || type.IsInterface || ReflectionMetadata.FindByType(type) == null)
         {
             deserializer = CreateDeserializerForType(type);
             _cache2.TryAdd(typePtr, deserializer);
             _cache2.TryGetValue(typePtr, out deserializer);
+            return deserializer!;
         }
 
+        // A registered class can hold itself, also when first reached as a member type rather than by its name: while
+        // its deserializer is created, a placeholder loading it by name stands in for it.
+        Deserialize objDeserializer = (ref DeserializerCtx ctx, ref byte value) =>
+        {
+            var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+            if (res == null || type.IsInstanceOfType(res))
+            {
+                Unsafe.As<byte, object>(ref value) = res;
+            }
+            else
+            {
+                Unsafe.As<byte, object>(ref value) = null;
+            }
+
+            return true;
+        };
+        if (!_cache2.TryAdd(typePtr, objDeserializer))
+        {
+            _cache2.TryGetValue(typePtr, out deserializer);
+            return deserializer!;
+        }
+
+        try
+        {
+            deserializer = CreateDeserializerForType(type);
+        }
+        catch
+        {
+            // The placeholder deserializes the same value again, so left behind it would recurse forever.
+            _cache2.TryRemove(new KeyValuePair<nint, Deserialize>(typePtr, objDeserializer));
+            throw;
+        }
+
+        _cache2.TryUpdate(typePtr, deserializer, objDeserializer);
+        _cache2.TryGetValue(typePtr, out deserializer);
         return deserializer!;
     }
 
@@ -876,51 +913,7 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (ReflectionMetadata.FindByName(name) is { } classMetadata)
         {
-            var type = classMetadata.Type;
-            var typePtr = type.TypeHandle.Value;
-            _cache2.TryGetValue(typePtr, out var deserializer);
-            if (deserializer == null)
-            {
-                if (type == typeof(object) || type.IsInterface || type == typeof(string) || type == typeof(byte[]) ||
-                    type.IsValueType)
-                {
-                    deserializer = CreateDeserializerForType(type);
-                    _cache2.TryAdd(typePtr, deserializer);
-                    _cache2.TryGetValue(typePtr, out deserializer);
-                }
-                else
-                {
-                    Deserialize objDeserializer = (ref DeserializerCtx ctx, ref byte value) =>
-                    {
-                        var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
-                        if (res == null || type.IsInstanceOfType(res))
-                        {
-                            Unsafe.As<byte, object>(ref value) = res;
-                        }
-                        else
-                        {
-                            Unsafe.As<byte, object>(ref value) = null;
-                        }
-
-                        return true;
-                    };
-                    _cache2.TryAdd(typePtr, objDeserializer);
-                    try
-                    {
-                        deserializer = CreateDeserializerForType(type);
-                    }
-                    catch
-                    {
-                        // The placeholder deserializes the same value again, so left behind it would recurse forever.
-                        _cache2.TryRemove(new KeyValuePair<nint, Deserialize>(typePtr, objDeserializer));
-                        throw;
-                    }
-
-                    _cache2.TryUpdate(typePtr, deserializer, objDeserializer);
-                }
-            }
-
-            return deserializer!;
+            return CreateCachedDeserializerForType(classMetadata.Type);
         }
 
         return (ref DeserializerCtx ctx, ref byte _) =>

@@ -776,5 +776,31 @@ public class BonSerializerCoverageTest
         Assert.All(errors, e => Assert.IsType<InsufficientExecutionStackException>(e));
     }
 
+    [Generate]
+    public class MemberOnlyTreeNode
+    {
+        public int Value { get; set; }
+        public MemberOnlyTreeNode? Left { get; set; }
+    }
+
+    [Generate]
+    public class MemberOnlyTree
+    {
+        public Dictionary<int, MemberOnlyTreeNode>? Nodes { get; set; }
+    }
+
+    // Before the fix the deserializer of a class holding itself, created first as a member type rather than by its
+    // name, created itself without end and overflowed the stack. No other test may deserialize these types first.
+    [Fact]
+    public void RecursiveClassFirstReachedAsMemberTypeDeserializes()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder,
+            new MemberOnlyTree { Nodes = new() { [1] = new() { Value = 1, Left = new() { Value = 2 } } } });
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (MemberOnlyTree)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(2, result.Nodes![1].Left!.Value);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
