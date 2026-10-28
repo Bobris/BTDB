@@ -17,14 +17,17 @@ public abstract class FieldHandlerCoverageTestBase : IDisposable
 
     protected FieldHandlerCoverageTestBase()
     {
-        _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions
-        {
-            CompactorScheduler = null,
-            Compression = new NoCompressionStrategy(),
-            FileCollection = new InMemoryFileCollection()
-        });
+        _lowDb = CreateKeyValueDB();
         _db = OpenDb();
     }
+
+    /// The key value DB under test; derived suites run the same tests on other implementations.
+    protected virtual IKeyValueDB CreateKeyValueDB() => new BTreeKeyValueDB(new KeyValueDBOptions
+    {
+        CompactorScheduler = null,
+        Compression = new NoCompressionStrategy(),
+        FileCollection = new InMemoryFileCollection()
+    });
 
     protected virtual DBOptions CreateOptions() => new DBOptions()
         .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => LoggedMessages.Add(s)))
