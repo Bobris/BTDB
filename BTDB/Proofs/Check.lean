@@ -88,3 +88,5 @@ open Btdb
 #print axioms HintNames.run_nodup
 #print axioms SerializerPlaceholder.fixed_no_stale_placeholder
 #print axioms SerializerPlaceholder.previous_stale_placeholder
+#print axioms BonNesting.fixed_depth
+#print axioms BonNesting.previous_unbounded

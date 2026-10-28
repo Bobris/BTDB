@@ -49,6 +49,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it; the creator's branch nodes fit their format and every level is smaller than the one below.
+  - `BTDB/Proofs/`, Bon reading: containers that readers accept nest at most as deep as the data is long, even when
+    damage makes a container's items run past its pointer;
   - `BTDB/Proofs/`, Bon serializer creation: once no creation of a type runs, the placeholder cached for recursive types
     is gone, also when a creation failed;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
@@ -72,9 +74,10 @@
 ### Fixed
 
 - Bon: damaged data could crash the process with a stack overflow. A container pointer damaged to point at its own
-  container, or past it, made deserialization recurse through the same values forever. Readers now reject a container
-  pointer that does not point before itself with `InvalidDataException`, and deserialization fails with
-  `InsufficientExecutionStackException` instead of overflowing the stack on any nesting deeper than it can take.
+  container, or past it, made deserialization recurse through the same values forever. Readers now reject, with
+  `InvalidDataException`, a container that does not lie before the pointer to the container holding it, which valid
+  Bon always does, so nesting ends within the data (`BTDB/Proofs/BtdbProofs/BonNesting.lean`). Deserialization also
+  fails with `InsufficientExecutionStackException` instead of overflowing the stack on nesting deeper than it can take.
   Found by a fuzz test of damaged Bon.
 - Bon serialization: when creating the serializer or deserializer of a class failed, for example on a member type it
   does not support, the placeholder cached for recursive types stayed behind. Serializing the class again then waited

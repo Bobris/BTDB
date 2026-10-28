@@ -956,6 +956,8 @@ public struct Bon
 {
     MemReader _reader;
     uint _items;
+    // Containers read through this Bon lie before this position: the pointer to the container holding its values.
+    readonly ulong _limit;
 
     public Bon(ReadOnlyMemory<byte> buf) : this(new ReadOnlyMemoryMemReader(buf))
     {
@@ -970,6 +972,7 @@ public struct Bon
         _reader = new(reader);
         _reader.SetCurrentPositionWithoutController(Helpers.CalcStartOffsetOfBon(ref _reader));
         _items = 1;
+        _limit = ulong.MaxValue;
     }
 
     public Bon(in MemReader reader)
@@ -977,15 +980,21 @@ public struct Bon
         _reader = reader;
         _reader.SetCurrentPositionWithoutController(Helpers.CalcStartOffsetOfBon(ref _reader));
         _items = 1;
+        _limit = ulong.MaxValue;
     }
 
     public uint Items => _items;
 
-    public Bon(in MemReader reader, ulong ofs, uint items)
+    public Bon(in MemReader reader, ulong ofs, uint items) : this(reader, ofs, items, ulong.MaxValue)
+    {
+    }
+
+    internal Bon(in MemReader reader, ulong ofs, uint items, ulong limit)
     {
         _reader = reader;
         _reader.SetCurrentPositionWithoutController(ofs);
         _items = items;
+        _limit = limit;
     }
 
     public BonType BonType
@@ -1116,13 +1125,15 @@ public struct Bon
         }
     }
 
-    // The builder writes a container before every pointer to it. A pointer at or after its own code is damage, which
-    // could make readers recurse through a container that holds itself until the stack overflows.
-    ulong ReadContainerOffset()
+    // The builder writes a container, items included, before the pointer to it. So a container read through this Bon has
+    // its pointer before the limit and lies before its pointer; anything else is damage, which could make readers recurse
+    // through a container that holds itself until the stack overflows. Every container read then lies before the one
+    // holding it, so nesting ends (Proofs/BtdbProofs/BonNesting.lean).
+    ulong ReadContainerOffset(out ulong code)
     {
-        var code = _reader.GetCurrentPositionWithoutController() - 1;
+        code = _reader.GetCurrentPositionWithoutController() - 1;
         var ofs = _reader.ReadVUInt64();
-        if (ofs >= code) throw new InvalidDataException("Bon container does not precede its pointer.");
+        if (code >= _limit || ofs >= code) throw new InvalidDataException("Bon container does not precede its pointer.");
         return ofs;
     }
 
@@ -1140,22 +1151,22 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
-                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false);
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false, code);
                 return true;
             }
             case Helpers.CodeArraySplitBy32Ptr:
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
-                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, true);
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, true, code);
                 return true;
             }
             default:
@@ -1173,11 +1184,11 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
-                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false);
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false, code);
                 return true;
             }
             default:
@@ -1200,14 +1211,14 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var ofsKeys = reader2.ReadVUInt64();
                 ofs = reader2.GetCurrentPositionWithoutController();
                 reader2.SetCurrentPositionWithoutController(ofsKeys);
                 var items = reader2.ReadVUInt32();
-                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items);
+                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items, code);
                 return true;
             }
             default:
@@ -1225,7 +1236,7 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var ofsKeys = reader2.ReadVUInt64();
@@ -1237,7 +1248,7 @@ public struct Bon
                 reader3.SetCurrentPositionWithoutController(nameOfs);
                 var len = reader3.ReadVUInt32();
                 name = reader3.ReadBlockAsSpan(len);
-                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items);
+                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items, code);
                 return true;
             }
             default:
@@ -1288,11 +1299,11 @@ public struct Bon
             {
                 _reader.Skip1Byte();
                 _items--;
-                var ofs = ReadContainerOffset();
+                var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
                 var items = reader2.ReadVUInt32();
-                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items * 2);
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items * 2, code);
                 return true;
             }
             default:
@@ -1469,13 +1480,20 @@ public struct ArrayBon
     readonly ulong _ofs;
     readonly uint _items;
     readonly bool _splitBy32;
+    readonly ulong _limit;
 
-    public ArrayBon(in MemReader reader, ulong ofs, uint items, bool splitBy32)
+    public ArrayBon(in MemReader reader, ulong ofs, uint items, bool splitBy32) : this(reader, ofs, items, splitBy32,
+        ulong.MaxValue)
+    {
+    }
+
+    internal ArrayBon(in MemReader reader, ulong ofs, uint items, bool splitBy32, ulong limit)
     {
         _reader = reader;
         _ofs = ofs;
         _items = items;
         _splitBy32 = splitBy32;
+        _limit = limit;
     }
 
     public uint Items => _items;
@@ -1492,7 +1510,7 @@ public struct ArrayBon
         {
             _reader.SetCurrentPositionWithoutController(_ofs + index / 32 * 8);
             var ofs = _reader.ReadUInt64LE();
-            bon = new(_reader, ofs, Math.Min(_items - index / 32 * 32, 32));
+            bon = new(_reader, ofs, Math.Min(_items - index / 32 * 32, 32), _limit);
             var skipCount = index % 32;
             for (var i = 0u; i < skipCount; i++)
             {
@@ -1501,7 +1519,7 @@ public struct ArrayBon
         }
         else
         {
-            bon = new(_reader, _ofs, _items);
+            bon = new(_reader, _ofs, _items, _limit);
             for (var i = 0u; i < index; i++)
             {
                 bon.Skip();
@@ -1518,14 +1536,21 @@ public struct KeyedBon
     readonly ulong _ofs;
     readonly ulong _ofsKeys;
     readonly uint _items;
+    readonly ulong _limit;
     uint _keysItemsIter;
 
-    public KeyedBon(in MemReader reader, ulong ofs, ulong ofsKeys, uint items)
+    public KeyedBon(in MemReader reader, ulong ofs, ulong ofsKeys, uint items) : this(reader, ofs, ofsKeys, items,
+        ulong.MaxValue)
+    {
+    }
+
+    internal KeyedBon(in MemReader reader, ulong ofs, ulong ofsKeys, uint items, ulong limit)
     {
         _reader = reader;
         _ofs = ofs;
         _ofsKeys = ofsKeys;
         _items = items;
+        _limit = limit;
         _keysItemsIter = items;
         _reader.SetCurrentPositionWithoutController(ofsKeys);
     }
@@ -1534,7 +1559,7 @@ public struct KeyedBon
 
     public Bon Values()
     {
-        return new(_reader, _ofs, _items);
+        return new(_reader, _ofs, _items, _limit);
     }
 
     public void Reset()
@@ -1584,7 +1609,7 @@ public struct KeyedBon
             }
 
             if (!reader.ReadBlockAsSpan((uint)l).SequenceEqual(keyBuf)) continue;
-            bon = new(_reader, _ofs, (uint)i + 1);
+            bon = new(_reader, _ofs, (uint)i + 1, _limit);
             while (i-- > 0)
             {
                 bon.Skip();
