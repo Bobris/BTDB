@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using BTDB;
+using BTDB.Buffer;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
@@ -184,5 +186,16 @@ public class EventStore2CoverageTest
     public class OnlyName
     {
         public string? Name { get; set; }
+    }
+
+    // Before the fix a back reference to no object read before failed with ArgumentOutOfRangeException.
+    [Fact]
+    public void DamagedBackReferenceIsReported()
+    {
+        var writer = new MemWriter();
+        writer.WriteVUInt32(1);
+        writer.WriteVUInt32(99);
+        var deserializer = new EventDeserializer();
+        Assert.Throws<InvalidDataException>(() => deserializer.Deserialize(out _, ByteBuffer.NewAsync(writer.GetSpan().ToArray())));
     }
 }

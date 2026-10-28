@@ -73,6 +73,9 @@
 
 ### Fixed
 
+- Event store: damaged event data whose back reference pointed to no object read before failed with
+  `ArgumentOutOfRangeException`, and one naming a type id without a type failed with `NullReferenceException`. The
+  first now reports `InvalidDataException`, and the second is treated as missing metadata, like an unknown type id.
 - ObjectDB: a relation row whose stored value was damaged to name a version the relation never had failed to load with
   `IndexOutOfRangeException` or `NullReferenceException`; it now reports the damage with `BTDBException`.
 - Bon: damaged data could crash the process with a stack overflow. A container pointer damaged to point at its own

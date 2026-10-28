@@ -316,13 +316,16 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         if (typeId == 1)
         {
             var backRefId = reader.ReadVUInt32();
+            // Back references point to objects read before; damaged data can name one that was not.
+            if (backRefId >= _visited.Count)
+                throw new InvalidDataException("Event back reference " + backRefId + " points to no object read before.");
             return _visited[(int)backRefId];
         }
 
-        if (typeId >= _id2Info.Count)
+        // An id without a type is one whose metadata was not processed yet, like an id past the known ones.
+        if (typeId >= _id2Info.Count || _id2Info[(int)typeId] is not { } infoForType)
             throw new BtdbMissingMetadataException();
-        var infoForType = _id2Info[(int)typeId];
-        if (infoForType!.Loader == null)
+        if (infoForType.Loader == null)
         {
             infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
         }
