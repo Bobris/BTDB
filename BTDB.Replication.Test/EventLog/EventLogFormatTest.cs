@@ -63,16 +63,35 @@ public class EventLogFormatTest
         {
             var copy = content.ToArray();
             copy[i] ^= 0x40;
-            Assert.ThrowsAny<Exception>(() => EventLogFormat.Parse(copy, "t"));
+            Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(copy, "t"));
         }
         for (var length = 1; length < content.Length; length++)
         {
             var header = EventLogFormat.SplitHeaderLength("t");
             if (length == header) continue; // exactly the empty split
             if (length > header && EndsAtFrameBoundary(content, length)) continue;
-            Assert.ThrowsAny<Exception>(() => EventLogFormat.Parse(content.AsSpan(0, length), "t"));
+            Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(content.AsSpan(0, length), "t"));
         }
         Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(content, "u"));
+    }
+
+    /// Every flipped bit and every truncation of a merged object is reported as corruption.
+    [Fact]
+    public void AnyFlippedBitOrTruncationOfMergedObjectIsCorruption()
+    {
+        var first = Split(1, 0, [[[1, 2, 3]], [[4]]], true);
+        var second = Split(2, 2, [[[5], [6, 6]]], true);
+        var merged = EventLogFormat.CreateMerged("t", 1, 1, 2,
+            new[] { first, second }.Select(c => ((ReadOnlyMemory<byte>)c, EventLogFormat.Parse(c, "t"))).ToArray());
+        for (var i = 0; i < merged.Length; i++)
+        for (var bit = 0; bit < 8; bit++)
+        {
+            var copy = merged.ToArray();
+            copy[i] ^= (byte)(1 << bit);
+            Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(copy, "t"));
+        }
+        for (var length = 0; length < merged.Length; length++)
+            Assert.Throws<EventLogCorruptedException>(() => EventLogFormat.Parse(merged.AsSpan(0, length), "t"));
     }
 
     static bool EndsAtFrameBoundary(byte[] content, int length) =>
