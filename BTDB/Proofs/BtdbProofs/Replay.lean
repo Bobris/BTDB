@@ -10,6 +10,10 @@ at damage, dropping the open transaction, as after a crash.
 * `replay_drops_unfinished`: a log ending inside a transaction replays to the transactions committed before it.
 * `replay_stops_at_damage`: a log of complete transactions, then any part of one more, then damage and anything at
   all, replays to exactly the complete transactions.
+* `replay_after_abandoned`: complete transactions, an unfinished one that a crash cut after complete commands, and
+  the complete transactions of the next session replay to all complete transactions. A start drops the open
+  transaction, which only a crash leaves behind; `previous_loses_later_commit` shows the rule before the 2026-10-28
+  fix, which ended replay there and lost every later commit.
 -/
 
 namespace Btdb.Replay
@@ -89,5 +93,45 @@ theorem replay_drops_unfinished {α : Type} (txs : List (List α)) (part : List 
   cases txs with
   | nil => exact open_tail []
   | cons t ts => simp only [List.nil_append]; exact open_tail (t :: ts)
+
+/-- A crash cut the log inside a transaction after complete commands, and the next session appended complete
+transactions: replay drops the unfinished transaction and keeps every later commit. -/
+theorem replay_after_abandoned {α : Type} (txs later : List (List α)) (part : List α) :
+    replay ((txs.map tx).flatten ++ (Cmd.start :: part.map Cmd.op ++ (later.map tx).flatten)) [] none =
+      txs ++ later := by
+  have tail : ∀ committed : List (List α),
+      replay (Cmd.start :: part.map Cmd.op ++ (later.map tx).flatten) committed none = committed ++ later := by
+    intro committed
+    show replay (Cmd.start :: (part.map Cmd.op ++ (later.map tx).flatten)) committed none = committed ++ later
+    simp only [replay]
+    rw [replay_ops]
+    have h := replay_txs later [] committed (some ([] ++ part))
+    rw [List.append_nil] at h
+    rw [h]
+    cases later with
+    | nil => simp [replay]
+    | cons _ _ => simp [replay]
+  rw [replay_txs]
+  cases txs with
+  | nil => simpa using tail []
+  | cons t ts => exact tail (t :: ts)
+
+/-- Replay before the 2026-10-28 fix: a start inside an unfinished transaction ended replay. -/
+def replayPrevious {α : Type} : List (Cmd α) → List (List α) → Option (List α) → List (List α)
+  | [], committed, _ => committed
+  | .start :: _, committed, some _ => committed
+  | .start :: rest, committed, none => replayPrevious rest committed (some [])
+  | .op a :: rest, committed, some pending => replayPrevious rest committed (some (pending ++ [a]))
+  | .op _ :: _, committed, none => committed
+  | .commit :: rest, committed, some pending => replayPrevious rest (committed ++ [pending]) none
+  | .commit :: _, committed, none => committed
+  | .damage :: _, committed, _ => committed
+
+/-- Before the fix, the commit of the session after the crash was lost on the next open
+(`TransactionLogDamageTest.CommitsAfterACrashInsideATransactionSurviveTheNextOpen`). -/
+theorem previous_loses_later_commit :
+    replayPrevious (tx [1] ++ [Cmd.start, Cmd.op 2] ++ tx [3]) [] none = [[1]] ∧
+      replay (tx [1] ++ [Cmd.start, Cmd.op 2] ++ tx [3]) [] none = [[1], [3]] := by
+  decide
 
 end Btdb.Replay

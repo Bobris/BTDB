@@ -70,3 +70,5 @@ open Btdb
 #print axioms GrowRead.fixed_alloc_bound
 #print axioms GrowRead.previous_unbounded
 #print axioms GrowRead.string_alloc_bound
+#print axioms Replay.replay_after_abandoned
+#print axioms Replay.previous_loses_later_commit

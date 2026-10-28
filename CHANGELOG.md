@@ -48,7 +48,8 @@
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
     listed keys, and the index comparison used before leaves the range.
   - `BTDB/Proofs/`, transaction log replay: a log ended by damage or inside a transaction replays to exactly the
-    transactions committed before it.
+    transactions committed before it, and the transactions a later session appends after a transaction a crash left
+    unfinished are kept.
   - `BTDB/Proofs/`, reading a length-prefixed byte array or string: the reader returns a byte array exactly when the
     input holds the declared length and allocates at most four times the larger of the input and 4096 bytes, and a
     string at most six times the larger of the input bytes and 256 characters, whatever the prefix declares.
@@ -57,6 +58,12 @@
 
 ### Fixed
 
+- `BTreeKeyValueDB` lost every commit made after reopening from a crash that cut the transaction log inside a
+  transaction between two of its commands. Replay dropped the unfinished transaction, and the next session wrote its
+  commits to a new log file, but the following open stopped replaying at that file's first transaction start because
+  the unfinished one was still pending, and opened without those commits. Replay now drops a transaction left open
+  when the next one starts, so the commits are kept, also in databases already affected. Found by fuzzing damaged
+  transaction logs.
 - `MemReader.ReadString`, `ReadByteArray` and `ReadStringValues` allocated the length or count a prefix declared before
   reading any of it. A few bytes of truncated or hostile input, such as a malformed replication peer message, could
   therefore allocate gigabytes, or fail with `OutOfMemoryException` instead of `InvalidDataException`. A declared

@@ -1269,14 +1269,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     }
                     case KVCommandType.TransactionStart:
                         if (!reader.CheckMagic(MagicStartOfTransaction[1..]))
-                            return false;
-                        if (next != null)
-                        {
-                            next.Dispose();
-                            next = null;
-                            return false;
-                        }
-
+                            return StopReplay(ref next);
+                        // A transaction still open here was abandoned: its writer crashed before the commit, and
+                        // replay after the crash dropped it and started this one, usually in the next file.
+                        next?.Dispose();
                         next = committed.CreateWritableTransaction();
                         cursor.SetNewRoot(next);
                         cursor2.SetNewRoot(next);

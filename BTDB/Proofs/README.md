@@ -115,6 +115,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `GrowRead.fixed_alloc_bound` | Whatever length the prefix declares, the loop allocates at most `4 · max(A, 4096)` bytes in all, where `A` is what the input holds. |
 | `GrowRead.string_alloc_bound` | Decoding characters from `A` bytes, each taking at least one byte, allocates at most `6 · max(A, 256)` characters in all, whatever length the prefix declares. |
 | `GrowRead.previous_unbounded` | Before the 2026-10-28 fix the reader allocated the declared length at once, beyond any such bound (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`). |
+| `Replay.replay_after_abandoned` | A log cut by a crash inside a transaction, after complete commands, followed by the complete transactions of the next session, replays to every complete transaction: a start drops the transaction the crash left open. |
+| `Replay.previous_loses_later_commit` | Before the 2026-10-28 fix, replay ended at a start inside an open transaction, so the next session's commits were lost on the following open (`TransactionLogDamageTest.CommitsAfterACrashInsideATransactionSurviveTheNextOpen`). |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
 | `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

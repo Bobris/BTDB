@@ -58,6 +58,53 @@ public class TransactionLogDamageTest
         }
     }
 
+    /// A crash that cut the log after a complete command of a transaction leaves it unfinished at the end of the log.
+    /// The next session writes a new log starting with its own transaction; replay drops the unfinished one there and
+    /// keeps the new commits. Before the 2026-10-28 fix replay stopped at that start, losing every later commit.
+    [Fact]
+    public async Task CommitsAfterACrashInsideATransactionSurviveTheNextOpen()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-trl-damage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using (var db = new BTreeKeyValueDB(Options(directory)))
+                foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
+                {
+                    using var tr = await db.StartWritingTransaction();
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue([key], [value]);
+                    tr.Commit();
+                }
+
+            foreach (var index in Directory.GetFiles(directory, "*.kvi")) File.Delete(index);
+            var log = Directory.GetFiles(directory, "*.trl").Single();
+            var content = File.ReadAllBytes(log);
+            var at = Enumerable.Range(0, content.Length - 3).Single(i =>
+                content[i] == 0x81 && content[i + 1] == 0x81 && content[i + 2] == 3 && content[i + 3] == 4);
+            File.WriteAllBytes(log, content[..(at + 4)]); // after the command writing key 3, before its commit
+
+            using (var reopened = new BTreeKeyValueDB(Options(directory)))
+            {
+                using var tr = await reopened.StartWritingTransaction();
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue([200], [1]);
+                tr.Commit();
+            }
+
+            using var again = new BTreeKeyValueDB(Options(directory));
+            using var read = again.StartReadOnlyTransaction();
+            using var check = read.CreateCursor();
+            Assert.True(check.FindExactKey([1]));
+            Assert.False(check.FindExactKey([3]));
+            Assert.True(check.FindExactKey([200]));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Fact]
     public async Task KeySuffixUpdateWithPrefixLongerThanKeyEndsReplay()
     {
