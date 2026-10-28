@@ -52,8 +52,8 @@ database stores as a node's shared prefix and a suffix, cut to a maximum length,
 and its descent through branch nodes whose separators are the first keys of all children but the first, as
 `ReadOnlyCreator` writes them.
 
-`BtdbProofs/Separators.lean` models how `BTreeBranch.EraseOne` of the in-memory B-tree rebuilds a branch's
-separators with array copies.
+`BtdbProofs/Separators.lean` models how `BTreeBranch.EraseOne` and `CreateOrUpdate` of the in-memory B-tree rebuild a
+branch's separators with array copies, after erasing a key and after splits.
 
 Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 
@@ -77,4 +77,5 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Boundary.descend`, `Boundary.child_before`, `Boundary.child_after` | In a branch node the search picks the child holding the boundary, and the boundary of the node is the keys of the children before it, `CountBefore`, plus the boundary inside it. |
 | `Boundary.seek_index` | `SeekIndex` picks the child holding a key index from the children's cumulative counts, and the index lies in it at the remaining offset. |
 | `Separators.erase_first` … `Separators.shrink_later` | After `EraseOne` removes or shrinks a child, the separators it copies are the first keys of all new children but the first, which `BTreeRoot.FindKey` relies on. |
+| `Separators.split_child`, `Separators.split_branch` | So do the copies `CreateOrUpdate` makes when a child splits and when the branch itself splits. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

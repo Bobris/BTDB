@@ -47,3 +47,5 @@ open Btdb
 #print axioms Separators.erase_later
 #print axioms Separators.shrink_first
 #print axioms Separators.shrink_later
+#print axioms Separators.split_child
+#print axioms Separators.split_branch

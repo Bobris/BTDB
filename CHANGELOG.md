@@ -36,7 +36,8 @@
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
     child holding it.
-  - `BTDB/Proofs/`, the in-memory B-tree: erasing one key keeps every branch separator the first key of its child.
+  - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
+    first key of its child.
 
 ### Fixed
 
