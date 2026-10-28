@@ -383,5 +383,30 @@ public class BonSerializerCoverageTest
         Assert.Equal("x", ((IHasName)read).Name);
     }
 
+    public class GenericBase<T>
+    {
+        public T? Single;
+        public List<T>? Items;
+    }
+
+    [Generate]
+    public class FromGenericBase : GenericBase<string>
+    {
+        public int Own { get; set; }
+    }
+
+    // Before the fix the generated accessors of the base's public fields used the type argument instead of the type
+    // parameter, so loading the assembly failed with MissingFieldException.
+    [Fact]
+    public void PublicFieldsOfGenericBaseRoundTrip()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, new FromGenericBase { Single = "s", Items = ["a", "b"], Own = 3 });
+        var bon = new Bon(builder.FinishAsMemory());
+        var read = (FromGenericBase)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(("s", 3), (read.Single, read.Own));
+        Assert.Equal(["a", "b"], read.Items!);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }

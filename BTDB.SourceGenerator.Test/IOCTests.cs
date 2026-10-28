@@ -31,6 +31,32 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyPublicFieldsOfGenericBase()
+    {
+        // Before the fix the field accessors used the type argument instead of the type parameter of the base, which the
+        // runtime does not find, so the module initializer failed with MissingFieldException.
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+
+            namespace TestNamespace
+            {
+                public class GenericBase<T>
+                {
+                    public T? Single;
+                    public List<T>? Items;
+                }
+
+                [BTDB.Generate]
+                public class FromGenericBase : GenericBase<string>
+                {
+                    public int Own { get; set; }
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyExplicitlyImplementedProperty()
     {
         // Before the fix the property was listed twice, once with an accessor of a backing field named after the

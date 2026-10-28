@@ -68,6 +68,9 @@
 
 ### Fixed
 
+- Source generator: a public field of a generic base class, such as `public List<T>? Items;` in a base of a
+  `[Generate]` class, got an accessor typed with the type argument instead of the type parameter, which the runtime
+  does not find. Loading the assembly then failed with `MissingFieldException` from its module initializer.
 - Source generator: a `[Generate]` class implementing an interface property explicitly, such as
   `string IHasName.Name { get; set; }`, listed the property twice, once through a backing field named after the
   interface property, which does not exist. Loading the assembly then failed with `MissingFieldException` from its

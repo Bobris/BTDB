@@ -1857,7 +1857,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 var ownerGenericInfo = ExtractOwnerGenericInfo(f.ContainingType);
                 return new FieldsInfo(f.Name,
-                    f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.Type),
+                    f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.OriginalDefinition.Type),
                     ExtractPersistedName(f),
                     f.Type.IsReferenceType, f.Name, null, null, false,
                     f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
