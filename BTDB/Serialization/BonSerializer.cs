@@ -1325,6 +1325,12 @@ public class BonSerializerFactory : ISerializerFactory
             var deserializers = CreateDeserializers(tupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                    return true;
+                }
+
                 if (!AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon))
                 {
                     AsCtx(ref ctx).Bon.Skip();
@@ -1601,6 +1607,13 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
                 RuntimeHelpers.EnsureSufficientExecutionStack();
+                // A null loads as null: reported as not loaded, it left a member its initial value and failed a tuple.
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                    return true;
+                }
+
                 if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out var name) ||
                     name.Length != persistNameUtf8.Length || !name.SequenceEqual(persistNameUtf8))
                 {

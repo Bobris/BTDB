@@ -83,6 +83,9 @@
 
 ### Fixed
 
+- Bon serialization: a null class or `Tuple` was reported as not loaded, so a member kept the value its constructor
+  gave it and a tuple holding a null class item, like `(long, Item?)?`, loaded as null. They now load as null. Found
+  by a new serializer-level fuzz test.
 - Bon serialization: deserializing a class that holds itself, like a tree node, overflowed the stack and ended the
   process when the class was first reached as a member type, such as the values of a dictionary, rather than by its
   name. Only the lookup by name put a placeholder in the cache while a class's deserializer was created; the lookup by

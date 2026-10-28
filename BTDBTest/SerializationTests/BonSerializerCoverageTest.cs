@@ -802,5 +802,34 @@ public class BonSerializerCoverageTest
         Assert.Equal(2, result.Nodes![1].Left!.Value);
     }
 
+    [Generate]
+    public class NullableClassItem
+    {
+        public int X { get; set; }
+    }
+
+    [Generate]
+    public class WithNullClassMembers
+    {
+        public NullableClassItem? Initialized { get; set; } = new() { X = 1 };
+        public (int, NullableClassItem?)? Pair { get; set; }
+        public Tuple<int, string>? Boxed { get; set; } = Tuple.Create(1, "a");
+    }
+
+    // Before the fix a null class or Tuple loaded as not loaded: a member kept its initial value and a tuple holding a
+    // null class item loaded as null.
+    [Fact]
+    public void NullClassAndTupleMembersLoadAsNull()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder,
+            new WithNullClassMembers { Initialized = null, Pair = (5, null), Boxed = null });
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (WithNullClassMembers)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Null(result.Initialized);
+        Assert.Equal((5, (NullableClassItem?)null), result.Pair);
+        Assert.Null(result.Boxed);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }
