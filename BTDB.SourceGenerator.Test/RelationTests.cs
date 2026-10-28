@@ -30,6 +30,48 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationMethodsWithKeywordNamedParameters()
+    {
+        // Before the fix parameters named with keywords were written without their verbatim prefix, which did not
+        // compile.
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Row
+            {
+                [PrimaryKey(1)] public ulong @event { get; set; }
+                [PrimaryKey(2)] public long @long { get; set; }
+                [SecondaryKey("Class")] public string @class { get; set; } = "";
+                public int @int { get; set; }
+            }
+
+            public class RowInt
+            {
+                public int @int { get; set; }
+            }
+
+            public interface IRowTable : IRelation<Row>
+            {
+                void Insert(Row @object);
+                bool Upsert(Row @object);
+                Row FindById(ulong @event, long @long);
+                IEnumerable<Row> FindByClass(string @class);
+                IEnumerable<Row> ListById(ulong @event, AdvancedEnumeratorParam<long> @params);
+                IEnumerable<Row> ScanByClass(Constraint<string> @class);
+                ulong GatherById(ICollection<Row> @out, long skip, long take, Constraint<ulong> @event);
+                bool UpdateById(ulong @event, long @long, int @int);
+                int RemoveByIdPartial(ulong @event, int maxCount);
+                void IterateById(ulong @event, Action<RowInt> @delegate, RowInt @object);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationWithoutPrimaryKey()
     {
         // language=cs

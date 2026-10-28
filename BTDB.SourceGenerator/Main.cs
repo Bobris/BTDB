@@ -4015,7 +4015,7 @@ public class SourceGenerator : IIncrementalGenerator
     static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)
     {
         if (parameters.IsEmpty) return "";
-        return ", " + string.Join(", ", parameters.Select(p => $"{NormalizeType(p.Type)} {p.Name}"));
+        return ", " + string.Join(", ", parameters.Select(p => $"{NormalizeType(p.Type)} {p.Identifier}"));
     }
 
     static string OnBeforeRemoveCallParams(EquatableArray<ParameterInfo> parameters, ref int paramIocIndex,
@@ -4178,25 +4178,25 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($$"""
 
                         [SkipLocalsInit]
-                        {{method.ResultType ?? "void"}} {{method.DefinedInType}}.{{method.Name}}({{string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"))}})
+                        {{method.ResultType ?? "void"}} {{method.DefinedInType}}.{{method.Name}}({{string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Identifier}"))}})
                         {
 
                 """);
             if (method is { Name: "Insert", ResultType: null })
             {
                 declarations.Append(
-                    $"            base.InsertUniqueOrThrow({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+                    $"            base.InsertUniqueOrThrow({string.Join(", ", method.Parameters.Select(p => p.Identifier))});\n");
             }
             else if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert" or
                      "ShallowUpsertWithSizes")
             {
                 declarations.Append(
-                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Identifier))});\n");
             }
             else if (method.Name is "Update" or "ShallowUpdate")
             {
                 declarations.Append(
-                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Identifier))});\n");
             }
             else if (method.Name.StartsWith("UpdateById", StringComparison.Ordinal))
             {
@@ -4356,7 +4356,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 declarations.Append(
-                    $"            base.IterateByPrimaryKeyPrefix<{valueType}>(writer.GetSpan(), {prefixParameterCount}, {loaderIndex}, {callbackParameter.Name}, {valueParameter.Name});\n");
+                    $"            base.IterateByPrimaryKeyPrefix<{valueType}>(writer.GetSpan(), {prefixParameterCount}, {loaderIndex}, {callbackParameter.Identifier}, {valueParameter.Identifier});\n");
             }
             else if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
@@ -4441,7 +4441,7 @@ public class SourceGenerator : IIncrementalGenerator
                         AppendWriteOrderableParameter(declarations, method.Parameters[i]);
                     }
 
-                    var removeExpr = $"base.RemoveByPrimaryKeyPrefixPartial(writer.GetSpan(), {maxCountParam.Name})";
+                    var removeExpr = $"base.RemoveByPrimaryKeyPrefixPartial(writer.GetSpan(), {maxCountParam.Identifier})";
                     declarations.Append($"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
                 }
                 else
@@ -4450,7 +4450,7 @@ public class SourceGenerator : IIncrementalGenerator
                     string? advParamType = null;
                     var advType = string.Empty;
                     var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
-                    var lastParamName = lastParam?.Name ?? "";
+                    var lastParamName = lastParam?.Identifier ?? "";
                     var hasAdvancedEnumerator = paramCount > 0 &&
                                                 TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
                     if (hasAdvancedEnumerator)
@@ -4528,7 +4528,7 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"            var c_c = new ConstraintInfo[{paramCount}];\n");
                 for (var i = 0; i < paramCount; i++)
                 {
-                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Identifier};\n");
                 }
 
                 declarations.Append("            return base.RemoveWithSizesByPrimaryKey(c_c);\n");
@@ -4539,7 +4539,7 @@ public class SourceGenerator : IIncrementalGenerator
                 string? advParamType = null;
                 var advType = string.Empty;
                 var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
-                var lastParamName = lastParam?.Name ?? "";
+                var lastParamName = lastParam?.Identifier ?? "";
                 var hasAdvancedEnumerator = paramCount > 0 &&
                                             TryGetAdvancedEnumeratorParamType(lastParam!.Type,
                                                 out advType);
@@ -4634,7 +4634,7 @@ public class SourceGenerator : IIncrementalGenerator
                 string? advParamType = null;
                 var advType = string.Empty;
                 var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
-                var lastParamName = lastParam?.Name ?? "";
+                var lastParamName = lastParam?.Identifier ?? "";
                 var hasAdvancedEnumerator = paramCount > 0 &&
                                             TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
                 if (hasAdvancedEnumerator)
@@ -4697,7 +4697,7 @@ public class SourceGenerator : IIncrementalGenerator
                 string? advParamType = null;
                 var advType = string.Empty;
                 var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
-                var lastParamName = lastParam?.Name ?? "";
+                var lastParamName = lastParam?.Identifier ?? "";
                 var hasAdvancedEnumerator = paramCount > 0 &&
                                             TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
                 if (hasAdvancedEnumerator)
@@ -4768,20 +4768,20 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
                 for (var i = 0; i < constraintCount; i++)
                 {
-                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i + 3].Name};\n");
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i + 3].Identifier};\n");
                 }
 
-                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Identifier : "null";
                 if (indexName == "Id")
                 {
                     declarations.Append(
-                        $"            return GatherByPrimaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {orderersArg});\n");
+                        $"            return GatherByPrimaryKey({loaderIndex}, c_c, {method.Parameters[0].Identifier}, {method.Parameters[1].Identifier}, {method.Parameters[2].Identifier}, {orderersArg});\n");
                 }
                 else
                 {
                     var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
                     declarations.Append(
-                        $"            return GatherBySecondaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {secondaryKeyIndex}u, {orderersArg});\n");
+                        $"            return GatherBySecondaryKey({loaderIndex}, c_c, {method.Parameters[0].Identifier}, {method.Parameters[1].Identifier}, {method.Parameters[2].Identifier}, {secondaryKeyIndex}u, {orderersArg});\n");
                 }
             }
             else if (method.Name.StartsWith("ScanBy", StringComparison.Ordinal))
@@ -4794,7 +4794,7 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"            var c_c = new ConstraintInfo[{paramCount}];\n");
                 for (var i = 0; i < paramCount; i++)
                 {
-                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Identifier};\n");
                 }
 
                 if (indexName == "Id")
@@ -4821,10 +4821,10 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
                 for (var i = 0; i < constraintCount; i++)
                 {
-                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Identifier};\n");
                 }
 
-                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Identifier : "null";
                 var hasOrDefaultLiteral = hasOrDefault ? "true" : "false";
                 if (indexName == "Id")
                 {
@@ -4850,10 +4850,10 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
                 for (var i = 0; i < constraintCount; i++)
                 {
-                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Identifier};\n");
                 }
 
-                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Identifier : "null";
                 var hasOrDefaultLiteral = hasOrDefault ? "true" : "false";
                 if (indexName == "Id")
                 {
@@ -4887,7 +4887,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 // Remaining methods passed validation by matching public method of RelationDBManipulator<T>.
                 declarations.Append(
-                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Identifier))});\n");
             }
 
             // language=C#
@@ -5222,7 +5222,7 @@ public class SourceGenerator : IIncrementalGenerator
     static void AppendWriteValueParameter(StringBuilder declarations, ParameterInfo parameter,
         string indent = "            ")
     {
-        AppendWriteValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
+        AppendWriteValue(declarations, parameter.Identifier, parameter.Type, parameter.EnumUnderlyingType,
             indent, parameter.IsReference);
     }
 
@@ -5353,7 +5353,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
-        AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
+        AppendWriteOrderableValue(declarations, parameter.Identifier, parameter.Type, parameter.EnumUnderlyingType,
             "            ", parameter.IsReference);
     }
 
@@ -5919,7 +5919,11 @@ record ParameterInfo(
     bool IsReference,
     bool Optional,
     string? DefaultValue,
-    string? EnumUnderlyingType = null);
+    string? EnumUnderlyingType = null)
+{
+    /// The name written as code, with the verbatim prefix a keyword needs.
+    public string Identifier => CSharpSyntaxUtilities.EscapeIdentifier(Name);
+}
 
 record PropertyInfo(
     string Name,
