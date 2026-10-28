@@ -504,6 +504,15 @@ public class KeyValueDBCrashSimulationTest
                 foreach (var (name, bytes, flushed) in files.Snapshot!)
                     System.IO.File.WriteAllBytes(Path.Combine(directory, name),
                         bytes[..(int)((ulong)random.NextInt64((long)flushed, bytes.Length + 1L))]);
+                // A read-only open of what the crash left shows a committed state and changes no file.
+                var before = Directory.GetFiles(directory).Order().Select(f => (f, Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(System.IO.File.ReadAllBytes(f))))).ToList();
+                var readOnly = Options(new OnDiskFileCollection(directory), split);
+                readOnly.ReadOnly = true;
+                using (var db = new BTreeKeyValueDB(readOnly))
+                    Assert.True(states.Contains(Dump(db)), $"Seed {seed} crash {crash}/{total}: read-only open shows {Short(Dump(db))}");
+                Assert.Equal(before, Directory.GetFiles(directory).Order().Select(f => (f, Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(System.IO.File.ReadAllBytes(f))))).ToList());
                 string opened;
                 using (var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory), split)))
                 {
