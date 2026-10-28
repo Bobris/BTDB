@@ -31,6 +31,9 @@ from the code by inspection.
 and `LengthVInt` from the leading zero count of the value, and `LengthVUIntByFirstByte` and `LengthVIntByFirstByte`,
 which readers use to decode, from the first byte.
 
+`BtdbProofs/Unpack.lean` models `UnsafeUnpackVUInt` and `UnsafeUnpackVInt` for each length, as the code reads the
+bytes: big-endian reads of 1, 2, 4 or 8 bytes, masks, shifts and the sign correction chosen by the first byte.
+
 Enums write signed values with `WriteVInt*` and unsigned ones with `WriteVUInt*`, which forward to the 64-bit
 encoders, so they use the encodings above. `KeyRange.byte_encoding` covers the one-byte handlers. Together, every
 handler `RelationQueryKeyRanges.IsOrderPreserving` admits is an encoding for which `lower_correct` and `upper_correct`
@@ -76,6 +79,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `VUInt.encoding`, `VInt.encoding`, `KeyRange.byte_encoding` | Each order-preserving handler's encoding is a `KeyRange.Encoding` over the values of its type. |
 | `Lengths.length_vuint64`, `length_vuint32`, `length_vint64`, `length_vint32` | The branchless `LengthVUInt` and `LengthVInt` for 64- and 32-bit values, including the `LzcToVIntLen` table, give the lengths of the models above. |
 | `Lengths.vuint_first_byte`, `Lengths.vint_first_byte` | The first byte of every encoding gives its length through `LengthVUIntByFirstByte` and `LengthVIntByFirstByte`. |
+| `Unpack.vuint_unpack`, `Unpack.vint_unpack` | Unpacking the encoding of every 64-bit unsigned and signed value returns the value. |
 | `Cursor.block` | Keys with a common prefix form a contiguous block in key order. |
 | `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `Seek.seek_exact` … `Seek.seek_exclusive_none` | Each branch of `Seek` reaches the first key of the range that passes the lower bound, inclusive or exclusive, or proves there is none. |

@@ -57,3 +57,5 @@ open Btdb
 #print axioms Lengths.length_vint32
 #print axioms Lengths.vuint_first_byte
 #print axioms Lengths.vint_first_byte
+#print axioms Unpack.vuint_unpack
+#print axioms Unpack.vint_unpack

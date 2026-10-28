@@ -36,8 +36,8 @@
     `StartsWith` scans exactly the keys of the strings with the prefix, and string keys, null included, are prefix
     free, so an ordinal equality can be part of a key prefix; `CountBy` and `AnyBy` with an advanced enumerator
     parameter count exactly the keys in the range from key indices, for every pair of propositions; the branchless
-    `PackUnpack` length functions match the modelled encodings, and readers take each encoding's length from its first
-    byte correctly.
+    `PackUnpack` length functions match the modelled encodings, readers take each encoding's length from its first
+    byte correctly, and unpacking returns every packed 64-bit value.
   - `BTDB/Proofs/`, the read-only key value database: comparing a stored key, kept as a node prefix and a suffix and
     cut to a maximum length, with a search target gives the comparison of the whole cut key, and the node search
     finds the boundary of the keys below the target, also through branch nodes, and seeking a key index finds the
