@@ -862,5 +862,55 @@ public class BonSerializerCoverageTest
         Assert.Equal(1, Assert.IsType<CountsByName>(result.Counts)["a"]);
     }
 
+    [Generate]
+    public class RacedNode
+    {
+        public int Value { get; set; }
+        public RacedNode? Next { get; set; }
+        public Dictionary<int, RacedNode>? Children { get; set; }
+    }
+
+    [Generate]
+    public class RacedHolder
+    {
+        public List<RacedNode>? Nodes { get; set; }
+    }
+
+    // Before the fix a thread deserializing while another created the deserializer of a recursive class got the
+    // placeholder from the cache, which loaded the same value again by name and got the placeholder again, until the
+    // stack ran out. No other test may deserialize these types first.
+    [Fact]
+    public void ConcurrentFirstDeserializationOfRecursiveClassWorks()
+    {
+        using var start = new System.Threading.Barrier(16);
+        var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+        var threads = Enumerable.Range(0, 16).Select(_ => new System.Threading.Thread(() =>
+        {
+            start.SignalAndWait();
+            try
+            {
+                for (var i = 0; i < 20; i++)
+                {
+                    var builder = new BonBuilder();
+                    BonSerializerFactory.Serialize(ref builder, new RacedHolder
+                    {
+                        Nodes = [new() { Value = 1, Next = new() { Value = 2 }, Children = new() { [3] = new() { Value = 3 } } }]
+                    });
+                    var bon = new Bon(builder.FinishAsMemory());
+                    var result = (RacedHolder)BonSerializerFactory.Deserialize(ref bon)!;
+                    Assert.Equal(2, result.Nodes![0].Next!.Value);
+                    Assert.Equal(3, result.Nodes[0].Children![3].Value);
+                }
+            }
+            catch (Exception e)
+            {
+                errors.Add(e);
+            }
+        })).ToList();
+        threads.ForEach(t => t.Start());
+        threads.ForEach(t => t.Join());
+        Assert.Empty(errors);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }

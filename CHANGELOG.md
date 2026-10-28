@@ -85,6 +85,10 @@
 
 ### Fixed
 
+- Bon serialization: a thread deserializing a recursive class while another thread was creating its deserializer got
+  the placeholder cached meanwhile, which loaded the same value again by name and got the placeholder again, until
+  `InsufficientExecutionStackException`. The placeholder now waits for the deserializer and uses it, as serialization
+  already did.
 - Bon serialization: a member typed as a registered subclass of `List`, `HashSet` or `Dictionary` was deserialized
   into the base collection, so the member held an object of a type it cannot hold, which calling the subclass's
   members on reads past. It is now created as the subclass and filled as the base collection; members the subclass

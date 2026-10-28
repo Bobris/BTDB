@@ -748,21 +748,11 @@ public class BonSerializerFactory : ISerializerFactory
         }
 
         // A registered class can hold itself, also when first reached as a member type rather than by its name: while
-        // its deserializer is created, a placeholder loading it by name stands in for it.
-        Deserialize objDeserializer = (ref DeserializerCtx ctx, ref byte value) =>
-        {
-            var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
-            if (res == null || type.IsInstanceOfType(res))
-            {
-                Unsafe.As<byte, object>(ref value) = res;
-            }
-            else
-            {
-                Unsafe.As<byte, object>(ref value) = null;
-            }
-
-            return true;
-        };
+        // its deserializer is created, a placeholder stands in for it. Members created meanwhile keep the placeholder,
+        // and other threads can get it from the cache, so it waits for the deserializer and uses it.
+        Deserialize objDeserializer = null!;
+        objDeserializer = (ref DeserializerCtx ctx, ref byte value) =>
+            WaitForCreatedDeserializer(type, typePtr, objDeserializer)(ref ctx, ref value);
         if (!_cache2.TryAdd(typePtr, objDeserializer))
         {
             _cache2.TryGetValue(typePtr, out deserializer);
@@ -775,7 +765,7 @@ public class BonSerializerFactory : ISerializerFactory
         }
         catch
         {
-            // The placeholder deserializes the same value again, so left behind it would recurse forever.
+            // The placeholder waits for a deserializer replacing it, so left behind it would wait forever.
             _cache2.TryRemove(new KeyValuePair<nint, Deserialize>(typePtr, objDeserializer));
             throw;
         }
@@ -783,6 +773,18 @@ public class BonSerializerFactory : ISerializerFactory
         _cache2.TryUpdate(typePtr, deserializer, objDeserializer);
         _cache2.TryGetValue(typePtr, out deserializer);
         return deserializer!;
+    }
+
+    Deserialize WaitForCreatedDeserializer(Type type, nint typePtr, Deserialize placeholder)
+    {
+        var spin = new SpinWait();
+        while (true)
+        {
+            // Creation failed and removed the placeholder: create it here, which reports the failure again.
+            if (!_cache2.TryGetValue(typePtr, out var deserializer)) return CreateCachedDeserializerForType(type);
+            if (deserializer != placeholder) return deserializer;
+            spin.SpinOnce();
+        }
     }
 
     public object? DeserializeObject(ref DeserializerCtx ctx)
