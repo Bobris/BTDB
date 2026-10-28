@@ -32,7 +32,12 @@ encoders, so they use the encodings above. `KeyRange.byte_encoding` covers the o
 handler `RelationQueryKeyRanges.IsOrderPreserving` admits is an encoding for which `lower_correct` and `upper_correct`
 hold, over the values of its type.
 
-Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLast`).
+`BtdbProofs/Cursor.lean` models `BTreeKeyValueDBCursor.Find(key, prefixLen)`: the B-tree's `Find(key)` followed by
+the restriction to keys with the prefix, against the contract of `IKeyValueDBCursor.Find`. The B-tree's own `Find` is
+assumed to meet that contract over all keys.
+
+Not modelled: the B-tree itself, and the relation query seeks built on `Find` (`Seek`, `SeekLast`), which were checked
+against the contract by hand.
 
 ## Results
 
@@ -42,4 +47,6 @@ Not modelled: the cursor seeks that position a scan on a range (`Seek`, `SeekLas
 | `VUInt.vuint_order`, `VUInt.vuint_prefix_free` | A smaller value has a smaller encoding, and no encoding is a proper prefix of another: the "Unsigned" encoding satisfies what `KeyRange` assumes. |
 | `VInt.vint_order`, `VInt.vint_prefix_free` | The same for the "Signed" encoding, negative values included. |
 | `VUInt.encoding`, `VInt.encoding`, `KeyRange.byte_encoding` | Each order-preserving handler's encoding is a `KeyRange.Encoding` over the values of its type. |
+| `Cursor.block` | Keys with a common prefix form a contiguous block in key order. |
+| `Cursor.previous_in_block` … `Cursor.next_outside` | Each branch of `Find(key, prefixLen)` answers what the contract requires: the greatest smaller key of the block, else its smallest larger key, else not found. |
 | `KeyRange.upper_correct` | `IsPastStop` rejects a key exactly when its value is above an inclusive bound, or at or above an exclusive one. |

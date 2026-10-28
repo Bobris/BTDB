@@ -11,3 +11,10 @@ open Btdb
 #print axioms KeyRange.byte_encoding
 #print axioms VUInt.encoding
 #print axioms VInt.encoding
+#print axioms Cursor.block
+#print axioms Cursor.previous_in_block
+#print axioms Cursor.previous_outside_next_in_block
+#print axioms Cursor.previous_outside_next_outside
+#print axioms Cursor.previous_outside_no_next
+#print axioms Cursor.next_in_block
+#print axioms Cursor.next_outside

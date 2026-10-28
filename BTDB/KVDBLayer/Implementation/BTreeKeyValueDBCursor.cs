@@ -206,6 +206,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         return false;
     }
 
+    // Each branch answers the contract of IKeyValueDBCursor.Find within the prefix (BTDB/Proofs, Cursor.lean).
     public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
