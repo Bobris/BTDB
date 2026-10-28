@@ -912,5 +912,62 @@ public class BonSerializerCoverageTest
         Assert.Empty(errors);
     }
 
+    [Generate]
+    public class ChainLink
+    {
+        public int Value { get; set; }
+        public ChainLink? Next { get; set; }
+    }
+
+    [Generate]
+    public class SpecialChainLink : ChainLink
+    {
+        public int Extra { get; set; }
+    }
+
+    [Generate]
+    public class ChainStart
+    {
+        public ChainLink? First { get; set; }
+    }
+
+    // A class's members of its own type keep the serializer placeholder, which writes the runtime type, so a derived
+    // class lands there. Before the fix its name did not match, and the deserializer skipped the value twice.
+    [Fact]
+    public void RecursiveMemberHoldingDerivedClassLoadsIt()
+    {
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder,
+            new ChainStart { First = new() { Value = 1, Next = new SpecialChainLink { Value = 2, Extra = 3 } } });
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (ChainStart)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Equal(3, Assert.IsType<SpecialChainLink>(result.First!.Next).Extra);
+    }
+
+    [Generate]
+    public class ItemThenNumber
+    {
+        public NullItemsItem? Item { get; set; }
+        public int Number { get; set; }
+    }
+
+    // Before the fix a class of another type in a member was skipped twice, losing the member after it.
+    [Fact]
+    public void UnrelatedClassInMemberIsSkippedOnce()
+    {
+        var builder = new BonBuilder();
+        builder.StartClass(Encoding.UTF8.GetBytes(ReflectionMetadata.FindByType(typeof(ItemThenNumber))!.TruePersistedName));
+        builder.WriteKey("Item"u8);
+        builder.StartClass(Encoding.UTF8.GetBytes(ReflectionMetadata.FindByType(typeof(WithChar))!.TruePersistedName));
+        builder.FinishClass();
+        builder.WriteKey("Number"u8);
+        builder.Write(7);
+        builder.FinishClass();
+        var bon = new Bon(builder.FinishAsMemory());
+        var result = (ItemThenNumber)BonSerializerFactory.Deserialize(ref bon)!;
+        Assert.Null(result.Item);
+        Assert.Equal(7, result.Number);
+    }
+
     static void Serialize(BonBuilder builder, object value) => BonSerializerFactory.Serialize(ref builder, value);
 }

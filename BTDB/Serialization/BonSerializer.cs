@@ -1619,8 +1619,24 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
-                if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out var name) ||
-                    name.Length != persistNameUtf8.Length || !name.SequenceEqual(persistNameUtf8))
+                if (!AsCtx(ref ctx).Bon.PeekClass(out var peekedName))
+                {
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+
+                if (!peekedName.SequenceEqual(persistNameUtf8))
+                {
+                    // A derived class, as a recursive member stores, whose serializer writes the runtime type.
+                    if (ReflectionMetadata.FindByName(peekedName) is { } derived && derived.Type != type &&
+                        type.IsAssignableFrom(derived.Type))
+                        return ((BonSerializerFactory)AsCtx(ref ctx).Factory).CreateCachedDeserializerForType(derived.Type)(
+                            ref ctx, ref value);
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+
+                if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out _))
                 {
                     AsCtx(ref ctx).Bon.Skip();
                     return false;

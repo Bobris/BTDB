@@ -85,6 +85,10 @@
 
 ### Fixed
 
+- Bon serialization: a member holding a class of another name was skipped twice, as reading the class had already
+  consumed it, so the deserializer lost the member after it and read the rest out of step. A class derived from the
+  member's type, which members of a class's own type store as they are written with the runtime type, now loads as
+  that class.
 - Bon serialization: a thread deserializing a recursive class while another thread was creating its deserializer got
   the placeholder cached meanwhile, which loaded the same value again by name and got the placeholder again, until
   `InsufficientExecutionStackException`. The placeholder now waits for the deserializer and uses it, as serialization
