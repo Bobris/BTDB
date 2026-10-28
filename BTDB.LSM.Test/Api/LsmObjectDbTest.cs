@@ -38,6 +38,12 @@ public class LsmRelationMutationDifferentialTest(ITestOutputHelper output) : Rel
 }
 
 [Collection(LsmObjectDb.Name)]
+public class LsmRelationInKeyValueMutationTest(ITestOutputHelper output) : RelationInKeyValueMutationTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
 public class LsmObjectDbAdvancedEnumeratorBoundaryTest(ITestOutputHelper output)
     : ObjectDbAdvancedEnumeratorBoundaryTest(output)
 {
