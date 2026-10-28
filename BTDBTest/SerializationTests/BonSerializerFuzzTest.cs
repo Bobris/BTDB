@@ -50,6 +50,17 @@ public class Rich
     public char Ch { get; set; }
     public ushort US { get; set; }
     public sbyte SB { get; set; }
+    public IReadOnlyList<Child>? ROL { get; set; }
+    public IEnumerable<int?>? EN { get; set; }
+    public ISet<string>? ISS { get; set; }
+    public Child?[]? CArr { get; set; }
+    public Dictionary<string, object?>? DSO { get; set; }
+    public List<object?>? LO { get; set; }
+    public Tuple<int, string?>? TUP { get; set; }
+    public Dictionary<int, List<(long, string?)>>? DLT { get; set; }
+    public IReadOnlySet<int>? ROS { get; set; }
+    public List<Small>? LE { get; set; }
+    public Dictionary<Small, Signed?>? DE { get; set; }
 }
 
 /// Random values of a class with most member shapes Bon supports, serialized and deserialized, compared as JSON.
@@ -87,17 +98,31 @@ public class BonSerializerFuzzTest
         C = Maybe(r, () => Kid(r, 0)),
         O = r.Next(4) switch { 0 => null, 1 => Kid(r, 0), 2 => "str", _ => 42L },
         LB = Maybe(r, () => Enumerable.Range(0, r.Next(3)).Select(i => r.Next(2) == 0 ? null : new byte[] { (byte)i }).ToList()),
-        Ch = (char)r.Next(0, 0xD7FF), US = (ushort)r.Next(0, 65536), SB = (sbyte)r.Next(-128, 128)
+        Ch = (char)r.Next(0, 0xD7FF), US = (ushort)r.Next(0, 65536), SB = (sbyte)r.Next(-128, 128),
+        ROL = Maybe(r, () => (IReadOnlyList<Child>)Enumerable.Range(0, r.Next(3)).Select(_ => Kid(r, 0)).ToArray()),
+        EN = Maybe(r, () => (IEnumerable<int?>)Enumerable.Range(0, r.Next(3)).Select(i => r.Next(2) == 0 ? (int?)null : i).ToList()),
+        ISS = Maybe(r, () => (ISet<string>)Enumerable.Range(0, r.Next(3)).Select(i => "s" + i).ToHashSet()),
+        CArr = Maybe(r, () => Enumerable.Range(0, r.Next(3)).Select(_ => r.Next(2) == 0 ? null : Kid(r, 0)).ToArray()),
+        DSO = Maybe(r, () => Enumerable.Range(0, r.Next(3)).ToDictionary(i => "o" + i, i => r.Next(3) switch { 0 => null, 1 => (object)"x", _ => Kid(r, 0) })),
+        LO = Maybe(r, () => Enumerable.Range(0, r.Next(3)).Select(i => r.Next(3) switch { 0 => null, 1 => (object)"y", _ => Kid(r, 0) }).ToList()),
+        TUP = Maybe(r, () => Tuple.Create(r.Next(), Str(r))),
+        DLT = Maybe(r, () => Enumerable.Range(0, r.Next(3)).ToDictionary(i => i, i => Enumerable.Range(0, r.Next(3)).Select(j => ((long)j, Str(r))).ToList())),
+        ROS = Maybe(r, () => (IReadOnlySet<int>)Enumerable.Range(0, r.Next(4)).ToHashSet()),
+        LE = Maybe(r, () => Enumerable.Range(0, r.Next(3)).Select(i => i % 2 == 0 ? Small.A : Small.B).ToList()),
+        DE = Maybe(r, () => new Dictionary<Small, Signed?> { [Small.A] = r.Next(2) == 0 ? null : Signed.Neg })
     };
 
     static readonly JsonSerializerOptions Options = new() { IncludeFields = true, NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals };
 
     static string Json(Rich v)
     {
-        var o = v.O;
-        v.O = null;
-        var s = JsonSerializer.Serialize(v, Options) + "|" + (o is Child c ? JsonSerializer.Serialize(c, Options) : o?.ToString());
-        v.O = o;
+        var (o, dso, lo) = (v.O, v.DSO, v.LO);
+        (v.O, v.DSO, v.LO) = (null, null, null);
+        static string Obj(object? x) => x is Child c ? JsonSerializer.Serialize(c, Options) : x?.ToString() ?? "null";
+        var s = JsonSerializer.Serialize(v, Options) + "|" + Obj(o) + "|" +
+                (dso == null ? "null" : string.Join(",", dso.Select(p => p.Key + "=" + Obj(p.Value)))) + "|" +
+                (lo == null ? "null" : string.Join(",", lo.Select(Obj)));
+        (v.O, v.DSO, v.LO) = (o, dso, lo);
         return s;
     }
 
