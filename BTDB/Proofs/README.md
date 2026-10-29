@@ -129,6 +129,9 @@ type remembers (`../EventStore2Layer/`), over any graph of descriptors.
 `BtdbProofs/ConvertingSaver.lean` models how a type descriptor's `GenerateSave` falls back to `BuildConvertingSaver`
 (`../FieldHandler/Extensions.cs`, `../EventStoreLayer/ByteArrayTypeDescriptor.cs`).
 
+`BtdbProofs/NestedRegistration.lean` models how `EventSerializer` registers a descriptor merged from an object loaded
+without its type, and the descriptors nested in it (`../EventStore2Layer/`).
+
 `BtdbProofs/BonNesting.lean` models the checks Bon readers make on container pointers (`../Bon/Bon.cs`), with damaged
 item counts that let a container's items run anywhere after its body.
 
@@ -211,6 +214,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `MergeCycle.previous_never_ends` | Before the 2026-10-28 fix only the root was recorded, so a descriptor below it nesting itself was mapped without end (`EventLayerDynamicReserializeTest.DynamicRecursiveObjectsFailWithExceptionInsteadOfCrash`). |
 | `ConvertingSaver.fixed_ends` | Converting from the target type to a type it saves, a descriptor creates the saver of any type within two calls. |
 | `ConvertingSaver.previous_never_ends` | Before the 2026-10-28 fix the byte array descriptor converted with the types swapped, so a type it does not save asked to save itself without end (`EventLayerDynamicReserializeTest.DynamicListOfByteArraysCanBeSerializedAgain`). |
+| `NestedRegistration.register_grows` | Registering the descriptors nested in a merged one only adds, so descriptors registered before stay registered. |
+| `NestedRegistration.fixed_storable`, `NestedRegistration.previous_unstorable` | Registering every nested descriptor, a merged descriptor can be stored; before the 2026-10-29 fix only it was registered, and storing a dynamic list of nullables failed on its nested descriptor (`EventLayerDynamicReserializeTest.DynamicNestedCollectionsCanBeSerializedAgain`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

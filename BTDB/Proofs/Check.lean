@@ -120,3 +120,6 @@ open Btdb
 #print axioms MergeCycle.previous_never_ends
 #print axioms ConvertingSaver.fixed_ends
 #print axioms ConvertingSaver.previous_never_ends
+#print axioms NestedRegistration.register_grows
+#print axioms NestedRegistration.fixed_storable
+#print axioms NestedRegistration.previous_unstorable

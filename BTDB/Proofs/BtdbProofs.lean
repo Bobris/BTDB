@@ -33,3 +33,4 @@ import BtdbProofs.SkipOnce
 import BtdbProofs.CountCache
 import BtdbProofs.MergeCycle
 import BtdbProofs.ConvertingSaver
+import BtdbProofs.NestedRegistration
