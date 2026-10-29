@@ -101,4 +101,75 @@ public class ObjectDbValueDamageFuzzTest
             }
         }
     }
+
+    [Generate]
+    public class Root
+    {
+        public IDictionary<int, Inner>? Items { get; set; }
+        public List<Inner>? List { get; set; }
+        public Inner? Shared { get; set; }
+        public IOrderedSet<string>? Names { get; set; }
+    }
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void DamagedObjectsFailWithoutRunningAway(int seed)
+    {
+        var random = new Random(seed);
+        using var kv = new InMemoryKeyValueDB();
+        using (var db = new ObjectDB())
+        {
+            db.Open(kv, false);
+            using var tr = db.StartTransaction();
+            var root = tr.Singleton<Root>();
+            var shared = new Inner { Text = "shared", Numbers = [1, 2, 3] };
+            root.Shared = shared;
+            root.List = [shared, new Inner { Next = shared }];
+            for (var i = 0; i < 20; i++)
+            {
+                root.Items![i] = new Inner { Text = new string('t', random.Next(10)), Next = i % 3 == 0 ? shared : null };
+                root.Names!.Add("n" + i);
+            }
+
+            tr.Commit();
+        }
+
+        byte[][] prefixes = [ObjectDB.AllObjectsPrefix, ObjectDB.AllDictionariesPrefix];
+        for (var round = 0; round < 30; round++)
+        {
+            using (var tr = kv.StartWritingTransaction().AsTask().GetAwaiter().GetResult())
+            {
+                using var cursor = tr.CreateCursor();
+                var keys = new List<byte[]>();
+                foreach (var prefix in prefixes)
+                    while (cursor.FindNextKey(prefix)) keys.Add(cursor.SlowGetKey());
+                var key = keys[random.Next(keys.Count)];
+                Assert.True(cursor.FindExactKey(key));
+                var value = cursor.SlowGetValue();
+                if (value.Length == 0) continue;
+                for (var changes = random.Next(1, 3); changes > 0; changes--)
+                    value[random.Next(value.Length)] = (byte)random.Next(256);
+                cursor.SetValue(value);
+                tr.Commit();
+            }
+
+            using var db = new ObjectDB();
+            db.Open(kv, false);
+            using var read = db.StartReadOnlyTransaction();
+            try
+            {
+                var root = read.Singleton<Root>();
+                var count = 0;
+                foreach (var pair in root.Items!)
+                    for (var inner = pair.Value; inner != null; inner = inner.Next)
+                        if (++count > 100_000) throw new InvalidOperationException("Reading does not end");
+                foreach (var inner in root.List ?? []) _ = inner?.Numbers?.Count;
+                foreach (var name in root.Names!) _ = name;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException and not InvalidOperationException
+                                              { Message: "Reading does not end" })
+            {
+            }
+        }
+    }
 }
