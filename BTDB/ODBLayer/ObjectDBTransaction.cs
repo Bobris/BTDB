@@ -28,6 +28,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     Dictionary<ulong, object>? _dirtyObjSet;
     HashSet<TableInfo>? _updatedTables;
+    HashSet<TableInfo>? _tablesWithStoredSingletonOid;
     // The inline objects being written, outermost first: each gets a writer context of its own, so a reference cycle
     // through them would nest until the stack overflows.
     StructList<object> _inlineObjectsInWrite;
@@ -998,7 +999,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             foreach (var updatedTable in _updatedTables)
             {
                 updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
-                updatedTable.ResetNeedStoreSingletonOid();
+                // Another transaction may have allocated the singleton oid after this one stored the table info.
+                if (_tablesWithStoredSingletonOid?.Contains(updatedTable) ?? false)
+                    updatedTable.ResetNeedStoreSingletonOid();
             }
 
         _afterCommitOrDispose = true;
@@ -1072,6 +1075,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         if (tableInfo.NeedStoreSingletonOid)
         {
+            (_tablesWithStoredSingletonOid ??= []).Add(tableInfo);
             using var cursor = _keyValueTr!.CreateCursor();
             cursor.CreateOrUpdateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
                 BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong)tableInfo.SingletonOid));

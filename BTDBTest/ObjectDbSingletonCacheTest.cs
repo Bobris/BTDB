@@ -91,4 +91,29 @@ public class ObjectDbSingletonCacheTest : ObjectDbTestBase
         using var after = _db.StartReadOnlyTransaction();
         Assert.Equal(0, after.Singleton<Root>().Value);
     }
+
+    // Before the fix a commit cleared the need to store the singleton oid that a concurrent transaction had allocated
+    // after the commit stored its table info, so the oid was never stored and the singleton was lost on reopen.
+    [Fact]
+    public void SingletonOidAllocatedDuringOtherCommitIsStored()
+    {
+        _db.RegisterType(typeof(Root));
+        using (var writer = _db.StartTransaction())
+        {
+            writer.StoreAndFlush(new Root { Value = 1 });
+            using (var reader = _db.StartReadOnlyTransaction())
+                Assert.Equal(0, reader.Singleton<Root>().Value);
+            writer.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            tr.Singleton<Root>().Value = 5;
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var after = _db.StartReadOnlyTransaction();
+        Assert.Equal(5, after.Singleton<Root>().Value);
+    }
 }

@@ -192,6 +192,10 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- ObjectDB could lose a singleton on reopen: a commit that had stored its table info before another transaction
+  first asked for the singleton cleared the need to store the singleton oid that transaction allocated, so the oid was
+  never stored, and the singleton later saved under it was not found after reopening. A commit clears it now only when
+  it stored the oid.
 - ObjectDB could serve a stale singleton from its shared content cache after a commit changed it: storing the
   singleton got by enumeration or by its oid before the database had loaded its oid, deleting it by its oid, and
   `DeleteAllData` did not invalidate the cached content, which a reader could cache meanwhile or had cached before.
