@@ -300,6 +300,39 @@ public partial class IocTests
         Assert.Same(obj1, obj2.Cycle1Prop);
     }
 
+    public class SelfResolving
+    {
+    }
+
+    // Before the fix a singleton or scoped factory resolving its own service waited for itself: the lock it held let it
+    // in at once, so it spun forever. It fails now, and again on the next try.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ServiceResolvingItselfWhileCreatedFails(bool singleton)
+    {
+        var builder = new ContainerBuilder();
+        var registration = builder.RegisterFactory<SelfResolving>((_, _) => (c, _) =>
+        {
+            c.Resolve<SelfResolving>();
+            return new SelfResolving();
+        });
+        if (singleton) registration.SingleInstance();
+        else registration.Scoped();
+        var container = builder.Build();
+        var target = singleton ? container : container.CreateScope();
+        Exception? first = null, second = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            first = Record.Exception(() => target.Resolve<SelfResolving>());
+            second = Record.Exception(() => target.Resolve<SelfResolving>());
+        }) { IsBackground = true };
+        thread.Start();
+        Assert.True(thread.Join(10_000), "Resolving hung.");
+        Assert.IsType<InvalidOperationException>(first);
+        Assert.IsType<InvalidOperationException>(second);
+    }
+
     [Generate]
     public class InjectingContainer
     {

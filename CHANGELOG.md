@@ -601,6 +601,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- IOC: a singleton or scoped service whose factory resolved the same service while it was being created, for example
+  through the injected `IContainer`, hung its thread in a busy loop: it waited for its own instance under a lock it
+  already held. It throws `InvalidOperationException` now, and so does every later attempt.
 - Opening a `BTreeKeyValueDB` whose key index header had a damaged count of ulongs allocated that many at once,
   512 MB for a count of 2^26, before failing on the header. The values are read as they come now.
 - Opening a `BTreeKeyValueDB` whose key index had a damaged key length allocated one and a half times that length,

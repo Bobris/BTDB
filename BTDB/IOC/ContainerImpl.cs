@@ -945,6 +945,9 @@ public class ContainerImpl : IRootContainer
                 return instance;
             }
 
+            // This thread is creating it: the lock would let it in at once and it would wait for itself forever.
+            if (Monitor.IsEntered(locker))
+                throw new InvalidOperationException("Singleton depends on itself while it is being created.");
             lock (locker)
             {
             }
@@ -962,6 +965,8 @@ public class ContainerImpl : IRootContainer
                 return instance!;
             }
 
+            if (Monitor.IsEntered(locker))
+                throw new InvalidOperationException("Scoped instance depends on itself while it is being created.");
             lock (locker)
             {
             }
