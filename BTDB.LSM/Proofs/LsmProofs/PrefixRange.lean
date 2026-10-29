@@ -11,6 +11,9 @@ with a prefix form one run of the sorted keys. Keys are byte strings in lexicogr
 * `prefix_run`: in a strictly sorted list of keys, every key between two positions holding keys with the prefix has
   it, so the keys with the prefix are one run: once a key `index` places after the first of them lacks the prefix,
   no later one has it, and the cursor's final prefix check is all that is needed.
+* `nearest_below_decides`, `nearest_above_decides`: when the key nearest below (above) an absent searched key lacks
+  the searched key's prefix, no key below (above) it has the prefix, so `LsmKeyValueDBCursor.Find`, checking only
+  those neighbours, answers `Previous`, `Next` and `NotFound` right.
 -/
 
 namespace Lsm.PrefixRange
@@ -69,5 +72,22 @@ theorem prefix_run (p : List Nat) (l : List (List Nat)) (hs : Sorted l) (i j k :
     · subst h
       intro h'
       exact lt_asymm _ _ h' h'
+
+/-- `LsmKeyValueDBCursor.Find(key, prefixLen)` reports the key `SeekLE` finds below an absent key as the previous one
+only when it has the prefix. When the nearest key below lacks it, no key below has it: the searched key has the
+prefix, so a key with it further down would put the nearest one in between. -/
+theorem nearest_below_decides (p k x : List Nat) (keys : List (List Nat)) (hk : IsPrefix p k)
+    (hx : Lt x k) (hnearest : ∀ y ∈ keys, Lt y k → ¬Lt x y) (hxp : ¬IsPrefix p x) :
+    ∀ y ∈ keys, Lt y k → ¬IsPrefix p y := by
+  intro y hy hyk hyp
+  exact hxp (prefix_between p y x k hyp hk (hnearest y hy hyk) (lt_asymm x k hx))
+
+/-- Likewise `Find` reports the key after an absent one as the next one only when it has the prefix: when the nearest
+key above lacks it, no key above has it. -/
+theorem nearest_above_decides (p k x : List Nat) (keys : List (List Nat)) (hk : IsPrefix p k)
+    (hx : Lt k x) (hnearest : ∀ y ∈ keys, Lt k y → ¬Lt y x) (hxp : ¬IsPrefix p x) :
+    ∀ y ∈ keys, Lt k y → ¬IsPrefix p y := by
+  intro y hy hky hyp
+  exact hxp (prefix_between p k x y hk hyp (lt_asymm k x hx) (hnearest y hy hky))
 
 end Lsm.PrefixRange

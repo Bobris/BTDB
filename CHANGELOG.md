@@ -54,7 +54,8 @@
       range into a memtable's fragments keeps them disjoint and covering exactly the old fragments and the range;
     - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix, and no key lies
       between a key and its successor, the key with a zero byte appended;
-    - the sorted keys with a prefix are one run, as finding a key by its index among them assumes;
+    - the sorted keys with a prefix are one run, as finding a key by its index among them assumes, and finding a key
+      with a prefix length needs to check the prefix of its nearest neighbours only;
     - variable-length integers, signed ones too, read back as written, and every one the decoder accepts fits in 64
       bits;
     - a table's Bloom filter passes every key added to it;
