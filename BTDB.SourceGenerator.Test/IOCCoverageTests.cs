@@ -610,6 +610,24 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("Items", diagnostic.GetMessage());
     }
 
+    // Before the fix two members stored under one name, as PersistedName can make, were generated, and were saved and
+    // loaded into each other at runtime.
+    [Fact]
+    public void PersistedNameClashIsReported()
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Clashing
+            {
+                [BTDB.FieldHandler.PersistedName("X")] public int A { get; set; }
+                public string? X { get; set; }
+            }
+            """, "BTDB0056");
+        Assert.Contains("stored under the name X", diagnostic.GetMessage());
+    }
+
     [Fact]
     public void MemberOfPrivateTypeOfPartialClassCompiles()
     {

@@ -1949,6 +1949,19 @@ public class SourceGenerator : IIncrementalGenerator
             inaccessibleMember = null;
         }
 
+        // Two members stored under one name, as PersistedName can make, would be saved and loaded into each other.
+        var storedNames = new HashSet<string>();
+        foreach (var field in fields)
+        {
+            if (storedNames.Add(field.StoredName ?? field.Name)) continue;
+            var clashing = relationItemMembers.FirstOrDefault(m => m.Name == field.Name);
+            return GenerationError("BTDB0056",
+                "Member " + field.Name + " of " + symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) +
+                " is stored under the name " + (field.StoredName ?? field.Name) +
+                " of another member; give one of them a different PersistedName",
+                clashing?.Locations.FirstOrDefault() ?? symbol.Locations[0]);
+        }
+
         // The factory names constructor parameter and dependency types where the metadata does.
         inaccessibleMember ??= constructor?.Parameters.FirstOrDefault(p =>
             !IsTypeAccessible(p.Type, model.Compilation, metadataWithin));

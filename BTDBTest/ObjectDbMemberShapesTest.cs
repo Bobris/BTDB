@@ -342,67 +342,15 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         });
     }
 
-    public class PersistedNameClash
-    {
-        [PrimaryKey] public ulong Id { get; set; }
-        [BTDB.FieldHandler.PersistedName("X")] public int A { get; set; }
-        public string? X { get; set; }
-    }
-
-    public interface IPersistedNameClashes : IRelation<PersistedNameClash>
-    {
-        void Insert(PersistedNameClash value);
-        PersistedNameClash FindById(ulong id);
-    }
-
-    // Before the fix two properties stored under one name were saved and loaded into each other: in emit mode saving
-    // failed with NullReferenceException, without emit one of them was lost.
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void PersistedNameClashIsRefused(bool noEmit)
-    {
-        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDB.KVDBLayer.BTDBException>(() => tr.GetRelation<IPersistedNameClashes>());
-            Assert.Contains("under the name X", ex.Message);
-        });
-    }
-
-    [Generate]
-    public class PersistedNameClashObject
-    {
-        [BTDB.FieldHandler.PersistedName("X")] public int A { get; set; }
-        public string? X { get; set; }
-    }
-
-    // Before the fix the object lost one of the two properties stored under one name.
+    // Before the fix the object lost one of the two properties stored under one name. A type built with the source
+    // generator gets BTDB0056 instead.
     [Fact]
     public void PersistedNameClashOfObjectIsRefused()
     {
-        _db.RegisterType(typeof(PersistedNameClashObject));
+        _db.RegisterType(typeof(Sample3rdPartyLib.PersistedNameClashObject));
         using var tr = _db.StartTransaction();
-        var ex = Assert.Throws<BTDB.KVDBLayer.BTDBException>(() => tr.Store(new PersistedNameClashObject { A = 5 }));
+        var ex = Assert.Throws<BTDB.KVDBLayer.BTDBException>(() =>
+            tr.Store(new Sample3rdPartyLib.PersistedNameClashObject { A = 5 }));
         Assert.Contains("under the name X", ex.Message);
-    }
-
-    [Generate]
-    public class PersistedNameClashEvent
-    {
-        [BTDB.FieldHandler.PersistedName("X")] public int A { get; set; }
-        public string? X { get; set; }
-    }
-
-    // Before the fix both properties were stored under one name, and the event failed to load converting between them.
-    [Theory]
-    [InlineData(EventLayer.Mapping)]
-    [InlineData(EventLayer.Store1)]
-    [InlineData(EventLayer.Store2)]
-    public void PersistedNameClashOfEventIsRefused(EventLayer layer)
-    {
-        var ex = Assert.ThrowsAny<Exception>(() =>
-            EventLayerRoundTripHelper.RoundTrip(layer, new PersistedNameClashEvent { A = 5, X = "x" }));
-        Assert.Contains("under the name X", ex.ToString());
     }
 }

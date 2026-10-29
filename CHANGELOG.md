@@ -223,8 +223,9 @@
   interface for the rest of the session.
 - Two properties stored under one name, as `PersistedName` can make, were saved and loaded into each other: a relation
   failed saving with `NullReferenceException` in emit mode and lost one of them otherwise, a stored object lost one,
-  and an event failed to load converting between them. Relations, stored objects and events refuse such a type now
-  with a `BTDBException` naming the clashing name.
+  and an event failed to load converting between them. The source generator reports such a type as error BTDB0056
+  now, and relations, stored objects and events of types it did not generate refuse it with a `BTDBException` naming
+  the clashing name.
 - The source generator took an explicitly implemented indexer of a referenced base class, as `List<T>` has for
   `IList`, for a field of a class derived from it, generating an accessor of `System.Collections.IList.get_Item`
   without its index parameter. Properties with parameters are left out like other indexers now.
