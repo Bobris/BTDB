@@ -8,7 +8,7 @@ using Xunit;
 
 namespace BTDBTest;
 
-// Damaged relation values may fail to read with any exception, but must neither exhaust memory nor read forever.
+// Damaged values may fail to read or iterate with any exception, but must neither exhaust memory nor read forever.
 public class ObjectDbValueDamageFuzzTest
 {
     [Generate]
@@ -86,6 +86,17 @@ public class ObjectDbValueDamageFuzzTest
             using var read = db.StartReadOnlyTransaction();
             try
             {
+                var visitor = new ODBIteratorTest.ToStringVisitor();
+                new ODBIterator(read, visitor).Iterate();
+                if (visitor.ToString().Length > 50_000_000) throw new InvalidOperationException("Reading does not end");
+            }
+            catch (Exception error) when (error is not OutOfMemoryException and not InvalidOperationException
+                                              { Message: "Reading does not end" })
+            {
+            }
+
+            try
+            {
                 var count = 0;
                 foreach (var row in read.GetRelation<IRows>())
                 {
@@ -156,6 +167,17 @@ public class ObjectDbValueDamageFuzzTest
             using var db = new ObjectDB();
             db.Open(kv, false);
             using var read = db.StartReadOnlyTransaction();
+            try
+            {
+                var visitor = new ODBIteratorTest.ToStringVisitor();
+                new ODBIterator(read, visitor).Iterate();
+                if (visitor.ToString().Length > 50_000_000) throw new InvalidOperationException("Reading does not end");
+            }
+            catch (Exception error) when (error is not OutOfMemoryException and not InvalidOperationException
+                                              { Message: "Reading does not end" })
+            {
+            }
+
             try
             {
                 var root = read.Singleton<Root>();
