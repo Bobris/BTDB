@@ -186,7 +186,8 @@
   - `BTDB/Proofs/`, ObjectDB transactions: what `Get` returns for an oid is what the commit writes, across stores,
     deletions and recreated singletons.
   - `BTDB/Proofs/`, ObjectDB enumeration: every stored object and every new one is enumerated once.
-  - `BTDB/Proofs/`, type names: no two storable types are registered under one name.
+  - `BTDB/Proofs/`, type names: no two storable types are registered under one name, and objects stored under a name
+    load as its storable type, not as an interface registered first.
   - `BTDB/Proofs/`, relation registration: initializing relations keeps every relation registered meanwhile.
   - `BTDB/Proofs/`, compaction scheduling: a batch of compactions stopped early, cancelled or failed, schedules again
     every database it took but those compacted with no work left.

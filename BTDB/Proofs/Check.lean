@@ -252,3 +252,4 @@ open Btdb
 #print axioms InheritedAttributes.inherited_kept
 #print axioms PropertyOrder.new_eq_old_without_private_bases
 #print axioms PropertyOrder.new_has_private_bases
+#print axioms TypeNames.lookup_storable

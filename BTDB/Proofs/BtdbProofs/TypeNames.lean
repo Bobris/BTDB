@@ -9,6 +9,8 @@ storable type whose name a storable type took.
 
 * `reachable_inv`: no two storable types are registered under one name, so the storable type loaded under a name is
   the one stored under it.
+* `lookup_storable`: once a storable type is registered under a name, `FindTypeByName` gives a storable type, also
+  when its interface took the name first.
 * `old_shares`: the registry before the fix registered two storable types under one name
   (`ObjectDbTypeNameClashTest`).
 -/
@@ -71,5 +73,40 @@ theorem old_shares :
     (oldRegister [] 1 "Person" >>= fun r => oldRegister r 2 "Person") = some [(2, "Person"), (1, "Person")] ∧
       register (fun _ => true) [(1, "Person")] 2 "Person" = none := by
   decide
+
+/-- The name to type map `FindTypeByName` reads: the first type registered under a name keeps it, except that a
+storable type takes it from one that is not. -/
+def lookupAfter (storable : Nat → Bool) : Option Nat → List Nat → Option Nat
+  | cur, [] => cur
+  | none, t :: ts => lookupAfter storable (some t) ts
+  | some c, t :: ts => lookupAfter storable (if !storable c && storable t then some t else some c) ts
+
+/-- Once a storable type is registered under the name, `FindTypeByName` gives a storable type, which by
+`reachable_inv` is the one stored under it; before the fix an interface registered first kept the name and loading
+created an instance of it (`ObjectDbTypeNameClashTest.ImplementationRegisteredAfterItsInterfaceLoads`). -/
+theorem lookup_storable (storable : Nat → Bool) :
+    ∀ (cur : Option Nat) (ts : List Nat), (∃ t ∈ ts, storable t = true) ∨ (∃ c, cur = some c ∧ storable c = true) →
+      ∃ r, lookupAfter storable cur ts = some r ∧ storable r = true
+  | cur, [], h => by
+    rcases h with ⟨t, ht, _⟩ | ⟨c, hc, hs⟩
+    · simp at ht
+    · exact ⟨c, by simp [lookupAfter, hc], hs⟩
+  | none, t :: ts, h => by
+    apply lookup_storable storable (some t) ts
+    rcases h with ⟨u, hu, hs⟩ | ⟨c, hc, _⟩
+    · cases List.mem_cons.1 hu with
+      | inl e => exact Or.inr ⟨t, rfl, e ▸ hs⟩
+      | inr e => exact Or.inl ⟨u, e, hs⟩
+    · simp at hc
+  | some c, t :: ts, h => by
+    apply lookup_storable storable _ ts
+    by_cases hc : storable c = true
+    · right
+      exact ⟨c, by simp [hc], hc⟩
+    · rcases h with ⟨u, hu, hs⟩ | ⟨c', hc', hs'⟩
+      · cases List.mem_cons.1 hu with
+        | inl e => subst e; right; exact ⟨u, by simp [hc, hs], hs⟩
+        | inr e => left; exact ⟨u, e, hs⟩
+      · simp at hc'; subst hc'; exact absurd hs' hc
 
 end Btdb.TypeNames
