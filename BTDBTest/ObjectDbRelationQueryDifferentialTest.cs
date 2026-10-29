@@ -154,9 +154,25 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         p => checked(p.Level + p.Level) > 300,
         p => checked(p.Score + long.MaxValue) > 0,
         p => checked(p.Score - long.MaxValue) < 0,
+        p => string.CompareOrdinal(p.Note, "a") < 0,
+        p => p.Note!.Length > 2,
+        p => p.Note!.StartsWith(""),
+        p => p.Note!.EndsWith("C", StringComparison.OrdinalIgnoreCase),
+        p => p.Note!.Contains("😀"),
+        p => p.Note != null && p.Note.StartsWith("x\uD83D"),
+        p => string.IsNullOrEmpty(p.Note),
+        p => p.Bonus > p.Age,
+        p => p.Bonus == null || p.Bonus.Value > 3,
+        p => p.Flag == true,
+        p => p.Flag != false,
+        p => p.Seen < DateTimeOffset.MinValue.AddYears(1),
+        p => p.Kind > DiffKind.B,
+        p => (int)p.Kind * 2 == 2,
+        p => (DiffKind)(p.Age % 4) == p.Kind,
     ];
 
-    // Arithmetic and conversions at the limits of their types: overflow, division by zero, NaN and infinities.
+    // Arithmetic and conversions at the limits of their types: overflow, division by zero, NaN and infinities; and
+    // null strings, surrogates, nullable values and dates at their limits.
     [Fact]
     public void EdgeArithmeticMatchesLinqToObjects()
     {
