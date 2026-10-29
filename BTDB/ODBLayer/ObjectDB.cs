@@ -282,9 +282,11 @@ public class ObjectDB : IObjectDB
 
     string RegisterType(Type type, string asName, bool manualRegistration)
     {
+        // Named first: a type refused for a taken name must not become a candidate for polymorphic fields.
+        var name = Type2NameRegistry.RegisterType(type, asName);
         if (manualRegistration)
             _polymorphicTypesRegistry.RegisterPolymorphicType(type);
-        return Type2NameRegistry.RegisterType(type, asName);
+        return name;
     }
 
     public IEnumerable<Type> GetPolymorphicTypes(Type baseType)

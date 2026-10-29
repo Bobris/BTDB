@@ -37,6 +37,7 @@ public class ObjectDbTypeNameClashTest : ObjectDbTestBase
         Assert.Equal("Person", _db.RegisterType(typeof(First.Person)));
         var ex = Assert.Throws<BTDBException>(() => _db.RegisterType(typeof(Second.Person)));
         Assert.Contains("Name Person is already registered", ex.Message);
+        Assert.DoesNotContain(typeof(Second.Person), _db.GetPolymorphicTypes(typeof(object)));
         Assert.Equal("Person2", _db.RegisterType(typeof(Second.Person), "Person2"));
         Assert.Equal("Person", _db.RegisterType(typeof(First.Person)));
     }

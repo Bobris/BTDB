@@ -200,8 +200,8 @@
 - ObjectDB accepted two storable types under one name, as registering names a type without its namespace or enclosing
   type, so `A.Person` and `B.Person` both became `Person`. A stored `B.Person` was then loaded as an `A.Person` after
   reopening when `A.Person` was registered first. Registering a second storable type under a taken name now throws
-  `BTDBException`; register one of them with its own name. An interface or abstract class may still share the name of
-  its implementation.
+  `BTDBException`, and the refused type does not become a candidate for polymorphic fields; register one of them with
+  its own name. An interface or abstract class may still share the name of its implementation.
 - `IObjectDB.InitializeRelations` could drop relations registered meanwhile: each call published the registry and
   factories it had copied before waiting for the writer, so of two concurrent calls the one finishing last dropped the
   relations of the other, and relations auto-registered while it waited were dropped too. Calls now run one at a time
