@@ -1,6 +1,7 @@
 using BTDB;
 using BTDB.IOC;
 using BTDBTest.IOCDomain;
+using Sample3rdPartyLib;
 using Xunit;
 
 namespace BTDBTest;
@@ -98,5 +99,33 @@ public class IOCInheritedDependencyTest
         var obj = container.Resolve<WithGenericBase>();
         Assert.Same(logger, obj.Value);
         Assert.Same(logger, obj.Field);
+    }
+
+    sealed class ExternalImplementation : I3rdPartyInterface
+    {
+        public string Name => "external";
+    }
+
+    [Generate]
+    public class WithExternalBase : ExternalDependenciesBase
+    {
+    }
+
+    [Fact]
+    public void InjectsDependenciesDeclaredInBaseClassOfOtherAssembly()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<WithExternalBase>().AsSelf();
+        var dependency = new ExternalImplementation();
+        builder.RegisterInstance<I3rdPartyInterface>(dependency);
+        var obj = builder.Build().Resolve<WithExternalBase>();
+        Assert.Same(dependency, obj.Public);
+        Assert.Same(dependency, obj.PrivateSetter);
+        Assert.Same(dependency, obj.InitOnly);
+        Assert.Same(dependency, obj.ProtectedSetter);
+        Assert.Same(dependency, obj.ProtectedFieldValue);
+        // A private field of another assembly is invisible to the generator, as reflection based registrations skip
+        // fields.
+        Assert.Null(obj.PrivateField);
     }
 }

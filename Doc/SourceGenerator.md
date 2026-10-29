@@ -88,7 +88,8 @@ If property name is different from named registration You can define named resol
 using `[Dependency("name")]` attribute.
 
 `[Dependency]` members declared in base classes are injected too, including private ones. A member overridden or
-hidden in a derived class is injected once.
+hidden in a derived class is injected once. The generator does not see private members of other assemblies: a
+property whose setter is private there is set through reflection, and a private field there is not injected.
 
 ### Delegates and Func<...>
 

@@ -96,6 +96,9 @@
 
 ### Fixed
 
+- Source generator: a `[Dependency]` property with a private setter in a base class from another assembly was not
+  injected, because the generator does not see private members of other assemblies. The generated factory now finds
+  the setter through reflection when it is created. A private `[Dependency]` field there is still not injected.
 - ObjectDB: a nullable `DateTime` key accepted `Local` and `Unspecified` kinds, which a `DateTime` key refuses, because
   the value of a nullable key was written like a value outside keys. A local one sorted after every UTC one and missed
   ranges. It now refuses them the same way, and stores `DateTime.MinValue` and `MaxValue` as UTC, as its constraints

@@ -619,6 +619,20 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForDependenciesInheritedFromOtherAssembly()
+    {
+        // Private members of another assembly are not imported: the private setter is found by reflection, and the
+        // private field is not injected.
+        // language=cs
+        return VerifySourceGenerator("""
+            [BTDB.Generate]
+            public class ErrorHandler : Sample3rdPartyLib.ExternalDependenciesBase
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForNamedDependencyProperties()
     {
         // language=cs

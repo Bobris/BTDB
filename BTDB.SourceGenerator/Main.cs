@@ -2134,7 +2134,21 @@ public class SourceGenerator : IIncrementalGenerator
                     var setter = p.SetMethod;
                     for (var o = p.OverriddenProperty; setter is null && o is not null; o = o.OverriddenProperty)
                         setter = o.SetMethod;
-                    if (setter is null) continue;
+                    if (setter is null)
+                    {
+                        // A private setter of a property from another assembly is not imported, so it is found by
+                        // reflection when the factory is created, like reflection based registrations find it.
+                        if (SymbolEqualityComparer.Default.Equals(p.ContainingAssembly, compilation.Assembly))
+                            continue;
+                        yield return new PropertyInfo(p.Name,
+                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            DetectDependencyName(attributed),
+                            p.Type.IsReferenceType,
+                            p.NullableAnnotation == NullableAnnotation.Annotated, true, false, null,
+                            p.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            ReflectionSetter: true);
+                        continue;
+                    }
                     var isComplex = setter.DeclaredAccessibility == Accessibility.Private || setter.IsInitOnly ||
                                     !Accessible(setter);
                     // if Set/init method have default implementation => then it could directly set backing field
@@ -3337,6 +3351,29 @@ public class SourceGenerator : IIncrementalGenerator
                 var dependencyName = propertyInfo.DependencyName ?? "\"" + name + "\"";
                 var isReference = propertyInfo.IsReference;
                 var optional = propertyInfo.Optional;
+                if (propertyInfo.ReflectionSetter)
+                {
+                    factoryCode.Append(
+                        $"var s{parameterIndex} = typeof({propertyInfo.OwnerType}).GetProperty(\"{name}\", global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.DeclaredOnly)?.GetSetMethod(true)?.CreateDelegate<global::System.Action<{propertyInfo.OwnerType}, {normalizedType}>>();");
+                    factoryCode.Append("\n            ");
+                    factoryCode.Append(
+                        $"var f{parameterIndex} = s{parameterIndex} == null ? null : container.CreateFactory(ctx, typeof({normalizedType}), {dependencyName});");
+                    factoryCode.Append("\n            ");
+                    if (!optional)
+                    {
+                        factoryCode.Append(
+                            $"if (s{parameterIndex} != null && f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizedType.Replace("global::", "")} {name} property of {generationInfo.FullName.Replace("global::", "")}\");");
+                        factoryCode.Append("\n            ");
+                    }
+
+                    propertyCode.Append($"if (f{parameterIndex} != null) s{parameterIndex}!(res, ");
+                    propertyCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                    propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
+                    propertyCode.Append("\n                ");
+                    parameterIndex++;
+                    continue;
+                }
+
                 factoryCode.Append(
                     $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), {dependencyName});");
                 factoryCode.Append("\n            ");
@@ -6027,7 +6064,9 @@ record PropertyInfo(
     string? OwnerType = null,
     // Set for a member of a generic base type: its accessor must target the open generic type.
     OwnerGenericInfo? OwnerGeneric = null,
-    string? GenericType = null);
+    string? GenericType = null,
+    // The setter is not visible to the generator, so it is looked up by reflection and the member skipped without one.
+    bool ReflectionSetter = false);
 
 record FieldsInfo(
     string Name,
