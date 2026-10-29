@@ -34,3 +34,4 @@ open Lsm
 #print axioms MergeMask.newest_point_wins
 #print axioms TombstoneFind.find_some
 #print axioms TombstoneFind.find_covered
+#print axioms BlockDelta.delta_prefix_correct

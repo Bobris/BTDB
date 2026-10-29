@@ -9,3 +9,4 @@ import LsmProofs.FuzzyCursor
 import LsmProofs.BlockSeek
 import LsmProofs.MergeMask
 import LsmProofs.TombstoneFind
+import LsmProofs.BlockDelta

@@ -32,6 +32,9 @@ or else a range-tombstone fragment.
 `LsmProofs/TombstoneFind.lean` models `TombstoneSet.Find` over sorted, disjoint fragments, with its binary search
 modelled by its result.
 
+`LsmProofs/BlockDelta.lean` models `RawBlock.DeltaPrefix`: the delta stored at the restart of the last counted entry
+plus the deltas decoded after it.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -100,6 +103,7 @@ Not modelled in `Wal.lean`:
 | `BlockSeek.lower_bound_correct` | Seeking in a data block of sorted entries with a restart every `R` entries, by the first restart past the key and a scan of the restart before it, returns the first entry at or after the key (after it, when the key is excluded), or the entry count. |
 | `MergeMask.decided_ignores_older`, `MergeMask.newest_point_wins` | Once a component decides a key, by a point or a fragment, older components cannot change whether it is live, so `MergingIterator` seeking them past a newer fragment skips no live key; the newest point at a key decides it. |
 | `TombstoneFind.find_some`, `TombstoneFind.find_covered` | `TombstoneSet.Find` returns a fragment exactly when it contains the key, and the fragments its `coveredBefore` sums are exactly those ending at or before the key, the result `Rank.lean` assumes. |
+| `BlockDelta.delta_prefix_correct` | `DeltaPrefix(count)`, the delta stored at the restart of entry `count - 1`, capped at the last restart, plus the deltas of the entries from it to `count`, is the sum of the deltas of the first `count` entries. |
 
 The fixed rule, as implemented:
 
