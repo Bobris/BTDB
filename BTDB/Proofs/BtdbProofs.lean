@@ -82,3 +82,4 @@ import BtdbProofs.EventBlocks
 import BtdbProofs.InlineNumbers
 import BtdbProofs.ReadOnlyDepth
 import BtdbProofs.KeyIndexOrder
+import BtdbProofs.FletcherDetect

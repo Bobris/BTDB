@@ -240,3 +240,5 @@ open Btdb
 #print axioms ReadOnlyDepth.valid_depth
 #print axioms KeyIndexOrder.check_iff_sorted
 #print axioms KeyIndexOrder.unsorted_search_misses
+#print axioms FletcherDetect.sum1_mod
+#print axioms FletcherDetect.flip_detected

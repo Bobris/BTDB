@@ -175,6 +175,7 @@
   - `BTDB/Proofs/`, the read-only key value database: descending its tree ends whatever the damage, and the depth
     limit refuses no tree the creator builds.
   - `BTDB/Proofs/`, inline objects: the bound on inline object numbers refuses no valid record.
+  - `BTDB/Proofs/`, event store checksums: the Fletcher-32 checksum of a block changes with any one flipped bit.
   - `BTDB/Proofs/`, event store: an event the store accepts into a new file ends within its maximum size, block
     headers included.
   - `BTDB/Proofs/`, ObjectDB transactions: what `Get` returns for an oid is what the commit writes, across stores,
