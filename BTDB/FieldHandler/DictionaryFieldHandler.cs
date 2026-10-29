@@ -109,6 +109,8 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Ldloc(localCount)
+            .Do(pushReader)
+            .Call(typeof(CollectionMetadata).GetMethod(nameof(CollectionMetadata.CapacityFor))!)
             .Newobj(typeof(Dictionary<,>).MakeGenericType(genericArguments).GetConstructor(new[] { typeof(int) })!)
             .Stloc(localResult)
             .Do(pushCtx)
@@ -257,7 +259,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             if (ctx!.ReadObject(ref reader, out var obj))
             {
                 var count = reader.ReadVUInt32();
-                obj = collectionMetadata!.Creator(count);
+                obj = collectionMetadata!.Creator(CollectionMetadata.CapacityFor(count, reader));
                 ctx.RegisterObject(obj);
                 var loaderCtx = new DictionaryKeyValueLoaderCtx
                 {

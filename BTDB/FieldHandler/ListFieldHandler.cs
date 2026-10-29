@@ -108,6 +108,8 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Ldloc(localCount)
+            .Do(pushReader)
+            .Call(typeof(CollectionMetadata).GetMethod(nameof(CollectionMetadata.CapacityFor))!)
             .Newobj((_isSet ? typeof(HashSet<>) : typeof(List<>)).MakeGenericType(itemType)
                 .GetConstructor(new[] { typeof(int) })!)
             .Stloc(localResult)
@@ -237,7 +239,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             if (ctx!.ReadObject(ref reader, out var obj))
             {
                 var count = reader.ReadVUInt32();
-                obj = collectionMetadata!.Creator(count);
+                obj = collectionMetadata!.Creator(CollectionMetadata.CapacityFor(count, reader));
                 ctx.RegisterObject(obj);
                 var loaderCtx = new ListItemLoaderCtx
                 {
