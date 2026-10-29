@@ -32,13 +32,45 @@ public class DefaultMethodHandler : IDefaultMethodHandler<DefaultMethodMessage>
     public void Consume(DefaultMethodMessage message) => Calls.Add("consume");
 }
 
+public class InheritedHandlerMessage
+{
+}
+
+public abstract class HandlerBase<TMessage> : IDefaultMethodHandler<TMessage>
+{
+    public List<string> Calls { get; } = [];
+
+    public void Consume(TMessage message) => Calls.Add("base consume");
+}
+
+public class InheritedMethodHandler : HandlerBase<InheritedHandlerMessage>
+{
+}
+
 public class IocDispatcherTests
 {
+    // Before the fix a dispatcher method declared in a base class of the handler was not found, so messages of the
+    // handler were not dispatched to it.
+    [Fact]
+    public unsafe void DispatcherCallsMethodOfHandlerBaseClass()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
+        builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
+        var container = builder.Build();
+        var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);
+
+        consume(container, new InheritedHandlerMessage());
+
+        Assert.Equal(["base consume"], container.Resolve<InheritedMethodHandler>().Calls);
+    }
+
     [Fact]
     public unsafe void DispatcherCallsDefaultInterfaceMethod()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
+        builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
         var container = builder.Build();
         var verify = IDefaultMethodDispatcher.CreateVerifyDispatcher(container);
         var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);

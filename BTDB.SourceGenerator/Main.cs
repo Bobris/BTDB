@@ -1710,7 +1710,7 @@ public class SourceGenerator : IIncrementalGenerator
                      DetectDispatcherInfo))
         {
             var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
-                m.Name == name && m.Parameters.Length == 1);
+                m.Name == name && m.Parameters.Length == 1) ?? FindInheritedDispatcherMethod(symbol, name);
             string? callType = null;
             if (m == null)
             {
@@ -2752,6 +2752,23 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return false;
+    }
+
+    static IMethodSymbol? FindInheritedDispatcherMethod(INamedTypeSymbol symbol, string name)
+    {
+        for (var baseType = symbol.BaseType; baseType != null; baseType = baseType.BaseType)
+        {
+            foreach (var m in baseType.GetMembers(name).OfType<IMethodSymbol>())
+            {
+                if (m is not { IsStatic: false, Parameters.Length: 1 }) continue;
+                if (m.DeclaredAccessibility != Accessibility.Public &&
+                    !(m.DeclaredAccessibility is Accessibility.Internal or Accessibility.ProtectedOrInternal &&
+                      SymbolEqualityComparer.Default.Equals(m.ContainingAssembly, symbol.ContainingAssembly))) continue;
+                return m;
+            }
+        }
+
+        return null;
     }
 
     static IMethodSymbol? FindDefaultInterfaceDispatcherMethod(INamedTypeSymbol symbol, string name)

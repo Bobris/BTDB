@@ -976,6 +976,43 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyInheritedDispatcherMethodGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            using System;
+            using BTDB.IOC;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public interface IHandler<in TMessage> : IDispatcher
+            {
+                void Consume(TMessage message);
+            }
+
+            public class Message
+            {
+            }
+
+            public abstract class HandlerBase<TMessage> : IHandler<TMessage>
+            {
+                public void Consume(TMessage message)
+                {
+                }
+            }
+
+            public class MessageHandler : HandlerBase<Message>
+            {
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyGenerateForOnAssembly()
     {
         // language=cs

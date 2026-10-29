@@ -110,6 +110,9 @@
 
 ### Fixed
 
+- IOC: a dispatcher handler whose method came from a base class, such as a generic handler base, was not registered,
+  so dispatching its messages threw "No handler for message". Public and same-assembly internal methods of base
+  classes are now found.
 - ObjectDB: non-public `OnBeforeRemove` and `OnSerialize` methods of a base class of a relation item threw
   `MissingMethodException` in generated relations, whose accessors targeted the derived class, and private ones were
   not called at all in relations emitted as IL. They are now called in both, also from generic base classes.
