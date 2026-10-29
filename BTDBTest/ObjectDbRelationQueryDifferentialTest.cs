@@ -193,6 +193,83 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         Assert.True(failures.Count == 0, string.Join("\n", failures));
     }
 
+    static readonly Expression<Func<DiffRow, bool>>[] KeyLimitPredicates =
+    [
+        p => p.Tenant > ulong.MaxValue - 1,
+        p => p.Tenant >= ulong.MaxValue,
+        p => p.Tenant == ulong.MaxValue,
+        p => p.Tenant <= 0,
+        p => p.Tenant < 1,
+        p => p.Tenant > 0 && p.Tenant < ulong.MaxValue,
+        p => p.Tenant == ulong.MaxValue && p.Code.StartsWith("\uFFFF"),
+        p => p.Tenant == ulong.MaxValue && p.Code.StartsWith("\uD83D"),
+        p => p.Tenant == ulong.MaxValue && p.Code.StartsWith("😀"),
+        p => p.Tenant == ulong.MaxValue && p.Code.StartsWith(""),
+        p => p.Tenant == ulong.MaxValue && p.Code == "",
+        p => p.Tenant == ulong.MaxValue && string.CompareOrdinal(p.Code, "\uFFFF") >= 0,
+        p => p.Age >= int.MaxValue,
+        p => p.Age > int.MaxValue - 1,
+        p => p.Age <= int.MinValue,
+        p => p.Age < int.MinValue + 1,
+        p => p.Age > int.MinValue && p.Age < int.MaxValue,
+        p => p.Age == int.MinValue || p.Age == int.MaxValue,
+        p => p.Rank == uint.MaxValue,
+        p => p.Rank >= uint.MaxValue - 1,
+        p => p.Rank < 1,
+        p => p.Name == null,
+        p => p.Name == "",
+        p => p.Name == "\uFFFF\uFFFF",
+        p => p.Name!.StartsWith("\uFFFF"),
+        p => p.Name!.StartsWith(""),
+        p => p.Name == null && p.Score == long.MinValue,
+        p => p.Name == "\uFFFF\uFFFF" && p.Score >= long.MaxValue,
+        p => p.Name == "\uFFFF\uFFFF" && p.Score > long.MinValue,
+        p => p.Name == "" && p.Score <= long.MinValue,
+    ];
+
+    // Constants at the limits of key types, against rows that hold those limits, so key ranges end at the first or last
+    // possible key.
+    [Fact]
+    public void KeyLimitQueriesMatchLinqToObjects()
+    {
+        FillRows(new Random(3));
+        using (var tr = _db.StartTransaction())
+        {
+            var insert = tr.GetRelation<IDiffRowTable>();
+            var codes = new[] { "", "\uFFFF", "\uFFFF\uFFFF", "😀", "\uD83D\uDE00x", "a" };
+            for (var i = 0; i < codes.Length; i++)
+            {
+                foreach (var tenant in new[] { 0UL, ulong.MaxValue })
+                {
+                    insert.Insert(new()
+                    {
+                        Tenant = tenant, Code = codes[i] + (tenant == 0 ? "~" : ""),
+                        Name = i % 3 == 0 ? null : i % 3 == 1 ? "" : "\uFFFF\uFFFF",
+                        Age = i % 2 == 0 ? int.MinValue : int.MaxValue, Score = i % 2 == 0 ? long.MinValue : long.MaxValue,
+                        Rank = i % 2 == 0 ? 0 : uint.MaxValue
+                    });
+                }
+            }
+
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartReadOnlyTransaction();
+        var table = readTr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var failures = new List<string>();
+        foreach (var predicate in KeyLimitPredicates)
+        {
+            var expected = Run(() => rows.Where(predicate.Compile()));
+            var actual = Run(() => table.Query<DiffRow>().Where(predicate).AsEnumerable());
+            if (expected.Rows.SequenceEqual(actual.Rows) && expected.Exception?.GetType() == actual.Exception?.GetType())
+                continue;
+            failures.Add($"{predicate}: expected ({expected.Rows.Count}, {expected.Exception?.GetType().Name}) actual ({actual.Rows.Count}, {actual.Exception?.GetType().Name} {actual.Exception?.Message})");
+        }
+
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
     [Theory]
     [MemberData(nameof(Seeds))]
     public void TerminalOperatorsMatchLinqToObjects(int seed)
