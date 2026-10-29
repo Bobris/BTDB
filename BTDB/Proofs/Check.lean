@@ -235,3 +235,4 @@ open Btdb
 #print axioms ObjectRestore.old_breaks
 #print axioms EventBlocks.ends_le_space
 #print axioms EventBlocks.old_check_loses
+#print axioms InlineNumbers.valid_number_accepted

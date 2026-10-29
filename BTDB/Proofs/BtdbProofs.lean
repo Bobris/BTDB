@@ -79,3 +79,4 @@ import BtdbProofs.TypeNames
 import BtdbProofs.EnumerateDirty
 import BtdbProofs.ObjectRestore
 import BtdbProofs.EventBlocks
+import BtdbProofs.InlineNumbers
