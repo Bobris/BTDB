@@ -238,3 +238,5 @@ open Btdb
 #print axioms InlineNumbers.valid_number_accepted
 #print axioms ReadOnlyDepth.descent_bounded
 #print axioms ReadOnlyDepth.valid_depth
+#print axioms KeyIndexOrder.check_iff_sorted
+#print axioms KeyIndexOrder.unsorted_search_misses
