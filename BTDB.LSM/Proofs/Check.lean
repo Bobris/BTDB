@@ -52,3 +52,4 @@ open Lsm
 #print axioms Varint.zigzag_range
 #print axioms Bloom.no_false_negative
 #print axioms LevelLookup.lookup_some
+#print axioms LevelLookup.overlaps_iff
