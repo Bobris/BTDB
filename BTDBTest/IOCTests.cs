@@ -1625,6 +1625,18 @@ public partial class IocTests
         Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
     }
 
+    // Before the fix only the default registration of a type was verified, so a singleton registered before another
+    // one, which IEnumerable still resolves, could use a transient.
+    [Fact]
+    public void VerificationFailsWhenNonDefaultSingletonUsesTransient()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<Logger>().As<ILogger>();
+        builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
+        builder.RegisterInstance<IErrorHandler>(new ErrorHandler(new Logger()));
+        Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
+    }
+
     [Fact]
     public void VerificationFailsWhenSingletonUsesScoped()
     {

@@ -118,6 +118,9 @@
 
 ### Fixed
 
+- IOC: `ContainerVerification.SingletonsUsingOnlySingletons` verified only the default registration of each type, so a
+  singleton registered before another registration of the same type, which `IEnumerable<T>` still resolves, could use
+  a transient or scoped dependency unreported. Every registration is verified now.
 - Source generator: a generic class, generated through `[GenerateFor]`, that inherits members from a generic base class
   made the module initializer throw `MissingFieldException`, failing every type of its assembly. The accessors of those
   members, and of hook methods of the base, were nested in the generic `Activator` and so had its type parameters too,

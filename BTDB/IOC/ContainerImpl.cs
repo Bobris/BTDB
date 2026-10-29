@@ -117,15 +117,27 @@ public class ContainerImpl : IRootContainer
         {
             foreach (var (_, reg) in Registrations)
             {
-                var singletonReg = reg.DefaultRegistration ?? reg;
-                if (singletonReg.Lifetime == Lifetime.Singleton)
+                // Each registration of a type can be resolved, through IEnumerable, not only the default one.
+                if (reg.Multi.Count == 0)
                 {
-                    var ctx = new CreateFactoryCtx();
-                    ctx.VerifySingletons = true;
-                    singletonReg.Factory(this, ctx);
+                    VerifySingleton(reg);
+                    continue;
+                }
+
+                foreach (var item in reg.Multi)
+                {
+                    VerifySingleton(item);
                 }
             }
         }
+    }
+
+    void VerifySingleton(CReg registration)
+    {
+        if (registration.Lifetime != Lifetime.Singleton) return;
+        var ctx = new CreateFactoryCtx();
+        ctx.VerifySingletons = true;
+        registration.Factory(this, ctx);
     }
 
     ContainerImpl(ContainerImpl parent, IServiceProvider? serviceProvider, AsyncServiceScope? serviceScope)
