@@ -113,7 +113,10 @@ public class RelationConstraintDifferentialTest : ObjectDbTestBase
         [long.MinValue, long.MinValue + 1, -65, -64, -1, 0, 1, 63, 64, 8192, long.MaxValue - 1, long.MaxValue];
 
     static readonly string[] SValues =
-        ["", "a", "aa", "ab", "abc", "b", "B", "Ab", "é", "ž", "až", "中文", "zzz", "a b"];
+        ["", "a", "aa", "ab", "abc", "b", "B", "Ab", "é", "ž", "až", "中文", "zzz", "a b",
+            // Surrogate pairs and lone surrogates, which keys store differently. Keys sort by code point, which differs
+            // from string.CompareOrdinal only between a surrogate and U+E000 to U+FFFF, so no value holds those.
+            "a\uD83D\uDE00", "a\uD83D\uDE00b", "a\uD83D", "a\uD83Dx", "a\uD83E\uDD00", "\uD83D\uDFFF"];
 
     static readonly SignedKind[] EValues = Enum.GetValues<SignedKind>();
     static readonly UnsignedKind[] UValues = Enum.GetValues<UnsignedKind>();
@@ -182,6 +185,13 @@ public class RelationConstraintDifferentialTest : ObjectDbTestBase
         new("StartsWithUnicode", Constraint.String.StartsWith("中"),
             v => v.StartsWith("中", StringComparison.Ordinal)),
         new("StartsWithMissing", Constraint.String.StartsWith("q"), v => v.StartsWith('q')),
+        // A key stores a surrogate pair as one code point, so the high surrogate ending the value must match it too.
+        new("StartsWithHighSurrogate", Constraint.String.StartsWith("a\uD83D"),
+            v => v.StartsWith("a\uD83D", StringComparison.Ordinal)),
+        new("StartsWithOnlyHighSurrogate", Constraint.String.StartsWith("\uD83D"),
+            v => v.StartsWith("\uD83D", StringComparison.Ordinal)),
+        new("StartsWithPair", Constraint.String.StartsWith("a\uD83D\uDE00"),
+            v => v.StartsWith("a\uD83D\uDE00", StringComparison.Ordinal)),
         new("EndsWithB", Constraint.String.EndsWith("b"), v => v.EndsWith('b')),
         new("EndsWithEmpty", Constraint.String.EndsWith(""), _ => true),
         new("ContainsA", Constraint.String.Contains("a"), v => v.Contains('a')),

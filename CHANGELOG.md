@@ -70,6 +70,8 @@
   - `BTDB/Proofs/`, merging re-serialized event descriptors: recording every descriptor met, it ends;
   - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, merged event descriptors: registering those nested in them, they can be stored;
+  - `BTDB/Proofs/`, string key prefixes: `Constraint.String.StartsWith` with a value ending with a high surrogate
+    matches exactly the strings starting with it;
   - `BTDB/Proofs/`, injected `[Dependency]` members: walking a type's members and then its base types' injects each
     name once and every dependency no derived member hides;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
@@ -92,6 +94,9 @@
 
 ### Fixed
 
+- `Constraint.String.StartsWith` with a value ending with a high surrogate missed keys continuing it with a low
+  surrogate, such as `StartsWith("a\uD83D")` for `"a😀"`, because a key stores a surrogate pair as one code point. It
+  now matches every key that ordinal `StartsWith` accepts.
 - Source generator: members marked with an attribute derived from `NotStoredAttribute` were stored, because only
   `NotStoredAttribute` itself was recognized. Bon serialized them and the generated metadata listed them, unlike
   reflection, which skips them. They are now left out of the generated metadata.

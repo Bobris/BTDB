@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.Serialization;
@@ -1204,10 +1205,21 @@ public class ConstraintStringStartsWith : Constraint<string>
     readonly string _value;
     byte[]? _encoded;
 
+    // A key stores a surrogate pair as one code point, so a value ending with a high surrogate is no byte prefix of keys
+    // continuing it with a low one. The prefix then leaves the high surrogate out, and the next code point must be it
+    // alone or a pair it starts.
+    readonly uint _highSurrogate;
+
     public override bool IsSimpleExact() => false;
 
     public ConstraintStringStartsWith(string value)
     {
+        if (value.Length != 0 && char.IsHighSurrogate(value[^1]))
+        {
+            _highSurrogate = value[^1];
+            value = value[..^1];
+        }
+
         _value = value;
     }
 
@@ -1232,8 +1244,17 @@ public class ConstraintStringStartsWith : Constraint<string>
     {
         if (reader.CheckMagic(_encoded))
         {
+            if (_highSurrogate == 0)
+            {
+                reader.SkipStringOrdered();
+                return IConstraint.MatchResult.Yes;
+            }
+
+            var next = reader.ReadVUInt32();
+            // A terminator or a null ended the string.
+            if (next is 0 or 0x110001) return IConstraint.MatchResult.No;
             reader.SkipStringOrdered();
-            return IConstraint.MatchResult.Yes;
+            return ContinuesHighSurrogate(next) ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
         }
 
         reader.SkipStringOrdered();
@@ -1242,12 +1263,23 @@ public class ConstraintStringStartsWith : Constraint<string>
 
     public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
     {
-        if (reader.PeekSpanTillEof().StartsWith(_encoded))
-        {
-            return IConstraint.MatchResult.Yes;
-        }
+        var key = reader.PeekSpanTillEof();
+        if (!key.StartsWith(_encoded)) return IConstraint.MatchResult.No;
+        if (_highSurrogate == 0) return IConstraint.MatchResult.Yes;
+        var rest = key[_encoded!.Length..];
+        if (rest.IsEmpty) return IConstraint.MatchResult.No;
+        var length = PackUnpack.LengthVUIntByFirstByte(rest[0]);
+        if (rest.Length < length) return IConstraint.MatchResult.No;
+        var next = PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(rest), length);
+        return ContinuesHighSurrogate(next) ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
+    }
 
-        return IConstraint.MatchResult.No;
+    // Code points are stored plus one: the high surrogate alone, or a pair it starts.
+    bool ContinuesHighSurrogate(ulong next)
+    {
+        if (next == _highSurrogate + 1) return true;
+        var firstOfPairs = 0x10001u + (_highSurrogate - 0xD800) * 0x400;
+        return next >= firstOfPairs && next < firstOfPairs + 0x400;
     }
 }
 

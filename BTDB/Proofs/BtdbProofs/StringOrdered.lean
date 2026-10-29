@@ -14,6 +14,9 @@ The relation query planner scans the keys starting with the encoded prefix for a
 * `starts_with_correct`: for such `s`, a string's encoding starts with the encoded prefix exactly when the string
   starts with `s`.
 * `high_surrogate_needed`: without the exclusion the scan would miss strings that continue the surrogate pair.
+* `high_surrogate_match`: `Constraint.String.StartsWith` with a value ending with a high surrogate matches exactly the
+  strings starting with it, scanning the prefix without the surrogate and checking that the next token is the
+  surrogate alone or a pair it starts.
 * `encOpt_prefix_free`: no key of a string or null is a prefix of another's, so an ordinal equality can be part of a
   key prefix (`UsesEncodedEquals`).
 -/
@@ -250,5 +253,56 @@ theorem high_surrogate_needed :
     [0xD800] <+: [0xD800, 0xDC00] ∧ ¬ prefixEnc [0xD800] <+: enc [0xD800, 0xDC00] := by
   refine ⟨⟨[0xDC00], rfl⟩, ?_⟩
   decide
+
+/-- Appending a string that does not start with a low surrogate appends its tokens. -/
+theorem toks_append_not_low : ∀ s t, (∀ d, t.head? = some d → isLow d = false) → toks (s ++ t) = toks s ++ toks t
+  | [], _, _ => rfl
+  | [c], t, h => by
+    cases t with
+    | nil => rfl
+    | cons d rest => simp [toks, h d rfl]
+  | c :: d :: rest, t, h => by
+    by_cases hp : (isHigh c && isLow d) = true
+    · simp only [List.cons_append, toks, hp, ite_true, toks_append_not_low rest t h]
+    · simp only [List.cons_append, toks, hp, Bool.false_eq_true, ite_false]
+      rw [← List.cons_append, toks_append_not_low (d :: rest) t h]
+
+/-- The tokens `ConstraintStringStartsWith` accepts after the prefix when its value ends with the high surrogate `h`:
+`h` alone, or a pair `h` starts. -/
+def continues (h t : Nat) : Prop :=
+  t = h + 1 ∨ (h - 0xD800) * 0x400 + 0x10001 ≤ t ∧ t < (h - 0xD800) * 0x400 + 0x10001 + 0x400
+
+/-- The 2026-10-29 fix of `ConstraintStringStartsWith`: for a value `p ++ [h]` ending with a high surrogate, a string
+starts with it exactly when its tokens are those of `p` followed by one `h` continues. `p` may end with a high surrogate
+too. Tokens and bytes agree by `tokens_prefix`. -/
+theorem high_surrogate_match (p str : List Nat) (h : Nat) (hh : isHigh h = true) (hp : Units p) (hstr : Units str) :
+    p ++ [h] <+: str ↔ ∃ t r, toks str = toks p ++ t :: r ∧ continues h t := by
+  simp only [isHigh, Bool.and_eq_true, decide_eq_true_eq] at hh
+  constructor
+  · rintro ⟨rest, rfl⟩
+    rw [List.append_assoc, List.singleton_append,
+      toks_append_not_low p (h :: rest) (fun d hd => by
+        simp only [List.head?_cons, Option.some.injEq] at hd
+        subst hd; simp only [isLow, Bool.and_eq_false_iff, decide_eq_false_iff_not]; omega)]
+    cases rest with
+    | nil => exact ⟨h + 1, [], rfl, Or.inl rfl⟩
+    | cons d r =>
+      by_cases hpd : (isHigh h && isLow d) = true
+      · have hd := hpd
+        simp only [isHigh, isLow, Bool.and_eq_true, decide_eq_true_eq] at hd
+        refine ⟨(h - 0xD800) * 0x400 + (d - 0xDC00) + 0x10001, toks r, by simp only [toks, hpd, ite_true],
+          Or.inr ⟨by omega, by omega⟩⟩
+      · exact ⟨h + 1, toks (d :: r), by simp only [toks, hpd, Bool.false_eq_true, ite_false], Or.inl rfl⟩
+  · rintro ⟨t, r, hr, hc⟩
+    have hu : ∃ rest, untok t = h :: rest := by
+      rcases hc with rfl | ⟨h1, h2⟩
+      · exact ⟨[], by simp only [untok, show ¬ (0x10001 ≤ h + 1) by omega, ite_false]; simp⟩
+      · refine ⟨[0xDC00 + (t - 0x10001) % 0x400], ?_⟩
+        simp only [untok, show 0x10001 ≤ t by omega, ite_true, List.cons.injEq, and_true]
+        omega
+    obtain ⟨rest, hrest⟩ := hu
+    refine ⟨rest ++ r.flatMap untok, ?_⟩
+    rw [← untok_toks str hstr, hr, List.flatMap_append, untok_toks p hp, List.flatMap_cons, hrest]
+    simp
 
 end Btdb.StringOrdered
