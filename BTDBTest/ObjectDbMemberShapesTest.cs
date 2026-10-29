@@ -398,4 +398,38 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal([1ul], table.ScanByByAge(Constraint.Signed.Exact(30)).Select(r => r.Id));
         });
     }
+
+    public class RenamedKeyRow
+    {
+        [PrimaryKey] [BTDB.FieldHandler.PersistedName("Key")] public ulong Id { get; set; }
+        [SecondaryKey("ByAge")] [BTDB.FieldHandler.PersistedName("StoredAge")] public int Age { get; set; }
+    }
+
+    public interface IRenamedKeyRows : IRelation<RenamedKeyRow>
+    {
+        void Insert(RenamedKeyRow value);
+        RenamedKeyRow FindById(ulong id);
+        RenamedKeyRow? FindByIdOrDefault(ulong id);
+        bool RemoveById(ulong id);
+        System.Collections.Generic.IEnumerable<RenamedKeyRow> FindByByAge(int age);
+    }
+
+    // Before the fix in emit mode key parameters had to name the fields keys are stored under, not the properties.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RenamedKeysAreFoundByPropertyNamedParameters(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using var tr = _db.StartTransaction();
+            var rows = tr.GetRelation<IRenamedKeyRows>();
+            rows.Insert(new RenamedKeyRow { Id = 1, Age = 30 });
+            rows.Insert(new RenamedKeyRow { Id = 2, Age = 30 });
+            Assert.Equal(30, rows.FindById(1).Age);
+            Assert.Equal([1ul, 2ul], rows.FindByByAge(30).Select(r => r.Id));
+            Assert.True(rows.RemoveById(2));
+            Assert.Null(rows.FindByIdOrDefault(2));
+        });
+    }
 }

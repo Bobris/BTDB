@@ -2106,7 +2106,7 @@ public class RelationBuilder : IRelationBuilder
             }
 
             var par = methodParameters[idx++];
-            if (string.Compare(field.Name, par.Name!.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
+            if (!ParameterNamesField(par.Name, field.Name))
             {
                 RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");

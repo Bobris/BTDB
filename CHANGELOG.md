@@ -221,8 +221,8 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
-- In emit mode a partial `UpdateById` parameter or a `ScanBy` constraint parameter had to be named after the field a
-  property is stored under, so for a property renamed with `PersistedName` the parameter named after the property, as
+- In emit mode a key parameter, as of `FindById`, `RemoveById` or a secondary key `FindBy`, a partial `UpdateById`
+  parameter or a `ScanBy` constraint parameter had to be named after the field a property is stored under, so for a property renamed with `PersistedName` the parameter named after the property, as
   the source generator matches it, was refused. Both names match now.
 - Two properties stored under one name, as `PersistedName` can make, were saved and loaded into each other: a relation
   failed saving with `NullReferenceException` in emit mode and lost one of them otherwise, a stored object lost one,
