@@ -102,6 +102,8 @@
   - `BTDB/Proofs/`, `PtrLenList.FindFreeSizeAfter`: the position it returns is the first one at or after the start
     from which the requested positions are free, and `TryFindLenAndRemove` removes exactly the positions it returns;
   - `BTDB/Proofs/`, `XxHash64`: updating with any chunks gives the state of hashing all of them at once;
+  - `BTDB/Proofs/`, `KeyValueDBExportImporter`: importing an export gives back its key value pairs, commit ulong and
+    ulongs;
   - `BTDB/Proofs/`, Fletcher-32 checksums: blocks of 360 words, one more than the textbook bound, never overflow the
     32-bit sums, and the result keeps both sums in 16 bits;
   - `BTDB/Proofs/`, IOC disposal: in every interleaving of two threads creating instances and one disposing their
