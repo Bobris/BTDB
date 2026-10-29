@@ -314,7 +314,7 @@ public class RelationConstraintKeyTypesTest : ObjectDbTestBase
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             Constraint.DateTime.Exact(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)));
         var local = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local);
-        Assert.Equal(local, Constraint.DateTime.ForbidUnspecifiedKind(local));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Constraint.DateTime.ForbidUnspecifiedKind(local));
         Assert.NotEqual(DateTimeKind.Unspecified, Constraint.DateTime.ForbidUnspecifiedKind(DateTime.MinValue).Kind);
         Assert.NotEqual(DateTimeKind.Unspecified, Constraint.DateTime.ForbidUnspecifiedKind(DateTime.MaxValue).Kind);
     }

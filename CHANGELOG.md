@@ -90,6 +90,10 @@
 
 ### Fixed
 
+- ObjectDB: a `DateTime` key with `Local` kind was stored with the kind in its highest bits, so it sorted after every
+  UTC key, `DateTime` range constraints missed it, and its UTC equivalent did not find it. Keys and `DateTime`
+  constraints now refuse `Local` kind with `ArgumentOutOfRangeException`, as they already refused `Unspecified`;
+  convert such values to UTC. Breaking for code storing local keys; keys stored before still load.
 - Event store: a tuple loaded without its type, a `DynamicTuple`, failed to store again; with IL emitted its saver
   read the items from generic arguments a `DynamicTuple` has none of and failed with `IndexOutOfRangeException`. It
   now saves the items it read, and values that know their descriptor use the savers that are not emitted. A tuple

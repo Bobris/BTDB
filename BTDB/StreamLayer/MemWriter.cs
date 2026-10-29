@@ -460,6 +460,12 @@ public struct MemWriter
                 throw new ArgumentOutOfRangeException(nameof(value),
                     "DateTime.Kind cannot be stored as Unspecified");
         }
+        else if (value.Kind == DateTimeKind.Local)
+        {
+            // A key keeps the kind in its highest bits, so a local one sorts after every UTC one and misses ranges.
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "DateTime.Kind cannot be stored as Local in a key, convert it to UTC");
+        }
 
         WriteDateTime(value);
     }

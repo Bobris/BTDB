@@ -499,6 +499,11 @@ public static partial class Constraint
                     throw new ArgumentOutOfRangeException(nameof(value),
                         "DateTime.Kind cannot be Unspecified");
             }
+            else if (value.Kind == DateTimeKind.Local)
+            {
+                // Keys cannot hold local DateTimes, so a local bound would match none of them.
+                throw new ArgumentOutOfRangeException(nameof(value), "DateTime.Kind cannot be Local, convert it to UTC");
+            }
 
             return value;
         }

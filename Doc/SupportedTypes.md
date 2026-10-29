@@ -10,7 +10,8 @@
 - `Decimal`
 - `string` `Constraint<string>`/`Constraint.String`
 - `EncryptedString`
-- `DateTime` `Constraint<DateTime>`/`Constraint.DateTime`
+- `DateTime` `Constraint<DateTime>`/`Constraint.DateTime` (a key must be UTC: keys refuse `Local` and `Unspecified`
+  kinds, except `DateTime.MinValue` and `MaxValue`, which are stored as UTC)
 - nullable `DateTime` (`DateTime?`) `Constraint<DateTime?>`/`Constraint.NullableDateTime` (`Predicate`, `UpTo`)
 - `DateTimeOffset` (ordering is correct only for identical time offsets, better to use `DateTime` if you need ordering
   because only UTC is allowed)
