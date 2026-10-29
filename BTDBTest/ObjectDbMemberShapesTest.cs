@@ -300,4 +300,44 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal(5, loaded.GetSecret());
         });
     }
+
+    [Generate]
+    public class GenericRow<T>
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public T? Value { get; set; }
+        public int? MaybeCount { get; set; }
+        public string? @class { get; set; }
+        public int @event { get; set; }
+    }
+
+    public interface IGenericRows : IRelation<GenericRow<string>>
+    {
+        void Insert(GenericRow<string> value);
+        GenericRow<string> FindById(ulong id);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GenericItemWithKeywordNamedPropertiesRoundTrips(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.GetRelation<IGenericRows>().Insert(new GenericRow<string>
+                    { Id = 1, Value = "v", MaybeCount = 4, @class = "c", @event = 9 });
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using var read = _db.StartReadOnlyTransaction();
+            var loaded = read.GetRelation<IGenericRows>().FindById(1);
+            Assert.Equal("v", loaded.Value);
+            Assert.Equal(4, loaded.MaybeCount);
+            Assert.Equal("c", loaded.@class);
+            Assert.Equal(9, loaded.@event);
+        });
+    }
 }
