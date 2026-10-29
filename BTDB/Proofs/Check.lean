@@ -136,3 +136,5 @@ open Btdb
 #print axioms KeyConcat.key_order_needs_prefix_free
 #print axioms LruCapacity.fixed_within_max
 #print axioms LruCapacity.previous_exceeds_max
+#print axioms RoaringCount.fixed_count_correct
+#print axioms RoaringCount.previous_wrong_count

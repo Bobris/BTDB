@@ -73,6 +73,8 @@
   - `BTDB/Proofs/`, LRU caches: no sequence of operations makes them hold more than their maximum capacity;
   - `BTDB/Proofs/`, keys of several fields: with prefix free, order keeping encodings of all fields but the last, a
     key sorts by its fields in order;
+  - `BTDB/Proofs/`, roaring bitmap counts: through page commands without a count, sets and flushes, `Count` stays the
+    number of values;
   - `BTDB/Proofs/`, `RoaringBitmap.Source`: for page ascending values it reads exactly those up to the maximum index;
   - `BTDB/Proofs/`, Roaring bitmap containers: the encoding chosen is the shortest, and its length tells its kind;
   - `BTDB/Proofs/`, relation query paging: folding `Skip` and `Take` calls into one skip and take gives the rows of
