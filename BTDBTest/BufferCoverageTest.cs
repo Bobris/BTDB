@@ -192,6 +192,39 @@ public class BufferCoverageTest
         }
     }
 
+    // Before the fix Expand restarted a slice at the start of its array, so [4, 5] expanded to 3 bytes read 0, 1, 2,
+    // marked a buffer valid only synchronously as async safe and checked the size against the whole array.
+    [Fact]
+    public void ExpandKeepsStartAndAsyncSafety()
+    {
+        var array = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+        var slice = ByteBuffer.NewAsync(array, 4, 2);
+        slice.Expand(3);
+        Assert.Same(array, slice.Buffer);
+        Assert.Equal(new byte[] { 4, 5, 6 }, slice.ToByteArray());
+
+        var sync = ByteBuffer.NewSync(array, 1, 2);
+        sync.Expand(3);
+        Assert.False(sync.AsyncSafe);
+        Assert.Equal(new byte[] { 1, 2, 3 }, sync.AsSyncReadOnlySpan().ToArray());
+
+        var tail = ByteBuffer.NewAsync(array, 6, 2);
+        tail.Expand(4);
+        Assert.NotSame(array, tail.Buffer);
+        Assert.Equal(4, tail.Length);
+        Assert.True(tail.AsyncSafe);
+    }
+
+    // Before the fix appending to a buffer without an array, like default or NewAsync(null), threw.
+    [Fact]
+    public void ResizingAppendToBufferWithoutArray()
+    {
+        var appended = ByteBuffer.NewAsync((byte[]?)null).ResizingAppend(ByteBuffer.NewAsync(new byte[] { 9 }));
+        Assert.Equal(new byte[] { 9 }, appended.ToByteArray());
+        Assert.Equal(new byte[] { 9 }, default(ByteBuffer).ResizingAppend(ByteBuffer.NewAsync(new byte[] { 9 })).ToByteArray());
+        Assert.Equal(new byte[] { 1 }, ByteBuffer.NewAsync(new byte[] { 1 }).ResizingAppend(default).ToByteArray());
+    }
+
     [Fact]
     public void ByteBufferBasics()
     {

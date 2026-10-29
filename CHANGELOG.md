@@ -120,6 +120,10 @@
 
 ### Fixed
 
+- `ByteBuffer.Expand` restarted a slice at the start of its array, so `[4, 5]` expanded to 3 bytes read `0, 1, 2`,
+  checked the size against the whole array instead of the space after the slice, and marked a buffer that is valid only
+  synchronously as async safe. It now keeps the start and the async safety. `ResizingAppend` to or of a buffer without
+  an array, like `default`, no longer throws.
 - `MemoryPositionLessStream.SetSize` to a smaller size kept the bytes beyond it, so growing the stream again, by
   `SetSize` or a write past the end, read them back. Like a file, it now reads zeros there, and frees whole buffers
   beyond the new size.

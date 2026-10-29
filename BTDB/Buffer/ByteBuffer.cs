@@ -176,29 +176,29 @@ public struct ByteBuffer : IEquatable<ByteBuffer>
 
     public ByteBuffer ResizingAppend(ByteBuffer append)
     {
-        if (AsyncSafe)
+        if (AsyncSafe && Buffer != null && Offset + Length + append.Length <= Buffer.Length)
         {
-            if (Offset + Length + append.Length <= Buffer!.Length)
-            {
-                Array.Copy(append.Buffer!, append.Offset, Buffer, Offset + Length, append.Length);
-                return NewAsync(Buffer, Offset, Length + append.Length);
-            }
+            append.AsSyncReadOnlySpan().CopyTo(Buffer.AsSpan(Offset + Length));
+            return NewAsync(Buffer, Offset, Length + append.Length);
         }
 
         var newCapacity = Math.Max(Length + append.Length, Length * 2);
         var newBuffer = new byte[newCapacity];
-        Array.Copy(Buffer!, Offset, newBuffer, 0, Length);
-        Array.Copy(append.Buffer!, append.Offset, newBuffer, Length, append.Length);
+        AsSyncReadOnlySpan().CopyTo(newBuffer);
+        append.AsSyncReadOnlySpan().CopyTo(newBuffer.AsSpan(Length));
         return NewAsync(newBuffer, 0, Length + append.Length);
     }
 
+    // Keeps the start of the buffer and whether it is async safe when the size fits after it, otherwise starts a new
+    // array without the content.
     public void Expand(int size)
     {
-        if (Buffer == null || Buffer.Length < size)
+        if (Buffer == null || Buffer.Length - Offset < size)
         {
-            this = NewAsync(new byte[Math.Min((long)size * 3 / 2, int.MaxValue)]);
+            this = NewAsync(new byte[Math.Min((long)size * 3 / 2, int.MaxValue)], 0, size);
+            return;
         }
 
-        this = NewAsync(Buffer, 0, size);
+        this = AsyncSafe ? NewAsync(Buffer, Offset, size) : NewSync(Buffer, Offset, size);
     }
 }
