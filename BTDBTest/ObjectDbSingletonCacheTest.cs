@@ -116,4 +116,26 @@ public class ObjectDbSingletonCacheTest : ObjectDbTestBase
         using var after = _db.StartReadOnlyTransaction();
         Assert.Equal(5, after.Singleton<Root>().Value);
     }
+
+    // Before the fix storing the deleted singleton after Singleton created a new one under its oid threw
+    // ArgumentException, as both were then pending under one oid.
+    [Fact]
+    public void StoringDeletedSingletonAfterItWasCreatedAgainKeepsTheStoredOne()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var old = tr.Singleton<Root>();
+            old.Value = 1;
+            tr.Delete(old);
+            var created = tr.Singleton<Root>();
+            Assert.NotSame(old, created);
+            old.Value = 7;
+            tr.Store(old);
+            Assert.Same(old, tr.Singleton<Root>());
+            tr.Commit();
+        }
+
+        using var after = _db.StartReadOnlyTransaction();
+        Assert.Equal(7, after.Singleton<Root>().Value);
+    }
 }

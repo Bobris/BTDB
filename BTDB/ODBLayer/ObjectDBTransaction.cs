@@ -724,6 +724,15 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         // One deleted before it was stored gets its oid and its place in the cache like a new object.
         if (metadata.State != DBObjectState.Deleted || metadata.Id == 0) return;
         metadata.State = DBObjectState.Dirty;
+        // An object created under the oid meanwhile, as Singleton does after the singleton's deletion, gives it back.
+        if (GetObjFromObjCacheByOid(metadata.Id) is { } displaced && !ReferenceEquals(displaced, obj))
+        {
+            DBObjectMetadata? displacedMetadata = null;
+            if (_objSmallMetadata != null) _objSmallMetadata.TryGetValue(displaced, out displacedMetadata);
+            else _objBigMetadata?.TryGetValue(displaced, out displacedMetadata);
+            if (displacedMetadata != null) displacedMetadata.State = DBObjectState.Deleted;
+        }
+
         if (_objSmallCache != null)
         {
             _objSmallCache[metadata.Id] = obj;
@@ -734,7 +743,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             _objBigCache![metadata.Id] = new WeakReference(obj);
         }
 
-        AddToDirtySet(metadata.Id, obj);
+        (_dirtyObjSet ??= new())[metadata.Id] = obj;
     }
 
     public ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline)
