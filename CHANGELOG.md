@@ -103,6 +103,9 @@
 
 ### Fixed
 
+- ObjectDB: `FindById` and `FindBy{SecondaryKey}` returning `ICollection<T>` or `IReadOnlyCollection<T>` threw
+  `InvalidCastException` in relations without generated code, which are emitted as IL: their enumerator is no
+  collection. They now return the enumerators the generated code returns.
 - Source generator: lookups by a tuple key with enum elements, like `FindById((int Id, Color Color) key)`, threw
   `NotSupportedException`, because the generator knew tuple elements only by their type names, and so did
   `UpdateById` of tuple values and `AdvancedEnumeratorParam` bounds with enum elements. Relation method parameters now carry the underlying types of the

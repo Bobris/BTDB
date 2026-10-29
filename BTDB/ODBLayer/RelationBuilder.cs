@@ -1002,6 +1002,9 @@ public class RelationBuilder : IRelationBuilder
         }
     }
 
+    static bool IsIEnumerable(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>);
+
     static bool TypeIsEnumeratorOrEnumerable(Type type, [NotNullWhen(true)] out Type? itemType)
     {
         if (type.SpecializationOf(typeof(IEnumerator<>)) is { } spec)
@@ -1906,7 +1909,14 @@ public class RelationBuilder : IRelationBuilder
             .Stloc(spanLocal)
             .Ldloca(spanLocal);
 
-        if (isPrefixBased)
+        if (isPrefixBased && !IsIEnumerable(methodReturnType))
+        {
+            // The FindByPrimaryKeyPrefix enumerator implements only IEnumerable<T>, a collection needs this one
+            ilGenerator.LdcI4(RegisterLoadType(itemType));
+            ilGenerator.Newobj(typeof(RelationAdvancedEnumerator<>).MakeGenericType(itemType).GetConstructor(
+                [typeof(IRelationDbManipulator), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(int)])!);
+        }
+        else if (isPrefixBased)
         {
             ilGenerator.LdcI4(RegisterLoadType(itemType));
             ilGenerator.Callvirt(
@@ -1951,6 +1961,26 @@ public class RelationBuilder : IRelationBuilder
             ctxLocFactory);
 
         var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+
+        if (TypeIsEnumeratorOrEnumerable(methodReturnType, out var collectionItemType) &&
+            !IsIEnumerable(methodReturnType))
+        {
+            // The FindBySecondaryKey enumerator implements only IEnumerable<T>, a collection needs this one
+            ilGenerator
+                .Ldarg(0) //manipulator
+                .Do(pushWriter)
+                .Call(MemWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan)
+                .Ldloc(localRemapped)
+                .LdcI4(RegisterLoadType(collectionItemType))
+                .Newobj(typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(collectionItemType)
+                    .GetConstructor([
+                        typeof(IRelationDbManipulator), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(uint),
+                        typeof(int)
+                    ])!);
+            return;
+        }
 
         //call public T FindBySecondaryKeyOrDefault<T>(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound, int loaderIndex)
         ilGenerator
