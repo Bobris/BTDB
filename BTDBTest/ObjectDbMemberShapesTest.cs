@@ -368,10 +368,11 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         RenamedRow FindById(ulong id);
         bool UpdateById(ulong id, string? name);
         System.Collections.Generic.IEnumerable<RenamedRow> ListByByAge(AdvancedEnumeratorParam<int> age);
+        System.Collections.Generic.IEnumerable<RenamedRow> ScanByByAge(Constraint<long> age);
     }
 
-    // Before the fix in emit mode a partial update parameter had to name the field it is stored under, not the
-    // property as without emit, so UpdateById(id, name) of a renamed property was refused.
+    // Before the fix in emit mode a partial update or constraint parameter had to name the field it is stored under,
+    // not the property as without emit, so UpdateById(id, name) and ScanByByAge(age) of renamed properties were refused.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -394,6 +395,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal("changed", table.FindById(1).Name);
             Assert.Equal(30, table.FindById(1).Age);
             Assert.Equal([2ul, 1ul], table.ListByByAge(new()).Select(r => r.Id));
+            Assert.Equal([1ul], table.ScanByByAge(Constraint.Signed.Exact(30)).Select(r => r.Id));
         });
     }
 }
