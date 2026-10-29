@@ -97,6 +97,10 @@
 
 ### Fixed
 
+- `RoaringBitmap.Source` of values: the first value above the maximum index ended the values, so later valid values
+  of the same page were lost, and a page coming again after a later one was built out of the order merging expects.
+  Values above the maximum are now skipped within its page, and pages out of ascending order throw
+  `ArgumentException`; values of one page may still come in any order.
 - `IRoaringBitmap.Count` of a bitmap whose pages were applied without their count yet, as `RoaringBitmap.BuildAsync`
   does across transactions, returned 0, and setting a bit then stored a count of 1. It now counts the pages, and
   applying a page forgets a count read before.

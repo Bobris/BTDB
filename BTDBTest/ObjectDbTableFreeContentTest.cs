@@ -365,6 +365,43 @@ public class ObjectDbTableFreeContentTest : IDisposable
         Assert.Equal(65537ul, link.Bits.Count);
     }
 
+    async Task<List<ulong>> BuildFromValues(ulong[] values, ulong maxValidIndex)
+    {
+        var creator = InitBitmapLinks(out _);
+        await RoaringBitmap.BuildAsync(RoaringBitmap.Source(values), (commands, _) =>
+        {
+            using var tr = _db.StartTransaction();
+            creator(tr).FindById(1).Bits.ApplyCommands(commands);
+            tr.Commit();
+            return Task.CompletedTask;
+        }, new byte[RoaringBitmaps.BitmapSize + 64], maxValidIndex, CancellationToken.None);
+        using var readTr = _db.StartTransaction();
+        var bits = creator(readTr).FindById(1).Bits;
+        var result = new List<ulong>(bits);
+        Assert.Equal((ulong)result.Count, bits.Count);
+        return result;
+    }
+
+    // Before the fix the first value above the maximum ended the values, so later values of the same page were lost.
+    [Fact]
+    public async Task RoaringBitmapSourceSkipsValuesAboveMaximumInItsLastPage()
+    {
+        Assert.Equal([5, 50, 100], await BuildFromValues([5, 200, 50, 100, 65536 + 1], 100));
+    }
+
+    [Fact]
+    public async Task RoaringBitmapSourceAcceptsValuesOfOnePageInAnyOrder()
+    {
+        Assert.Equal([1, 3, 65536 + 1], await BuildFromValues([3, 1, 65536 + 1], 3 * 65536));
+    }
+
+    // Before the fix a page coming again after a later one was built again, out of the order merging expects.
+    [Fact]
+    public async Task RoaringBitmapSourceRefusesPagesOutOfOrder()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => BuildFromValues([65536 + 1, 1], 3 * 65536));
+    }
+
     [Fact]
     public async Task RoaringBitmapBuildAsyncStartsWithClearAndEndsWithCount()
     {

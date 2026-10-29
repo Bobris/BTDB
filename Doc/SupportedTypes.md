@@ -45,7 +45,8 @@
 - `IOrderedSet<T>` (Lazy loaded, ordered by T set, good for bigger number of items, and can be iterated in order, don't
   use in Event serialization, do not use `OrderedSet<T>` (only as initial constructor of content))
 - `IRoaringBitmap` (Lazy loaded bitmap of `ulong` indexes for ObjectDB relations; call `Flush()` to persist `Set`
-  changes; use `RoaringBitmap.BuildAsync` for initialization and bulk rebuilds)
+  changes; use `RoaringBitmap.BuildAsync` for initialization and bulk rebuilds; `RoaringBitmap.Source` takes values in
+  ascending order of their pages, `value >> 16`)
 - `ILazyUlongList` (Lazy loaded append-only list of `ulong` values for ObjectDB relations; records contain up to 4096
   values using one absolute `VUInt64` followed by `VInt64` deltas; call `Flush()` after `Add`, or use
   `LazyUlongList.BuildAsync` for a streaming rebuild; `EnumerateFromIndex` starts directly at the containing record;

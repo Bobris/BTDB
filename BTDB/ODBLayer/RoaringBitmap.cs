@@ -183,9 +183,11 @@ public static class RoaringBitmap
     {
         readonly IEnumerator<ulong> _values;
         readonly ulong _maxValidIndex;
+        readonly ulong _maxPage;
         readonly byte[] _bitmap = new byte[RoaringBitmaps.BitmapSize];
         readonly byte[] _content = new byte[RoaringBitmaps.BitmapSize];
         ulong? _nextValue;
+        ulong? _previousPageIndex;
         int _contentLength;
         bool _finished;
 
@@ -193,6 +195,7 @@ public static class RoaringBitmap
         {
             _values = values.GetEnumerator();
             _maxValidIndex = maxValidIndex;
+            _maxPage = maxValidIndex >> 16;
         }
 
         public ulong? ReadNext()
@@ -214,6 +217,11 @@ public static class RoaringBitmap
             }
 
             var pageIndex = value >> 16;
+            // Merging expects ascending pages, values of one page may come in any order.
+            if (pageIndex <= _previousPageIndex)
+                throw new ArgumentException(
+                    "RoaringBitmap.Source values must come in ascending order of their pages (value >> 16).");
+            _previousPageIndex = pageIndex;
             while (true)
             {
                 RoaringBitmaps.SetBit(_bitmap, (ushort)value);
@@ -242,10 +250,12 @@ public static class RoaringBitmap
 
         bool TryReadValue(out ulong value)
         {
-            if (_values.MoveNext() && _values.Current <= _maxValidIndex)
+            while (_values.MoveNext())
             {
                 value = _values.Current;
-                return true;
+                // Pages ascend, so a later page ends the values, while the last page may still hold valid ones.
+                if (value >> 16 > _maxPage) break;
+                if (value <= _maxValidIndex) return true;
             }
 
             value = 0;
