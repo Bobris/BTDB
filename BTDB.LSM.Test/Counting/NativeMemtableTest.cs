@@ -130,4 +130,20 @@ public class NativeMemtableTest
         BinaryPrimitives.WriteInt32BigEndian(key, value);
         return key;
     }
+
+    // Before the fix a size near int.MaxValue rounded up to a negative one, so the arena returned its current pointer
+    // and moved it backwards instead of failing.
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(int.MaxValue - 6)]
+    [InlineData(-1)]
+    public void ArenaRejectsSizesItCannotRound(int size)
+    {
+        using var arena = new BTDB.LSM.Memory.NativeArena(4096);
+        // Allocate returns a pointer, which this project may not touch outside unsafe code.
+        var allocate = typeof(BTDB.LSM.Memory.NativeArena).GetMethod(nameof(BTDB.LSM.Memory.NativeArena.Allocate))!;
+        var error = Assert.Throws<System.Reflection.TargetInvocationException>(() => allocate.Invoke(arena, [size]));
+        Assert.IsType<ArgumentOutOfRangeException>(error.InnerException);
+        Assert.Equal(0, arena.UsedBytes);
+    }
 }

@@ -165,6 +165,9 @@
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
+- `LsmKeyValueDB` native memtable: allocating a key or value within 7 bytes of `int.MaxValue`, as a span over native
+  memory can be, rounded its size up to a negative one, so the arena handed out memory it did not have and the copy
+  overwrote native memory. Such a size is rejected with `ArgumentOutOfRangeException` now.
 - `LsmKeyValueDB` accepted `WalFlushInterval = TimeSpan.Zero`, which kept the WAL uploader of an idle writer spinning
   on a full core. Opening rejects it with `ArgumentOutOfRangeException` now, like a zero `RefreshRetryInterval`;
   commits wake the uploader at once whatever the interval.

@@ -33,6 +33,9 @@ sealed unsafe class NativeArena : IDisposable
     public byte* Allocate(int size)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        // Rounding a size near int.MaxValue up would wrap negative and move the bump pointer backwards.
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(size, int.MaxValue - 7);
         size = (size + 7) & ~7;
         Interlocked.Add(ref _usedBytes, size);
         if (size > _chunkSize / 4) return NewChunk(size);
