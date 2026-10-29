@@ -185,12 +185,24 @@ public sealed partial class LsmKeyValueDB
 
     static string WalKey(string prefix, long chunk) => $"{prefix}wal/{chunk:D16}";
 
+    /// The number a WAL chunk or manifest name is made of; false for any other object, such as a stray file a user or a
+    /// file browser left among them, which opening ignores.
+    static bool TryParseObjectNumber(string key, out long number) =>
+        long.TryParse(key.AsSpan(key.LastIndexOf('/') + 1), NumberStyles.None, CultureInfo.InvariantCulture,
+            out number);
+
     static async ValueTask<(LsmManifest Manifest, string? Key)> ReadNewestManifestAsync(LsmKeyValueDBOptions options,
         CancellationToken cancellation)
     {
         string? manifestKey = null;
+        var newest = -1L;
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "manifest/", cancellation))
-            manifestKey = info.Key;
+            if (TryParseObjectNumber(info.Key, out var sequence) && sequence > newest)
+            {
+                newest = sequence;
+                manifestKey = info.Key;
+            }
+
         if (manifestKey == null) return (new() { NextFileNumber = 1, LevelCount = options.LevelCount }, null);
         var content = await options.Storage.TryReadAsync(manifestKey, cancellation) ??
                       throw new BTDBException($"Manifest {manifestKey} disappeared while loading.");
@@ -267,8 +279,7 @@ public sealed partial class LsmKeyValueDB
         var chunkNumbers = new List<long>();
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "wal/", cancellation))
         {
-            var number = long.Parse(info.Key.AsSpan(info.Key.LastIndexOf('/') + 1), CultureInfo.InvariantCulture);
-            if (number >= replay.NextChunk) chunkNumbers.Add(number);
+            if (TryParseObjectNumber(info.Key, out var number) && number >= replay.NextChunk) chunkNumbers.Add(number);
         }
 
         chunkNumbers.Sort();

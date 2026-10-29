@@ -156,9 +156,15 @@ public sealed partial class LsmKeyValueDB
     async ValueTask<LsmManifest?> ReadNewerManifestAsync(long sequence, CancellationToken cancellation)
     {
         string? newestKey = null;
+        var newest = sequence;
         await foreach (var info in _storage.ListAsync(_options.Prefix + "manifest/", cancellation))
-            newestKey = info.Key;
-        if (newestKey == null || ParseNumber(newestKey) <= (ulong)sequence) return null;
+            if (TryParseObjectNumber(info.Key, out var listed) && listed > newest)
+            {
+                newest = listed;
+                newestKey = info.Key;
+            }
+
+        if (newestKey == null) return null;
         var content = await _storage.TryReadAsync(newestKey, cancellation) ??
                       throw new BTDBException($"Manifest {newestKey} disappeared while loading.");
         return LsmManifest.Decode(content, newestKey);

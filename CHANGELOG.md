@@ -168,6 +168,11 @@
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
+- `LsmKeyValueDB` failed to open when a stray object lay among its WAL chunks or manifests, such as the `.DS_Store`
+  that macOS Finder leaves in a folder of `FileSystemLsmStorage`: every name under `wal/` was parsed as a chunk number,
+  throwing `FormatException`, and the last name listed under `manifest/` was read as the newest manifest, so a name
+  sorting after the digits failed decoding. Only names made of digits count as chunks and manifests now, and the
+  newest manifest is the one with the highest number.
 - `LsmKeyValueDB` native memtable: allocating a key or value within 7 bytes of `int.MaxValue`, as a span over native
   memory can be, rounded its size up to a negative one, so the arena handed out memory it did not have and the copy
   overwrote native memory. Such a size is rejected with `ArgumentOutOfRangeException` now.

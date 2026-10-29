@@ -226,6 +226,37 @@ public class LsmRegressionTest
         }
     }
 
+    // Before the fix opening parsed every object name under wal/ as a chunk number, so a stray object such as the
+    // .DS_Store Finder leaves in a folder failed every open with FormatException, and it took the last object listed
+    // under manifest/ for the newest manifest, so a stray name sorting after the digits failed decoding.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StrayObjectsBesideWalChunksAndManifestsAreIgnored(bool flushed)
+    {
+        var storage = new InMemoryLsmStorage();
+        LsmKeyValueDBOptions Options() => new()
+        {
+            Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = 1024, BackgroundCompaction = false
+        };
+        using (var db = await LsmKeyValueDB.OpenAsync(Options()))
+        {
+            await Commit(db, 0, flushed ? 100 : 3);
+            await db.FlushAsync();
+        }
+
+        foreach (var key in new[] { "wal/.DS_Store", "wal/notes.txt", "manifest/README", "manifest/.DS_Store" })
+            await storage.CreateAsync(key, new byte[] { 1, 2, 3 }, default);
+        using (var db = await LsmKeyValueDB.OpenAsync(Options()))
+        {
+            Assert.Equal(flushed ? 100 : 3, Count(db));
+            await Commit(db, 200, 1);
+        }
+
+        using (var db = await LsmKeyValueDB.OpenAsync(Options()))
+            Assert.Equal((flushed ? 100 : 3) + 1, Count(db));
+    }
+
     // Before the fix a level target past long.MaxValue wrapped: with a multiplier of 1000 level 5 got a negative
     // target, so its score was negative and it never compacted down.
     [Theory]
