@@ -169,4 +169,49 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         Assert.Equal("derived", loaded.X);
         Assert.Equal(5, loaded.Other);
     }
+
+    public class VirtualBase
+    {
+        [PrimaryKey] public virtual ulong Id { get; set; }
+        [SecondaryKey("Name")] public virtual string Name { get; set; } = "";
+        public virtual int Count { get; set; }
+    }
+
+    [Generate]
+    public class Overriding : VirtualBase
+    {
+        public override ulong Id { get; set; }
+        public override string Name { get; set; } = "";
+        public override int Count { get; set; }
+    }
+
+    public interface IOverridings : IRelation<Overriding>
+    {
+        void Insert(Overriding value);
+        Overriding FindById(ulong id);
+        Overriding FindByName(string name);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OverriddenKeyPropertiesKeepTheirKeys(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var rows = tr.GetRelation<IOverridings>();
+                rows.Insert(new Overriding { Id = 1, Name = "a", Count = 3 });
+                rows.Insert(new Overriding { Id = 2, Name = "b", Count = 4 });
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using var read = _db.StartReadOnlyTransaction();
+            var table = read.GetRelation<IOverridings>();
+            Assert.Equal(3, table.FindById(1).Count);
+            Assert.Equal(2ul, table.FindByName("b").Id);
+        });
+    }
 }

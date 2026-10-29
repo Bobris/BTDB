@@ -759,7 +759,7 @@ public class RelationInfo
 
                 foreach (var pi in props)
                 {
-                    if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                    if (Attribute.IsDefined(pi, typeof(NotStoredAttribute), true)) continue;
                     if (pi.GetIndexParameters().Length != 0) continue;
                     var tfi = TableFieldInfo.Build(_owner.Name, pi, _owner._relationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.None, false);

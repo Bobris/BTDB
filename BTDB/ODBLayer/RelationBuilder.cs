@@ -272,7 +272,8 @@ public class RelationBuilder : IRelationBuilder
                 primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
             }
 
-            var sks = relationContractProperty.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
+            // Attribute.GetCustomAttributes inherits from overridden properties, as the source generator does.
+            var sks = Attribute.GetCustomAttributes(relationContractProperty, typeof(SecondaryKeyAttribute), true);
             var id = (int)(-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
             List<SecondaryKeyAttribute> currentList = null;
             if (sks.Length == 0 && !pi.CanWrite)

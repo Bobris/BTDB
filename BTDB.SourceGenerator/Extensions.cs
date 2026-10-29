@@ -9,10 +9,37 @@ public static class Extensions
 {
     extension(ISymbol symbol)
     {
+        /// Attributes of the member and, as reflection inherits them, of the properties it overrides: those whose
+        /// usage is Inherited, and of a single-use attribute only the most derived.
+        public IEnumerable<AttributeData> GetMemberAttributesWithInherited()
+        {
+            var own = symbol.GetAttributes();
+            foreach (var attribute in own)
+                yield return attribute;
+            if (symbol is not IPropertySymbol property) yield break;
+            var seen = new HashSet<INamedTypeSymbol>(own.Select(a => a.AttributeClass).OfType<INamedTypeSymbol>(),
+                SymbolEqualityComparer.Default);
+            for (var overridden = property.OverriddenProperty; overridden != null;
+                 overridden = overridden.OverriddenProperty)
+            {
+                var found = new List<INamedTypeSymbol>();
+                foreach (var attribute in overridden.GetAttributes())
+                {
+                    if (attribute.AttributeClass is not { } attributeClass) continue;
+                    var (inherited, allowMultiple) = AttributeUsage(attributeClass);
+                    if (!inherited || !allowMultiple && seen.Contains(attributeClass)) continue;
+                    found.Add(attributeClass);
+                    yield return attribute;
+                }
+
+                foreach (var attributeClass in found) seen.Add(attributeClass);
+            }
+        }
+
         public IEnumerable<AttributeData> GetAllAttributes()
         {
-            // attributes declared on the symbol itself
-            foreach (var attribute in symbol.GetAttributes())
+            // attributes declared on the symbol itself, and inherited from the properties it overrides
+            foreach (var attribute in symbol.GetMemberAttributesWithInherited())
                 yield return attribute;
 
             // attributes declared on base types
@@ -35,6 +62,29 @@ public static class Extensions
         public bool InBTDBNamespace() => symbol.InNamespace("BTDB");
         public bool InBTDBIOCNamespace() => symbol.InNamespace("BTDB", "IOC");
         public bool InODBLayerNamespace() => symbol.InNamespace("BTDB", "ODBLayer");
+    }
+
+    // AttributeUsage of an attribute class or of its nearest base declaring it; its defaults are Inherited and single use.
+    static (bool Inherited, bool AllowMultiple) AttributeUsage(INamedTypeSymbol attributeClass)
+    {
+        for (var type = attributeClass; type != null; type = type.BaseType)
+        {
+            foreach (var attribute in type.GetAttributes())
+            {
+                if (attribute.AttributeClass?.Name != "AttributeUsageAttribute") continue;
+                var inherited = true;
+                var allowMultiple = false;
+                foreach (var argument in attribute.NamedArguments)
+                {
+                    if (argument.Key == "Inherited" && argument.Value.Value is bool i) inherited = i;
+                    if (argument.Key == "AllowMultiple" && argument.Value.Value is bool m) allowMultiple = m;
+                }
+
+                return (inherited, allowMultiple);
+            }
+        }
+
+        return (true, false);
     }
 
     // this cannot use C# 14 feature because of bug https://github.com/dotnet/roslyn/issues/80024

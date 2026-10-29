@@ -2270,7 +2270,7 @@ public class SourceGenerator : IIncrementalGenerator
     // Reflection skips members marked with NotStoredAttribute or any attribute derived from it, like DependencyAttribute.
     static bool HasNotStoredAttribute(ISymbol member)
     {
-        return member.GetAttributes().Any(a =>
+        return member.GetMemberAttributesWithInherited().Any(a =>
         {
             for (var type = a.AttributeClass; type is not null; type = type.BaseType)
             {

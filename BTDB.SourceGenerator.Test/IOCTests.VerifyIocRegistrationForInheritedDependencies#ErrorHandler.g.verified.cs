@@ -20,8 +20,6 @@ static file class ErrorHandlerRegistration
     }
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
     extern static global::ErrorHandler Creator();
-    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Overridden>k__BackingField")]
-    extern static ref global::ILogger Field1(global::ErrorHandler @this);
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -62,12 +60,6 @@ static file class ErrorHandlerRegistration
         metadata.Creator = &Creator;
         var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::ErrorHandler>(metadata);
         metadata.Fields = [
-            new global::BTDB.Serialization.FieldMetadata
-            {
-                Name = "Overridden",
-                Type = typeof(global::ILogger),
-                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
-            },
         ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }

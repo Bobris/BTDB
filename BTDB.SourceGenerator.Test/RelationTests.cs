@@ -154,6 +154,39 @@ public class RelationTests : GeneratorTestsBase
             """);
     }
 
+    // Before the fix keys declared on a virtual property were lost on its override, as reflection keeps them: the
+    // generator reported BTDB0020 for FindById of the overriding item.
+    [Fact]
+    public Task VerifyRelationWithOverriddenKeyProperties()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class PersonBase
+            {
+                [PrimaryKey] public virtual ulong Id { get; set; }
+                [SecondaryKey("Name")] public virtual string Name { get; set; } = null!;
+                [NotStored] public virtual int Cache { get; set; }
+            }
+
+            public class Person : PersonBase
+            {
+                public override ulong Id { get; set; }
+                public override string Name { get; set; } = null!;
+                public override int Cache { get; set; }
+            }
+
+            public interface IPersonTable : ICovariantRelation<Person>
+            {
+                Person FindById(ulong id);
+                Person FindByName(string name);
+            }
+            """);
+    }
+
     [Fact]
     public Task VerifyRelationAllocateId()
     {
