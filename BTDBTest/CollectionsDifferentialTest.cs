@@ -227,6 +227,18 @@ public class CollectionsDifferentialTest
         Assert.Null(list.UnsafeBackingArray![0]);
     }
 
+    // Before the fix reserving less than the capacity, but more than the count, shrank the array to it.
+    [Fact]
+    public void StructListReserveNeverShrinksCapacity()
+    {
+        var list = new StructList<int>();
+        list.Reserve(100);
+        list.Add(1);
+        list.Reserve(10);
+        Assert.Equal(100, list.UnsafeBackingArray!.Length);
+        Assert.Equal(new[] { 1 }, list.ToArray());
+    }
+
     // Before the fix InsertRange resized the array on every call, so it shrank the capacity Reserve made.
     [Fact]
     public void StructListInsertRangeKeepsReservedCapacity()

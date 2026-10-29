@@ -112,7 +112,8 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
     public void Reserve(uint count)
     {
         if (count > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(count));
-        if (count <= _count) return;
+        // Reserving never shrinks the array: a smaller count than its length is already reserved.
+        if (count <= (_a?.Length ?? 0)) return;
         Array.Resize(ref _a, (int)count);
     }
 

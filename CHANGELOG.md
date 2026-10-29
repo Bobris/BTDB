@@ -603,6 +603,8 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `StructList<T>.Reserve` given less than the capacity, but more than the count, shrank the array to it, dropping
+  capacity reserved before. It only ever grows the array now.
 - `BonSerializerFactory` refused a multi-dimensional array, to serialize or to deserialize into, with
   `InvalidOperationException`; it throws the `NotSupportedException` other unsupported types throw.
 - `BonSerializerFactory.Serialize` of a plain `new object()`, also as the value of an `object` member, hung its thread
