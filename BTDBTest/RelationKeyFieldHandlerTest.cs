@@ -225,6 +225,10 @@ public class RelationKeyFieldHandlerTest : FieldHandlerCoverageTestBase
             factory.CreateFromType(typeof(decimal?), FieldHandlerOptions.Orderable));
         Assert.NotNull(factory.CreateFromType(typeof(decimal), FieldHandlerOptions.None));
         Assert.NotNull(factory.CreateFromType(typeof(decimal?), FieldHandlerOptions.None));
+        Assert.Throws<NotSupportedException>(() => factory.CreateFromType(typeof(float?), FieldHandlerOptions.Orderable));
+        Assert.Throws<NotSupportedException>(() =>
+            factory.CreateFromType(typeof(double?), FieldHandlerOptions.Orderable));
+        Assert.NotNull(factory.CreateFromType(typeof(double?), FieldHandlerOptions.None));
         Assert.NotNull(factory.CreateFromType(typeof(double), FieldHandlerOptions.None));
         var handler = new ForbidOrderableFloatsFieldHandler();
         Assert.Equal("ForbidOrderableFloats", handler.Name);

@@ -5914,7 +5914,7 @@ public class SourceGenerator : IIncrementalGenerator
     static bool IsUnorderableKeyType(string type)
     {
         var normalized = NormalizeType(type);
-        return normalized is "float" or "double" or "decimal" or "decimal?";
+        return normalized is "float" or "double" or "decimal" or "float?" or "double?" or "decimal?";
     }
 
     static bool IsBoolType(string type)

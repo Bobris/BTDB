@@ -2136,6 +2136,25 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task NullableDoubleIndexIsRejected()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class NullableDoubleIndexEntity
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Score")] public double? Score { get; set; }
+            }
+
+            public interface INullableDoubleIndexTable : IRelation<NullableDoubleIndexEntity>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task DecimalIndexIsRejected()
     {
         // A decimal key would sort by its scale first, and 1.0 and 1.00 would be different keys.

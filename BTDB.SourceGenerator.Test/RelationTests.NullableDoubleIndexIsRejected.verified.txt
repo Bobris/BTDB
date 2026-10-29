@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+
+public interface INullableDoubleIndexTable : IRelation<NullableDoubleIndexEntity>
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+{
+*/
+ : (8,17)-(8,42),
+      Message: Field 'Score' type 'double?' cannot be used in indexes,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0035,
+        Title: Field 'Score' type 'double?' cannot be used in indexes,
+        MessageFormat: Field 'Score' type 'double?' cannot be used in indexes,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

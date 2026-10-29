@@ -98,6 +98,9 @@
 
 ### Fixed
 
+- ObjectDB: `float?` and `double?` key fields are refused like `float` and `double`; only the latter were checked.
+  Their key encoding does not keep the order of negative values. Breaking: relations, `IDictionary` and `IOrderedSet`
+  fields with such keys no longer open.
 - ObjectDB: `decimal` and `decimal?` key fields are refused, like `float` and `double`: the source generator reports
   BTDB0035 and the runtime throws `NotSupportedException`. A decimal key sorted by its scale first and kept equal
   values with different scales apart, so 2 sorted before 1.5, negative values after positive ones, and looking up

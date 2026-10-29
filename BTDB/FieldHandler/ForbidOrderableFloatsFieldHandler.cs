@@ -16,7 +16,7 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
         if ((options & FieldHandlerOptions.Orderable) == 0) return false;
         // A decimal key encoding keeps neither the order nor equality: it stores the scale, so 1.0 and 1.00 differ.
         if (type == typeof(float) || type == typeof(double) || type == typeof(decimal) ||
-            type == typeof(decimal?))
+            type == typeof(float?) || type == typeof(double?) || type == typeof(decimal?))
         {
             throw new NotSupportedException($"Type {type} is not supported as orderable field.");
         }

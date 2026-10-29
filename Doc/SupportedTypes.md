@@ -5,8 +5,8 @@
 - signed integers (`sbyte`, `short`, `int`, `long`) `Constraint<long>`/`Constraint.Signed`
 - unsigned integers (`byte`, `ushort`, `uint`, `ulong`) `Constraint<ulong>`/`Constraint.Unsigned`
 - `bool` `Constraint<bool>`/`Constraint.Bool`
-- `float` (`Single`) (cannot be used as key)
-- `double` (`Double`) (cannot be used as key)
+- `float` (`Single`) (cannot be used as key, nor can `float?`)
+- `double` (`Double`) (cannot be used as key, nor can `double?`)
 - `Decimal` (cannot be used as key, including `IDictionary` and `IOrderedSet` keys, its key encoding sorts by the
   scale first and keeps 1.0 and 1.00 apart)
 - `string` `Constraint<string>`/`Constraint.String` (keys sort by Unicode code point, which differs from
