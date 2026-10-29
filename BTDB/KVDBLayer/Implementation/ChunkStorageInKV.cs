@@ -20,7 +20,7 @@ class ChunkStorageInKV : IChunkStorage
         internal uint ContentLength
         {
             get { return ContentLengthCompressedIsLeaf / 4; }
-            set { ContentLengthCompressedIsLeaf = (ContentLengthCompressedIsLeaf & 1) + value * 4; }
+            set { ContentLengthCompressedIsLeaf = (ContentLengthCompressedIsLeaf & 3) + value * 4; }
         }
 
         internal bool Compressed
@@ -81,8 +81,9 @@ class ChunkStorageInKV : IChunkStorage
 
         if (hashKeyIndexFiles.Count == 0)
             return;
+        // Each open starts a new index file holding only what it stores, so every one is loaded, oldest first.
         hashKeyIndexFiles.Sort((x, y) => x.Value < y.Value ? -1 : x.Value > y.Value ? 1 : 0);
-        LoadHashKeyIndex(hashKeyIndexFiles[hashKeyIndexFiles.Count - 1].Key);
+        foreach (var (fileId, _) in hashKeyIndexFiles) LoadHashKeyIndex(fileId);
     }
 
     void LoadHashKeyIndex(uint hashKeyIndexFileId)
@@ -98,7 +99,8 @@ class ChunkStorageInKV : IChunkStorage
             value.FileOfs = reader.ReadVUInt32();
             value.ContentLengthCompressedIsLeaf = reader.ReadVUInt32();
             reader.ReadBlock(keyBuf.AsSyncSpan());
-            _dict20.TryAdd(new(keyBuf), value);
+            // A later entry for a key, as when it stops being a leaf, replaces the earlier one.
+            _dict20[new(keyBuf)] = value;
         }
     }
 

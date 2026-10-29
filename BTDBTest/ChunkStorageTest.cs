@@ -94,4 +94,20 @@ public class ChunkStorageTest : IDisposable
             Assert.Equal([1], (await tr.Get(CalcHash([0]))).ToByteArray());
         }
     }
+
+    [Fact]
+    public async Task ItRemembersContentStoredBeforeAndAfterAReopen()
+    {
+        using (var tr = _cs.StartTransaction())
+            tr.Put(CalcHash([0]), ByteBuffer.NewAsync([1]), true);
+        ReopenStorage();
+        using (var tr = _cs.StartTransaction())
+            tr.Put(CalcHash([2]), ByteBuffer.NewAsync([3]), true);
+        ReopenStorage();
+        using (var tr = _cs.StartTransaction())
+        {
+            Assert.Equal([3], (await tr.Get(CalcHash([2]))).ToByteArray());
+            Assert.Equal([1], (await tr.Get(CalcHash([0]))).ToByteArray());
+        }
+    }
 }

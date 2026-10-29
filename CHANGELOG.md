@@ -585,6 +585,10 @@
   a running writer. `CreateKvi` called while a writing transaction holds the log writes an index only when the last
   commit is already durable (always with `DurableTransactions`), and otherwise skips it with a logged warning. Found
   by simulating crashes at every file operation, also beside a concurrent writer.
+- The chunk storage sub-database of `BTreeKeyValueDB` (`GetSubDB<IChunkStorage>`) lost every chunk stored before the
+  previous reopen: each open writes a new hash index file with only what it stores, but opening loaded only the
+  newest one. Opening now loads them all, oldest first, and a later entry for a key replaces an earlier one, so a
+  chunk that stopped being a leaf stays so. The packed content length also no longer clears the compressed flag.
 - `OnDiskFileCollection`, `OnDiskMemoryMappedFileCollection` and `InMemoryFileCollection` kept the largest file ID in
   an `int`. A stray file named with the largest `uint`, like `4294967295.bin`, made the next file get ID 0, which every
   later open skips as no file, so the commits of a transaction log created there were lost; an ID above `int.MaxValue`
