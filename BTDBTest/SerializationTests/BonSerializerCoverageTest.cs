@@ -418,6 +418,20 @@ public class BonSerializerCoverageTest
         Assert.Throws<NotSupportedException>(() => Serialize(builder, new NotGenerated()));
     }
 
+    // Before the fix a plain object got the serializer of object, which waited for itself to be replaced, forever.
+    [Fact]
+    public void SerializingPlainObjectThrowsInsteadOfHanging()
+    {
+        var task = System.Threading.Tasks.Task.Run(() =>
+        {
+            var builder = new BonBuilder();
+            BonSerializerFactory.Serialize(ref builder, new object());
+        });
+        Assert.True(System.Threading.Tasks.Task.WaitAny([task], TimeSpan.FromSeconds(10)) == 0,
+            "Serializing a plain object hung.");
+        Assert.IsType<NotSupportedException>(task.Exception?.InnerException);
+    }
+
     public interface IHasName
     {
         string Name { get; set; }

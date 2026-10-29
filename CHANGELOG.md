@@ -601,6 +601,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `BonSerializerFactory.Serialize` of a plain `new object()`, also as the value of an `object` member, hung its thread
+  in a busy loop: the serializer of object waited for a serializer replacing it, which never came. It throws the
+  `NotSupportedException` other types without serialization support throw.
 - IOC: a singleton or scoped service whose factory resolved the same service while it was being created, for example
   through the injected `IContainer`, hung its thread in a busy loop: it waited for its own instance under a lock it
   already held. It throws `InvalidOperationException` now, and so does every later attempt.

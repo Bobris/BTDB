@@ -65,6 +65,10 @@ public class BonSerializerFactory : ISerializerFactory
 
         EnsureSerializationStack();
         var type = obj.GetType();
+        // A plain object has no members; its serializer would be the one for object, which waits below for a real
+        // serializer replacing it and so would wait forever.
+        if (type == typeof(object))
+            throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() + " is not supported.");
         var typePtr = type.TypeHandle.Value;
         _cache.TryGetValue(typePtr, out var serializer);
         if (serializer == null)
