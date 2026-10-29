@@ -212,6 +212,9 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- `BTreeKeyValueDB` loaded a damaged key index whose keys were no longer in order, building a tree whose lookups
+  missed keys it listed. Such an index is refused now, like other damaged ones. Key indexes have no checksum, so
+  damage keeping the order still changes keys and values unnoticed.
 - `ReadOnlyKeyValueDB` descending through a damaged child pointer that pointed back up its tree never ended: seeking a
   key index grew its node stack until `OutOfMemoryException`, and `CalcBTreeStats` crashed the process with a stack
   overflow. A child must lie before its parent, as the creator writes them, and within 64 levels; otherwise the image

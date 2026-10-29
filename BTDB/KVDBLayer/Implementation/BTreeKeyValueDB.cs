@@ -849,6 +849,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
 
             var cursor = _nextRoot.CreateCursor();
+            // The tree is built as the keys come, so a damaged key out of order would make lookups miss keys.
+            var lastKey = ByteBuffer.NewEmpty();
+            var anyKey = false;
+            void CheckOrder(in ByteBuffer key)
+            {
+                if (anyKey && key.AsSyncReadOnlySpan().SequenceCompareTo(lastKey.AsSyncReadOnlySpan()) <= 0)
+                    throw new BTDBException("Corrupted DB");
+                anyKey = true;
+                lastKey = key;
+            }
+
             if (info.Compression == KeyIndexCompression.Old)
             {
                 cursor.BuildTree(keyCount, ref reader,
@@ -864,6 +875,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         {
                             _compression.DecompressKey(ref key);
                         }
+
+                        CheckOrder(key);
 
                         trueValue.Clear();
                         var vFileId = reader2.ReadVUInt32();
@@ -935,6 +948,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             key.Expand(keyLen);
                             Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, (int)prefixLen);
                             reader2.ReadBlock(key.Slice((int)prefixLen).AsSyncSpan());
+                            CheckOrder(key);
                             prevKey = key;
                             var vFileId = reader2.ReadVUInt32();
                             if (vFileId != 0 && replicatedFiles != null)
