@@ -186,6 +186,9 @@
 - `LsmKeyValueDB` compaction: a level's size target past `long.MaxValue`, as `LevelMultiplier = 1000` gives level 5
   of seven, wrapped around to a negative or zero target, so the level never compacted down or always did. The target
   is capped at `long.MaxValue` now.
+- `LsmBlockCache`: evicting index and filter partitions could stop over capacity with an evictable partition left,
+  as with the data blocks below, once partitions of different sizes filled the cache: removals used up the fixed
+  step budget too. Only moves of the eviction hand count against it now.
 - `LsmBlockCache`: evicting blocks could stop with a shard still over capacity and an unpinned block left, because
   passing pinned blocks used up the eviction's fixed step budget. Eviction now stops only after passing every block of
   the shard pinned in a row.

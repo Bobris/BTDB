@@ -402,19 +402,22 @@ sealed class ManagedClockCache(long capacityBytes)
 
     void EvictIfNeeded(Entry keep)
     {
+        // Only moves of the hand count: in two passes it clears every reference and reaches every other entry, so the
+        // budget ends early only when hits set references again meanwhile. Counting removals too could stop it short.
         var steps = 2 * _ring.Count;
-        while (_size > capacityBytes && _ring.Count > 1 && steps-- > 0)
+        while (_size > capacityBytes && _ring.Count > 1)
         {
             if (_hand >= _ring.Count) _hand = 0;
             var entry = _ring[_hand];
-            if (entry.Referenced || entry == keep)
+            if (!entry.Referenced && entry != keep)
             {
-                entry.Referenced = false;
-                _hand++;
+                RemoveAt(_hand);
                 continue;
             }
 
-            RemoveAt(_hand);
+            if (steps-- == 0) break;
+            entry.Referenced = false;
+            _hand++;
         }
     }
 

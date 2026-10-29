@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,6 +51,29 @@ public class NativeClockCacheTest
         using var pin3 = cache.Pin(new(0, 1), 3, () => Block(1, 3, 1024));
         Assert.Equal(2 * 1024, cache.SizeBytes);
         Assert.False(cache.Contains(new(0, 1), 2));
+    }
+
+    sealed record SizedBlock(long MemorySize) : ICachedBlock;
+
+    // Before the fix the metadata cache's eviction budget, twice the ring's length, was used up by removals too: after
+    // these loads and hits it stopped over capacity with an evictable partition left besides the one just loaded.
+    [Fact]
+    public void MetadataEvictionReachesCapacity()
+    {
+        const long capacity = 59;
+        var cache = new ManagedClockCache(capacity);
+        var sizes = new Dictionary<int, long> { [1] = 15, [3] = 25, [4] = 4, [5] = 24, [6] = 46, [7] = 42 };
+        foreach (var key in new[] { 7, 6, 4, 3, 5, 1, 1, 7, 7, 1, 3 })
+        {
+            var loaded = false;
+            cache.GetOrLoad(new(0, 1), key, () =>
+            {
+                loaded = true;
+                return new SizedBlock(sizes[key]);
+            });
+            // A load evicts until the cache fits, or only the loaded partition is left.
+            if (loaded) Assert.True(cache.SizeBytes <= capacity || cache.SizeBytes == sizes[key], $"{key}: {cache.SizeBytes}");
+        }
     }
 
     // Before the fix a block loaded while the cache was disposed was added to it anyway, so it was never freed.
