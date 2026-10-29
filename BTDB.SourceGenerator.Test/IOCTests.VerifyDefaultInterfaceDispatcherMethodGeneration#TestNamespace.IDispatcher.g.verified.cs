@@ -14,13 +14,13 @@ public partial interface IDispatcher
     {
         foreach(var idx in VerifyHandlers.Index)
         {
-            VerifyHandlers.ValueRef(idx).Execute = VerifyHandlers.ValueRef(idx).ExecuteFactory(container);
+            VerifyHandlers.ValueRef(idx).Prepare(container);
         }
         static object? Consume(global::BTDB.IOC.IContainer container, object message)
         {
             if (VerifyHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {
-                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
+                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Invoke(container, message));
             }
             throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }
@@ -34,13 +34,13 @@ public partial interface IDispatcher
     {
         foreach(var idx in ConsumeHandlers.Index)
         {
-            ConsumeHandlers.ValueRef(idx).Execute = ConsumeHandlers.ValueRef(idx).ExecuteFactory(container);
+            ConsumeHandlers.ValueRef(idx).Prepare(container);
         }
         static object? Consume(global::BTDB.IOC.IContainer container, object message)
         {
             if (ConsumeHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {
-                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
+                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Invoke(container, message));
             }
             throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }

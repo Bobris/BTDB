@@ -133,6 +133,24 @@ public class IocDispatcherTests
         Assert.Equal(["default verify", "consume"], container.Resolve<DefaultMethodHandler>().Calls);
     }
 
+    // Before the fix the handlers were kept once per process, so creating a dispatcher for a second container made the
+    // dispatcher of the first one call the handlers of the second.
+    [Fact]
+    public unsafe void DispatcherOfEachContainerCallsItsHandlers()
+    {
+        var first = BuildContainer();
+        var firstConsume = IDefaultMethodDispatcher.CreateConsumeDispatcher(first);
+        var second = BuildContainer();
+        var secondConsume = IDefaultMethodDispatcher.CreateConsumeDispatcher(second);
+
+        firstConsume(first, new FirstHandlerMessage());
+        secondConsume(second, new SecondHandlerMessage());
+        firstConsume(first.CreateScope(), new SecondHandlerMessage());
+
+        Assert.Equal(["first", "second"], first.Resolve<TwoMessagesHandler>().Calls);
+        Assert.Equal(["second"], second.Resolve<TwoMessagesHandler>().Calls);
+    }
+
     // Creating a dispatcher resolves every handler registered for it, so all of them are registered.
     static IContainer BuildContainer()
     {

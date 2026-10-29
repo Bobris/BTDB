@@ -14,13 +14,13 @@ public partial interface IDispatcher
     {
         foreach(var idx in eventHandlers.Index)
         {
-            eventHandlers.ValueRef(idx).Execute = eventHandlers.ValueRef(idx).ExecuteFactory(container);
+            eventHandlers.ValueRef(idx).Prepare(container);
         }
         static object? Consume(global::BTDB.IOC.IContainer container, object message)
         {
             if (eventHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {
-                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Execute!(container, message));
+                return global::System.Runtime.CompilerServices.Unsafe.As<object>(handler.Invoke(container, message));
             }
             throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
         }

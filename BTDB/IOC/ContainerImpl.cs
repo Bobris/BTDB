@@ -60,6 +60,9 @@ public class ContainerImpl : IRootContainer
     readonly ContainerImpl _root;
     readonly ResolveFactoryCache _resolveFactoryCache;
 
+    // Scopes share the registrations and factories of their root container.
+    internal ContainerImpl Root => _root;
+
     readonly ConcurrentDictionary<ServiceProviderFactoryCacheKey, ServiceProviderFactoryCacheValue>
         _serviceProviderFactoryCache;
 

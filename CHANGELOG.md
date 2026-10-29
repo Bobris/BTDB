@@ -121,6 +121,10 @@
 - IOC: a dispatcher handler method taking a struct message made the generated code fail to compile, because it cast the
   message with `Unsafe.As`. Value type messages are unboxed now, and a `Nullable<T>` message is registered under `T`,
   the type of the boxed value.
+- IOC: generated dispatchers kept the handler factories once per process, so creating a dispatcher for a second
+  container made the dispatcher of the first one resolve its handlers from the second. `DispatcherItem` now keeps them
+  for each root container, which scopes share, and the generated code calls the new `DispatcherItem.Prepare` and
+  `Invoke`.
 - ObjectDB: non-public `OnBeforeRemove` and `OnSerialize` methods of a base class of a relation item threw
   `MissingMethodException` in generated relations, whose accessors targeted the derived class, and private ones were
   not called at all in relations emitted as IL. They are now called in both, also from generic base classes.

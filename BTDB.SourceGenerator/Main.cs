@@ -3194,13 +3194,13 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         foreach(var idx in {{name}}Handlers.Index)
                         {
-                            {{name}}Handlers.ValueRef(idx).Execute = {{name}}Handlers.ValueRef(idx).ExecuteFactory(container);
+                            {{name}}Handlers.ValueRef(idx).Prepare(container);
                         }
                         static {{resultType}}? Consume(global::BTDB.IOC.IContainer container, {{type}} message)
                         {
                             if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
                             {
-                                return global::System.Runtime.CompilerServices.Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
+                                return global::System.Runtime.CompilerServices.Unsafe.As<{{resultType}}>(handler.Invoke(container, message));
                             }
                             throw new global::System.InvalidOperationException($"No handler for message {message.GetType().FullName}");
                         }
