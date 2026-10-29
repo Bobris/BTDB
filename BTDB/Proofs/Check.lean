@@ -178,3 +178,5 @@ open Btdb
 #print axioms PtrLenInclude.absorb_sorted
 #print axioms PtrLenFree.fit_free
 #print axioms PtrLenFree.fit_first
+#print axioms PtrLenFree.take_mem
+#print axioms PtrLenFree.take_sorted

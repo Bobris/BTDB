@@ -12,6 +12,9 @@ returns `pos` for `len = 0`.
 * `fit_after`, `fit_free`: the result is at or after `pos` and the `len` positions from it are free.
 * `fit_first`: from every earlier position at or after `pos`, `len` positions would hit a range, so the result is the
   first fit.
+* `take_mem`, `take_sorted`: `TryFindLenAndRemove(len)` takes `len` positions from the front of the first range at
+  least that long; afterwards a position is in the ranges exactly when it was before and is not one of them, and the
+  ranges stay sorted and disjoint.
 -/
 
 namespace Btdb.PtrLenFree
@@ -103,5 +106,129 @@ theorem fit_first (pos len : Nat) (rs : List (Nat × Nat)) (hs : Sorted rs) (hne
         refine ⟨max q s, by omega, by omega, Or.inl ⟨by omega, by omega⟩⟩
       · obtain ⟨x, h1, h2, h3⟩ := ih (s + n) (sorted_tail _ _ hs) hnerest ⟨hqs, hq.2⟩
         exact ⟨x, h1, h2, Or.inr h3⟩
+
+/-- `TryFindLenAndRemove`: the start taken and the ranges after, or none when no range is long enough. -/
+def take (len : Nat) : List (Nat × Nat) → Option (Nat × List (Nat × Nat))
+  | [] => none
+  | (s, n) :: rest =>
+    if len ≤ n then some (s, if len = n then rest else (s + len, n - len) :: rest)
+    else (take len rest).map fun (at', rs) => (at', (s, n) :: rs)
+
+theorem take_start (len a : Nat) (rs : List (Nat × Nat)) (h : StartsFrom a rs) (at' : Nat)
+    (rs' : List (Nat × Nat)) (ht : take len rs = some (at', rs')) : a ≤ at' := by
+  induction rs generalizing at' rs' with
+  | nil => simp [take] at ht
+  | cons r rest ih =>
+    obtain ⟨s, n⟩ := r
+    simp only [take] at ht
+    split at ht
+    · simp only [Option.some.injEq, Prod.mk.injEq] at ht
+      obtain ⟨rfl, _⟩ := ht
+      exact h.1
+    · cases hr : take len rest with
+      | none => simp [hr] at ht
+      | some p =>
+        obtain ⟨at'', rs''⟩ := p
+        simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at ht
+        obtain ⟨rfl, _⟩ := ht
+        exact ih h.2 _ rs'' hr
+
+theorem take_mem (len : Nat) (rs : List (Nat × Nat)) (hs : Sorted rs) (at' : Nat) (rs' : List (Nat × Nat))
+    (h : take len rs = some (at', rs')) (x : Nat) : Mem x rs' ↔ Mem x rs ∧ ¬ (at' ≤ x ∧ x < at' + len) := by
+  induction rs generalizing at' rs' with
+  | nil => simp [take] at h
+  | cons r rest ih =>
+    obtain ⟨s, n⟩ := r
+    simp only [take] at h
+    split at h
+    · next hlen =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      simp only [Mem]
+      by_cases heq : len = n
+      · rw [ite_eq_left heq]
+        constructor
+        · intro hm
+          have := mem_after s n x rest hs hm
+          exact ⟨Or.inr hm, by omega⟩
+        · rintro ⟨h1 | h1, h2⟩
+          · omega
+          · exact h1
+      · rw [ite_eq_right heq]
+        simp only [Mem]
+        constructor
+        · rintro (h1 | h1)
+          · exact ⟨Or.inl ⟨by omega, by omega⟩, by omega⟩
+          · have := mem_after s n x rest hs h1
+            exact ⟨Or.inr h1, by omega⟩
+        · rintro ⟨h1 | h1, h2⟩
+          · exact Or.inl ⟨by omega, by omega⟩
+          · exact Or.inr h1
+    · next hlen =>
+      cases hr : take len rest with
+      | none => simp [hr] at h
+      | some p =>
+        obtain ⟨at'', rs''⟩ := p
+        simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        have hge := take_start len (s + n) rest (starts_from_tail s n rest hs) at'' rs'' hr
+        simp only [Mem]
+        rw [ih (sorted_tail _ _ hs) at'' rs'' hr]
+        constructor
+        · rintro (h1 | ⟨h1, h2⟩)
+          · exact ⟨Or.inl h1, by omega⟩
+          · exact ⟨Or.inr h1, h2⟩
+        · rintro ⟨h1 | h1, h2⟩
+          · exact Or.inl h1
+          · exact Or.inr ⟨h1, h2⟩
+
+theorem take_starts_from (len a : Nat) (rs : List (Nat × Nat)) (h : StartsFrom a rs) (at' : Nat)
+    (rs' : List (Nat × Nat)) (ht : take len rs = some (at', rs')) : StartsFrom a rs' := by
+  induction rs generalizing at' rs' with
+  | nil => simp [take] at ht
+  | cons r rest ih =>
+    obtain ⟨s, n⟩ := r
+    simp only [take] at ht
+    split at ht
+    · simp only [Option.some.injEq, Prod.mk.injEq] at ht
+      obtain ⟨_, rfl⟩ := ht
+      split
+      · exact h.2
+      · exact ⟨by have := h.1; omega, h.2⟩
+    · cases hr : take len rest with
+      | none => simp [hr] at ht
+      | some p =>
+        obtain ⟨at'', rs''⟩ := p
+        simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at ht
+        obtain ⟨_, rfl⟩ := ht
+        exact ⟨h.1, ih h.2 at'' rs'' hr⟩
+
+theorem take_sorted (len : Nat) (rs : List (Nat × Nat)) (hs : Sorted rs) (at' : Nat) (rs' : List (Nat × Nat))
+    (h : take len rs = some (at', rs')) : Sorted rs' := by
+  induction rs generalizing at' rs' with
+  | nil => simp [take] at h
+  | cons r rest ih =>
+    obtain ⟨s, n⟩ := r
+    simp only [take] at h
+    split at h
+    · next hlen =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨_, rfl⟩ := h
+      split
+      · exact sorted_tail _ _ hs
+      · match rest, hs with
+        | [], _ => trivial
+        | (t, m) :: rest', hs => exact ⟨by have := hs.1; omega, hs.2⟩
+    · cases hr : take len rest with
+      | none => simp [hr] at h
+      | some p =>
+        obtain ⟨at'', rs''⟩ := p
+        simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨_, rfl⟩ := h
+        have hrs := ih (sorted_tail _ _ hs) at'' rs'' hr
+        have hfrom := take_starts_from len (s + n) rest (starts_from_tail s n rest hs) at'' rs'' hr
+        match rs'', hrs, hfrom with
+        | [], _, _ => trivial
+        | (t, m) :: rest', hrs, hfrom => exact ⟨hfrom.1, hrs⟩
 
 end Btdb.PtrLenFree
