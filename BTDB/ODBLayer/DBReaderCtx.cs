@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using BTDB.Collections;
 using BTDB.Encrypted;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -36,7 +37,7 @@ public class DBReaderCtx : IDBReaderCtx
         }
 
         var ido = (int)-id - 1;
-        var o = RetrieveObj(ido);
+        var o = RetrieveObj(ido, reader);
         if (o != null)
         {
             if (o is not IMemorizedPosition mp)
@@ -102,7 +103,7 @@ public class DBReaderCtx : IDBReaderCtx
         }
 
         var ido = (int)-id - 1;
-        var o = RetrieveObj(ido);
+        var o = RetrieveObj(ido, reader);
         if (o != null)
         {
             return false;
@@ -122,8 +123,12 @@ public class DBReaderCtx : IDBReaderCtx
         }
     }
 
-    object? RetrieveObj(int ido)
+    object? RetrieveObj(int ido, in MemReader reader)
     {
+        // Inline objects are numbered as written, each taking at least a byte, so a damaged number beyond the record
+        // would only grow this list by billions of entries.
+        if (ido >= _objects.Count && reader.Controller == null && ido - _objects.Count >= reader.End - reader.Start)
+            throw new BTDBException($"Inline object number {ido + 1} is beyond the {reader.End - reader.Start} bytes read.");
         while (_objects.Count <= ido) _objects.Add(null);
         return _objects[ido];
     }

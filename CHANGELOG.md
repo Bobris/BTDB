@@ -209,6 +209,8 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- ObjectDB reading a damaged inline object number grew its list of read objects to that number, a null at a time,
+  up to two billion entries for one value. A number beyond the bytes of the record is reported as damage now.
 - `SlowGetValue` and `SlowGetKey` returned a buffer sized by the stored size of the current key, which for a value
   written compressed by older versions of `BTreeKeyValueDB` is the compressed size, so they returned its beginning only.
   They return what the cursor read now.
