@@ -249,7 +249,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         }
 
         if (_dirtyObjSet == null) yield break;
-        var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid).ToList();
+        // New objects not flushed yet were not among the stored ones, also those older than the last stored one.
+        var lastOid = oid;
+        var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > lastOid || !IsStoredObject(cursor, p.Key)).ToList();
         dirtyObjsToEnum.Sort((p1, p2) => p1.Key < p2.Key ? -1 : p1.Key > p2.Key ? 1 : 0);
         foreach (var dObjPair in dirtyObjsToEnum)
         {
@@ -258,6 +260,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             yield return obj;
         }
     }
+
+    static bool IsStoredObject(IKeyValueDBCursor cursor, ulong oid) =>
+        cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, stackalloc byte[10]));
 
     object? GetObjFromObjCacheByOid(ulong oid)
     {

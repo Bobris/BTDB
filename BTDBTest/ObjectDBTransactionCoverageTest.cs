@@ -98,6 +98,17 @@ public class ObjectDBTransactionCoverageTest : FieldHandlerCoverageTestBase
         }
     }
 
+    // Before the fix new objects not flushed yet were enumerated only when newer than the last stored object, so one
+    // stored before an object flushed with StoreAndFlush was missing.
+    [Fact]
+    public void EnumerateIncludesDirtyObjectsBeforeFlushedOnes()
+    {
+        using var tr = _db.StartTransaction();
+        tr.Store(new Node { Value = 1 });
+        tr.StoreAndFlush(new Node { Value = 2 });
+        Assert.Equal([1, 2], tr.Enumerate<Node>().Select(n => n.Value).OrderBy(v => v));
+    }
+
     [Fact]
     public void DeletingUnknownObjectsInBigCacheModeIsIgnored()
     {
