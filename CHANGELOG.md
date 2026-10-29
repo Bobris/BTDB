@@ -107,6 +107,8 @@
 
 ### Fixed
 
+- `AesGcmSymmetricCipher` took the nonces of `EncryptedString` values from `System.Random`, which is not a
+  cryptographic generator. They now come from `RandomNumberGenerator`; the stored format is unchanged.
 - `DiskChunkCache` loaded the entries of a damaged hash index as they were: a damaged length made `Get` allocate up
   to 4 GB, and an entry pointing past its value file or into an unknown file was kept. Such entries are now skipped.
 - `SnappyDecompress.Decompress` accepted a copy with offset 0, which copied a byte onto itself, so damaged data

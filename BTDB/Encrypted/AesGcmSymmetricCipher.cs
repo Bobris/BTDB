@@ -20,20 +20,6 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
         _aesCbc.Key = key;
     }
 
-    [ThreadStatic] static Random? _random;
-
-    // This wraps the _random variable to make sure each thread gets a Random for itself
-    static Random RandomInstance
-    {
-        get
-        {
-            if (_random == null)
-                _random = new Random();
-
-            return _random;
-        }
-    }
-
     public int CalcEncryptedSizeFor(ReadOnlySpan<byte> plainInput)
     {
         return NonceSize + TagSize + plainInput.Length;
@@ -43,7 +29,8 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
     {
         lock (_lock)
         {
-            RandomInstance.NextBytes(outputBuffer.Slice(0, NonceSize));
+            // A GCM nonce must never repeat for a key, so it comes from the cryptographic generator
+            RandomNumberGenerator.Fill(outputBuffer.Slice(0, NonceSize));
             outputBuffer[0] &= 0x0f; // 4 bits left for future algorithm type
             _aes.Encrypt(outputBuffer.Slice(0, NonceSize), plainInput,
                 outputBuffer.Slice(NonceSize + TagSize, plainInput.Length), outputBuffer.Slice(NonceSize, TagSize));
