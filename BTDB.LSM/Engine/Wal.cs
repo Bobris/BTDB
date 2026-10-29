@@ -200,6 +200,9 @@ sealed class WalRecordBuilder
                 {
                     var key = decoder.ReadByteArray();
                     var flags = decoder.ReadByte();
+                    // Insert adds a node without looking for one, so a present key would be held twice.
+                    if (memtable.TryGetNode(key, out _, out _))
+                        throw new BTDBException("WAL replay inserts a key already in its memtable.");
                     memtable.Insert(key, (flags & 1) != 0, (flags & 2) != 0, decoder.Take(decoder.ReadVUInt32()));
                     break;
                 }

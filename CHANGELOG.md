@@ -136,6 +136,8 @@
 
 ### Fixed
 
+- LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
+  is reported as damage now, like an update of a missing key.
 - `LsmBlockCache`: a block loaded while the cache was being disposed was added to it anyway, so its native memory was
   never freed. Such a block now serves only the pin that loaded it and is freed when it is released.
 - ObjectDB: a nullable, tuple, list or dictionary of a type without a field handler, like `char?`, failed with
