@@ -57,3 +57,4 @@ import BtdbProofs.MemoryStreamSize
 import BtdbProofs.ProviderDisposal
 import BtdbProofs.PtrLenInclude
 import BtdbProofs.PtrLenFree
+import BtdbProofs.XxHashStream

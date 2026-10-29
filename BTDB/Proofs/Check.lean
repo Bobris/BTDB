@@ -180,3 +180,5 @@ open Btdb
 #print axioms PtrLenFree.fit_first
 #print axioms PtrLenFree.take_mem
 #print axioms PtrLenFree.take_sorted
+#print axioms XxHashStream.update_eq_go
+#print axioms XxHashStream.stream_eq_whole

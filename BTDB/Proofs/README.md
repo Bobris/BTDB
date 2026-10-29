@@ -171,6 +171,9 @@ gap reaches (`../KVDBLayer/Helpers/PtrLenList.cs`).
 `BtdbProofs/PtrLenFree.lean` models the scan of `PtrLenList.FindFreeSizeAfter` after its binary search and
 `TryFindLenAndRemove` (`../KVDBLayer/Helpers/PtrLenList.cs`).
 
+`BtdbProofs/XxHashStream.lean` models the buffering of `XxHash64.Update` over any block function
+(`../Buffer/XxHash64.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -310,6 +313,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `PtrLenInclude.absorb_mem`, `PtrLenInclude.absorb_sorted` | Once an included range starts in a gap, merging the ranges it reaches leaves a position included exactly when it was or lies in the included range, and keeps the ranges sorted and disjoint. |
 | `PtrLenFree.fit_free`, `PtrLenFree.fit_first` | `FindFreeSizeAfter(pos, len)` returns a position at or after `pos` from which `len` positions are free, and from every earlier position at or after `pos` they would hit a range, so it is the first fit. |
 | `PtrLenFree.take_mem`, `PtrLenFree.take_sorted` | `TryFindLenAndRemove(len)` takes `len` positions from the front of the first range at least that long; afterwards a position is included exactly when it was and is not one of them, and the ranges stay sorted and disjoint. |
+| `XxHashStream.update_eq_go`, `XxHashStream.stream_eq_whole` | One `XxHash64.Update`, filling a pending partial block before whole blocks, consumes what the one-shot hash consumes of the pending bytes and the input, so updating with any chunks gives the state and pending bytes of hashing them all at once. |
 | `Fletcher.block_fits`, `Fletcher.odd_fits`, `Fletcher.result_fits`, `Fletcher.fold_mod` | Fletcher-32 sums stay below 2^32 through every block of up to 360 words and the last odd byte, folding returns them to the bounds a block starts from without changing them modulo 65535, and the result keeps both sums in 16 bits. |
 | `DisposeRace.fixed_disposes_once` | In every interleaving of two threads tracking new instances and one disposing the container, each instance is disposed exactly once and none stays owned. |
 | `DisposeRace.previous_leaks` | Before the 2026-10-29 fix, reading the dispose flag before adding the instance left some interleaving with an instance never disposed (`IOCDisposeRaceTest`). |
