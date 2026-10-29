@@ -236,3 +236,5 @@ open Btdb
 #print axioms EventBlocks.ends_le_space
 #print axioms EventBlocks.old_check_loses
 #print axioms InlineNumbers.valid_number_accepted
+#print axioms ReadOnlyDepth.descent_bounded
+#print axioms ReadOnlyDepth.valid_depth

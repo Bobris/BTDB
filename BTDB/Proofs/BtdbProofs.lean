@@ -80,3 +80,4 @@ import BtdbProofs.EnumerateDirty
 import BtdbProofs.ObjectRestore
 import BtdbProofs.EventBlocks
 import BtdbProofs.InlineNumbers
+import BtdbProofs.ReadOnlyDepth

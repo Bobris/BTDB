@@ -132,6 +132,9 @@ which of them `ReadOnlyEventStore.ReadToEnd` reads within the maximum file size.
 
 `BtdbProofs/InlineNumbers.lean` models the bound `DBReaderCtx` puts on the inline object numbers it reads.
 
+`BtdbProofs/ReadOnlyDepth.lean` models how deep the read-only database's descents go, and how deep the trees
+`ReadOnlyCreator` builds are.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -333,6 +336,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ObjectRestore.reachable_inv`, `ObjectRestore.old_breaks` | An object pending for the commit is dirty under its oid and cached under it, and every dirty object is pending, also when a deleted object is stored again after another was created under its oid; before the 2026-10-29 fix a deleted object stored again stayed out of the cache (`ObjectDBTransactionCoverageTest`). |
 | `EventBlocks.ends_le_space`, `EventBlocks.old_check_loses` | Every block of an event ends within its `SpaceNeeded`, so an event fitting the file with all its block headers is read whole; before the 2026-10-29 fix the store checked the length with one header only and accepted an event whose last block ends past the maximum file size (`EventStoreFileCoverageTest`). |
 | `InlineNumbers.valid_number_accepted` | Every inline object number of a valid record is below the objects registered so far plus the record length, so the bound added in the 2026-10-29 fix refuses only damage, also for a reader skipping nested content (`DBReaderCtxDamageTest`). |
+| `ReadOnlyDepth.descent_bounded`, `ReadOnlyDepth.valid_depth` | A descent through children at strictly decreasing offsets ends within the root offset's steps, and a tree the creator builds over at most 2^32 leaves has at most 33 levels, so the 2026-10-29 fix stops descents through damaged pointers and refuses no valid image (`ReadOnlyKeyValueDBFuzzTest`, seed 3025). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
