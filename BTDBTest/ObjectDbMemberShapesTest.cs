@@ -508,4 +508,38 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             }
         });
     }
+
+    [Generate]
+    public class ObjectBeforeRename
+    {
+        public string? Name { get; set; }
+    }
+
+    [Generate]
+    public class ObjectAfterRename
+    {
+        [BTDB.FieldHandler.PersistedName("Name")] public string? Title { get; set; }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RenamingObjectPropertyWithPersistedNameKeepsData(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            ulong oid;
+            _db.RegisterType(typeof(ObjectBeforeRename), "Renamed");
+            using (var tr = _db.StartTransaction())
+            {
+                oid = tr.Store(new ObjectBeforeRename { Name = "n" });
+                tr.Commit();
+            }
+
+            ReopenDb();
+            _db.RegisterType(typeof(ObjectAfterRename), "Renamed");
+            using var read = _db.StartReadOnlyTransaction();
+            Assert.Equal("n", ((ObjectAfterRename)read.Get(oid)!).Title);
+        });
+    }
 }
