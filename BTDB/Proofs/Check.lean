@@ -219,3 +219,5 @@ open Btdb
 #print axioms SingletonCache.reachable_inv
 #print axioms SingletonCache.lookup_correct
 #print axioms SingletonCache.writer_store_ignored
+#print axioms SingletonOid.reachable_inv
+#print axioms SingletonOid.old_loses_oid

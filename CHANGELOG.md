@@ -173,7 +173,8 @@
   - `BTDB/Proofs/`, hash collections: bucket counts are rounded up to the smallest power of two not below the
     capacity asked for.
   - `BTDB/Proofs/`, ObjectDB singletons: a transaction taking a singleton from the shared content cache gets the one
-    of its snapshot, whatever readers cache concurrently.
+    of its snapshot, whatever readers cache concurrently, and an allocated singleton oid is stored by a later writer
+    unless already durable.
   - `BTDB/Proofs/`, Bon: a container holds at most as many items as its buffer has bytes, so the check refuses only
     damage.
   - `BTDB/Proofs/`, IOC: a service resolving itself while it is created fails instead of waiting for itself forever.
