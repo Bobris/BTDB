@@ -48,7 +48,8 @@
     - cutting range tombstones at the table boundaries of a compaction keeps their coverage;
     - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix;
     - variable-length integers, signed ones too, read back as written, and every one the decoder accepts fits in 64
-      bits.
+      bits;
+    - a table's Bloom filter passes every key added to it.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
