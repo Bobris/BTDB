@@ -118,6 +118,9 @@
 
 ### Fixed
 
+- `PtrLenList.TryExclude` of a range ending in a gap moved the start of the next range back to the end of the excluded
+  one, so excluding `[5, 8)` turned `[20, 24)` into `[8, 24)`; `UnmergeInPlace` did the same. Such a range now leaves
+  the next one as it is.
 - IOC: `ContainerVerification.SingletonsUsingOnlySingletons` verified only the default registration of each type, so a
   singleton registered before another registration of the same type, which `IEnumerable<T>` still resolves, could use
   a transient or scoped dependency unreported. Every registration is verified now.

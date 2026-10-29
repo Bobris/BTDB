@@ -113,7 +113,8 @@ public class PtrLenList
                 break;
             }
         }
-        if (l == _size)
+        // The rest of the excluded range starts in a gap; it removes nothing when it ends before the next range.
+        if (l == _size || excludePos + excludeLen <= _list![l].Key)
         {
             return false;
         }
