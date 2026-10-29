@@ -9,19 +9,23 @@ cache of a singleton's stored bytes shared by all transactions of an `ObjectDB`,
   its snapshot and offers that to the cache with `t`, which keeps it when `n ≤ t`. A reader's snapshot is a committed
   one, `t ≤ C`, and the content it read is the one committed at `t`; it may offer it at any later time, after other
   steps.
-* The writer, whose number is the committed `C`, sets the cache to `C + 1` and nothing before it changes the singleton,
-  so its own uncommitted content, offered with `C`, is never kept. Every change must do so: storing an object that may
-  be the singleton, deleting one (also by its oid) and `DeleteAllData`. Before the 2026-10-29 fix storing the singleton
-  before its oid was loaded, deleting it by its oid and `DeleteAllData` did not, and a stale singleton was served after
-  the commit (`ObjectDbSingletonCacheTest`).
+* The writer's number is `w = C + ahead`: `LsmKeyValueDB` gives a writer the committed number (`ahead = 0`), while
+  `BTreeKeyValueDB` gives it the number its commit will have (`ahead = 1`). Before changing the singleton it reads and
+  offers the committed one with `w`. It sets the cache to `w + 1` and nothing before it changes the singleton, so its
+  own uncommitted content, offered with `w`, is never kept. Every change must do so: storing an object that may be the
+  singleton, deleting one (also by its oid) and `DeleteAllData`. Before the 2026-10-29 fix storing the singleton before
+  its oid was loaded, deleting it by its oid and `DeleteAllData` did not, and a stale singleton was served after the
+  commit (`ObjectDbSingletonCacheTest`).
 * A commit makes the singleton at `C + 1` the new content when the writer changed it, otherwise the one at `C`. A
   rollback changes nothing committed.
 
 The singleton committed at each number is `value`. Natural numbers model transaction numbers, which do not wrap.
 
 * `reachable_inv`: every reachable state keeps the invariant `Inv`: the singleton does not change from the cached number
-  to `C`, and cached content is the singleton at its number.
-* `lookup_correct`: content a transaction takes from the cache is the singleton of its own snapshot.
+  to `C`, and cached content is the newest singleton committed at or before its number.
+* `lookup_correct`: content a reader takes from the cache is the singleton of its own snapshot.
+* `writer_lookup_correct`: content the writer takes from the cache is the committed singleton, never its own
+  uncommitted one.
 * `writer_store_ignored`: content the writer offers after changing the singleton is not kept.
 -/
 
@@ -39,37 +43,37 @@ structure State (α : Type) where
 def store {α} (s : State α) (t : Nat) (c : Option α) : State α :=
   if s.cacheN ≤ t then { s with cacheN := t, cacheC := c } else s
 
-inductive Step {α} : State α → State α → Prop
+inductive Step {α} (ahead : Nat) : State α → State α → Prop
   | readerStore (s : State α) (t : Nat) (ht : t ≤ s.committed) :
-      Step s (store s t (some (s.value t)))
-  | writerStore (s : State α) (c : α) :
-      Step s (if s.changing then store s s.committed (some c) else s)
+      Step ahead s (store s t (some (s.value t)))
+  | writerReadStore (s : State α) (hc : s.changing = false) :
+      Step ahead s (store s (s.committed + ahead) (some (s.value s.committed)))
+  | writerStore (s : State α) (c : α) (hc : s.changing = true) :
+      Step ahead s (store s (s.committed + ahead) (some c))
   | change (s : State α) :
-      Step s { store s (s.committed + 1) none with changing := true }
+      Step ahead s { store s (s.committed + ahead + 1) none with changing := true }
   | commitChanged (s : State α) (x : α) (hc : s.changing = true) :
-      Step s { s with committed := s.committed + 1,
-                      value := fun t => if t = s.committed + 1 then x else s.value t, changing := false }
+      Step ahead s { s with committed := s.committed + 1,
+                            value := fun t => if t = s.committed + 1 then x else s.value t, changing := false }
   | commitUnchanged (s : State α) (hc : s.changing = false) :
-      Step s { s with committed := s.committed + 1,
-                      value := fun t => if t = s.committed + 1 then s.value s.committed else s.value t }
-  | rollback (s : State α) : Step s { s with changing := false }
+      Step ahead s { s with committed := s.committed + 1,
+                            value := fun t => if t = s.committed + 1 then s.value s.committed else s.value t }
+  | rollback (s : State α) : Step ahead s { s with changing := false }
 
 def init {α} (v : α) : State α := ⟨0, fun _ => v, 0, none, false⟩
 
-inductive Reachable {α} (v : α) : State α → Prop
-  | init : Reachable v (init v)
-  | step {s s'} : Reachable v s → Step s s' → Reachable v s'
+inductive Reachable {α} (ahead : Nat) (v : α) : State α → Prop
+  | init : Reachable ahead v (init v)
+  | step {s s'} : Reachable ahead v s → Step ahead s s' → Reachable ahead v s'
 
-structure Inv {α} (s : State α) : Prop where
-  bound : s.cacheN ≤ s.committed + 1
+structure Inv {α} (ahead : Nat) (s : State α) : Prop where
+  bound : s.cacheN ≤ s.committed + ahead + 1
   stable : ∀ t, s.cacheN ≤ t → t ≤ s.committed → s.value t = s.value s.cacheN
-  cached : ∀ c, s.cacheC = some c → s.cacheN ≤ s.committed ∧ c = s.value s.cacheN
-  changing : s.changing = true → s.cacheN = s.committed + 1 ∧ s.cacheC = none
+  cached : ∀ c, s.cacheC = some c → s.cacheN ≤ s.committed + ahead ∧ c = s.value (min s.cacheN s.committed)
+  changing : s.changing = true → s.cacheN = s.committed + ahead + 1 ∧ s.cacheC = none
 
-theorem inv_init {α} (v : α) : Inv (init v) :=
-  ⟨by simp [init], fun _ _ _ => rfl, fun _ h => by simp [init] at h, fun h => by simp [init] at h⟩
-
-theorem inv_step {α} {s s' : State α} (h : Inv s) (hs : Step s s') : Inv s' := by
+theorem inv_step {α} {ahead : Nat} (ha : ahead ≤ 1) {s s' : State α} (h : Inv ahead s) (hs : Step ahead s s') :
+    Inv ahead s' := by
   obtain ⟨hb, hst, hca, hch⟩ := h
   cases hs with
   | readerStore t ht =>
@@ -80,69 +84,101 @@ theorem inv_step {α} {s s' : State α} (h : Inv s) (hs : Step s s') : Inv s' :=
       · omega
       · rw [hst t' (by omega) h2, hst t hn ht]
       · simp at hc
-        exact ⟨ht, hc.symm⟩
+        exact ⟨by omega, by rw [Nat.min_eq_left ht]; exact hc.symm⟩
       · have := (hch hc).1
         omega
     · simp only [hn, ↓reduceIte]
       exact ⟨hb, hst, hca, hch⟩
-  | writerStore c =>
-    by_cases hc : s.changing = true
-    · have h1 := (hch hc).1
-      simp only [hc, ↓reduceIte, store, show ¬s.cacheN ≤ s.committed by omega]
+  | writerReadStore hc =>
+    unfold store
+    by_cases hn : s.cacheN ≤ s.committed + ahead
+    · simp only [hn, ↓reduceIte]
+      refine ⟨?_, fun t' h1 h2 => ?_, fun c hcc => ?_, fun h => by simp [hc] at h⟩ <;> dsimp only at *
+      · omega
+      · have : s.committed + ahead = s.committed := by omega
+        rw [this] at h1 ⊢
+        have : t' = s.committed := by omega
+        rw [this]
+      · simp at hcc
+        exact ⟨Nat.le_refl _, by rw [Nat.min_eq_right (by omega)]; exact hcc.symm⟩
+    · simp only [hn, ↓reduceIte]
       exact ⟨hb, hst, hca, hch⟩
-    · simp only [hc]
-      exact ⟨hb, hst, hca, hch⟩
+  | writerStore c hc =>
+    have h1 := (hch hc).1
+    simp only [store, show ¬s.cacheN ≤ s.committed + ahead by omega, ↓reduceIte]
+    exact ⟨hb, hst, hca, hch⟩
   | change =>
-    simp only [store, show s.cacheN ≤ s.committed + 1 from hb, ↓reduceIte]
-    exact ⟨Nat.le_refl _, fun t h1 h2 => by dsimp only at h1 h2; omega, fun c hc => by simp at hc, fun _ => ⟨rfl, rfl⟩⟩
+    simp only [store, show s.cacheN ≤ s.committed + ahead + 1 from hb, ↓reduceIte]
+    exact ⟨Nat.le_refl _, fun t h1 h2 => by dsimp only at h1 h2; omega, fun c hc => by simp at hc,
+      fun _ => ⟨rfl, rfl⟩⟩
   | commitChanged x hc =>
     obtain ⟨hn, hnone⟩ := hch hc
     refine ⟨by simp; omega, fun t h1 h2 => ?_, fun c h => by simp [hnone] at h, fun h => by simp at h⟩
     simp only at h1 h2 ⊢
-    have : t = s.committed + 1 := by omega
-    subst this
-    simp [hn]
+    have ht : t = s.committed + 1 := by omega
+    have hN : s.cacheN = s.committed + 1 := by omega
+    rw [ht, hN]
   | commitUnchanged hc =>
     refine ⟨by simp; omega, fun t h1 h2 => ?_, fun c h => ?_, fun h => by simp [hc] at h⟩
     · simp only at h1 h2 ⊢
-      by_cases hN : s.cacheN = s.committed + 1
-      · have : t = s.committed + 1 := by omega
-        simp [this, hN]
-      · have hnc : s.cacheN ≠ s.committed + 1 := hN
-        simp only [hnc, ↓reduceIte]
-        by_cases ht : t = s.committed + 1
-        · simp only [ht, ↓reduceIte]
+      by_cases ht : t = s.committed + 1
+      · simp only [ht, ↓reduceIte]
+        by_cases hN : s.cacheN = s.committed + 1
+        · simp [hN]
+        · simp only [hN, ↓reduceIte]
           exact hst _ (by omega) (Nat.le_refl _)
-        · simp only [ht, ↓reduceIte]
-          exact hst t h1 (by omega)
+      · simp only [ht, ↓reduceIte]
+        rw [hst t h1 (by omega)]
+        simp [show s.cacheN ≠ s.committed + 1 by omega]
     · simp only at h ⊢
       obtain ⟨h1, h2⟩ := hca c h
       refine ⟨by omega, ?_⟩
-      simp [show s.cacheN ≠ s.committed + 1 by omega, h2]
+      by_cases hN : s.cacheN ≤ s.committed
+      · rw [Nat.min_eq_left (by omega : s.cacheN ≤ s.committed + 1)]
+        rw [Nat.min_eq_left hN] at h2
+        simp [show s.cacheN ≠ s.committed + 1 by omega, h2]
+      · have hN1 : s.cacheN = s.committed + 1 := by omega
+        rw [Nat.min_eq_right (by omega : s.committed ≤ s.cacheN)] at h2
+        rw [hN1, Nat.min_self]
+        simp [h2]
   | rollback =>
     exact ⟨hb, hst, hca, fun h => by simp at h⟩
 
-theorem reachable_inv {α} {v : α} {s : State α} (h : Reachable v s) : Inv s := by
+theorem reachable_inv {α} {ahead : Nat} (ha : ahead ≤ 1) {v : α} {s : State α} (h : Reachable ahead v s) :
+    Inv ahead s := by
   induction h with
-  | init => exact inv_init v
-  | step _ hs ih => exact inv_step ih hs
+  | init => exact ⟨by simp [init], fun _ _ _ => rfl, fun _ h => by simp [init] at h, fun h => by simp [init] at h⟩
+  | step _ hs ih => exact inv_step ha ih hs
 
 /-- `SingletonContent`: the cached content when the cache is not newer than the transaction. -/
 def lookup {α} (s : State α) (t : Nat) : Option α := if s.cacheN ≤ t then s.cacheC else none
 
-theorem lookup_correct {α} {v : α} {s : State α} (h : Reachable v s) (t : Nat) (ht : t ≤ s.committed) (c : α)
-    (hl : lookup s t = some c) : c = s.value t := by
-  have hi := reachable_inv h
+theorem lookup_correct {α} {ahead : Nat} (ha : ahead ≤ 1) {v : α} {s : State α} (h : Reachable ahead v s) (t : Nat)
+    (ht : t ≤ s.committed) (c : α) (hl : lookup s t = some c) : c = s.value t := by
+  have hi := reachable_inv ha h
   unfold lookup at hl
   by_cases hn : s.cacheN ≤ t
   · simp only [hn, ↓reduceIte] at hl
     obtain ⟨_, hc⟩ := hi.cached c hl
-    rw [hc, hi.stable t hn ht]
+    rw [hc, Nat.min_eq_left (by omega), hi.stable t hn ht]
   · simp [hn] at hl
 
-theorem writer_store_ignored {α} {v : α} {s : State α} (h : Reachable v s) (hc : s.changing = true) (c : α) :
-    store s s.committed (some c) = s := by
-  have := ((reachable_inv h).changing hc).1
-  simp [store, show ¬s.cacheN ≤ s.committed by omega]
+theorem writer_lookup_correct {α} {ahead : Nat} (ha : ahead ≤ 1) {v : α} {s : State α} (h : Reachable ahead v s)
+    (c : α) (hl : lookup s (s.committed + ahead) = some c) : c = s.value s.committed := by
+  have hi := reachable_inv ha h
+  unfold lookup at hl
+  by_cases hn : s.cacheN ≤ s.committed + ahead
+  · simp only [hn, ↓reduceIte] at hl
+    obtain ⟨_, hcv⟩ := hi.cached c hl
+    rw [hcv]
+    by_cases hN : s.cacheN ≤ s.committed
+    · rw [Nat.min_eq_left hN, hi.stable s.committed hN (Nat.le_refl _)]
+    · rw [Nat.min_eq_right (by omega)]
+  · simp [hn] at hl
+
+theorem writer_store_ignored {α} {ahead : Nat} (ha : ahead ≤ 1) {v : α} {s : State α} (h : Reachable ahead v s)
+    (hc : s.changing = true) (c : α) : store s (s.committed + ahead) (some c) = s := by
+  have := ((reachable_inv ha h).changing hc).1
+  simp [store, show ¬s.cacheN ≤ s.committed + ahead by omega]
 
 end Btdb.SingletonCache
