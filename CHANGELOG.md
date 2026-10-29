@@ -72,7 +72,8 @@
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
     first key passing the lower bound or, descending, at the last key within the upper bound; an ordinal
     `StartsWith` scans exactly the keys of the strings with the prefix, and string keys, null included, are prefix
-    free, so an ordinal equality can be part of a key prefix; `CountBy` and `AnyBy` with an advanced enumerator
+    free, so an ordinal equality can be part of a key prefix, and string keys sort in code-point order, which is not
+    ordinal UTF-16 order; `CountBy` and `AnyBy` with an advanced enumerator
     parameter count exactly the keys in the range from key indices, for every pair of propositions; the branchless
     `PackUnpack` length functions match the modelled encodings, readers take each encoding's length from its first
     byte correctly, and unpacking returns every packed 64-bit value.

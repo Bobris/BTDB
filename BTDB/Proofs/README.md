@@ -57,6 +57,8 @@ of the "StringOrderable" handler, over UTF-16 code units: a surrogate pair is on
 written as a variable-length integer. It justifies the prefix scan that relation queries use for an ordinal
 `StartsWith`.
 
+`BtdbProofs/StringKeyOrder.lean` uses that model for the order of whole string keys.
+
 `BtdbProofs/ReadOnlyCompare.lean` models `ReadOnlyKeyValueDBCursor.Compare`, which compares a key the read-only
 database stores as a node's shared prefix and a suffix, cut to a maximum length, with a search target.
 
@@ -265,6 +267,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `StringOrdered.encOpt_prefix_free` | No key of a string or null is a prefix of another's, so an ordinal equality on a string field can be part of a key prefix (`UsesEncodedEquals`). |
 | `StringOrdered.high_surrogate_needed` | The planner's exclusion of a prefix ending with a high surrogate (`UsesEncodedStartsWith`) is needed: such a prefix encodes the surrogate alone, so the scan would miss strings that continue the pair. |
 | `StringOrdered.high_surrogate_match` | `Constraint.String.StartsWith` with a value ending with a high surrogate matches exactly the strings starting with it: it scans the prefix without the surrogate and accepts the surrogate alone or a pair it starts next. Before the 2026-10-29 fix it scanned the encoded value and missed strings continuing the pair (`RelationConstraintDifferentialTest`). |
+| `StringKeyOrder.enc_order`, `StringKeyOrder.differs_from_ordinal` | String keys sort as the token lists of their strings, so in code-point order, which is not ordinal UTF-16 order: "😀" (a surrogate pair) sorts after "\uE000" as a key but before it ordinally. So an ordinal comparison of a string field cannot be a key range scan; the query engine filters it on values, matching LINQ. |
 | `ReadOnlyCompare.compare_correct` | `Compare(prefix, suffix, target, maxLength)` equals comparing the first `maxLength` bytes of `prefix ++ suffix` with the target, in every branch of its shortcut. |
 | `Boundary.search_correct`, `Boundary.before_lt_mono`, `Boundary.before_cut_mono` | The node search returns the number of keys below the target, or of keys whose cut to the target's length is not above it, for keys in increasing order. |
 | `Boundary.descend`, `Boundary.child_before`, `Boundary.child_after` | In a branch node the search picks the child holding the boundary, and the boundary of the node is the keys of the children before it, `CountBefore`, plus the boundary inside it. |

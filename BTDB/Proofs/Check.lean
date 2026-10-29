@@ -211,3 +211,5 @@ open Btdb
 #print axioms CapacityHint.capacity_fits_int
 #print axioms ReadGrowth.importer_allocation_bounded
 #print axioms ReadGrowth.allocation_from
+#print axioms StringKeyOrder.enc_order
+#print axioms StringKeyOrder.differs_from_ordinal

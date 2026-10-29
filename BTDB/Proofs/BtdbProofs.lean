@@ -69,3 +69,4 @@ import BtdbProofs.EquatableHash
 import BtdbProofs.IocSelfWait
 import BtdbProofs.BonItemBound
 import BtdbProofs.CapacityHint
+import BtdbProofs.StringKeyOrder
