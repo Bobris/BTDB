@@ -90,6 +90,10 @@
 
 ### Fixed
 
+- `BTreeKeyValueDB`: opening a database whose oldest transaction logs are missing and that has no usable key index
+  deleted all remaining transaction logs and opened an empty database, unless `LenientOpen` was set. It now fails
+  with `BTDBException` and keeps the files, so opening with `LenientOpen` can recover what they hold. Breaking for
+  code that relied on the empty database.
 - Bon: a string with a lone surrogate, which UTF-8 cannot hold, is written with the replacement character U+FFFD in
   its place, and strings and object keys are compared after that replacement. Before, two object keys differing only
   in a lone surrogate were both accepted and written as the same key. A `Dictionary` whose string keys differ only so

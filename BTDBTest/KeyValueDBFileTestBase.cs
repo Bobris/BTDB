@@ -863,8 +863,9 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             logger.LastWarning);
     }
 
+    // Before the fix opening deleted the remaining Trl files and opened an empty database.
     [Fact]
-    public void OpeningDbWithMissingFirstTrlAndKviWarnsAndOpenEmptyDb()
+    public void OpeningDbWithMissingFirstTrlAndKviFailsAndKeepsFiles()
     {
         using var fileCollection = new InMemoryFileCollection();
         var options = new KeyValueDBOptions
@@ -874,15 +875,14 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         };
         Create2TrlFiles(options);
         fileCollection.GetFile(1)!.Remove();
-        using var db = NewKeyValueDB(options);
+        Assert.Throws<BTDBException>(() => NewKeyValueDB(options));
         Assert.Equal("No valid Kvi and lowest Trl in chain is not first. Missing 1",
             ((LoggerMock)options.Logger).LastWarning);
+        Assert.Equal(1u, fileCollection.GetCount());
+        options.LenientOpen = true;
+        using var db = NewKeyValueDB(options);
         using var tr = db.StartTransaction();
-        Assert.Equal(0, tr.GetKeyValueCount());
-        Assert.Equal(0u, fileCollection.GetCount());
-        using var cursor = tr.CreateCursor();
-        cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
-        tr.Commit();
+        Assert.Equal(1, tr.GetKeyValueCount());
     }
 
     [Fact]

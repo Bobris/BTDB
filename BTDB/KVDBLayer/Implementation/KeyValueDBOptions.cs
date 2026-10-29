@@ -33,6 +33,7 @@ public class KeyValueDBOptions
     /// Require explicit read-only or asynchronous writing transactions instead of StartTransaction.
     public bool RequireExplicitTransactions;
 
-    /// If true it will try to recover data in DB as much as possible
+    /// If true it will try to recover data in DB as much as possible. If false, opening a database whose oldest
+    /// transaction logs are missing and that has no usable key index fails, and leaves the files for a lenient open.
     public bool LenientOpen;
 }

@@ -392,22 +392,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
                 else
                 {
-                    Logger?.LogWarning("No valid Kvi and lowest Trl in chain is not first. Missing " +
-                                       _missingSomeTrlFiles.Value);
-                    if (!_readOnly)
-                    {
-                        foreach (var fileInfo in _fileCollection.FileInfos)
-                        {
-                            var trLog = fileInfo.Value as IFileTransactionLog;
-                            if (trLog == null) continue;
-                            MarkFileForRemoval(fileInfo.Key);
-                        }
-
-                        _fileCollection.DeleteAllUnknownFiles();
-                        _fileIdWithTransactionLog = 0;
-                        firstTrLogId = 0;
-                        latestTrLogFileId = 0;
-                    }
+                    // Opening used to delete every Trl here and open an empty database; the files now stay for a
+                    // LenientOpen to recover what the remaining Trls hold.
+                    var message = "No valid Kvi and lowest Trl in chain is not first. Missing " +
+                                  _missingSomeTrlFiles.Value;
+                    Logger?.LogWarning(message);
+                    throw new BTDBException(message + ". Open with LenientOpen to recover the remaining data.");
                 }
             }
             else
