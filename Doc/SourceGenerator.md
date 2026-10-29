@@ -31,8 +31,8 @@ app.Run();
 
 BTDB IOC Container needs Factories for all types that should be constructable.
 Mark type or any of its base classes or interfaces by `[Generate]` attribute.
-Constructor with most parameters will be used for construction.
-If that constructor is private, then type must be partial including all its outer types.
+Constructor with most parameters will be used for construction. It may be private, the generated factory calls it
+through `UnsafeAccessor`, so the type does not need to be partial.
 Type must be public or internal.
 
 ```csharp
