@@ -60,10 +60,13 @@ public class SourceGenerator : IIncrementalGenerator
                         if (ModelExtensions.GetSymbolInfo(semanticModel, typeParam.Type)
                                 .Symbol is not INamedTypeSymbol symb)
                             return null!;
-                        // The generated creator and metadata treat the type as a reference type.
-                        if (symb.IsValueType)
+                        // The generated creator and metadata are those of a class; a delegate gets a factory only from
+                        // [Generate] on its own declaration.
+                        if (symb.IsValueType || symb.TypeKind == TypeKind.Delegate)
                             return GenerationError("BTDB0054",
-                                "GenerateFor supports classes, not the value type " + symb.ToDisplayString(),
+                                "GenerateFor supports classes and interfaces, not the " +
+                                (symb.IsValueType ? "value type " : "delegate ") + symb.ToDisplayString() +
+                                (symb.IsValueType ? "" : "; mark the delegate itself with [Generate]"),
                                 typeParam.GetLocation());
                         var constructorParametersExpression = attributeSyntax.ArgumentList!.Arguments
                             .FirstOrDefault(a => a.NameEquals?.Name.Identifier.ValueText == "ConstructorParameters")

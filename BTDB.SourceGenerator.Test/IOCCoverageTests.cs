@@ -549,10 +549,12 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("IDispatcher", diagnostic.GetMessage());
     }
 
-    // Before the fix a struct named by GenerateFor got a creator and metadata written for a class, which did not compile.
+    // Before the fix a struct or a delegate named by GenerateFor got a creator and metadata written for a class, which did
+    // not compile.
     [Theory]
     [InlineData("public struct Target { public int X { get; set; } }")]
     [InlineData("public record struct Target(int A, string B);")]
+    [InlineData("public delegate int Target(int x);")]
     public void GenerateForValueTypeIsReported(string declaration)
     {
         var diagnostic = AssertSingleGeneratorDiagnostic($$"""
