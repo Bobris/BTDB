@@ -159,6 +159,9 @@ narrower member (`../Bon/Bon.cs`, `../Serialization/BonSerializer.cs`).
 `BtdbProofs/DisposeRace.lean` models how a container tracks instances it owns while another thread disposes it
 (`../IOC/ContainerImpl.cs`).
 
+`BtdbProofs/MemoryStreamSize.lean` models the bytes and size of a memory stream under writes and `SetSize`
+(`../StreamLayer/MemoryPositionLessStream.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -298,6 +301,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Fletcher.block_fits`, `Fletcher.odd_fits`, `Fletcher.result_fits`, `Fletcher.fold_mod` | Fletcher-32 sums stay below 2^32 through every block of up to 360 words and the last odd byte, folding returns them to the bounds a block starts from without changing them modulo 65535, and the result keeps both sums in 16 bits. |
 | `DisposeRace.fixed_disposes_once` | In every interleaving of two threads tracking new instances and one disposing the container, each instance is disposed exactly once and none stays owned. |
 | `DisposeRace.previous_leaks` | Before the 2026-10-29 fix, reading the dispose flag before adding the instance left some interleaving with an instance never disposed (`IOCDisposeRaceTest`). |
+| `MemoryStreamSize.inv_preserved`, `MemoryStreamSize.grown_reads_zero` | After any writes and size changes every byte of a memory stream from its size on is zero, so a stream shrunk and grown again reads zeros where it was cut off, like a file. |
+| `MemoryStreamSize.previous_reads_old` | Before the 2026-10-29 fix `SetSize` kept the bytes beyond the new size, so growing the stream again read them back (`StreamLayerCoverageTest.MemoryStreamReadsZerosWhereItWasCutOff`). |
 | `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |

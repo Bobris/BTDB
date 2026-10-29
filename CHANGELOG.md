@@ -87,6 +87,8 @@
     32-bit sums, and the result keeps both sums in 16 bits;
   - `BTDB/Proofs/`, IOC disposal: in every interleaving of two threads creating instances and one disposing their
     container, each instance is disposed exactly once;
+  - `BTDB/Proofs/`, `MemoryPositionLessStream`: after any writes and size changes the bytes beyond the size are zero,
+    so a stream grown again reads zeros where it was cut off;
   - `BTDB/Proofs/`, `DiskChunkCache.Put`: content it caches fits after at most one new value file;
   - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;

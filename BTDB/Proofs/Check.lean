@@ -169,3 +169,6 @@ open Btdb
 #print axioms Fletcher.fold_mod
 #print axioms DisposeRace.fixed_disposes_once
 #print axioms DisposeRace.previous_leaks
+#print axioms MemoryStreamSize.inv_preserved
+#print axioms MemoryStreamSize.grown_reads_zero
+#print axioms MemoryStreamSize.previous_reads_old
