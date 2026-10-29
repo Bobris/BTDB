@@ -30,3 +30,5 @@ open Lsm
 #print axioms FuzzyCursor.notify_position
 #print axioms FuzzyCursor.notify_kind
 #print axioms BlockSeek.lower_bound_correct
+#print axioms MergeMask.decided_ignores_older
+#print axioms MergeMask.newest_point_wins

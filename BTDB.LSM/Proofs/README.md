@@ -26,6 +26,9 @@ its binary search.
 `LsmProofs/BlockSeek.lean` models `RawBlock.LowerBound`: finding the first restart past the key, then scanning the
 entries of the restart before it. The binary search over restarts is modelled by its result.
 
+`LsmProofs/MergeMask.lean` models how `MergingIterator` resolves a key over components newest first, by a point entry
+or else a range-tombstone fragment.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -92,6 +95,7 @@ Not modelled in `Wal.lean`:
 | `Rank.rank_correct`, `Rank.count_correct` | `RankFrom` over a stack is the number of live keys below `x`, and `CountFrom`, the sum of `DeltaSum − CoveredSum`, is the number of live keys. |
 | `FuzzyCursor.notify_position`, `FuzzyCursor.notify_kind` | After `UpdateKeySuffix` replaces a key by the only key with its prefix, every cursor of the transaction has the position it had, and current cursors stay current and fuzzy ones fuzzy. Before the 2026-10-28 fix a fuzzy cursor kept its erased key, which the renamed key could pass (`LsmRegressionTest.KeySuffixUpdateKeepsFuzzyCursorOnItsSide`), and a cursor whose erased key was created again did not follow it (`CursorOnRecreatedKeyFollowsKeySuffixUpdate`). |
 | `BlockSeek.lower_bound_correct` | Seeking in a data block of sorted entries with a restart every `R` entries, by the first restart past the key and a scan of the restart before it, returns the first entry at or after the key (after it, when the key is excluded), or the entry count. |
+| `MergeMask.decided_ignores_older`, `MergeMask.newest_point_wins` | Once a component decides a key, by a point or a fragment, older components cannot change whether it is live, so `MergingIterator` seeking them past a newer fragment skips no live key; the newest point at a key decides it. |
 
 The fixed rule, as implemented:
 

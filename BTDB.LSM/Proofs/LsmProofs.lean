@@ -7,3 +7,4 @@ import LsmProofs.Refresh
 import LsmProofs.Rank
 import LsmProofs.FuzzyCursor
 import LsmProofs.BlockSeek
+import LsmProofs.MergeMask
