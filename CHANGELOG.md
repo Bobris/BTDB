@@ -599,6 +599,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- Opening a `BTreeKeyValueDB` whose key index had a damaged key length allocated one and a half times that length,
+  384 MB for a 240-byte index, before rejecting the index and replaying the logs. An uncompressed key index now
+  rejects a key longer than the rest of the file before allocating it, as replay already did for logs.
 - `MemReader.ReadStringInUtf8`, `ReadByteArrayAsSpan`, `ReadBlockAsSpan` and `ReadByteArrayAsMemory` over a stream
   allocated the whole declared length before reading, so a damaged length made a 100-byte input allocate 256 MB
   before failing. They grow with the bytes that arrive now, as `ReadString` and `ReadByteArray` already did, and a

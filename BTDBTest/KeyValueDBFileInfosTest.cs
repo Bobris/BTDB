@@ -130,6 +130,44 @@ public class KeyValueDBFileInfosTest
         }
     }
 
+    // Before the fix a damaged key length in a key index was allocated before the index was found damaged, so opening
+    // allocated one and a half times it, here 384 MB, before it replayed the logs instead.
+    [Fact]
+    public void KeyIndexWithDamagedKeyLengthIsRejectedWithoutAllocatingIt()
+    {
+        using var files = new InMemoryFileCollection();
+        using (var db = Open(files, 1024))
+        {
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+            db.CreateKvi(default);
+        }
+
+        var index = files.Enumerate().Last();
+        var content = new byte[index.GetSize()];
+        index.RandomRead(content, 0, false);
+        var reader = MemReader.CreateFromPinnedSpan(content);
+        FileKeyIndex.SkipHeader(ref reader);
+        var firstEntry = (int)reader.GetCurrentPosition();
+        var length = new MemWriter();
+        length.WriteVUInt32(1 << 28);
+        // The first entry shares no prefix, so its next number is the length of its key.
+        var damagedContent = content[..(firstEntry + 1)].Concat(length.GetSpan().ToArray())
+            .Concat(content[(firstEntry + 2)..]).ToArray();
+        var damaged = files.AddFile("kvi");
+        var writer = new MemWriter(damaged.GetAppenderWriter());
+        writer.WriteBlock(damagedContent);
+        writer.Flush();
+        index.Remove();
+        var before = GC.GetTotalAllocatedBytes(true);
+        using (var db = Open(files))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+
+        Assert.InRange(GC.GetTotalAllocatedBytes(true) - before, 0, 64 << 20);
+    }
+
     [Fact]
     public void ReadFileInfoHandlesAllHeaderVariants()
     {

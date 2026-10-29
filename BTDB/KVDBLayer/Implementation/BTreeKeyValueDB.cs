@@ -855,6 +855,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     (ref MemReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                     {
                         var keyLength = reader2.ReadVInt32();
+                        // A damaged length must fail as damage before it is allocated.
+                        if (Beyond(fileSize, reader2.GetCurrentPosition(), Math.Abs((long)keyLength)))
+                            throw new BTDBException("Corrupted DB");
                         key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
                         reader2.ReadBlock(key.AsSyncSpan());
                         if (keyLength < 0)
@@ -912,6 +915,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             }
             else
             {
+                var uncompressed = info.Compression == KeyIndexCompression.None;
                 var decompressionReader =
                     _kviCompressionStrategy.StartDecompression(info.Compression, reader);
                 try
@@ -920,12 +924,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     cursor.BuildTree(keyCount, ref decompressionReader,
                         (ref MemReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                         {
-                            var prefixLen = (int)reader2.ReadVUInt32();
-                            var keyLengthWithoutPrefix = (int)reader2.ReadVUInt32();
-                            var keyLen = prefixLen + keyLengthWithoutPrefix;
+                            var prefixLen = reader2.ReadVUInt32();
+                            var keyLengthWithoutPrefix = reader2.ReadVUInt32();
+                            // A damaged length must fail as damage before it is allocated; uncompressed, the rest of
+                            // the file bounds it.
+                            if (prefixLen > prevKey.Length || uncompressed &&
+                                Beyond(fileSize, reader2.GetCurrentPosition(), keyLengthWithoutPrefix))
+                                throw new BTDBException("Corrupted DB");
+                            var keyLen = checked((int)(prefixLen + keyLengthWithoutPrefix));
                             key.Expand(keyLen);
-                            Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
-                            reader2.ReadBlock(key.Slice(prefixLen).AsSyncSpan());
+                            Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, (int)prefixLen);
+                            reader2.ReadBlock(key.Slice((int)prefixLen).AsSyncSpan());
                             prevKey = key;
                             var vFileId = reader2.ReadVUInt32();
                             if (vFileId != 0 && replicatedFiles != null)
