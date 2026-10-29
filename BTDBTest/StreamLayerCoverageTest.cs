@@ -1011,4 +1011,47 @@ public class StreamLayerCoverageTest
             Assert.True(r.Eof);
         }
     }
+
+    // Before the fix a memory stream kept the bytes beyond a smaller size, so growing it again read them back, unlike a
+    // file, which reads zeros there.
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(128 * 1024 + 5, false)]
+    [InlineData(128 * 1024 + 5, true)]
+    [InlineData(128 * 1024, true)]
+    public void MemoryStreamReadsZerosWhereItWasCutOff(int newSize, bool growByWrite)
+    {
+        const int size = 3 * 128 * 1024;
+        var data = new byte[size];
+        new Random(1).NextBytes(data);
+        Array.Fill(data, (byte)0xAA, 0, newSize);
+        var memory = new MemoryPositionLessStream();
+        var path = Path.GetTempFileName();
+        try
+        {
+            using var file = new PositionLessFileStreamProxy(path);
+            foreach (var stream in new IPositionLessStream[] { memory, file })
+            {
+                stream.Write(data, 0);
+                stream.SetSize((ulong)newSize);
+                if (growByWrite) stream.Write([7], size - 1);
+                else stream.SetSize(size);
+            }
+
+            var expected = new byte[size];
+            Array.Fill(expected, (byte)0xAA, 0, newSize);
+            if (growByWrite) expected[size - 1] = 7;
+            foreach (var stream in new IPositionLessStream[] { memory, file })
+            {
+                var read = new byte[size];
+                Assert.Equal(size, stream.Read(read, 0));
+                Assert.Equal(expected, read);
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

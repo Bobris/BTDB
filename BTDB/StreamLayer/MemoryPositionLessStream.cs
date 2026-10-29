@@ -85,7 +85,16 @@ public class MemoryPositionLessStream : IPositionLessStream
 
     void SetSizeInternal(ulong newSize)
     {
-        while (_data.Count < (int)((newSize + OneBufSize - 1) / OneBufSize))
+        var bufferCount = (int)((newSize + OneBufSize - 1) / OneBufSize);
+        if (newSize < (ulong)_size)
+        {
+            // Like a file, a stream grown after shrinking reads zeros where it was cut off.
+            _data.SetCount((uint)bufferCount);
+            var tail = (int)(newSize % OneBufSize);
+            if (tail != 0) _data[bufferCount - 1].AsSpan(tail).Clear();
+        }
+
+        while (_data.Count < bufferCount)
         {
             _data.Add(new byte[OneBufSize]);
         }

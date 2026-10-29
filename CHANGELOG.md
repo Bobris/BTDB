@@ -120,6 +120,9 @@
 
 ### Fixed
 
+- `MemoryPositionLessStream.SetSize` to a smaller size kept the bytes beyond it, so growing the stream again, by
+  `SetSize` or a write past the end, read them back. Like a file, it now reads zeros there, and frees whole buffers
+  beyond the new size.
 - `PtrLenList.TryExclude` of a range ending in a gap moved the start of the next range back to the end of the excluded
   one, so excluding `[5, 8)` turned `[20, 24)` into `[8, 24)`; `UnmergeInPlace` did the same. Such a range now leaves
   the next one as it is.
