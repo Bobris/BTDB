@@ -131,6 +131,44 @@ public class ODBRoaringBitmapAndLazyListCoverageTest : FieldHandlerCoverageTestB
         Assert.Equal(new ulong[] { 3, 100000 }, nonGeneric);
     }
 
+    // RoaringBitmap.BuildAsync applies its pages in several transactions and the count last. Before the fix a bitmap
+    // with pages but no count yet counted 0, so setting a bit stored a count of 1.
+    [Fact]
+    public void BitmapWithPagesButNoCountYetCountsItsPages()
+    {
+        // Clear, then the array page 0 holding 5 and the array page 1 holding 70000 (offset 4464), without a count.
+        // A page's length is aligned to 2 bytes from the start of the commands.
+        byte[] pages = [0, 1, 0, 0, 2, 0, 5, 0, 1, 1, 2, 0, 0x70, 0x11];
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<BitsRoot>();
+            root.Bits.ApplyCommands(pages);
+            Assert.False(root.Bits.IsComplete());
+            Assert.Equal(2ul, root.Bits.Count);
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<BitsRoot>();
+            Assert.Equal(new ulong[] { 5, 70000 }, root.Bits);
+            Assert.Equal(2ul, root.Bits.Count);
+            root.Bits.Set(9, true);
+            Assert.Equal(3ul, root.Bits.Count);
+            root.Bits.Flush();
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartReadOnlyTransaction())
+        {
+            var root = tr.Singleton<BitsRoot>();
+            Assert.True(root.Bits.IsComplete());
+            Assert.Equal(3ul, root.Bits.Count);
+            Assert.Equal(new ulong[] { 5, 9, 70000 }, root.Bits);
+        }
+    }
+
     [Fact]
     public void BitmapClearAndApplyCommandValidation()
     {

@@ -113,7 +113,8 @@ public class ODBRoaringBitmap : IRoaringBitmap, IInternalODBRoaringBitmap, IAmLa
             }
             else
             {
-                _count = 0;
+                // Pages applied without their count yet, as RoaringBitmap.BuildAsync does across transactions.
+                _count = cursor.FindNextKey(_prefix) ? CalculateCount() : 0;
             }
 
             return _count.Value;
@@ -277,6 +278,8 @@ public class ODBRoaringBitmap : IRoaringBitmap, IInternalODBRoaringBitmap, IAmLa
                         cursor.CreateOrUpdateKeyValue(key, value);
                     }
 
+                    // The count is known again once the count command comes.
+                    _count = null;
                     break;
                 }
                 case CommandCount:

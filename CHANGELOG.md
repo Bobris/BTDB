@@ -97,6 +97,9 @@
 
 ### Fixed
 
+- `IRoaringBitmap.Count` of a bitmap whose pages were applied without their count yet, as `RoaringBitmap.BuildAsync`
+  does across transactions, returned 0, and setting a bit then stored a count of 1. It now counts the pages, and
+  applying a page forgets a count read before.
 - Source generator: a `[Dependency]` property with a private setter in a base class from another assembly was not
   injected, because the generator does not see private members of other assemblies. The generated factory now finds
   the setter through reflection when it is created. A private `[Dependency]` field there is still not injected.
