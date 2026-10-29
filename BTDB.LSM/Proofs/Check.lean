@@ -39,3 +39,5 @@ open Lsm
 #print axioms TablePointDelta.point_delta_before_correct
 #print axioms TablePointDelta.level_point_delta_before_correct
 #print axioms MemtableDelta.delta_before_correct
+#print axioms MemtableTree.split_ok
+#print axioms MemtableTree.merge_ok
