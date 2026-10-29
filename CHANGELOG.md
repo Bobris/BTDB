@@ -165,6 +165,7 @@
     a standalone file collection's next ID is above every file found on open, in any listing order.
   - `BTDB/Proofs/`, file reads: the file collections' end-of-file test refuses exactly the reads that do not fit,
     though `ulong` arithmetic can wrap.
+  - `BTDB/Proofs/`, chunk storage: loading its hash index files gives each chunk key its latest entry across reopens.
   - `BTDB/Proofs/`, `MemReader`: reading a block of any declared length allocates at most a constant plus four times
     the bytes the input holds.
   - `BTDB/Proofs/`, `SeqLock`: a read accepted by an unchanged even counter is consistent when its data reads come

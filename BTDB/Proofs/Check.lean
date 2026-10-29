@@ -196,3 +196,5 @@ open Btdb
 #print axioms SeqLockRead.late_read_can_tear
 #print axioms ReadGrowth.allocation_bounded
 #print axioms ReadGrowth.full_read_ends_at_length
+#print axioms ChunkIndexLoad.load_is_latest
+#print axioms ChunkIndexLoad.newest_only_loses
