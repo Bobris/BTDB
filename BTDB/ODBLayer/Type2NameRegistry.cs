@@ -35,12 +35,23 @@ public class Type2NameRegistry : IType2NameRegistry
                     $"Type {type} is already registered as {existing}. Cannot reregister as {asName}.");
             }
 
+            // Objects stored under the name would be loaded as the type registered first. An interface or abstract
+            // class, as a field's declared type, is never stored, so it may share the name of its implementation.
+            if (_name2Type.TryGetValue(asName, out var other) && other != null && CanBeStored(other) &&
+                CanBeStored(type))
+            {
+                throw new BTDBException(
+                    $"Name {asName} is already registered for type {other}. Cannot register type {type} as it.");
+            }
+
             _type2Name.TryAdd(type, asName);
             _name2Type.TryAdd(asName, type);
         }
 
         return asName;
     }
+
+    static bool CanBeStored(Type type) => !type.IsInterface && !type.IsAbstract;
 
     public Type FindTypeByName(string name)
     {
