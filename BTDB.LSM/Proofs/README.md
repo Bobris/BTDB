@@ -42,7 +42,7 @@ the key plus the block's delta prefix up to the key.
 subtree delta sums.
 
 `LsmProofs/MemtableTree.lean` models `Memtable.Split` and `Merge`, which every memtable insert and removal goes
-through; the priority that picks the root of a merge is left arbitrary.
+through, and `UpdatePath`; the priority that picks the root of a merge is left arbitrary.
 
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
@@ -118,6 +118,7 @@ Not modelled in `Wal.lean`:
 | `TablePointDelta.level_point_delta_before_correct` | `LevelComponent.PointDeltaBefore` composes its tables the same way, by the first table ending after the key, and a key after every table gets the level's whole delta sum. |
 | `MemtableDelta.delta_before_correct` | `Memtable.PointDeltaBefore`, adding the left subtree sum and the node's delta at each node below the key on one path from the root, is the sum of the deltas of all keys below the key, for a search tree whose nodes keep their subtree sums. |
 | `MemtableTree.split_ok`, `MemtableTree.merge_ok` | `Split` of a search tree with exact subtree sums gives two such trees holding the keys below and the rest, and `Merge` of two such trees, left keys below right keys, gives one, whatever the priorities, so `PointDeltaBefore` stays exact after every change. |
+| `MemtableTree.update_ok` | `UpdatePath` on a key the tree holds keeps it a search tree with exact subtree sums, and changes its total by the new delta less the old one. |
 
 The fixed rule, as implemented:
 

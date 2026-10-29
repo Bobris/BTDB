@@ -41,3 +41,4 @@ open Lsm
 #print axioms MemtableDelta.delta_before_correct
 #print axioms MemtableTree.split_ok
 #print axioms MemtableTree.merge_ok
+#print axioms MemtableTree.update_ok

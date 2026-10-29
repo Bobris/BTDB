@@ -10,6 +10,8 @@ root by priority; `choose` stands for that choice, any one.
 
 * `split_ok`: splitting a search tree with exact sums gives two such trees with the keys on the right sides.
 * `merge_ok`: merging two such trees, left keys below right keys, gives such a tree, whatever the priorities.
+* `update_ok`: `UpdatePath`, which `UpdateExisting` uses, gives the key a new delta and rebuilds the nodes on its path,
+  so the tree stays such a tree and its total changes by the difference of the deltas.
 
 With `MemtableDelta.delta_before_correct` this keeps `PointDeltaBefore` exact after every change.
 -/
@@ -137,5 +139,88 @@ theorem merge_ok (choose : Tree → Tree → Bool) (a b : Tree) (ha : Ok a) (hb 
     refine ⟨mk_ok _ bx bd br m1 ⟨hsbr, hsearchbr⟩ (all_keys_mono _ _ (fun y hy => hy.2) _ m2) hbr,
       ⟨hpx, all_keys_mono _ _ (fun y hy => hy.1) _ m2, hpbr⟩, ?_⟩
     rw [total_mk, m3]; simp only [total]; omega
+
+/-- `UpdatePath`: the node with key `k` gets delta `nd`; the nodes on its path are rebuilt. -/
+def update (k : Nat) (nd : Int) : Tree → Tree
+  | .leaf => .leaf
+  | .node l x d _ r =>
+    if x = k then mk l x nd r
+    else if x < k then mk l x d (update k nd r) else mk (update k nd l) x d r
+
+/-- The delta of key `k` in the tree, 0 when it is missing. -/
+def deltaOf (k : Nat) : Tree → Int
+  | .leaf => 0
+  | .node l x d _ r => if x = k then d else deltaOf k l + deltaOf k r
+
+theorem update_keys (k : Nat) (nd : Int) (p : Nat → Prop) (t : Tree) (h : AllKeys p t) :
+    AllKeys p (update k nd t) := by
+  induction t with
+  | leaf => trivial
+  | node l x d s r ihl ihr =>
+    obtain ⟨hx, hl, hr⟩ := h
+    simp only [update]
+    split
+    · exact ⟨hx, hl, hr⟩
+    · split
+      · exact ⟨hx, hl, ihr hr⟩
+      · exact ⟨hx, ihl hl, hr⟩
+
+theorem delta_of_missing (k : Nat) (t : Tree) (p : Nat → Prop) (hp : AllKeys p t) (hk : ¬ p k) :
+    deltaOf k t = 0 := by
+  induction t with
+  | leaf => rfl
+  | node l x d s r ihl ihr =>
+    obtain ⟨hx, hl, hr⟩ := hp
+    have : x ≠ k := fun h => hk (h ▸ hx)
+    simp only [deltaOf, this, ite_false, ihl hl, ihr hr]
+    omega
+
+def Contains (k : Nat) : Tree → Prop
+  | .leaf => False
+  | .node l x _ _ r => x = k ∨ Contains k l ∨ Contains k r
+
+theorem contains_key (k : Nat) (p : Nat → Prop) (t : Tree) (hp : AllKeys p t) (hc : Contains k t) : p k := by
+  induction t with
+  | leaf => exact absurd hc id
+  | node l x d s r ihl ihr =>
+    obtain ⟨hx, hl, hr⟩ := hp
+    rcases hc with h | h | h
+    · exact h ▸ hx
+    · exact ihl hl h
+    · exact ihr hr h
+
+theorem update_ok (k : Nat) (nd : Int) (t : Tree) (ht : Ok t) (hc : Contains k t) :
+    Ok (update k nd t) ∧ total (update k nd t) = total t - deltaOf k t + nd := by
+  induction t with
+  | leaf => exact absurd hc id
+  | node l x d s r ihl ihr =>
+    obtain ⟨⟨_, hsl, hsr⟩, ⟨hl, hr, hsearchl, hsearchr⟩⟩ := ht
+    simp only [update, deltaOf]
+    by_cases hxk : x = k
+    · simp only [hxk, ite_true]
+      subst hxk
+      exact ⟨mk_ok l x nd r ⟨hsl, hsearchl⟩ ⟨hsr, hsearchr⟩ hl hr, by rw [total_mk]; simp only [total]; omega⟩
+    · simp only [hxk, ite_false]
+      by_cases hlt : x < k
+      · simp only [hlt, ite_true]
+        have hcr : Contains k r := by
+          rcases hc with h | h | h
+          · exact absurd h hxk
+          · exact absurd (contains_key k _ l hl h) (by omega)
+          · exact h
+        obtain ⟨o, ht⟩ := ihr ⟨hsr, hsearchr⟩ hcr
+        have hl0 : deltaOf k l = 0 := delta_of_missing k l _ hl (by omega)
+        refine ⟨mk_ok l x d _ ⟨hsl, hsearchl⟩ o hl (update_keys k nd _ r hr), ?_⟩
+        rw [total_mk, ht, hl0]; simp only [total]; omega
+      · simp only [hlt, ite_false]
+        have hcl : Contains k l := by
+          rcases hc with h | h | h
+          · exact absurd h hxk
+          · exact h
+          · exact absurd (contains_key k _ r hr h) (by omega)
+        obtain ⟨o, ht⟩ := ihl ⟨hsl, hsearchl⟩ hcl
+        have hr0 : deltaOf k r = 0 := delta_of_missing k r _ hr (by omega)
+        refine ⟨mk_ok _ x d r o ⟨hsr, hsearchr⟩ (update_keys k nd _ l hl) hr, ?_⟩
+        rw [total_mk, ht, hr0]; simp only [total]; omega
 
 end Lsm.MemtableTree
