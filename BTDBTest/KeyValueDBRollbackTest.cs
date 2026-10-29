@@ -35,7 +35,7 @@ public class KeyValueDBRollbackTest
                 }
 
                 if (i % 5 == 0)
-                    kv.Compact(new CancellationToken());
+                    kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
                 if (i == 50)
                     kv.PreserveHistoryUpToCommitUlong = (ulong)i;
             }
@@ -55,7 +55,7 @@ public class KeyValueDBRollbackTest
                 Assert.Equal(50, tr.GetKeyValueCount());
             }
 
-            kv.Compact(new CancellationToken());
+            kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
         }
 
         // All commits after 50 are lost
@@ -116,7 +116,7 @@ public class KeyValueDBRollbackTest
                 }
 
                 if (i % 5 == 0)
-                    kv.Compact(new CancellationToken());
+                    kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
                 if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
             }
         }
@@ -160,7 +160,7 @@ public class KeyValueDBRollbackTest
                 }
 
                 if (i % 5 == 0)
-                    kv.Compact(new CancellationToken());
+                    kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
                 if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
             }
         }
@@ -220,7 +220,7 @@ public class KeyValueDBRollbackTest
                 }
 
                 if (i % 5 == 0)
-                    kv.Compact(new CancellationToken());
+                    kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
                 if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
             }
         }
@@ -460,7 +460,7 @@ public class KeyValueDBRollbackTest
                 }
 
                 if (i % 5 == 0)
-                    kv.Compact(new CancellationToken());
+                    kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
                 if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
             }
         }
@@ -473,7 +473,7 @@ public class KeyValueDBRollbackTest
                    Compression = new NoCompressionStrategy()
                }))
         {
-            kv.Compact(new CancellationToken());
+            kv.Compact(new CancellationToken()).AsTask().GetAwaiter().GetResult();
             ReadAllValues(kv);
         }
 

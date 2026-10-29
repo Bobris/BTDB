@@ -797,7 +797,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        db.Compact(CancellationToken.None);
+        db.Compact(CancellationToken.None).AsTask().GetAwaiter().GetResult();
         // Kvi size = 27640 => ~1.4s
         Assert.InRange(logger.KviTime.TotalMilliseconds, 1000, 2000);
     }
