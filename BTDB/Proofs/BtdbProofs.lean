@@ -43,3 +43,4 @@ import BtdbProofs.LruCapacity
 import BtdbProofs.RoaringCount
 import BtdbProofs.ListKey
 import BtdbProofs.QueryTopK
+import BtdbProofs.SnappyExpansion

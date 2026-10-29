@@ -71,6 +71,7 @@
   - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, merged event descriptors: registering those nested in them, they can be stored;
   - `BTDB/Proofs/`, LRU caches: no sequence of operations makes them hold more than their maximum capacity;
+  - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;
   - `BTDB/Proofs/`, keys of several fields: with prefix free, order keeping encodings of all fields but the last, a
     key sorts by its fields in order;
@@ -106,6 +107,10 @@
 
 ### Fixed
 
+- `SnappyDecompress.Decompress` accepted a copy with offset 0, which copied a byte onto itself, so damaged data
+  decompressed instead of throwing `InvalidDataException`, and it allocated the declared size before checking the
+  data, so a few damaged bytes could allocate up to 2 GB. It now refuses offset 0, and refuses a declared size above
+  22 times the input, which no valid data reaches.
 - `DiskChunkCache.Put` of content larger than one value file, an eighth of the capacity, never returned: it started
   new value files forever. Such content is now not cached, as `Get` of it returns nothing.
 - IOC: a type without a generated factory, built by reflection, injected only public `[Dependency]` properties. Like

@@ -43,11 +43,18 @@ public static class SnappyDecompress
         return -1;
     }
 
+    // A copy of at most 64 bytes takes at least 3 input bytes and a literal takes more bytes than it writes
+    const int MaxExpansion = 22;
+
+    static bool IsPossibleSize(int decompressedSize, int compressedLength) =>
+        decompressedSize >= 0 && decompressedSize <= (long)MaxExpansion * compressedLength;
+
     public static ByteBuffer Decompress(ByteBuffer compressedBytes)
     {
         int ofs;
         var decompressedSize = DecompressedSize(compressedBytes.AsSyncReadOnlySpan(), out ofs);
-        if (decompressedSize < 0) throw new InvalidDataException();
+        // Damaged data must not allocate more than valid data of its length can decompress to
+        if (!IsPossibleSize(decompressedSize, compressedBytes.Length - ofs)) throw new InvalidDataException();
         var dst = new byte[decompressedSize];
         if (!DecompressRaw(dst, compressedBytes.AsSyncReadOnlySpan().Slice(ofs)))
             throw new InvalidDataException();
@@ -58,7 +65,7 @@ public static class SnappyDecompress
     {
         int ofs;
         var decompressedSize = DecompressedSize(compressedBytes, out ofs);
-        if (decompressedSize < 0) throw new InvalidDataException();
+        if (!IsPossibleSize(decompressedSize, compressedBytes.Length - ofs)) throw new InvalidDataException();
         var dst = new byte[decompressedSize];
         if (!DecompressRaw(dst, compressedBytes.Slice(ofs)))
             throw new InvalidDataException();
@@ -142,7 +149,8 @@ public static class SnappyDecompress
             }
 
             var end = d + len;
-            if (o > d || len > dL)
+            // A copy must start before it: offset 0 would copy a byte onto itself
+            if (o <= 0 || o > d || len > dL)
                 return false;
             for (; d < end; d++)
             {

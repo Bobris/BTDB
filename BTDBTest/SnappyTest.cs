@@ -82,6 +82,35 @@ public class SnappyTest
         RoundTrip(s);
     }
 
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(1000000)]
+    public void HighlyCompressibleDataRoundTrips(int len)
+    {
+        var compressed = new byte[len + 32];
+        var compressedLength = SnappyCompress.Compress(compressed, new byte[len]);
+        var decompressed = SnappyDecompress.Decompress(ByteBuffer.NewSync(compressed, 0, compressedLength));
+        Assert.Equal(new byte[len], decompressed.AsSyncReadOnlySpan());
+    }
+
+    // Before the fix a copy with offset 0 copied a byte onto itself and the damaged data decompressed.
+    [Fact]
+    public void CopyWithOffsetZeroIsRefused()
+    {
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+            SnappyDecompress.Decompress(new byte[] { 5, 0x00, (byte)'A', 0x01, 0x00 }));
+    }
+
+    // Before the fix a declared size of nearly 2 GB in 6 bytes was allocated, failing with OutOfMemoryException.
+    [Fact]
+    public void ImpossibleDecompressedSizeIsRefusedBeforeAllocating()
+    {
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+            SnappyDecompress.Decompress(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x00 }));
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+            SnappyDecompress.Decompress(ByteBuffer.NewSync(new byte[] { 0x80, 0x80, 0x80, 0x01, 0x00 })));
+    }
+
     void RoundTrip(byte[] source)
     {
         var compressed = new byte[(long)source.Length * 6 / 5 + 32];
