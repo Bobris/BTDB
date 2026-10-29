@@ -608,6 +608,10 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- ObjectDB: stored relation metadata with a damaged count of key fields, secondary keys or fields sized arrays and
+  collections before reading them, so opening failed with `ArgumentOutOfRangeException` or `OverflowException`, or
+  allocated gigabytes. Counts only hint capacities now, and a field count past what the metadata holds is reported as
+  `BTDBException`.
 - Event stores: a damaged count of a list, dictionary or array in an event, or of an enum's names in its descriptor,
   sized what it was read into, so past `int.MaxValue` deserializing failed with `ArgumentOutOfRangeException` on a
   negative capacity or length. Counts only hint capacities now, and an array declaring more items than its data

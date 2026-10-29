@@ -367,14 +367,14 @@ public class RelationVersionInfo
     {
         var pkCount = reader.ReadVUInt32();
         var primaryKeyFields = new StructList<TableFieldInfo>();
-        primaryKeyFields.Reserve(pkCount);
+        primaryKeyFields.Reserve(CollectionMetadata.CapacityFor(pkCount, reader));
         for (var i = 0u; i < pkCount; i++)
         {
             primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(ref reader, relationName,
                 FieldHandlerOptions.Orderable));
         }
 
-        var skFieldCount = reader.ReadVUInt32();
+        var skFieldCount = CheckFieldCount(reader.ReadVUInt32(), reader, relationName);
         var secondaryKeyFields = new TableFieldInfo[skFieldCount];
         for (var i = 0; i < skFieldCount; i++)
         {
@@ -383,7 +383,7 @@ public class RelationVersionInfo
         }
 
         var skCount = reader.ReadVUInt32();
-        var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
+        var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)CollectionMetadata.CapacityFor(skCount, reader));
         for (var i = 0; i < skCount; i++)
         {
             var skIndex = reader.ReadVUInt32();
@@ -391,7 +391,7 @@ public class RelationVersionInfo
             reader.SkipVUInt32(); //unused
             info.Name = reader.ReadString()!;
             var cnt = reader.ReadVUInt32();
-            info.Fields = new List<FieldId>((int)cnt);
+            info.Fields = new List<FieldId>((int)CollectionMetadata.CapacityFor(cnt, reader));
             for (var j = 0; j < cnt; j++)
             {
                 var fromPrimary = reader.ReadBool();
@@ -402,7 +402,7 @@ public class RelationVersionInfo
             secondaryKeys.Add(skIndex, info);
         }
 
-        var fieldCount = reader.ReadVUInt32();
+        var fieldCount = CheckFieldCount(reader.ReadVUInt32(), reader, relationName);
         var fieldInfos = new TableFieldInfo[fieldCount];
         for (var i = 0; i < fieldCount; i++)
         {
@@ -410,6 +410,15 @@ public class RelationVersionInfo
         }
 
         return new(primaryKeyFields, secondaryKeys, secondaryKeyFields, fieldInfos);
+    }
+
+    /// Each stored field takes at least a byte, so a count past the bytes left is damage, which must not size an array.
+    static uint CheckFieldCount(uint count, in MemReader reader, string relationName)
+    {
+        if (count > CollectionMetadata.CapacityFor(count, reader) && reader.Controller == null)
+            throw new BTDBException("Relation " + relationName + " metadata declares " + count +
+                                    " fields, more than it holds.");
+        return count;
     }
 
     public void ResolveFieldHandlers(IFieldHandlerFactory fieldHandlerFactory)
