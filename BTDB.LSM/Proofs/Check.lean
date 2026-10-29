@@ -36,3 +36,4 @@ open Lsm
 #print axioms TombstoneFind.find_covered
 #print axioms BlockDelta.delta_prefix_correct
 #print axioms BlockDelta.bounds_cover
+#print axioms TablePointDelta.point_delta_before_correct

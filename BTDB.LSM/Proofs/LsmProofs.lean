@@ -10,3 +10,4 @@ import LsmProofs.BlockSeek
 import LsmProofs.MergeMask
 import LsmProofs.TombstoneFind
 import LsmProofs.BlockDelta
+import LsmProofs.TablePointDelta

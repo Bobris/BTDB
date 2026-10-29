@@ -41,7 +41,9 @@
     - finding the range tombstone of a key returns the fragment containing it and covers exactly the fragments ending
       at or before it;
     - a data block's delta prefix from its restarts is the sum of the deltas of its first entries, and the prefix
-      bounds stored for it cover every prefix sum.
+      bounds stored for it cover every prefix sum;
+    - a table's delta before a key, from the index and one block, is the sum of the deltas of its entries below the
+      key.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the
