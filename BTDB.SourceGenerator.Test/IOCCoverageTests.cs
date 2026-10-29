@@ -681,4 +681,45 @@ public class IOCCoverageTests : GeneratorTestsBase
             .ToList();
         Assert.Empty(warnings);
     }
+
+    // Before the fix the generated registration class FooRegistration hid a type FooRegistration of the namespace in the
+    // generated file, so code naming that type did not compile.
+    [Fact]
+    public void RegistrationClassDoesNotHideTypeOfSameName()
+    {
+        var sources = GenerateAndCompile("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Foo
+            {
+                public FooRegistration? Other { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class FooRegistration
+            {
+                public int Value { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Outer
+            {
+                [BTDB.Generate]
+                public class Foo
+                {
+                    public int Value { get; set; }
+                }
+            }
+
+            [BTDB.Generate]
+            public delegate FooRegistration MakeRegistration(int value);
+
+            public class MakeRegistrationRegistration
+            {
+            }
+            """);
+        Assert.Contains("static file class FooRegistration4BTDB", GetSource(sources, "TestNamespace.Foo.g.cs"));
+        Assert.Contains("static file class FooRegistration", GetSource(sources, "TestNamespace.Outer.Foo.g.cs"));
+    }
 }

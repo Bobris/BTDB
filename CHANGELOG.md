@@ -124,6 +124,9 @@
 
 ### Fixed
 
+- Source generator: the registration class generated for a type `Foo`, a file class `FooRegistration` in its namespace,
+  hid a type `FooRegistration` of that namespace in the generated file, so generated code using that type did not
+  compile. Such a registration class gets another name now.
 - Source generator: a stored member, constructor parameter or `[Dependency]` member whose type generated code cannot
   access, like a private nested class of a class that is not partial, made the generated code fail to compile. It is
   now reported as BTDB0053, naming the member; making the class partial lets generated code use such types.

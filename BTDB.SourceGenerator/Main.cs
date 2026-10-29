@@ -135,7 +135,7 @@ public class SourceGenerator : IIncrementalGenerator
                             false,
                             parameters, [new("", returnType, null, true, false, false, false, null)], [],
                             [], [], [],
-                            [], [], [], [], null);
+                            [], [], [], [], null) { RegistrationNameOverride = RegistrationNameOverride(symbol) };
                     }
 
                     if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -2085,7 +2085,18 @@ public class SourceGenerator : IIncrementalGenerator
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, methods.ToArray(), implements,
             collections.ToArray(), genericParameters,
-            nested.ToArray(), null);
+            nested.ToArray(), null) { RegistrationNameOverride = RegistrationNameOverride(symbol) };
+    }
+
+    // Generated registrations are file classes in the namespace of the type, which hide a type of the same name in the
+    // generated file, so a name already taken gets a suffix.
+    static string? RegistrationNameOverride(INamedTypeSymbol symbol)
+    {
+        var name = symbol.Name + "Registration";
+        if (symbol.ContainingNamespace.GetTypeMembers(name).IsEmpty) return null;
+        do name += "4BTDB";
+        while (!symbol.ContainingNamespace.GetTypeMembers(name).IsEmpty);
+        return name;
     }
 
     static string GenericTypeFrom(ITypeSymbol argType)
@@ -3325,7 +3336,7 @@ public class SourceGenerator : IIncrementalGenerator
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
             [global::System.Runtime.CompilerServices.CompilerGenerated]
-            static file class {{generationInfo.Name}}Registration
+            static file class {{generationInfo.RegistrationName}}
             {
                 [global::System.Runtime.CompilerServices.ModuleInitializer]
                 internal static void Register4BTDB()
@@ -3554,7 +3565,7 @@ public class SourceGenerator : IIncrementalGenerator
         else
         {
             declarations.Append("[global::System.Runtime.CompilerServices.CompilerGenerated]\n");
-            declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
+            declarations.Append($"static file class {generationInfo.RegistrationName}\n{{\n");
         }
 
         var constructorParameters = generationInfo.ConstructorParameters ?? EquatableArray<ParameterInfo>.Empty;
@@ -6221,6 +6232,11 @@ record GenerationInfo(
     Location? Location
 )
 {
+    // Set when the usual name of the generated registration class is taken in the namespace.
+    public string? RegistrationNameOverride { get; init; }
+
+    public string RegistrationName => RegistrationNameOverride ?? Name + "Registration";
+
     public virtual bool Equals(GenerationInfo? other)
     {
         if (ReferenceEquals(this, other)) return true;
@@ -6228,6 +6244,7 @@ record GenerationInfo(
         // All members must be compared, otherwise incremental pipeline treats edited types (new fields, methods,
         // moved error locations) as unchanged and keeps stale generated code.
         return GenType == other.GenType &&
+               RegistrationNameOverride == other.RegistrationNameOverride &&
                Namespace == other.Namespace &&
                Name == other.Name &&
                FullName == other.FullName &&
