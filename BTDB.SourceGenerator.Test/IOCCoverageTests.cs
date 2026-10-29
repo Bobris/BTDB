@@ -612,4 +612,73 @@ public class IOCCoverageTests : GeneratorTestsBase
             """, "BTDB0053");
         Assert.StartsWith(reported + " of", diagnostic.GetMessage());
     }
+
+    // Projects treating warnings as errors with nullable enabled build generated code too.
+    [Fact]
+    public void GeneratedCodeHasNoWarningsWithNullableEnabled()
+    {
+        var source = """
+            #nullable enable
+            using System;
+            using System.Collections.Generic;
+            using BTDB.IOC;
+            using BTDB.ODBLayer;
+            namespace TestNamespace;
+
+            public interface ILogger { }
+
+            [BTDB.Generate]
+            public class Service
+            {
+                public Service(ILogger logger, ILogger? optional, int count = 3, string? name = null) { }
+                [Dependency] public ILogger? Maybe { get; set; }
+                [Dependency] public ILogger Required { get; set; } = null!;
+                public string? Text { get; set; }
+                public List<int>? Numbers { get; set; }
+                public Dictionary<string, int?>? Map { get; set; }
+                public (int, string?) Pair { get; set; }
+            }
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public interface IHandler<in T> : IDispatcher { void Consume(T message); }
+
+            public class Message { }
+
+            [BTDB.Generate]
+            public class Handler : IHandler<Message>, IHandler<int> { public void Consume(Message m) { } public void Consume(int m) { } }
+
+            public class Item
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Name")] public string? Name { get; set; }
+                public int? Age { get; set; }
+            }
+
+            [BTDB.Generate]
+            public interface IItemTable : IRelation<Item>
+            {
+                void Insert(Item item);
+                Item? FindByIdOrDefault(ulong id);
+                IEnumerable<Item> FindByName(string? name);
+                bool RemoveById(ulong id);
+            }
+            """;
+        var generator = new SourceGenerator();
+        var driver = Microsoft.CodeAnalysis.CSharp.CSharpGeneratorDriver.Create(generator);
+        var options = new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary,
+            allowUnsafe: true, nullableContextOptions: Microsoft.CodeAnalysis.NullableContextOptions.Enable, warningLevel: 9999);
+        var compilation = CreateCompilation(source).WithOptions(options);
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var generated, out _);
+        Assert.True(generated.SyntaxTrees.Count() > 5);
+        var warnings = generated.GetDiagnostics()
+            .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .Select(d => $"{d.Location.SourceTree?.FilePath} {d.Id} {d.GetMessage()}")
+            .ToList();
+        Assert.Empty(warnings);
+    }
 }
