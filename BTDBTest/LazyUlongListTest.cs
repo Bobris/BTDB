@@ -160,6 +160,25 @@ public class LazyUlongListTest : IDisposable
     }
 
     [Fact]
+    public void ReplacingListByUpsertDeletesOldExternalContent()
+    {
+        var creator = CreateRow([1, 2, 3], out var firstListId);
+        ulong secondListId;
+        using (var tr = _db.StartTransaction())
+        {
+            var list = CreateList(tr, [10, 20]);
+            secondListId = list.Id;
+            Assert.False(creator(tr).Upsert(new Row { Id = 1, Values = list }));
+            tr.Commit();
+        }
+
+        Assert.False(HasExternalContent(firstListId));
+        Assert.True(HasExternalContent(secondListId));
+        using var readTr = _db.StartTransaction();
+        Assert.Equal(new ulong[] { 10, 20 }, creator(readTr).FindById(1).Values.ToArray());
+    }
+
+    [Fact]
     public void ApplyCommandsRejectsUnflushedAdds()
     {
         var creator = CreateRow([1], out _);
