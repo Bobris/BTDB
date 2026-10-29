@@ -71,3 +71,6 @@ open Lsm
 #print axioms WalBatch.batch_nonempty
 #print axioms WalBatch.batch_within
 #print axioms WalBatch.batch_maximal
+#print axioms WalSplit.split_flatten
+#print axioms WalSplit.split_first
+#print axioms WalSplit.split_last
