@@ -168,6 +168,50 @@ public class KeyValueDBFileInfosTest
         Assert.InRange(GC.GetTotalAllocatedBytes(true) - before, 0, 64 << 20);
     }
 
+    // Before the fix the count of ulongs in a key index header was allocated at once, so a damaged count made opening
+    // allocate it, here 512 MB, before the header was found damaged.
+    [Fact]
+    public void KeyIndexWithDamagedUlongCountIsRejectedWithoutAllocatingIt()
+    {
+        using var files = new InMemoryFileCollection();
+        using (var db = Open(files, 1024))
+        {
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+            db.CreateKvi(default);
+        }
+
+        var index = files.Enumerate().Last();
+        var content = new byte[index.GetSize()];
+        index.RandomRead(content, 0, false);
+        var reader = MemReader.CreateFromPinnedSpan(content);
+        FileCollectionWithFileInfos.SkipHeader(ref reader);
+        Assert.Equal(KVFileType.ModernKeyIndexWithUlongs, (KVFileType)reader.ReadUInt8());
+        reader.SkipVInt64();
+        reader.SkipVUInt32();
+        reader.SkipVUInt32();
+        reader.SkipVUInt64();
+        reader.SkipVUInt64();
+        reader.Skip1Byte();
+        var countAt = (int)reader.GetCurrentPosition();
+        var count = new MemWriter();
+        count.WriteVUInt32(1 << 26);
+        var damagedContent = content[..countAt].Concat(count.GetSpan().ToArray()).Concat(content[(countAt + 1)..])
+            .ToArray();
+        var damaged = files.AddFile("kvi");
+        var writer = new MemWriter(damaged.GetAppenderWriter());
+        writer.WriteBlock(damagedContent);
+        writer.Flush();
+        index.Remove();
+        var before = GC.GetTotalAllocatedBytes(true);
+        using (var db = Open(files))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+
+        Assert.InRange(GC.GetTotalAllocatedBytes(true) - before, 0, 64 << 20);
+    }
+
     [Fact]
     public void ReadFileInfoHandlesAllHeaderVariants()
     {

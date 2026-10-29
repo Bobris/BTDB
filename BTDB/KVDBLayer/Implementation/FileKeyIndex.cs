@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.StreamLayer;
 using System.Linq;
 
@@ -49,11 +50,12 @@ public class FileKeyIndex : IKeyIndex
         _ulongs = null;
         if (withUlongs)
         {
-            _ulongs = new ulong[reader.ReadVUInt32()];
-            for (var i = 0; i < _ulongs.Length; i++)
-            {
-                _ulongs[i] = reader.ReadVUInt64();
-            }
+            // Each value takes at least a byte, so a damaged count fails at the end of the file, growing with the values
+            // read instead of being allocated at once.
+            var count = reader.ReadVUInt32();
+            var ulongs = new List<ulong>((int)Math.Min(count, 64u));
+            for (var i = 0u; i < count; i++) ulongs.Add(reader.ReadVUInt64());
+            _ulongs = ulongs.ToArray();
         }
     }
 

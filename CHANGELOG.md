@@ -599,6 +599,8 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- Opening a `BTreeKeyValueDB` whose key index header had a damaged count of ulongs allocated that many at once,
+  512 MB for a count of 2^26, before failing on the header. The values are read as they come now.
 - Opening a `BTreeKeyValueDB` whose key index had a damaged key length allocated one and a half times that length,
   384 MB for a 240-byte index, before rejecting the index and replaying the logs. An uncompressed key index now
   rejects a key longer than the rest of the file before allocating it, as replay already did for logs.
