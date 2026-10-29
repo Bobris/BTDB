@@ -19,7 +19,8 @@ public class TransactionLogFuzzTest
         CompactorScheduler = null
     };
 
-    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 40));
+    // Seeds 728 and 829 damage the log header's predecessor ID.
+    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 40).Append(728).Append(829));
 
     static byte[] Bytes(Random random, int length, bool compressible)
     {
@@ -147,6 +148,11 @@ public class TransactionLogFuzzTest
                 {
                     // A flag for a compressed key or value, like a log written with compression and opened without:
                     // refusing to open is right, as replay cannot tell this from a configuration mismatch.
+                }
+                catch (BTDBException error) when (error.Message == "Transaction-log predecessor must have a lower file ID.")
+                {
+                    // A damaged predecessor ID in the header breaks the log chain, which opening refuses rather than
+                    // follow a link that could loop or drop earlier logs.
                 }
                 catch (Exception error)
                 {
