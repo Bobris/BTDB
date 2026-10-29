@@ -135,6 +135,9 @@ without its type, and the descriptors nested in it (`../EventStore2Layer/`).
 `BtdbProofs/LruCapacity.lean` models how `LruCache` and `SpanByteLruCache` take slots, grow and evict
 (`../Collections/`).
 
+`BtdbProofs/RemovePartial.lean` models how `RemoveByIdPartial` removes the rows of a key prefix that `OnBeforeRemove`
+does not keep (`../ODBLayer/RelationDBManipulator.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -261,6 +264,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ListKey.list_prefix_free`, `ListKey.needs_count` | With prefix free encodings of the count and the items, no list key is a prefix of another, so a list key can be followed by other fields and a lookup by it matches exactly the equal list; without the count the key of `[1]` would be a prefix of the key of `[1, 2]`. |
 | `SnappyExpansion.expansion_bound` | Snappy elements write at most 22 times the input bytes they take, so refusing a declared size above 22 times the input refuses no data that would decompress (`SnappyTest.ImpossibleDecompressedSizeIsRefusedBeforeAllocating`). |
 | `ChunkCachePut.fixed_starts_at_most_one`, `ChunkCachePut.previous_never_fits` | `DiskChunkCache.Put` of content no longer than a file's limit less the largest header fits after at most one new value file; before the 2026-10-29 fix content too long for an empty file made it start new files forever (`DiskChunkCacheTest.ContentLargerThanValueFileIsNotCached`). |
+| `RemovePartial.fixed_leaves_only_kept`, `RemovePartial.previous_leaves_removable` | When `RemoveByIdPartial` removes fewer rows than its limit, every row left is one `OnBeforeRemove` keeps; before the 2026-10-29 fix kept rows counted towards the limit and a call could remove nothing while a removable row was left (`ObjectDbBeforeRemovePartialTest`). |
 | `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |

@@ -144,3 +144,5 @@ open Btdb
 #print axioms SnappyExpansion.expansion_bound
 #print axioms ChunkCachePut.fixed_starts_at_most_one
 #print axioms ChunkCachePut.previous_never_fits
+#print axioms RemovePartial.fixed_leaves_only_kept
+#print axioms RemovePartial.previous_leaves_removable

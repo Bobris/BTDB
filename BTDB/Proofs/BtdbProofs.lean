@@ -45,3 +45,4 @@ import BtdbProofs.ListKey
 import BtdbProofs.QueryTopK
 import BtdbProofs.SnappyExpansion
 import BtdbProofs.ChunkCachePut
+import BtdbProofs.RemovePartial
