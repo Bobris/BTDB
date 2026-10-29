@@ -228,3 +228,6 @@ open Btdb
 #print axioms RelationRegistry.old_drops
 #print axioms TypeNames.reachable_inv
 #print axioms TypeNames.old_shares
+#print axioms EnumerateDirty.enumerate_complete
+#print axioms EnumerateDirty.enumerate_nodup
+#print axioms EnumerateDirty.old_misses

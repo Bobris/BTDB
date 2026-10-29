@@ -121,6 +121,9 @@ copied, while `InitRelation` adds relations to the current one in place.
 
 `BtdbProofs/TypeNames.lean` models how `Type2NameRegistry.RegisterType` gives ObjectDB types their stored names.
 
+`BtdbProofs/EnumerateDirty.lean` models how `ObjectDBTransaction.Enumerate` adds the transaction's objects not stored
+yet to the stored ones.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -318,6 +321,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `CompactionBatch.stop_keeps_due`, `CompactionBatch.old_drops` | A batch stopping early schedules again every database it took, except those compacted with no work left; before the 2026-10-29 fix it scheduled none, so removing one database left the interrupted and later ones uncompacted (`KeyValueDBCompactorSchedulerTest`). |
 | `RelationRegistry.reachable_inv`, `RelationRegistry.old_drops` | Publishing a copied registry only while its version is unchanged keeps every relation ever registered; before the 2026-10-29 fix the copy was published regardless, dropping relations registered while the call waited for the writer (`ObjectDbInitializeRelationsTest`). |
 | `TypeNames.reachable_inv`, `TypeNames.old_shares` | No two storable types are registered under one name, so objects stored under a name load as the type stored; before the 2026-10-29 fix two classes of the same name in different namespaces shared it, and one loaded as the other (`ObjectDbTypeNameClashTest`). |
+| `EnumerateDirty.enumerate_complete`, `EnumerateDirty.enumerate_nodup`, `EnumerateDirty.old_misses` | Every stored object and every one created in the transaction is enumerated, none twice; before the 2026-10-29 fix a new object created before one flushed with `StoreAndFlush` was missed (`ObjectDBTransactionCoverageTest`). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |

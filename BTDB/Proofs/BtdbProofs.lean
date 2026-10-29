@@ -76,3 +76,4 @@ import BtdbProofs.SingletonOid
 import BtdbProofs.CompactionBatch
 import BtdbProofs.RelationRegistry
 import BtdbProofs.TypeNames
+import BtdbProofs.EnumerateDirty
