@@ -39,4 +39,37 @@ public class RelationVersionInfoDamageTest
         Assert.True(error is BTDBException or EndOfStreamException, error?.ToString());
         Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
     }
+
+    // The same for an object table's stored fields and for an enum's stored configuration, whose names and values were
+    // allocated for the count before any was read.
+    [Fact]
+    public void DamagedTableFieldCountIsReported()
+    {
+        var writer = new MemWriter();
+        writer.WriteVUInt32((1u << 31) + 1);
+        var bytes = writer.GetSpan().ToArray();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var reader = MemReader.CreateFromPinnedSpan(bytes);
+        try
+        {
+            TableVersionInfo.Load(ref reader, null!, "Damaged");
+            Assert.Fail("Loaded damaged table metadata.");
+        }
+        catch (BTDBException)
+        {
+        }
+
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
+    }
+
+    [Fact]
+    public void DamagedEnumConfigurationCountIsReported()
+    {
+        var writer = new MemWriter();
+        writer.WriteVUInt32((1u << 28) << 2);
+        var bytes = writer.GetSpan().ToArray();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<BTDBException>(() => new BTDB.FieldHandler.EnumFieldHandler.EnumConfiguration(bytes));
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1 << 20);
+    }
 }

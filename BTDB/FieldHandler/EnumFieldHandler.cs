@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -60,6 +61,9 @@ public class EnumFieldHandler : IFieldHandler
                 _signed = (header & 1) != 0;
                 _flags = (header & 2) != 0;
                 var count = header >> 2;
+                // Each name takes at least a byte: a larger count is damage, which must not size the arrays.
+                if (count > configuration.Length)
+                    throw new BTDBException("Enum configuration declares " + count + " values, more than it holds.");
                 _names = new string[count];
                 _values = new ulong[count];
                 for (var i = 0; i < count; i++) Names[i] = reader.ReadString()!;

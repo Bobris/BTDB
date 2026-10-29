@@ -43,7 +43,7 @@ public class TableVersionInfo
     internal static TableVersionInfo Load(ref MemReader reader, IFieldHandlerFactory fieldHandlerFactory,
         string tableName)
     {
-        var fieldCount = reader.ReadVUInt32();
+        var fieldCount = RelationVersionInfo.CheckFieldCount(reader.ReadVUInt32(), reader, tableName);
         var fieldInfos = new TableFieldInfo[fieldCount];
         for (var i = 0; i < fieldCount; i++)
         {

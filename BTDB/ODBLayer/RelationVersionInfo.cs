@@ -413,10 +413,10 @@ public class RelationVersionInfo
     }
 
     /// Each stored field takes at least a byte, so a count past the bytes left is damage, which must not size an array.
-    static uint CheckFieldCount(uint count, in MemReader reader, string relationName)
+    internal static uint CheckFieldCount(uint count, in MemReader reader, string relationName)
     {
         if (count > CollectionMetadata.CapacityFor(count, reader) && reader.Controller == null)
-            throw new BTDBException("Relation " + relationName + " metadata declares " + count +
+            throw new BTDBException(relationName + " metadata declares " + count +
                                     " fields, more than it holds.");
         return count;
     }
