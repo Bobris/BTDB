@@ -18,6 +18,7 @@ import LsmProofs.ClipCoverage
 import LsmProofs.PrefixSuccessor
 import LsmProofs.KeySuccessor
 import LsmProofs.PrefixRange
+import LsmProofs.WalBatch
 import LsmProofs.Varint
 import LsmProofs.LevelLookup
 import LsmProofs.Bloom

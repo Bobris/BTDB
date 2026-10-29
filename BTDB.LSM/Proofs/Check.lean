@@ -67,3 +67,7 @@ open Lsm
 #print axioms KeySuccessor.nothing_between
 #print axioms PrefixRange.prefix_between
 #print axioms PrefixRange.prefix_run
+#print axioms WalBatch.batch_prefix
+#print axioms WalBatch.batch_nonempty
+#print axioms WalBatch.batch_within
+#print axioms WalBatch.batch_maximal

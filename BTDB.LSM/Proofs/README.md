@@ -58,6 +58,8 @@ the tables a compaction writes.
 `LsmProofs/PrefixRange.lean` shows the sorted keys with a prefix are contiguous, as
 `LsmKeyValueDBCursor.FindKeyIndex(prefix, index)` assumes.
 
+`LsmProofs/WalBatch.lean` models how `LsmKeyValueDB.UploadWalAsync` picks the pending records of one upload.
+
 `LsmProofs/Varint.lean` models the LEB128 integers of `LsmEncoder.WriteVUInt64` and `LsmDecoder.ReadVUInt64`.
 
 `LsmProofs/Bloom.lean` models `BloomFilter.Build` and `MayContain` with double hashing.
@@ -151,6 +153,7 @@ Not modelled in `Wal.lean`:
 | `PrefixSuccessor.prefix_successor_correct`, `PrefixSuccessor.no_successor` | A key is below `PrefixSuccessor(p)` exactly when it is below `p` or starts with `p`, so a scan from `p` to it visits exactly the keys with the prefix; for a prefix of `0xff` bytes every key is below it or starts with it, so null is right. |
 | `KeySuccessor.lt_successor`, `KeySuccessor.nothing_between` | A key is below `Successor(k)`, `k` with a zero byte appended, and no key lies strictly between them, which `FuzzyCursor.lean` assumes when it writes the successor of a key as the next position. |
 | `PrefixRange.prefix_between`, `PrefixRange.prefix_run` | A key between two keys with a prefix has the prefix, so in sorted keys those with a prefix are one run and `FindKeyIndex(prefix, index)`, stepping by rank from the first of them and checking the prefix of where it lands, finds the key with that index among them. |
+| `WalBatch.batch_prefix`, `WalBatch.batch_nonempty`, `WalBatch.batch_within`, `WalBatch.batch_maximal` | A WAL upload takes the oldest pending records, at least one when any is pending, fitting `WalBatchLimit` unless it is a single larger record, and stops only where the next record would not fit. |
 | `Varint.round_trip`, `Varint.decoded_fits` | Every value below 2^64 decodes back from its encoding, leaving the bytes after it, and every value the decoder accepts is below 2^64; before the 2026-10-29 fix a tenth byte above 1 was accepted and lost bits (`LsmEncodingTest.OverlongValueIsDamage`). |
 | `Varint.zigzag_round_trip`, `Varint.zigzag_range` | The zigzag mapping of `WriteVInt64` is undone by `ReadVInt64`, and a value is a `long` exactly when its image is below 2^64, so every `long` reads back as written. |
 | `Bloom.no_false_negative` | Every hash added to a Bloom filter passes `MayContain`, whatever else was added before or after it, since adding only sets bits. |
