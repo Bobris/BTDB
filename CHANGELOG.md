@@ -595,6 +595,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `EquatableArray<T>`, in the library and in the source generator, treated the default array as equal to an empty
+  one but hashed them differently (0 against the hash of no items), so a dictionary or set keyed by such arrays could
+  miss an equal key. Both now hash to 0.
 - `Utf16Utf8Dictionary` given more keys than its count failed with `IndexOutOfRangeException`; it throws the
   `ArgumentException` it already threw for fewer keys.
 - `SeqLock.RetryRead` read the counter again with only acquire semantics, so on arm64, Apple silicon included, the

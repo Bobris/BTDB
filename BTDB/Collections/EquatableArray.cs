@@ -51,7 +51,8 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
     /// <sinheritdoc/>
     public override int GetHashCode()
     {
-        if (_array is not T[] array)
+        // An empty array equals the default one, so both hash to 0.
+        if (_array is not { Length: > 0 } array)
         {
             return 0;
         }

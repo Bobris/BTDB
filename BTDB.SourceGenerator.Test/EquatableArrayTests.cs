@@ -30,6 +30,16 @@ public class EquatableArrayTests
         Assert.Equal(0, default(EquatableArray<string>).GetHashCode());
     }
 
+    // Before the fix the default array equalled an empty one but hashed differently, so a set or a dictionary keyed
+    // by them could miss.
+    [Fact]
+    public void DefaultAndEmptyArraysHashAlike()
+    {
+        var empty = new EquatableArray<string>([]);
+        Assert.True(empty.Equals(default));
+        Assert.Equal(default(EquatableArray<string>).GetHashCode(), empty.GetHashCode());
+    }
+
     [Fact]
     public void DefaultArrayBehavesAsEmpty()
     {

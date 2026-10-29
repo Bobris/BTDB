@@ -756,6 +756,15 @@ public class CollectionsCoverageTest
     static void InsertAt(StructList<int> l, int i) => l.Insert(i);
     static void RemoveAtIndex(StructList<int> l, int i) => l.RemoveAt(i);
 
+    // Before the fix the default array equalled an empty one but hashed differently.
+    [Fact]
+    public void DefaultAndEmptyEquatableArraysHashAlike()
+    {
+        var empty = new EquatableArray<int>([]);
+        Assert.True(empty.Equals(default));
+        Assert.Equal(default(EquatableArray<int>).GetHashCode(), empty.GetHashCode());
+    }
+
     [Fact]
     public void EquatableArrayHasValueSemantics()
     {
