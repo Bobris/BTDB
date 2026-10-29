@@ -206,3 +206,6 @@ open Btdb
 #print axioms BonItemBound.distinct_offsets_bound
 #print axioms BonItemBound.pairs_double_fits
 #print axioms BonItemBound.unbounded_pairs_wrap
+#print axioms CapacityHint.capacity_bounded
+#print axioms CapacityHint.valid_capacity_exact
+#print axioms CapacityHint.capacity_fits_int

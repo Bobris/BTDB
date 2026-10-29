@@ -105,6 +105,9 @@ creating, under a reentrant lock.
 
 `BtdbProofs/BonItemBound.lean` bounds the items a Bon container can hold by the bytes of its buffer.
 
+`BtdbProofs/CapacityHint.lean` models `CollectionMetadata.CapacityFor`, the capacity collections read from data are
+created with.
+
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
@@ -289,6 +292,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `EquatableHash.hash_respects_equal`, `EquatableHash.old_hash_breaks` | Hashing the default and an empty array both as 0 gives equal arrays equal hashes; before the 2026-10-29 fix the empty array hashed as `HashCode` of no items, a per-process seed, unlike the default array it equals (`EquatableArrayTests.DefaultAndEmptyArraysHashAlike`). |
 | `IocSelfWait.self_wait_never_ends`, `IocSelfWait.fixed_self_wait_fails`, `IocSelfWait.other_wait_unchanged` | The thread creating an instance and resolving it again passes its own reentrant lock at once and never sees the locker replaced, so before the 2026-10-29 fix it looped forever; the fixed wait fails at once for it and waits as before for every other thread (`IocTests.ServiceResolvingItselfWhileCreatedFails`). |
 | `BonItemBound.distinct_offsets_bound`, `BonItemBound.pairs_double_fits`, `BonItemBound.unbounded_pairs_wrap` | Items taking their own bytes start at distinct offsets below the buffer's length, so a valid container holds at most that many and `Bon.ReadItemCount` refuses only damage; before the 2026-10-29 fix a damaged count past `int.MaxValue` became a negative list capacity (`BonDamageFuzzTest.DamagedBonDeserializesOrThrows`), and an unbounded dictionary count doubled in a `uint` wrapped (`BonCoverageTest.DamagedDictionaryCountDoesNotWrap`). |
+| `CapacityHint.capacity_bounded`, `CapacityHint.valid_capacity_exact`, `CapacityHint.capacity_fits_int` | The capacity is at most the stored count and the bytes left, and fits an `int`, so a damaged count can neither be a negative capacity nor size a collection beyond the data, while a valid count is used as it is; before the 2026-10-29 fixes such counts were negative capacities (`RelationDamagedCollectionCountTest`, `EventDamagedCollectionCountTest`, `RelationVersionInfoDamageTest`). |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
