@@ -113,6 +113,9 @@ cache shared by the transactions of an `ObjectDB`, with readers storing what the
 `BtdbProofs/SingletonOid.lean` models how the oid of a table's singleton, allocated by whichever transaction first asks
 for it, gets stored with the table info by a writer.
 
+`BtdbProofs/CompactionBatch.lean` models how `CompactorScheduler` ends a batch of due compactions that a removed
+database cancelled or a compaction failed.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -307,6 +310,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `CapacityHint.capacity_bounded`, `CapacityHint.valid_capacity_exact`, `CapacityHint.capacity_fits_int` | The capacity is at most the stored count and the bytes left, and fits an `int`, so a damaged count can neither be a negative capacity nor size a collection beyond the data, while a valid count is used as it is; before the 2026-10-29 fixes such counts were negative capacities (`RelationDamagedCollectionCountTest`, `EventDamagedCollectionCountTest`, `RelationVersionInfoDamageTest`). |
 | `SingletonCache.reachable_inv`, `SingletonCache.lookup_correct`, `SingletonCache.writer_store_ignored` | A transaction taking the singleton from the cache gets the one of its own snapshot, and the writer's uncommitted content is never cached, as long as every change of the singleton first sets the cache to the writer's commit number; before the 2026-10-29 fix three ways of changing it did not (`ObjectDbSingletonCacheTest`). |
 | `SingletonOid.reachable_inv`, `SingletonOid.old_loses_oid` | An allocated singleton oid stays durable or flagged for the next writer to store, as a commit clears the flag only when it stored the oid; before the 2026-10-29 fix a commit cleared it also when the oid was allocated after it stored the table info, and the singleton was lost on reopen (`ObjectDbSingletonCacheTest`). |
+| `CompactionBatch.stop_keeps_due`, `CompactionBatch.old_drops` | A batch stopping early schedules again every database it took, except those compacted with no work left; before the 2026-10-29 fix it scheduled none, so removing one database left the interrupted and later ones uncompacted (`KeyValueDBCompactorSchedulerTest`). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |

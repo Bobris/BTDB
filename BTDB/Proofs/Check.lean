@@ -221,3 +221,5 @@ open Btdb
 #print axioms SingletonCache.writer_store_ignored
 #print axioms SingletonOid.reachable_inv
 #print axioms SingletonOid.old_loses_oid
+#print axioms CompactionBatch.stop_keeps_due
+#print axioms CompactionBatch.old_drops

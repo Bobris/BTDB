@@ -170,6 +170,8 @@
     though `ulong` arithmetic can wrap.
   - `BTDB/Proofs/`, collections read from data: their capacity is never above the bytes left, and is the stored count
     for valid data.
+  - `BTDB/Proofs/`, compaction scheduling: a batch of compactions stopped early, cancelled or failed, schedules again
+    every database it took but those compacted with no work left.
   - `BTDB/Proofs/`, hash collections: bucket counts are rounded up to the smallest power of two not below the
     capacity asked for.
   - `BTDB/Proofs/`, ObjectDB singletons: a transaction taking a singleton from the shared content cache gets the one

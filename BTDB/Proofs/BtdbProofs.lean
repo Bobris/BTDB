@@ -73,3 +73,4 @@ import BtdbProofs.StringKeyOrder
 import BtdbProofs.PowerOfTwo
 import BtdbProofs.SingletonCache
 import BtdbProofs.SingletonOid
+import BtdbProofs.CompactionBatch
