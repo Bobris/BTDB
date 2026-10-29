@@ -88,3 +88,4 @@ import BtdbProofs.Utf8Length
 import BtdbProofs.HiddenProperties
 import BtdbProofs.InheritedAttributes
 import BtdbProofs.PropertyOrder
+import BtdbProofs.DependencyMembers

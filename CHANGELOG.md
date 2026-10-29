@@ -79,6 +79,7 @@
     `PackUnpack` length functions match the modelled encodings, readers take each encoding's length from its first
     byte correctly, and unpacking returns every packed 64-bit value.
   - `BTDB/Proofs/`, property listing: adding private properties of base classes leaves every other schema as it was.
+  - `BTDB/Proofs/`, IOC: a type's dependencies are injected once per member name, from its most derived member.
   - `BTDB/Proofs/`, attributes of overriding properties: the generator inherits them as reflection does.
   - `BTDB/Proofs/`, stored properties: leaving out hidden properties keeps exactly one per name, the most derived.
   - `BTDB/Proofs/`, type names: UTF-8 takes at most three bytes per UTF-16 code unit, which sizes the lookup buffer.

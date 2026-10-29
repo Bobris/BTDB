@@ -253,3 +253,6 @@ open Btdb
 #print axioms PropertyOrder.new_eq_old_without_private_bases
 #print axioms PropertyOrder.new_has_private_bases
 #print axioms TypeNames.lookup_storable
+#print axioms DependencyMembers.collect_nodup
+#print axioms DependencyMembers.collect_complete
+#print axioms DependencyMembers.collect_first
