@@ -226,3 +226,5 @@ open Btdb
 #print axioms CompactionBatch.old_drops
 #print axioms RelationRegistry.reachable_inv
 #print axioms RelationRegistry.old_drops
+#print axioms TypeNames.reachable_inv
+#print axioms TypeNames.old_shares

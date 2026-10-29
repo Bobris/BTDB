@@ -170,6 +170,7 @@
     though `ulong` arithmetic can wrap.
   - `BTDB/Proofs/`, collections read from data: their capacity is never above the bytes left, and is the stored count
     for valid data.
+  - `BTDB/Proofs/`, type names: no two storable types are registered under one name.
   - `BTDB/Proofs/`, relation registration: initializing relations keeps every relation registered meanwhile.
   - `BTDB/Proofs/`, compaction scheduling: a batch of compactions stopped early, cancelled or failed, schedules again
     every database it took but those compacted with no work left.
