@@ -548,4 +548,44 @@ public class IOCCoverageTests : GeneratorTestsBase
             """, "BTDB0052");
         Assert.Contains("IDispatcher", diagnostic.GetMessage());
     }
+
+    // Before the fix a member of a type the generated code cannot access, like a private nested class of a class that is
+    // not partial, made the generated metadata fail to compile.
+    [Fact]
+    public void MemberOfInaccessibleTypeIsReported()
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic("""
+            namespace TestNamespace;
+
+            public class Outer
+            {
+                [BTDB.Generate]
+                public class UsesPrivateType
+                {
+                    private System.Collections.Generic.List<Hidden>? Items { get; set; }
+                    private class Hidden { public int X { get; set; } }
+                }
+            }
+            """, "BTDB0053");
+        Assert.Contains("Items", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void MemberOfPrivateTypeOfPartialClassCompiles()
+    {
+        GenerateAndCompile("""
+            namespace TestNamespace;
+
+            public partial class Outer
+            {
+                [BTDB.Generate]
+                public partial class UsesPrivateType
+                {
+                    private Hidden? Field { get; set; }
+                    private Hidden[]? Array { get; set; }
+                    private class Hidden { public int X { get; set; } }
+                }
+            }
+            """);
+    }
 }

@@ -1819,6 +1819,9 @@ public class SourceGenerator : IIncrementalGenerator
         var relationItemMembers = GetRelationItemMembersIncludingInheritance(symbol).ToArray();
 
         var propertyInfos = DependencyMembers(symbol, isPartial, model.Compilation).ToArray();
+        // Generated metadata names member types inside a partial type, or else from a file class of the assembly.
+        ISymbol metadataWithin = isPartial ? symbol : model.Compilation.Assembly;
+        ISymbol? inaccessibleMember = null;
         var fields = relationItemMembers
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic && SerializableType(f.Type))
@@ -1829,6 +1832,7 @@ public class SourceGenerator : IIncrementalGenerator
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f =>
             {
+                if (!IsTypeAccessible(f.Type, model.Compilation, metadataWithin)) inaccessibleMember ??= f;
                 var ownerGenericInfo = ExtractOwnerGenericInfo(f.ContainingType);
                 return new FieldsInfo(f.Name,
                     f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.OriginalDefinition.Type),
@@ -1853,6 +1857,7 @@ public class SourceGenerator : IIncrementalGenerator
                                                     a.AttributeClass?.Name == "SecondaryKeyAttribute")))
                 .Select(p =>
                 {
+                    if (!IsTypeAccessible(p.Type, model.Compilation, metadataWithin)) inaccessibleMember ??= p;
                     var implementationProperty = ResolvePropertyImplementation(symbol, p);
                     var isReadOnly = implementationProperty.SetMethod is null;
                     string? getterName;
@@ -1924,6 +1929,17 @@ public class SourceGenerator : IIncrementalGenerator
         if (fieldTypes.Any(t => !SerializableType(t)))
         {
             fields = [];
+        }
+        else if (inaccessibleMember != null &&
+                 !IsReflectionMetadataExcluded(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+        {
+            var memberType = inaccessibleMember is IFieldSymbol field ? field.Type : ((IPropertySymbol)inaccessibleMember).Type;
+            return GenerationError("BTDB0053",
+                "Member " + inaccessibleMember.Name + " of " +
+                symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + " has type " +
+                memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) +
+                ", which generated code cannot access; make the type more accessible or the class partial",
+                inaccessibleMember.Locations[0]);
         }
         else
         {
@@ -2099,6 +2115,19 @@ public class SourceGenerator : IIncrementalGenerator
             originalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             string.Join(", ", symbol.TypeArguments.Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))),
             ExtractGenericParameters(originalDefinition));
+    }
+
+    static bool IsTypeAccessible(ITypeSymbol type, Compilation compilation, ISymbol within)
+    {
+        return type switch
+        {
+            IArrayTypeSymbol array => IsTypeAccessible(array.ElementType, compilation, within),
+            IPointerTypeSymbol pointer => IsTypeAccessible(pointer.PointedAtType, compilation, within),
+            ITypeParameterSymbol => true,
+            INamedTypeSymbol named => compilation.IsSymbolAccessibleWithin(named.OriginalDefinition, within) &&
+                                      named.TypeArguments.All(t => IsTypeAccessible(t, compilation, within)),
+            _ => true
+        };
     }
 
     static bool SerializableType(ITypeSymbol typeSymbol)
