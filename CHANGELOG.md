@@ -118,6 +118,9 @@
 - IOC: a dispatcher used the first one-parameter method with its name, so a static or private overload of the handler
   method broke compilation of the generated code, and a class handling several message types, such as one implementing
   `IHandler<A>` and `IHandler<B>`, handled only one of them. Every accessible instance overload is registered now.
+- IOC: a dispatcher handler method taking a struct message made the generated code fail to compile, because it cast the
+  message with `Unsafe.As`. Value type messages are unboxed now, and a `Nullable<T>` message is registered under `T`,
+  the type of the boxed value.
 - ObjectDB: non-public `OnBeforeRemove` and `OnSerialize` methods of a base class of a relation item threw
   `MissingMethodException` in generated relations, whose accessors targeted the derived class, and private ones were
   not called at all in relations emitted as IL. They are now called in both, also from generic base classes.

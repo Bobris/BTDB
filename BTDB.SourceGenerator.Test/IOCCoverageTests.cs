@@ -306,6 +306,44 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Other)", twoHandler);
     }
 
+    // Before the fix the generated code cast a struct message with Unsafe.As, which works only for reference types, and
+    // did not compile.
+    [Fact]
+    public void DispatcherUnboxesValueTypeMessages()
+    {
+        var sources = GenerateAndCompile("""
+            using BTDB.IOC;
+
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public interface IHandler<in TMessage> : IDispatcher
+            {
+                int Consume(TMessage message);
+            }
+
+            public struct Message
+            {
+            }
+
+            public class Handler : IHandler<Message>, IHandler<int?>
+            {
+                public int Consume(Message message) => 1;
+
+                public int Consume(int? message) => 2;
+            }
+            """);
+        var handler = GetSource(sources, "TestNamespace.Handler.g.cs");
+        Assert.Contains(".Consume((global::TestNamespace.Message)message)", handler);
+        Assert.Contains("GetOrAddValueRef(typeof(int).TypeHandle.Value)", handler);
+        Assert.Contains(".Consume((int?)message)", handler);
+    }
+
     [Fact]
     public void DefaultInterfaceDispatcherReimplementedByClassIsNotUsedFromInterface()
     {

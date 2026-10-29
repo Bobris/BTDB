@@ -65,8 +65,35 @@ public class TwoMessagesHandler : IDefaultMethodHandler<FirstHandlerMessage>,
     public void Consume(SecondHandlerMessage message) => Calls.Add("second");
 }
 
+public struct StructHandlerMessage
+{
+    public int Value;
+}
+
+public class ValueTypeMessagesHandler : IDefaultMethodHandler<StructHandlerMessage>, IDefaultMethodHandler<long?>
+{
+    public List<string> Calls { get; } = [];
+
+    public void Consume(StructHandlerMessage message) => Calls.Add("struct " + message.Value);
+
+    public void Consume(long? message) => Calls.Add("long " + message);
+}
+
 public class IocDispatcherTests
 {
+    // Before the fix the generated code cast value type messages with Unsafe.As and did not compile.
+    [Fact]
+    public unsafe void DispatcherCallsHandlersOfValueTypeMessages()
+    {
+        var container = BuildContainer();
+        var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);
+
+        consume(container, new StructHandlerMessage { Value = 3 });
+        consume(container, (long?)4);
+
+        Assert.Equal(["struct 3", "long 4"], container.Resolve<ValueTypeMessagesHandler>().Calls);
+    }
+
     // Before the fix only the first Consume overload was registered, so the other message type had no handler.
     [Fact]
     public unsafe void DispatcherCallsEveryOverloadOfHandler()
@@ -113,6 +140,7 @@ public class IocDispatcherTests
         builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
         builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
         builder.RegisterType<TwoMessagesHandler>().AsSelf().SingleInstance();
+        builder.RegisterType<ValueTypeMessagesHandler>().AsSelf().SingleInstance();
         return builder.Build();
     }
 }

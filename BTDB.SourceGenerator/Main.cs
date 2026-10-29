@@ -1706,15 +1706,23 @@ public class SourceGenerator : IIncrementalGenerator
             .Select(s => new TypeRef(s)).ToArray();
 
         var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
-        foreach (var (name, _, _, ifaceName, _) in symbol.AllInterfaces.SelectMany(
+        foreach (var (name, _, _, ifaceName, _, _, _) in symbol.AllInterfaces.SelectMany(
                      DetectDispatcherInfo))
         {
             foreach (var (m, callType) in FindDispatcherMethods(symbol, name))
             {
+                var messageType = m.Parameters[0].Type;
+                // A boxed Nullable<T> is a boxed T, so its handler is found by T.
+                var keyType = messageType is INamedTypeSymbol
+                {
+                    OriginalDefinition.SpecialType: SpecialType.System_Nullable_T
+                } nullable
+                    ? nullable.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                    : null;
                 dispatchers.Add(new(name,
-                    m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    messageType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
-                    ifaceName, callType));
+                    ifaceName, callType, messageType.IsValueType, keyType));
             }
         }
 
@@ -3175,7 +3183,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
             """);
 
-        foreach (var (name, type, resultType, _, _) in generationInfo.Dispatchers)
+        foreach (var (name, type, resultType, _, _, _, _) in generationInfo.Dispatchers)
         {
             // language=c#
             factoryCode.Append($$"""
@@ -4048,20 +4056,22 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var dispatchers = new StringBuilder();
-        foreach (var (name, type, resultType, ifaceName, callType) in generationInfo.Dispatchers)
+        foreach (var (name, type, resultType, ifaceName, callType, isValueType, keyType) in generationInfo.Dispatchers)
         {
+            // Unsafe.As works only for reference types, a value type message is unboxed.
+            var message = isValueType ? $"({type})message" : $"global::System.Runtime.CompilerServices.Unsafe.As<{type}>(message)";
             const string dispatcherIndent = "               ";
             var returnPrefix = resultType is null ? "" : "return ";
             var returnNullLine = resultType is null ? $"\n{dispatcherIndent}return null;" : "";
             // language=c#
             dispatchers.Append($$"""
 
-                        {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (global::BTDB.IOC.IContainer c) => {
+                        {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{keyType ?? type}}).TypeHandle.Value).ExecuteFactory = (global::BTDB.IOC.IContainer c) => {
                            var nestedFactory = c.CreateFactory(typeof({{generationInfo.FullName}}));
                            return (container, message) =>
                            {
                                var res = nestedFactory(container, null);
-                               {{returnPrefix}}global::System.Runtime.CompilerServices.Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{CSharpSyntaxUtilities.EscapeIdentifier(name)}}(global::System.Runtime.CompilerServices.Unsafe.As<{{type}}>(message));{{returnNullLine}}
+                               {{returnPrefix}}global::System.Runtime.CompilerServices.Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{CSharpSyntaxUtilities.EscapeIdentifier(name)}}({{message}});{{returnNullLine}}
                            };
                         };
                 """);
@@ -6273,4 +6283,6 @@ record MethodInfo(
 record IndexInfo(string? Name, uint Order, bool InKeyValue, uint IncludePrimaryKeyOrder);
 
 // CallType is the interface to call through when the method is a default interface implementation; null calls the class.
-record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName, string? CallType);
+// KeyType is the type the handler is registered under when it differs from Type, the message parameter type.
+record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName, string? CallType,
+    bool IsValueType = false, string? KeyType = null);
