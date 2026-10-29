@@ -190,3 +190,5 @@ open Btdb
 #print axioms FileIds.allocate_inv
 #print axioms FileIds.load_max_ge
 #print axioms FileIds.next_fresh
+#print axioms ReadBounds.refused_iff
+#print axioms ReadBounds.naive_wraps

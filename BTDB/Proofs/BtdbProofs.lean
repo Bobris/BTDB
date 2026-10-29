@@ -61,3 +61,4 @@ import BtdbProofs.XxHashStream
 import BtdbProofs.ExportFormat
 import BtdbProofs.IocDefaults
 import BtdbProofs.FileIds
+import BtdbProofs.ReadBounds

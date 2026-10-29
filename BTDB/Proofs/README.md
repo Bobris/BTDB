@@ -87,6 +87,8 @@ files with another Guid are foreign and deleted on open.
 `BtdbProofs/FileIds.lean` models `FileIdAllocator`, which hands out odd IDs to transaction logs and even ones to other
 files.
 
+`BtdbProofs/ReadBounds.lean` models the `ulong` test the file collections use to refuse a read past a file's end.
+
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
@@ -264,6 +266,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `FileGuid.previous_picks_foreign` | Before the 2026-10-28 fix the first listed file decided, so one foreign or damaged file listed first made every database file foreign, and opening deleted them (`KeyValueDBFileInfosTest.ForeignFileListedFirstDoesNotDeleteTheDatabase`). |
 | `FileIds.allocate_fresh`, `FileIds.allocate_inv` | An allocated file ID is not 0, has the requested parity and is none of the observed IDs, and observing it keeps that true for every later allocation. |
 | `FileIds.load_max_ge`, `FileIds.next_fresh` | A standalone collection's largest ID found on open is at least every file's ID in any listing order, and the next ID is not 0 and above them all; before the 2026-10-29 fix an `int` maximum wrapped to 0 after a file named with the largest `uint` (`FileCollectionTests.FileAfterTheLargestPossibleIdIsRefused`). |
+| `ReadBounds.refused_iff`, `ReadBounds.naive_wraps` | `position > capacity \|\| length > capacity - position` on `ulong`s refuses exactly the reads with `position + length > capacity`, though the subtraction and the naive sum can wrap; the naive sum accepts some reads past the end. Before the 2026-10-29 fix such reads were not refused (`FileCollectionTests.ReadFarPastTheEndIsEndOfStream`). |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
