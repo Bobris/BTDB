@@ -132,6 +132,9 @@ type remembers (`../EventStore2Layer/`), over any graph of descriptors.
 `BtdbProofs/NestedRegistration.lean` models how `EventSerializer` registers a descriptor merged from an object loaded
 without its type, and the descriptors nested in it (`../EventStore2Layer/`).
 
+`BtdbProofs/LruCapacity.lean` models how `LruCache` and `SpanByteLruCache` take slots, grow and evict
+(`../Collections/`).
+
 `BtdbProofs/KeyConcat.lean` models a key of several fields written one after another, each but the last with a prefix
 free encoding that keeps the order of its values.
 
@@ -238,6 +241,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `RoaringKind.choose_shortest`, `RoaringKind.kind_roundtrip` | The encoding `ChooseOutputKind` picks for a container (array, runs or raw bitmap) is the shortest of the three, and for a container with a set bit `ValidateAndGetKind` reads the same kind back from its length. |
 | `RoaringSource.fixed_keeps_valid`, `RoaringSource.previous_loses_valid` | For values in ascending order of their pages, `RoaringBitmap.Source` reads exactly those up to the maximum index, in order; before the 2026-10-29 fix the first value above the maximum ended them and lost later values of its page (`ObjectDbTableFreeContentTest.RoaringBitmapSourceSkipsValuesAboveMaximumInItsLastPage`). |
 | `KeyConcat.key_order`, `KeyConcat.key_order_needs_prefix_free` | A key starting with a field whose encoding is prefix free and keeps the order of its values sorts by that field first and by the rest of the key on a tie, so a key of several fields sorts by its fields in order; without prefix freedom the rest of the key can decide against the field's order. |
+| `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

@@ -39,3 +39,4 @@ import BtdbProofs.QueryPaging
 import BtdbProofs.RoaringKind
 import BtdbProofs.RoaringSource
 import BtdbProofs.KeyConcat
+import BtdbProofs.LruCapacity

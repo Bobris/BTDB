@@ -134,3 +134,5 @@ open Btdb
 #print axioms RoaringSource.previous_loses_valid
 #print axioms KeyConcat.key_order
 #print axioms KeyConcat.key_order_needs_prefix_free
+#print axioms LruCapacity.fixed_within_max
+#print axioms LruCapacity.previous_exceeds_max
