@@ -11,6 +11,10 @@ far; the model takes it from an arbitrary function of the step.
 * `split_first`: only the first part is flagged first.
 * `split_last`: only the final part is flagged last.
 * `split_empty`: an empty payload is one empty part flagged first and last.
+* `replay_record`: replaying a record's parts tagged with its transaction, as the part loop of
+  `LsmKeyValueDB.Recovery` does, gives back exactly the record from any state left by earlier parts, and then goes
+  on as if nothing were being rebuilt. Epochs, generations and damaged chunks, which the loop also handles, are left
+  out.
 -/
 
 namespace Lsm.WalSplit
@@ -111,5 +115,71 @@ theorem split_empty {α : Type} (rooms : Nat → Nat) (i : Nat) :
     split rooms i 0 ([] : List α) = [⟨true, true, []⟩] := by
   rw [split]
   simp
+
+/-- Replay of tagged parts as the WAL recovery loop does it: a part flagged first starts a record of its transaction, a
+later part is appended when it belongs to the record being rebuilt and skipped otherwise, and a part flagged last
+ends the record. The state is the parts gathered so far and the transaction they belong to. -/
+def replay {α : Type} : List (List α) × Int → List (Int × Part α) → List (List α)
+  | _, [] => []
+  | (acc, cur), (t, ⟨first, last, data⟩) :: ps =>
+    if first then
+      if last then data :: replay ([], -1) ps else replay ([data], t) ps
+    else if cur = t then
+      if last then (acc ++ [data]).flatten :: replay ([], -1) ps else replay (acc ++ [data], cur) ps
+    else replay (acc, cur) ps
+
+theorem replay_rest {α : Type} (rooms : Nat → Nat) (p : List α) (t : Int) (rest : List (Int × Part α))
+    (i offset : Nat) : ∀ acc : List (List α), 0 < offset → offset ≤ p.length →
+      replay (acc, t) ((split rooms i offset p).map (t, ·) ++ rest) =
+        (acc.flatten ++ p.drop offset) :: replay ([], -1) rest := by
+  induction i, offset using split.induct rooms p with
+  | case1 i offset len hlt ih =>
+    simp only [len] at hlt ih ⊢
+    intro acc hpos hle
+    rw [split]
+    simp only [hlt, ↓reduceIte, List.map_cons, List.cons_append, replay]
+    have hfirst : (offset == 0) = false := by simp only [beq_eq_false_iff_ne]; omega
+    have hlast : (offset + min (max 1 (rooms i)) (p.length - offset) == p.length) = false := by
+      simp only [beq_eq_false_iff_ne]; omega
+    simp only [hfirst, hlast, Bool.false_eq_true, ↓reduceIte]
+    rw [ih (acc ++ [_]) (by omega) (by omega)]
+    have : List.drop (offset + min (max 1 (rooms i)) (p.length - offset)) p =
+        List.drop (min (max 1 (rooms i)) (p.length - offset)) (List.drop offset p) := by
+      rw [List.drop_drop]
+    simp only [List.flatten_append, List.flatten_cons, List.flatten_nil, List.append_nil, List.append_assoc, this,
+      List.take_append_drop]
+  | case2 i offset len hlt =>
+    simp only [len] at hlt ⊢
+    intro acc hpos hle
+    rw [split]
+    simp only [hlt, ↓reduceIte, List.map_cons, List.map_nil, List.cons_append, List.nil_append, replay]
+    have hfirst : (offset == 0) = false := by simp only [beq_eq_false_iff_ne]; omega
+    have hlast : (offset + min (max 1 (rooms i)) (p.length - offset) == p.length) = true := by
+      simp only [beq_iff_eq]; omega
+    simp only [hfirst, hlast, Bool.false_eq_true, ↓reduceIte, List.flatten_append, List.flatten_cons,
+      List.flatten_nil, List.append_nil]
+    rw [List.take_of_length_le (by simp only [List.length_drop]; omega)]
+
+/-- Replaying the parts of a record, from any state, gives the record and leaves no record being rebuilt. -/
+theorem replay_record {α : Type} (rooms : Nat → Nat) (p : List α) (t : Int) (rest : List (Int × Part α)) (i : Nat)
+    (state : List (List α) × Int) :
+    replay state ((split rooms i 0 p).map (t, ·) ++ rest) = p :: replay ([], -1) rest := by
+  obtain ⟨acc, cur⟩ := state
+  rw [split]
+  split
+  · next hlt =>
+    simp only [List.map_cons, List.cons_append, replay, beq_self_eq_true, ↓reduceIte, Nat.zero_add]
+    have hlast : (min (max 1 (rooms i)) (p.length - 0) == p.length) = false := by
+      simp only [beq_eq_false_iff_ne]; omega
+    simp only [hlast, Bool.false_eq_true, ↓reduceIte]
+    rw [replay_rest rooms p t rest (i + 1) _ _ (by omega) (by omega)]
+    simp only [List.drop_zero, List.flatten_cons, List.flatten_nil, List.append_nil, List.take_append_drop]
+  · next hlt =>
+    simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append, replay, beq_self_eq_true,
+      ↓reduceIte, Nat.zero_add]
+    have hlast : (min (max 1 (rooms i)) (p.length - 0) == p.length) = true := by
+      simp only [beq_iff_eq]; omega
+    simp only [hlast, ↓reduceIte, List.drop_zero]
+    rw [List.take_of_length_le (by omega)]
 
 end Lsm.WalSplit

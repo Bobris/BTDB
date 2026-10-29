@@ -75,3 +75,4 @@ open Lsm
 #print axioms WalSplit.split_first
 #print axioms WalSplit.split_last
 #print axioms WalSplit.split_empty
+#print axioms WalSplit.replay_record

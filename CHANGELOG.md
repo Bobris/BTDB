@@ -33,7 +33,7 @@
       prefix of one writer's history;
     - a WAL upload takes the oldest pending records, at least one, and as many as fit the batch limit, and the parts
       a record is cut into for its chunks put together are the record, with only the first flagged first and only
-      the final one flagged last;
+      the final one flagged last, so replaying them rebuilds exactly the record;
     - counted entries add up across components, and the compaction merge preserves each key's state and count;
     - manifest fencing gives every writer session a fresh epoch;
     - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
