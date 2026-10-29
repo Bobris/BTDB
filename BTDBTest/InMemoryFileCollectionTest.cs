@@ -33,4 +33,21 @@ public class InMemoryFileCollectionTest
         Assert.Equal(data.Length, reader.GetCurrentPosition());
         Assert.True(reader.Eof);
     }
+
+    // Before the fix a read far past the end, as a damaged value pointer asks for, failed with an index or overflow
+    // error instead of the end of stream the other file collections report.
+    [Fact]
+    public void ReadFarPastTheEndIsEndOfStream()
+    {
+        using var files = new InMemoryFileCollection();
+        var file = files.AddFile("trl");
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.WriteInt32LE(42);
+        writer.Flush();
+        var data = new byte[16];
+        Assert.Throws<System.IO.EndOfStreamException>(() => file.RandomRead(data, 1ul << 32, false));
+        Assert.Throws<System.IO.EndOfStreamException>(() => file.RandomRead(data, ulong.MaxValue - 4, false));
+        file.RandomRead(data.AsSpan(0, 4), 0, false);
+        Assert.Equal(42, BTDB.Buffer.PackUnpack.UnpackInt32LE(data, 0));
+    }
 }

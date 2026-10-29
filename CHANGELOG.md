@@ -587,7 +587,8 @@
   by simulating crashes at every file operation, also beside a concurrent writer.
 - Reading past the end of a file, as a damaged value pointer in a key index or transaction log asks for, read memory
   outside the mapping in `OnDiskMemoryMappedFileCollection`, which could crash the process or return foreign bytes,
-  and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection`. Both throw `EndOfStreamException` now.
+  and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
+  `InMemoryFileCollection`. All three throw `EndOfStreamException` now, as the replication storages do.
 - `SeqLock.RetryRead` read the counter again with only acquire semantics, so on arm64, Apple silicon included, the
   data reads before it could complete after it and a read seeing a half-done write passed as consistent (a stress
   test saw 831 such reads in 15 million). It now issues a read barrier first. `RefDictionary`,
