@@ -595,6 +595,8 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `Utf16Utf8Dictionary` given more keys than its count failed with `IndexOutOfRangeException`; it throws the
+  `ArgumentException` it already threw for fewer keys.
 - `SeqLock.RetryRead` read the counter again with only acquire semantics, so on arm64, Apple silicon included, the
   data reads before it could complete after it and a read seeing a half-done write passed as consistent (a stress
   test saw 831 such reads in 15 million). It now issues a read barrier first. `RefDictionary`,

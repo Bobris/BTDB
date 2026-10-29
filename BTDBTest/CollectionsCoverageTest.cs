@@ -837,6 +837,8 @@ public class CollectionsCoverageTest
     public void Utf16Utf8DictionaryValidatesCount()
     {
         Assert.Throws<ArgumentException>(() => new Utf16Utf8Dictionary<int>(3, ["a", "b"]));
+        // Before the fix more keys than the count ran past the entries with IndexOutOfRangeException.
+        Assert.Throws<ArgumentException>(() => new Utf16Utf8Dictionary<int>(1, ["a", "b"]));
     }
 
     [Fact]

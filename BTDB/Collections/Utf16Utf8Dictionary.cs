@@ -52,6 +52,7 @@ public class Utf16Utf8Dictionary<TValue>
         var entryIndex = 0;
         foreach (var key in keys)
         {
+            if (entryIndex == count) throw new ArgumentException("Count mismatch");
             var key8 = new byte[Encoding.UTF8.GetByteCount(key)];
             Encoding.UTF8.GetBytes(key, key8);
             var hash8 = CalcHash8(key8);
