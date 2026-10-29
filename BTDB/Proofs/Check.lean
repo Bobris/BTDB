@@ -138,3 +138,5 @@ open Btdb
 #print axioms LruCapacity.previous_exceeds_max
 #print axioms RoaringCount.fixed_count_correct
 #print axioms RoaringCount.previous_wrong_count
+#print axioms ListKey.list_prefix_free
+#print axioms ListKey.needs_count
