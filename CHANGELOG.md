@@ -122,6 +122,9 @@
 
 ### Fixed
 
+- IOC: a scoped or singleton instance created while its container was being disposed could stay undisposed: it was
+  added after disposal took the owned instances, or adding it threw `ObjectDisposedException` without disposing it.
+  Such an instance is now disposed before the exception.
 - `ByteBuffer.Expand` restarted a slice at the start of its array, so `[4, 5]` expanded to 3 bytes read `0, 1, 2`,
   checked the size against the whole array instead of the space after the slice, and marked a buffer that is valid only
   synchronously as async safe. It now keeps the start and the async safety. `ResizingAppend` to or of a buffer without

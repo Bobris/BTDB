@@ -967,9 +967,32 @@ public class ContainerImpl : IRootContainer
     void TrackOwnedInstance(object? instance)
     {
         if (instance is not (IDisposable or IAsyncDisposable)) return;
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         var node = new OwnedInstanceNode(instance);
         node.Next = Interlocked.Exchange(ref _ownedInstances, node);
+        if (Volatile.Read(ref _disposeState) == 0) return;
+        // Disposal started meanwhile and may have taken the instances before this one was added. Whoever takes an
+        // instance from the list disposes it, so each is disposed once.
+        var orphans = Interlocked.Exchange(ref _ownedInstances, null);
+        while (orphans != null)
+        {
+            DisposeOwned(orphans.Instance);
+            orphans = orphans.Next;
+        }
+
+        ObjectDisposedException.ThrowIf(true, this);
+    }
+
+    static void DisposeOwned(object instance)
+    {
+        switch (instance)
+        {
+            case IDisposable disposable:
+                disposable.Dispose();
+                return;
+            case IAsyncDisposable asyncDisposable:
+                asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                return;
+        }
     }
 
     public async ValueTask DisposeAsync()
