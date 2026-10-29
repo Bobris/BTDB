@@ -146,7 +146,8 @@ ref struct LsmDecoder
 
     public ReadOnlySpan<byte> Take(int length)
     {
-        if (length < 0 || _position + length > _data.Length) throw Corrupted();
+        // Compared against what is left, as the end of a length near int.MaxValue does not fit an int.
+        if (length < 0 || length > _data.Length - _position) throw Corrupted();
         var result = _data.Slice(_position, length);
         _position += length;
         return result;

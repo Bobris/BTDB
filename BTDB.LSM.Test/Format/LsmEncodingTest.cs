@@ -58,4 +58,22 @@ public class LsmEncodingTest
         var tooLong = new byte[] { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 };
         Assert.Throws<BTDBException>(() => new LsmDecoder(tooLong).ReadVUInt64());
     }
+
+    // Before the fix the end of a length near int.MaxValue wrapped negative and passed the check, so the slice threw
+    // ArgumentOutOfRangeException instead of reporting damage.
+    [Fact]
+    public void LengthPastTheEndIsDamageEvenNearIntMaxValue()
+    {
+        var data = Encode(e =>
+        {
+            e.WriteVUInt64(1);
+            e.WriteVUInt64(int.MaxValue);
+        });
+        Assert.Throws<BTDBException>(() =>
+        {
+            var decoder = new LsmDecoder(data);
+            decoder.ReadVUInt64();
+            decoder.ReadByteArray();
+        });
+    }
 }

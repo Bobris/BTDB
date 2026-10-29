@@ -185,7 +185,8 @@
 ### Fixed
 
 - LSM decoding: a length or other 32-bit value out of range in damaged data threw `OverflowException`, and a 64-bit
-  value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
+  value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now. So is a length
+  whose end, near `int.MaxValue`, did not fit an `int`, which threw `ArgumentOutOfRangeException`.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
 - `LsmKeyValueDB` failed to open when a stray object lay among its WAL chunks or manifests, such as the `.DS_Store`
