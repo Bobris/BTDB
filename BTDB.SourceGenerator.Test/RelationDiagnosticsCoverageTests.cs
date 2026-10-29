@@ -125,6 +125,13 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
         ["CountByNamePrimaryKeyTypeMismatch"] = ("int CountByName(string name, string tenantId);", "BTDB0015"),
         ["RemoveByIdNotWholeKey"] = ("bool RemoveById(ulong tenantId);", "BTDB0020"),
         ["ShallowRemoveByIdNameMismatch"] = ("void ShallowRemoveById(ulong tenantId, ulong key);", "BTDB0014"),
+        ["RemoveByIdPartialMustReturnCount"] = ("bool RemoveByIdPartial(ulong tenantId, int maxCount);", "BTDB0057"),
+        ["RemoveByIdPartialNeedsMaxCount"] = ("int RemoveByIdPartial(ulong tenantId, int count);", "BTDB0057"),
+        ["RemoveByIdPartialNeedsParameters"] = ("int RemoveByIdPartial();", "BTDB0057"),
+        ["RemoveByIdPartialKeyNameMismatch"] = ("int RemoveByIdPartial(ulong companyId, int maxCount);", "BTDB0014"),
+        ["RemoveByIdPartialKeyTypeMismatch"] = ("int RemoveByIdPartial(string tenantId, int maxCount);", "BTDB0015"),
+        ["RemoveByIdPartialTooManyParameters"] =
+            ("int RemoveByIdPartial(ulong tenantId, ulong id, string name, int maxCount);", "BTDB0016"),
         ["UpdateByIdMustReturnVoidOrBool"] = ("int UpdateById(ulong tenantId, ulong id, string name);", "BTDB0039"),
         ["UpdateByIdNotEnoughParameters"] = ("void UpdateById(ulong tenantId);", "BTDB0040"),
         ["UpdateByIdForbidsListValue"] =
@@ -210,6 +217,7 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
     [InlineData("bool RemoveById(ulong id, int version);", "BTDB0020")]
     [InlineData("bool ShallowRemoveById(ulong id, string name);", "BTDB0020")]
     [InlineData("int RemoveById(ulong id, int version);", "BTDB0016")]
+    [InlineData("int RemoveByIdPartial(ulong id, int version, int maxCount);", "BTDB0016")]
     public void ReportsKeyParameterMismatchWithInKeyValue(string member, string expectedId)
     {
         AssertSingleGeneratorDiagnostic($$"""

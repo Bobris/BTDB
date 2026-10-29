@@ -698,7 +698,15 @@ public class SourceGenerator : IIncrementalGenerator
                 var hasSpecialSuffix = methodSuffix.StartsWith("Partial", StringComparison.Ordinal) ||
                                        methodSuffix.StartsWith("OrDefault", StringComparison.Ordinal);
 
-                // Skip validation for special variants like "Partial", "OrDefault"
+                if (method.Name == "RemoveByIdPartial")
+                {
+                    var removePartialError = ValidateRemoveByIdPartial(method, itemGenInfo.Fields, primaryKeyFields,
+                        indexOfInKeyValue, secondaryKeys);
+                    if (removePartialError != null) return removePartialError;
+                    continue;
+                }
+
+                // Skip validation for other special variants like "OrDefault"
                 if (hasVariant || hasSpecialSuffix)
                     continue;
 
@@ -1186,6 +1194,26 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return ValidateConstraintParameters(method, indexName, fields, fi, startParamIndex, constraintParamCount);
+    }
+
+    /// RemoveByIdPartial takes a primary key prefix and the maximum count of items to remove, and returns their count.
+    static GenerationInfo? ValidateRemoveByIdPartial(IMethodSymbol method, EquatableArray<FieldsInfo> fields,
+        uint[] primaryKeyFields, uint indexOfInKeyValue,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys)
+    {
+        var parameters = method.Parameters;
+        if (method.ReturnType.SpecialType is not (SpecialType.System_Int32 or SpecialType.System_UInt32
+                or SpecialType.System_Int64 or SpecialType.System_UInt64) ||
+            parameters.Length == 0 || parameters[parameters.Length - 1].Type.SpecialType != SpecialType.System_Int32 ||
+            parameters[parameters.Length - 1].Name.IndexOf("max", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return GenerationError("BTDB0057",
+                $"Method '{method.Name}' must return int, uint, long, or ulong and take primary key fields followed by int maxCount",
+                method.Locations[0]);
+        }
+
+        return CheckParamsNamesAndTypes(method, "Id", fields, primaryKeyFields, indexOfInKeyValue, secondaryKeys,
+            true, keyParamCount: parameters.Length - 1);
     }
 
     static GenerationInfo? ValidateUpdateByIdValueParameters(IMethodSymbol method, EquatableArray<FieldsInfo> fields,

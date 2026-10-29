@@ -214,6 +214,10 @@
 
 ### Fixed
 
+- The source generator did not validate `RemoveByIdPartial` at all, so a wrong key parameter name or type, a parameter
+  past the primary key, a bool result or a last parameter that is no `int maxCount` compiled. Emit mode refuses these.
+  The generator now reports BTDB0014, BTDB0015 or BTDB0016 for the key parameters, and the new error BTDB0057 for a
+  result that is no count or a missing `maxCount`.
 - Relation methods taking key parameters accepted parameters past the key. The source generator checked only the
   key fields before the first InKeyValue field (for secondary keys, only the declared fields), so with the generated
   (no-emit) relations a wrong name, type or extra parameter was written into the key and the method quietly found,
