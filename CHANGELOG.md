@@ -107,6 +107,9 @@
 
 ### Fixed
 
+- IOC: a type without a generated factory, built by reflection, failed to resolve when a nullable enum constructor
+  parameter had a default value: the default is reported as its underlying number, which was passed as it was. It is
+  now converted to the enum.
 - Source generator: members marked with an attribute derived from `DependencyAttribute` were not injected, because
   only `DependencyAttribute` itself was recognized; reflection takes derived attributes too.
 - `AesGcmSymmetricCipher` took the nonces of `EncryptedString` values from `System.Random`, which is not a

@@ -107,6 +107,15 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                    ?.Key ?? parameter.Name;
     }
 
+    // The default of a nullable enum parameter is reported as its underlying number, which the constructor cannot take
+    static object? DefaultValueOf(ParameterInfo parameter)
+    {
+        var value = parameter.DefaultValue;
+        var enumType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
+        if (value != null && enumType.IsEnum && value.GetType() != enumType) return Enum.ToObject(enumType, value);
+        return value;
+    }
+
     static bool IsNullable(ParameterInfo parameter)
     {
         if (Nullable.GetUnderlyingType(parameter.ParameterType) != null) return true;
@@ -166,7 +175,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                 var factory = container.CreateFactory(ctx, parameter.ParameterType, DependencyKey(parameter));
                 // Like generated factories: a parameter without a default value is null when nullable, else required.
                 // Its DefaultValue would be DBNull.Value, which the constructor cannot take.
-                var fallback = parameter.HasDefaultValue ? parameter.DefaultValue : null;
+                var fallback = parameter.HasDefaultValue ? DefaultValueOf(parameter) : null;
                 if (factory == null && !parameter.HasDefaultValue && !IsNullable(parameter))
                     throw new ArgumentException(
                         $"Cannot resolve {parameter.ParameterType.ToSimpleName()} {parameter.Name} parameter of {implementationType.ToSimpleName()}");

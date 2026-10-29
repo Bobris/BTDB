@@ -108,6 +108,33 @@ public class IOCReflectionFallbackTest
         Assert.Same(other, obj.B);
     }
 
+    public enum Mode
+    {
+        A = 1,
+        B = 2
+    }
+
+    public class EnumDefaults
+    {
+        public EnumDefaults(Mode mode = Mode.B, Mode? maybe = Mode.A, Mode? none = null) =>
+            (ModeValue, Maybe, None) = (mode, maybe, none);
+
+        public Mode ModeValue { get; }
+        public Mode? Maybe { get; }
+        public Mode? None { get; }
+    }
+
+    // Before the fix the default of a nullable enum parameter, reported as its underlying number, was passed as it was
+    // and the constructor call failed.
+    [Fact]
+    public void EnumDefaultsArePassed()
+    {
+        var obj = Assert.IsType<EnumDefaults>(Resolve(typeof(EnumDefaults)));
+        Assert.Equal(Mode.B, obj.ModeValue);
+        Assert.Equal(Mode.A, obj.Maybe);
+        Assert.Null(obj.None);
+    }
+
     static object Resolve(Type type)
     {
         var builder = new ContainerBuilder();
