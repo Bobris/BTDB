@@ -94,8 +94,8 @@ public sealed record LsmKeyValueDBOptions
     /// Target size of one WAL chunk; larger commits span several chunks.
     public int WalChunkTargetSize { get; init; } = 256 * 1024;
 
-    /// Longest pause of an idle WAL uploader; a commit wakes it at once and commits arriving during an upload are
-    /// grouped into the next one.
+    /// Longest pause of an idle WAL uploader, greater than zero; a commit wakes it at once and commits arriving during
+    /// an upload are grouped into the next one.
     public TimeSpan WalFlushInterval { get; init; } = TimeSpan.FromMilliseconds(20);
 
     /// The WAL uploader waits briefly before an upload, up to this long, when commits usually follow the previous
@@ -140,9 +140,9 @@ public sealed record LsmKeyValueDBOptions
 
     public IKeyValueDBLogger? Logger { get; init; }
 
-    /// Rejects values the engine cannot run with: a zero upload parallelism or refresh interval would spin, a safety
-    /// margin covering the whole lease would never let a writer write, a single level has nowhere to compact to, and
-    /// writes stopping before level 0 compacts would never resume.
+    /// Rejects values the engine cannot run with: a zero upload parallelism, WAL flush interval or refresh interval
+    /// would spin, a safety margin covering the whole lease would never let a writer write, a single level has nowhere
+    /// to compact to, and writes stopping before level 0 compacts would never resume.
     internal void Validate()
     {
         ArgumentNullException.ThrowIfNull(Storage);
@@ -170,7 +170,7 @@ public sealed record LsmKeyValueDBOptions
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(LeaseSafetyMargin, LeaseDuration);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(LeaseRetryInterval, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(WalChunkTargetSize);
-        ArgumentOutOfRangeException.ThrowIfLessThan(WalFlushInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(WalFlushInterval, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfLessThan(AdaptiveWalLingerMax, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(WalUploadParallelism);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxUnflushedWalBytes);

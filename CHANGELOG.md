@@ -160,6 +160,9 @@
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
+- `LsmKeyValueDB` accepted `WalFlushInterval = TimeSpan.Zero`, which kept the WAL uploader of an idle writer spinning
+  on a full core. Opening rejects it with `ArgumentOutOfRangeException` now, like a zero `RefreshRetryInterval`;
+  commits wake the uploader at once whatever the interval.
 - `LsmKeyValueDB` compaction: a level's size target past `long.MaxValue`, as `LevelMultiplier = 1000` gives level 5
   of seven, wrapped around to a negative or zero target, so the level never compacted down or always did. The target
   is capped at `long.MaxValue` now.

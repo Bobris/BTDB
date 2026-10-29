@@ -47,12 +47,13 @@ public class LsmLimitsTest
     {
         nameof(LsmKeyValueDBOptions.WalUploadParallelism), nameof(LsmKeyValueDBOptions.LeaseSafetyMargin),
         nameof(LsmKeyValueDBOptions.RefreshRetryInterval), nameof(LsmKeyValueDBOptions.LevelCount),
-        nameof(LsmKeyValueDBOptions.Level0StopWritesTrigger)
+        nameof(LsmKeyValueDBOptions.Level0StopWritesTrigger), nameof(LsmKeyValueDBOptions.WalFlushInterval)
     };
 
     /// Before the fix such options were taken as given: a zero upload parallelism spun in the WAL upload, a safety
     /// margin covering the lease kept every takeover retrying, a zero refresh interval spun while waiting for a commit,
-    /// a single level crashed the first compaction, and writes stopping before level 0 compacts waited forever.
+    /// a single level crashed the first compaction, writes stopping before level 0 compacts waited forever, and a zero
+    /// WAL flush interval kept an idle writer's uploader spinning on a full core.
     [Theory]
     [MemberData(nameof(InvalidOptions))]
     public async Task OptionsTheEngineCannotRunWithAreRejectedOnOpen(string option)
@@ -63,6 +64,7 @@ public class LsmLimitsTest
             nameof(LsmKeyValueDBOptions.WalUploadParallelism) => options with { WalUploadParallelism = 0 },
             nameof(LsmKeyValueDBOptions.LeaseSafetyMargin) => options with { LeaseSafetyMargin = options.LeaseDuration },
             nameof(LsmKeyValueDBOptions.RefreshRetryInterval) => options with { RefreshRetryInterval = TimeSpan.Zero },
+            nameof(LsmKeyValueDBOptions.WalFlushInterval) => options with { WalFlushInterval = TimeSpan.Zero },
             nameof(LsmKeyValueDBOptions.Level0StopWritesTrigger) => options with
             {
                 Level0CompactionTrigger = 8, Level0StopWritesTrigger = 4
