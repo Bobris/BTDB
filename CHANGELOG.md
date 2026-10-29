@@ -49,7 +49,8 @@
     - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix;
     - variable-length integers, signed ones too, read back as written, and every one the decoder accepts fits in 64
       bits;
-    - a table's Bloom filter passes every key added to it.
+    - a table's Bloom filter passes every key added to it;
+    - looking up a key in a level reads a table exactly when it holds the key's span.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the

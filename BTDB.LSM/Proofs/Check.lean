@@ -51,3 +51,4 @@ open Lsm
 #print axioms Varint.zigzag_round_trip
 #print axioms Varint.zigzag_range
 #print axioms Bloom.no_false_negative
+#print axioms LevelLookup.lookup_some

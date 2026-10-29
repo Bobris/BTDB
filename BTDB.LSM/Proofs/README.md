@@ -54,6 +54,9 @@ the tables a compaction writes.
 
 `LsmProofs/Bloom.lean` models `BloomFilter.Build` and `MayContain` with double hashing.
 
+`LsmProofs/LevelLookup.lean` models how `LevelComponent.TryGet` picks the table that may hold a key; it is the same
+search and test as `TombstoneSet.Find` over the table spans.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -134,6 +137,7 @@ Not modelled in `Wal.lean`:
 | `Varint.round_trip`, `Varint.decoded_fits` | Every value below 2^64 decodes back from its encoding, leaving the bytes after it, and every value the decoder accepts is below 2^64; before the 2026-10-29 fix a tenth byte above 1 was accepted and lost bits (`LsmEncodingTest.OverlongValueIsDamage`). |
 | `Varint.zigzag_round_trip`, `Varint.zigzag_range` | The zigzag mapping of `WriteVInt64` is undone by `ReadVInt64`, and a value is a `long` exactly when its image is below 2^64, so every `long` reads back as written. |
 | `Bloom.no_false_negative` | Every hash added to a Bloom filter passes `MayContain`, whatever else was added before or after it, since adding only sets bits. |
+| `LevelLookup.lookup_some` | Over a level's sorted, disjoint table spans, `LevelComponent.TryGet` reads table `i` exactly when `i` spans the key, so a key between tables reads none. |
 
 The fixed rule, as implemented:
 
