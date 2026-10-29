@@ -107,31 +107,29 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             _running = true;
         }
 
+        var next = 0;
+        List<DbCompactionInfo>? neededAgain = null;
         try
         {
             while (true)
             {
-                List<DbCompactionInfo>? neededAgain = null;
-                foreach (var dbCompaction in dueCompactions)
+                neededAgain = null;
+                for (next = 0; next < dueCompactions.Count; next++)
                 {
                     if (_cancellationSource.IsCancellationRequested) break;
-                    var needed = await dbCompaction.KeyValueDB.Compact(_cancellationSource.Token);
-
-                    if (needed)
+                    var dbCompaction = dueCompactions[next];
+                    if (await dbCompaction.KeyValueDB.Compact(_cancellationSource.Token))
                     {
                         neededAgain ??= [];
                         neededAgain.Add(dbCompaction);
                     }
-
-                    if (_cancellationSource.IsCancellationRequested) break;
                 }
 
                 lock (_lock)
                 {
                     if (_cancellationSource.IsCancellationRequested)
                     {
-                        _running = false;
-                        Monitor.PulseAll(_lock);
+                        StopRunningUnsafe(dueCompactions, next, neededAgain, false);
                         return;
                     }
 
@@ -144,6 +142,7 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
                     }
 
                     dueCompactions = TakeDueCompactionsUnsafe();
+                    next = 0;
                     if (dueCompactions == null)
                     {
                         _running = false;
@@ -158,11 +157,34 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
         {
             lock (_lock)
             {
-                _running = false;
-                Monitor.PulseAll(_lock);
-                RescheduleTimerUnsafe();
+                StopRunningUnsafe(dueCompactions, next, neededAgain, !_cancellationSource.IsCancellationRequested);
             }
         }
+    }
+
+    // Removing one database cancels the compaction of all, so those not finished stay due; a failed one waits.
+    void StopRunningUnsafe(List<DbCompactionInfo> dueCompactions, int next, List<DbCompactionInfo>? neededAgain,
+        bool failed)
+    {
+        if (neededAgain != null)
+        {
+            foreach (var dbCompaction in neededAgain)
+            {
+                ScheduleDbCompactionAfterWaitUnsafe(dbCompaction);
+            }
+        }
+
+        for (var i = next; i < dueCompactions.Count; i++)
+        {
+            if (failed && i == next)
+                ScheduleDbCompactionAfterWaitUnsafe(dueCompactions[i]);
+            else
+                ScheduleDbCompactionUnsafe(dueCompactions[i], false);
+        }
+
+        _running = false;
+        Monitor.PulseAll(_lock);
+        RescheduleTimerUnsafe();
     }
 
     public void Dispose()

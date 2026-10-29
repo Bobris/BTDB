@@ -193,6 +193,9 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- `CompactorScheduler`: removing one database, as disposing it does, cancelled the compaction running for another,
+  and neither that one nor the databases due after it were scheduled again until their transaction log moved to a new
+  file. They stay due now; a compaction that fails waits the usual time before it is tried again.
 - `AppendingEventStore` stored events that fit a new file's maximum size only without the headers of their later
   blocks, writing past that size; reading stops there, so the events were lost. Such events are refused with
   `ArgumentOutOfRangeException` now, like larger ones.

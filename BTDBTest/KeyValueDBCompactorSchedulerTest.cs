@@ -130,6 +130,47 @@ public class KeyValueDBCompactorSchedulerTest
         Assert.True(e.WaitOne(1000));
     }
 
+    // Before the fix removing one database cancelled the compaction running for another, and neither it nor the
+    // databases due after it were scheduled again, until their transaction log moved to a new file.
+    [Fact]
+    public void RemovingOtherDbKeepsInterruptedCompactionsScheduled()
+    {
+        var started = new ManualResetEventSlim();
+        var rerunA = new ManualResetEventSlim();
+        var ranB = new ManualResetEventSlim();
+        var runsOfA = 0;
+        using var dbA = new TestKeyValueDB(token =>
+        {
+            if (Interlocked.Increment(ref runsOfA) > 1)
+            {
+                rerunA.Set();
+                return ValueTask.FromResult(false);
+            }
+
+            started.Set();
+            while (!token.IsCancellationRequested) Thread.Sleep(1);
+            token.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(false);
+        });
+        using var dbB = new TestKeyValueDB(_ =>
+        {
+            ranB.Set();
+            return ValueTask.FromResult(false);
+        });
+        using var dbC = new TestKeyValueDB(_ => ValueTask.FromResult(false));
+        using var s = new CompactorScheduler();
+        s.WaitTime = TimeSpan.FromMilliseconds(1);
+        s.AddCompactAction(dbA);
+        s.AddCompactAction(dbB);
+        s.AddCompactAction(dbC);
+        s.AdviceRunning(dbA, true);
+        s.AdviceRunning(dbB, true);
+        Assert.True(started.Wait(1000));
+        s.RemoveCompactAction(dbC);
+        Assert.True(rerunA.Wait(2000), "The interrupted compaction did not run again");
+        Assert.True(ranB.Wait(2000), "The compaction due after it did not run");
+    }
+
     [Fact]
     public void AdviceRunningWorksWellForSharedInstance()
     {
