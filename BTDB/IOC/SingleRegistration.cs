@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTDB.Collections;
@@ -113,26 +114,49 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                new NullabilityInfoContext().Create(parameter).WriteState == NullabilityState.Nullable;
     }
 
+    /// The [Dependency] properties and fields of a type and its base types, like generated factories inject them: a
+    /// member hidden or overridden in a derived type is taken from the most derived one.
+    static StructList<(string, Type, Action<object, object?>)> CollectDependencies(Type implementationType)
+    {
+        const BindingFlags declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                                      BindingFlags.DeclaredOnly;
+        var dependencies = new StructList<(string, Type, Action<object, object?>)>();
+        var seen = new HashSet<string>();
+        for (var type = implementationType; type != null && type != typeof(object); type = type.BaseType)
+        {
+            foreach (var propertyInfo in type.GetProperties(declared))
+            {
+                if (!seen.Add(propertyInfo.Name) || propertyInfo.GetIndexParameters().Length != 0) continue;
+                var depAttr = propertyInfo.GetCustomAttribute<DependencyAttribute>();
+                if (depAttr == null) continue;
+                // An override may declare only the getter, the setter is then declared in a base class
+                MethodInfo? setter = null;
+                for (var t = type; setter == null && t != null; t = t.BaseType)
+                    setter = t.GetProperty(propertyInfo.Name, declared)?.GetSetMethod(true);
+                if (setter == null) continue;
+                var setterInvoker = MethodInvoker.Create(setter);
+                dependencies.Add((depAttr.Name ?? propertyInfo.Name, propertyInfo.PropertyType,
+                    (obj, value) => setterInvoker.Invoke(obj, value)));
+            }
+
+            foreach (var fieldInfo in type.GetFields(declared))
+            {
+                if (!seen.Add(fieldInfo.Name)) continue;
+                var depAttr = fieldInfo.GetCustomAttribute<DependencyAttribute>();
+                if (depAttr == null) continue;
+                dependencies.Add((depAttr.Name ?? fieldInfo.Name, fieldInfo.FieldType, fieldInfo.SetValue));
+            }
+        }
+
+        return dependencies;
+    }
+
     internal static Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx, object>> BuildFactory(
         Type implementationType, ConstructorInfo constructorInfo)
     {
         var invoker = ConstructorInvoker.Create(constructorInfo);
         var parameters = constructorInfo.GetParameters();
-        var dependencies = new StructList<(string, Type, MethodInvoker)>();
-        foreach (var propertyInfo in implementationType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            var depAttr = propertyInfo.GetCustomAttribute<DependencyAttribute>();
-            if (depAttr == null) continue;
-            // A private setter of a base class is visible only through the base class's own PropertyInfo, CanWrite of the
-            // inherited one is false
-            var setter = propertyInfo.GetSetMethod(true) ??
-                         propertyInfo.DeclaringType!.GetProperty(propertyInfo.Name,
-                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
-                             BindingFlags.DeclaredOnly)?.GetSetMethod(true);
-            if (setter == null) continue;
-            var setterInvoker = MethodInvoker.Create(setter);
-            dependencies.Add((depAttr.Name ?? propertyInfo.Name, propertyInfo.PropertyType, setterInvoker));
-        }
+        var dependencies = CollectDependencies(implementationType);
 
         return (container, ctx) =>
         {
@@ -149,7 +173,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                 parameterFactories.Add((factory, fallback));
             }
 
-            StructList<(MethodInvoker, Func<IContainer, IResolvingCtx, object>)> dependencyFactories = new();
+            StructList<(Action<object, object?>, Func<IContainer, IResolvingCtx, object>)> dependencyFactories = new();
             foreach (var dependency in dependencies)
             {
                 var f = container.CreateFactory(ctx, dependency.Item2, dependency.Item1);
@@ -204,7 +228,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                 var res = invoker.Invoke(parameterInstances);
                 foreach (var dependencyFactory in dependencyFactories)
                 {
-                    dependencyFactory.Item1.Invoke(res, dependencyFactory.Item2(container2, ctx2));
+                    dependencyFactory.Item1(res, dependencyFactory.Item2(container2, ctx2));
                 }
 
                 return res;

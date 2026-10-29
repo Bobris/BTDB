@@ -51,6 +51,39 @@ public class IOCReflectionFallbackTest
         Assert.Same(logger, obj.PrivateSetter);
     }
 
+    public class HiddenDependenciesBase
+    {
+        [Dependency] ILogger PrivateProperty { get; set; } = null!;
+        [Dependency] protected ILogger ProtectedField = null!;
+        [Dependency] readonly ILogger _privateField = null!;
+
+        public ILogger PrivatePropertyValue => PrivateProperty;
+        public ILogger ProtectedFieldValue => ProtectedField;
+        public ILogger PrivateFieldValue => _privateField;
+    }
+
+    public class HiddenDependencies : HiddenDependenciesBase
+    {
+        [Dependency] ILogger Own { get; set; } = null!;
+        public ILogger OwnValue => Own;
+    }
+
+    // Before the fix only public [Dependency] properties were injected, generated factories inject all of them and
+    // [Dependency] fields too.
+    [Fact]
+    public void NonPublicDependenciesAndFieldsAreInjected()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterTypeWithFallback(typeof(HiddenDependencies)).AsSelf();
+        var logger = new Logger();
+        builder.RegisterInstance<ILogger>(logger);
+        var obj = (HiddenDependencies)builder.Build().Resolve(typeof(HiddenDependencies))!;
+        Assert.Same(logger, obj.OwnValue);
+        Assert.Same(logger, obj.PrivatePropertyValue);
+        Assert.Same(logger, obj.ProtectedFieldValue);
+        Assert.Same(logger, obj.PrivateFieldValue);
+    }
+
     public class NamedParameters
     {
         public NamedParameters([Dependency("special")] ILogger a,

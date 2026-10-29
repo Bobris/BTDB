@@ -106,6 +106,9 @@
 
 ### Fixed
 
+- IOC: a type without a generated factory, built by reflection, injected only public `[Dependency]` properties. Like
+  generated factories, it now injects `[Dependency]` properties of any accessibility and `[Dependency]` fields, in
+  the type and its base classes; a member hidden or overridden in a derived class is injected once.
 - IOC: a type without a generated factory, built by reflection, resolved its constructor parameters by their names,
   ignoring the names `[Dependency("name")]` and `[FromKeyedServices("name")]` give them, as generated factories
   use.
