@@ -46,3 +46,5 @@ open Lsm
 #print axioms ClipCoverage.dropped_zero
 #print axioms PrefixSuccessor.prefix_successor_correct
 #print axioms PrefixSuccessor.no_successor
+#print axioms Varint.round_trip
+#print axioms Varint.decoded_fits
