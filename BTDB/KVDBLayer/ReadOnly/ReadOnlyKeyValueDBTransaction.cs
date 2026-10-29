@@ -74,19 +74,19 @@ sealed class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
     {
         ThrowIfDisposed();
         var stats = new Dictionary<(uint Depth, uint Children), uint>();
-        if (Db.RootOffset != 0) AddStats(stats, Db.RootOffset, 0);
+        if (Db.RootOffset != 0) AddStats(stats, ReadOnlyKeyValueDBCursor.Node.Read(Db, Db.RootOffset), 0);
         return stats;
     }
 
-    void AddStats(Dictionary<(uint Depth, uint Children), uint> stats, uint offset, uint depth)
+    void AddStats(Dictionary<(uint Depth, uint Children), uint> stats, in ReadOnlyKeyValueDBCursor.Node node,
+        uint depth)
     {
-        var node = ReadOnlyKeyValueDBCursor.Node.Read(Db, offset);
         var key = (depth, (uint)node.ChildCount);
         stats[key] = stats.GetValueOrDefault(key) + 1;
         if (node.IsLeaf) return;
         for (var i = 0; i < node.ChildCount; i++)
         {
-            AddStats(stats, node.Pointer(Db.Begin, i), depth + 1);
+            AddStats(stats, ReadOnlyKeyValueDBCursor.Node.ReadChild(Db, node, i, depth + 1), depth + 1);
         }
     }
 

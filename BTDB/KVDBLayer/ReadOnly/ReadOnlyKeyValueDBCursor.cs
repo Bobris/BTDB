@@ -17,7 +17,12 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
         uint _keyEndsOffset;
         uint _suffixesOffset;
         uint _pointersOffset;
+        uint _offset;
         internal int Pos;
+
+        // A valid tree is at most 33 levels deep, as every branch but the last of a level has at least two children
+        // and counts fit uint.
+        const uint MaxDepth = 64;
 
         internal int KeyCount => IsLeaf ? ChildCount : ChildCount - 1;
         internal uint PrefixLength => _prefixLength;
@@ -44,7 +49,17 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
             var pointersOffset = suffixesOffset + suffixesLength;
             if (pointersOffset + (node.IsLeaf ? 4ul : 8ul) * (uint)node.ChildCount > end) throw Corrupted();
             node._pointersOffset = (uint)pointersOffset;
+            node._offset = offset;
             return node;
+        }
+
+        /// The creator writes children before their parent, so damage pointing a child at its parent or above, which
+        /// would make a descent never end, is refused, as is a chain deeper than any valid tree.
+        internal static Node ReadChild(ReadOnlyKeyValueDB db, in Node parent, int index, uint depth)
+        {
+            var offset = parent.Pointer(db.Begin, index);
+            if (offset >= parent._offset || depth >= MaxDepth) throw Corrupted();
+            return Read(db, offset);
         }
 
         uint SuffixEnd(nuint begin, int index) => ReadOnlyFormat.ReadUInt16LE(begin + _keyEndsOffset + 2u * (uint)index);
@@ -310,7 +325,7 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
             _stack.Add(node);
             if (node.IsLeaf) return before + l;
             before += node.CountBefore(begin, l);
-            node = Node.Read(_db, node.Pointer(begin, l));
+            node = Node.ReadChild(_db, node, l, _stack.Count);
         }
     }
 
@@ -377,7 +392,7 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
             remaining -= node.CountBefore(begin, l);
             node.Pos = l;
             _stack.Add(node);
-            node = Node.Read(_db, node.Pointer(begin, l));
+            node = Node.ReadChild(_db, node, l, _stack.Count);
         }
 
         if (remaining >= node.ChildCount) throw Corrupted();

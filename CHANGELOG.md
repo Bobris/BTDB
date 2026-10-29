@@ -210,6 +210,10 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- `ReadOnlyKeyValueDB` descending through a damaged child pointer that pointed back up its tree never ended: seeking a
+  key index grew its node stack until `OutOfMemoryException`, and `CalcBTreeStats` crashed the process with a stack
+  overflow. A child must lie before its parent, as the creator writes them, and within 64 levels; otherwise the image
+  is reported as corrupted.
 - ObjectDB reading a damaged inline object number grew its list of read objects to that number, a null at a time,
   up to two billion entries for one value. A number beyond the bytes of the record is reported as damage now.
 - `SlowGetValue` and `SlowGetKey` returned a buffer sized by the stored size of the current key, which for a value

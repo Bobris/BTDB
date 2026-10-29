@@ -42,6 +42,7 @@ public class ReadOnlyKeyValueDBFuzzTest
         using var tr = db.StartReadOnlyTransaction();
         tr.GetUlong(0);
         tr.GetCommitUlong();
+        tr.CalcBTreeStats();
         using var cursor = tr.CreateCursor();
         var count = 0L;
         if (cursor.FindFirstKey([]))
@@ -63,7 +64,8 @@ public class ReadOnlyKeyValueDBFuzzTest
         }
     }
 
-    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 60));
+    // Seed 3025 damages a child pointer to point back up the tree: before the fix descending through it never ended.
+    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 60).Append(3025));
 
     [Theory]
     [MemberData(nameof(Seeds))]
