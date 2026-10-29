@@ -884,9 +884,14 @@ public struct MemReader
         if (len == 0) return "";
         if (FillBuf((nuint)len))
         {
-            var buf = len < 2048 ? stackalloc byte[(int)len] : GC.AllocateUninitializedArray<byte>((int)len);
-            ReadBlock(buf);
-            return Encoding.UTF8.GetString(buf);
+            if (len < 2048)
+            {
+                Span<byte> buf = stackalloc byte[(int)len];
+                ReadBlock(buf);
+                return Encoding.UTF8.GetString(buf);
+            }
+
+            return Encoding.UTF8.GetString(ReadBlockGrowing((int)len));
         }
 
         var res = Encoding.UTF8.GetString((byte*)Current, (int)len);
@@ -1055,9 +1060,8 @@ public struct MemReader
     {
         if (FillBuf(length))
         {
-            var buf = GC.AllocateUninitializedArray<byte>((int)length);
-            ReadBlock(buf);
-            return buf;
+            if (length > int.MaxValue) throw new InvalidDataException($"Reading block length overflowed with {length}");
+            return ReadBlockGrowing((int)length);
         }
 
         var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
@@ -1100,20 +1104,11 @@ public struct MemReader
         SkipBlock(length - 1);
     }
 
-    public unsafe ReadOnlySpan<byte> ReadByteArrayAsSpan()
+    public ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
-        if (FillBuf(length))
-        {
-            var buf = GC.AllocateUninitializedArray<byte>((int)length);
-            ReadBlock(buf);
-            return buf;
-        }
-
-        var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
-        Current += (nint)length;
-        return res;
+        return ReadBlockAsSpan(length);
     }
 
     [SkipLocalsInit]
@@ -1196,15 +1191,22 @@ public struct MemReader
             return bytes;
         }
 
-        // As in ReadStringBeyondBuffer: grow with the bytes that arrive, not with the declared length.
-        var result = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, Math.Max(4096L, (long)(End - Current))));
+        return ReadBlockGrowing((int)length);
+    }
+
+    /// Reads length bytes into a new array. As in ReadStringBeyondBuffer, it grows with the bytes that arrive, not with
+    /// the declared length, so a damaged length fails at the end of the input without allocating it.
+    byte[] ReadBlockGrowing(int length, bool pinned = false)
+    {
+        var result = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, Math.Max(4096L, (long)(End - Current))),
+            pinned);
         var filled = 0;
         while (true)
         {
             ReadBlock(result.AsSpan(filled));
             filled = result.Length;
             if (filled == length) return result;
-            var grown = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, 2L * filled));
+            var grown = GC.AllocateUninitializedArray<byte>((int)Math.Min(length, 2L * filled), pinned);
             result.CopyTo(grown, 0);
             result = grown;
         }
@@ -1234,8 +1236,8 @@ public struct MemReader
                 (int)(current - (nint)Unsafe.AsPointer(ref pinnedArray[0])), (int)length);
         }
 
-        var resBuffer = GC.AllocateUninitializedArray<byte>((int)length, pinned: true);
-        ReadBlock(resBuffer.AsSpan());
+        if (length > int.MaxValue) throw new InvalidDataException($"Reading block length overflowed with {length}");
+        var resBuffer = ReadBlockGrowing((int)length, pinned: true);
         return MemoryMarshal.CreateFromPinnedArray(resBuffer, 0, (int)length);
     }
 

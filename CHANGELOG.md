@@ -597,6 +597,10 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `MemReader.ReadStringInUtf8`, `ReadByteArrayAsSpan`, `ReadBlockAsSpan` and `ReadByteArrayAsMemory` over a stream
+  allocated the whole declared length before reading, so a damaged length made a 100-byte input allocate 256 MB
+  before failing. They grow with the bytes that arrive now, as `ReadString` and `ReadByteArray` already did, and a
+  length past `int.MaxValue` is `InvalidDataException`.
 - `EquatableArray<T>`, in the library and in the source generator, treated the default array as equal to an empty
   one but hashed them differently (0 against the hash of no items), so a dictionary or set keyed by such arrays could
   miss an equal key. Both now hash to 0.

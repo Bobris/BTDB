@@ -690,6 +690,9 @@ public class MemReaderWriterRoundTripTest
                  {
                      (1ul << 28, (ref MemReader r) => r.ReadString()),
                      (1ul << 28, (ref MemReader r) => r.ReadByteArray()),
+                     (1ul << 28, (ref MemReader r) => r.ReadStringInUtf8()),
+                     (1ul << 28, (ref MemReader r) => r.ReadByteArrayAsSpan()),
+                     (1ul << 28, (ref MemReader r) => r.ReadByteArrayAsMemory()),
                      (uint.MaxValue, (ref MemReader r) => r.ReadStringValues())
                  })
         {
