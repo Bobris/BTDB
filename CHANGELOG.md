@@ -127,6 +127,8 @@
   container made the dispatcher of the first one resolve its handlers from the second. `DispatcherItem` now keeps them
   for each root container, which scopes share, and the generated code calls the new `DispatcherItem.Prepare` and
   `Invoke`.
+- IOC: a public `readonly` `[Dependency]` field was assigned directly by the generated factory, which did not compile.
+  It is written through an `UnsafeAccessor` like non-public fields.
 - ObjectDB: non-public `OnBeforeRemove` and `OnSerialize` methods of a base class of a relation item threw
   `MissingMethodException` in generated relations, whose accessors targeted the derived class, and private ones were
   not called at all in relations emitted as IL. They are now called in both, also from generic base classes.

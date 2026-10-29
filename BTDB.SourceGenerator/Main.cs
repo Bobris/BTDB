@@ -2173,7 +2173,9 @@ public class SourceGenerator : IIncrementalGenerator
                         DetectDependencyName(f),
                         f.Type.IsReferenceType,
                         f.NullableAnnotation == NullableAnnotation.Annotated,
-                        f.DeclaredAccessibility != Accessibility.Public || !Accessible(f), true, f.Name, owner,
+                        // A readonly field can be written only through a ref from an accessor.
+                        f.IsReadOnly || f.DeclaredAccessibility != Accessibility.Public || !Accessible(f), true, f.Name,
+                        owner,
                         owner is not null && type.IsGenericType ? ExtractOwnerGenericInfo(type) : null,
                         f.OriginalDefinition.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
                 }

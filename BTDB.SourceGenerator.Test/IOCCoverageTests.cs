@@ -344,6 +344,35 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains(".Consume((int?)message)", handler);
     }
 
+    // Before the fix a public readonly [Dependency] field was assigned directly and the generated code did not compile.
+    [Fact]
+    public void DependencyMembersOfEveryShapeCompile()
+    {
+        var sources = GenerateAndCompile("""
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class Shapes
+            {
+                [BTDB.IOC.Dependency] public ILogger Init { get; init; } = null!;
+                [BTDB.IOC.Dependency] public required ILogger Required { get; set; }
+                [BTDB.IOC.Dependency] public readonly ILogger ReadonlyField = null!;
+                [BTDB.IOC.Dependency] public ILogger? Optional { get; set; }
+            }
+
+            [BTDB.Generate]
+            public record RecordShape(ILogger Logger)
+            {
+                [BTDB.IOC.Dependency] public ILogger Other { get; init; } = null!;
+            }
+            """);
+        Assert.Contains("UnsafeAccessorKind.Field, Name = \"ReadonlyField\"", GetSource(sources, "TestNamespace.Shapes.g.cs"));
+    }
+
     [Fact]
     public void DefaultInterfaceDispatcherReimplementedByClassIsNotUsedFromInterface()
     {

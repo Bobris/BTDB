@@ -92,6 +92,20 @@ public class IOCInheritedDependencyTest
         Assert.Same(logger, obj.Own.Logger);
     }
 
+    [Generate]
+    public class WithReadonlyField
+    {
+        [Dependency] public readonly ILogger Logger = null!;
+    }
+
+    // Before the fix a public readonly [Dependency] field was assigned directly and the generated code did not compile.
+    [Fact]
+    public void InjectsPublicReadonlyField()
+    {
+        var container = BuildContainer<WithReadonlyField>(out var logger, out _);
+        Assert.Same(logger, container.Resolve<WithReadonlyField>().Logger);
+    }
+
     [Fact]
     public void InjectsDependenciesDeclaredInGenericBaseClass()
     {
