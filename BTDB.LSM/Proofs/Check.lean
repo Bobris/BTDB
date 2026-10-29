@@ -32,3 +32,5 @@ open Lsm
 #print axioms BlockSeek.lower_bound_correct
 #print axioms MergeMask.decided_ignores_older
 #print axioms MergeMask.newest_point_wins
+#print axioms TombstoneFind.find_some
+#print axioms TombstoneFind.find_covered
