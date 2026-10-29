@@ -77,3 +77,4 @@ import BtdbProofs.CompactionBatch
 import BtdbProofs.RelationRegistry
 import BtdbProofs.TypeNames
 import BtdbProofs.EnumerateDirty
+import BtdbProofs.ObjectRestore

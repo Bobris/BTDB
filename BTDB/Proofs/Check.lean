@@ -231,3 +231,5 @@ open Btdb
 #print axioms EnumerateDirty.enumerate_complete
 #print axioms EnumerateDirty.enumerate_nodup
 #print axioms EnumerateDirty.old_misses
+#print axioms ObjectRestore.reachable_inv
+#print axioms ObjectRestore.old_breaks
