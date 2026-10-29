@@ -163,6 +163,8 @@
     a standalone file collection's next ID is above every file found on open, in any listing order.
   - `BTDB/Proofs/`, file reads: the file collections' end-of-file test refuses exactly the reads that do not fit,
     though `ulong` arithmetic can wrap.
+  - `BTDB/Proofs/`, `SeqLock`: a read accepted by an unchanged even counter is consistent when its data reads come
+    between the two counter reads, and can see a half-done write when they come after the second.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 

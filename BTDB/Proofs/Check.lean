@@ -192,3 +192,5 @@ open Btdb
 #print axioms FileIds.next_fresh
 #print axioms ReadBounds.refused_iff
 #print axioms ReadBounds.naive_wraps
+#print axioms SeqLockRead.accepted_read_is_consistent
+#print axioms SeqLockRead.late_read_can_tear
