@@ -44,7 +44,8 @@
       bounds stored for it cover every prefix sum;
     - a table's delta before a key, from the index and one block, a level's, from its tables, and a memtable's, from
       one path of its tree, is the sum of the deltas of its entries below the key;
-    - splitting, merging and updating a memtable's tree keep it a search tree with exact subtree sums.
+    - splitting, merging and updating a memtable's tree keep it a search tree with exact subtree sums;
+    - cutting range tombstones at the table boundaries of a compaction keeps their coverage.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the

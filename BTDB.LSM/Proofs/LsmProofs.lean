@@ -13,3 +13,4 @@ import LsmProofs.BlockDelta
 import LsmProofs.TablePointDelta
 import LsmProofs.MemtableDelta
 import LsmProofs.MemtableTree
+import LsmProofs.ClipCoverage

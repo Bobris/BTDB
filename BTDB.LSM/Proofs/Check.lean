@@ -42,3 +42,5 @@ open Lsm
 #print axioms MemtableTree.split_ok
 #print axioms MemtableTree.merge_ok
 #print axioms MemtableTree.update_ok
+#print axioms ClipCoverage.pieces_cover
+#print axioms ClipCoverage.dropped_zero

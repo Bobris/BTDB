@@ -16,7 +16,8 @@ only on the standard axioms `propext`, `Quot.sound` and `Classical.choice`; ther
 `LsmProofs/Counts.lean` models counted entries at one key (`ImplementationPlan.md`, sections 6.1 to 6.3). A component
 holds at most one point entry and may cover the key with a range-tombstone fragment. The model includes how
 `LsmMerger.Entries` and its merged fragments combine a run of components. Splitting fragments at table boundaries
-(`LsmCompaction.Clip`) recomputes `coveredBelow` by a rank query and is not modelled.
+(`LsmCompaction.Clip`) recomputes `coveredBelow` by a rank query; `LsmProofs/ClipCoverage.lean` shows the pieces keep
+the fragment's coverage.
 
 `LsmProofs/Rank.lean` models `LsmView.RankFrom` and `CountFrom` over a stack of components with range-tombstone
 fragments, sorted and disjoint as `TombstoneSet` keeps them. Point deltas and `CoveredBelow` are taken relative to the
@@ -43,6 +44,9 @@ subtree delta sums.
 
 `LsmProofs/MemtableTree.lean` models `Memtable.Split` and `Merge`, which every memtable insert and removal goes
 through, and `UpdatePath`; the priority that picks the root of a merge is left arbitrary.
+
+`LsmProofs/ClipCoverage.lean` models `LsmCompaction.Clip`, which cuts range-tombstone fragments at the boundaries of
+the tables a compaction writes.
 
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
@@ -119,6 +123,7 @@ Not modelled in `Wal.lean`:
 | `MemtableDelta.delta_before_correct` | `Memtable.PointDeltaBefore`, adding the left subtree sum and the node's delta at each node below the key on one path from the root, is the sum of the deltas of all keys below the key, for a search tree whose nodes keep their subtree sums. |
 | `MemtableTree.split_ok`, `MemtableTree.merge_ok` | `Split` of a search tree with exact subtree sums gives two such trees holding the keys below and the rest, and `Merge` of two such trees, left keys below right keys, gives one, whatever the priorities, so `PointDeltaBefore` stays exact after every change. |
 | `MemtableTree.update_ok` | `UpdatePath` on a key the tree holds keeps it a search tree with exact subtree sums, and changes its total by the new delta less the old one. |
+| `ClipCoverage.pieces_cover`, `ClipCoverage.dropped_zero` | A fragment cut at any table boundaries, each piece covering `Rank(end) − Rank(start)`, keeps the fragment's coverage in sum, and dropping pieces covering nothing does not change it, so `CoveredSum` and `CountFrom` stay exact after a compaction splits its output. |
 
 The fixed rule, as implemented:
 
