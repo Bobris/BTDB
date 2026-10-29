@@ -13,6 +13,10 @@ to the block's delta before the deltas of its entries below the key, those befor
 key, `LowerBound` is the block start and nothing is added, as the shortcut reading no block returns.
 
 * `point_delta_before_correct`: the result is the sum of the deltas of all entries below the key.
+* `level_point_delta_before_correct`: `LevelComponent.PointDeltaBefore` composes tables the same way, with the first
+  table ending after the key in place of the block: tables before it lie below the key and tables after it above, so
+  its delta before plus the table's own delta before the key is again the sum below the key, and a key after every
+  table gets the level's whole delta sum.
 -/
 
 namespace Lsm.TablePointDelta
@@ -38,5 +42,22 @@ theorem point_delta_before_correct (q : Nat → Bool) (d : Nat → Int) (N a e :
   obtain ⟨b1, _, _, _⟩ := scan_first q a e hae
   obtain ⟨k, hk⟩ : ∃ k, scan q a e = a + k := ⟨scan q a e - a, by omega⟩
   rw [← hsame, hk, psum_split]
+
+theorem level_point_delta_before_correct (q : Nat → Bool) (d : Nat → Int) (N a e : Nat) (hae : a ≤ e)
+    (heN : e ≤ N) (hbefore : ∀ i, i < a → q i = false) (hnext : e < N → q e = true) :
+    (a = N → psum d N = psum d (scan q 0 N)) ∧
+      psum d a + rangeSum d a (scan q a e) = psum d (scan q 0 N) := by
+  refine ⟨fun h => ?_, point_delta_before_correct q d N a e hae heN hbefore hnext⟩
+  subst h
+  -- Every entry lies below the key.
+  obtain ⟨_, h2, h3, _⟩ := scan_first q 0 a (Nat.zero_le _)
+  have : scan q 0 a = a := by
+    rcases Nat.lt_or_ge (scan q 0 a) a with h | h
+    · obtain ⟨_, _, _, h4⟩ := scan_first q 0 a (Nat.zero_le _)
+      have := h4 h
+      rw [hbefore _ h] at this
+      exact absurd this (by simp)
+    · omega
+  rw [this]
 
 end Lsm.TablePointDelta

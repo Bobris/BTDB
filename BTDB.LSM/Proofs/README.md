@@ -109,6 +109,7 @@ Not modelled in `Wal.lean`:
 | `BlockDelta.delta_prefix_correct` | `DeltaPrefix(count)`, the delta stored at the restart of entry `count - 1`, capped at the last restart, plus the deltas of the entries from it to `count`, is the sum of the deltas of the first `count` entries. |
 | `BlockDelta.bounds_cover` | The `MinPrefix` and `MaxPrefix` a block builder tracks, starting at 0 and updated after each entry, bound every prefix sum of the block, the empty one included, as `Table.PointDeltaBounds` needs. |
 | `TablePointDelta.point_delta_before_correct` | `Table.PointDeltaBefore`, the index's delta before the last block starting at or before the key plus the deltas of that block's entries below the key, is the sum of the deltas of all the table's entries below the key. |
+| `TablePointDelta.level_point_delta_before_correct` | `LevelComponent.PointDeltaBefore` composes its tables the same way, by the first table ending after the key, and a key after every table gets the level's whole delta sum. |
 
 The fixed rule, as implemented:
 
