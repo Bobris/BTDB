@@ -2,7 +2,7 @@ namespace Sample3rdPartyLib;
 
 /// <summary>
 /// Simulates a generic base class from an external assembly with auto-properties.
-/// This pattern is common (e.g., CompanyMapKeyBase&lt;TKey&gt; in inspirecloud).
+/// This pattern is common in applications, for keys shared by several relations.
 /// The BTDB source generator must handle auto-properties from external assemblies
 /// correctly (using backing field access instead of UnsafeAccessor Method kind).
 /// </summary>
