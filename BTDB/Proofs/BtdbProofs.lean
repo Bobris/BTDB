@@ -50,3 +50,4 @@ import BtdbProofs.DispatcherOverloads
 import BtdbProofs.DispatcherContainers
 import BtdbProofs.BonInteger
 import BtdbProofs.FirstDifference
+import BtdbProofs.PtrLenExclude

@@ -160,3 +160,6 @@ open Btdb
 #print axioms BonInteger.previous_wraps
 #print axioms FirstDifference.diff3_eq
 #print axioms FirstDifference.diff4_eq
+#print axioms PtrLenExclude.cut_mem
+#print axioms PtrLenExclude.cut_sorted
+#print axioms PtrLenExclude.previous_adds
