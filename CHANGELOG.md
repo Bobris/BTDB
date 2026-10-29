@@ -214,6 +214,10 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- `DiskChunkCache` returned other content than was stored for keys whose value file or hash index entry was damaged:
+  values had no checksum. Each value is followed by its XxHash64 now, and `Get` returns nothing for damaged content
+  and stops caching it. Value files written by earlier versions, without checksums, are dropped on open, so such a
+  cache starts empty once.
 - `BTreeKeyValueDB` loaded a damaged key index whose keys were no longer in order, building a tree whose lookups
   missed keys it listed. Such an index is refused now, like other damaged ones. Key indexes have no checksum, so
   damage keeping the order still changes keys and values unnoticed.

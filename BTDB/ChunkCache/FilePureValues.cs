@@ -16,14 +16,14 @@ class FilePureValues : IFileInfo
         _generation = generation;
     }
 
-    public DiskChunkFileType FileType => DiskChunkFileType.PureValues;
+    public DiskChunkFileType FileType => DiskChunkFileType.CheckedPureValues;
 
     public long Generation => _generation;
 
     public void WriteHeader(ref MemWriter writer)
     {
         writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
-        writer.WriteUInt8((byte)DiskChunkFileType.PureValues);
+        writer.WriteUInt8((byte)DiskChunkFileType.CheckedPureValues);
         writer.WriteVInt64(_generation);
     }
 }

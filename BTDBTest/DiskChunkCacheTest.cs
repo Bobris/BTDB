@@ -27,6 +27,39 @@ public class DiskChunkCacheTest
         return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
     }
 
+    // Value files written before values had checksums are dropped: the cache starts empty instead of trusting them.
+    [Fact]
+    public void ValueFilesWithoutChecksumsAreDropped()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        var valueFile = fileCollection.AddFile("cav");
+        var valueWriter = new MemWriter(valueFile.GetAppenderWriter());
+        valueWriter.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
+        valueWriter.WriteUInt8((byte)DiskChunkFileType.PureValues);
+        valueWriter.WriteVInt64(1);
+        var contentOfs = (uint)valueWriter.GetCurrentPosition();
+        valueWriter.WriteBlock(new byte[] { 7, 8, 9 });
+        valueWriter.Flush();
+        valueFile.HardFlushTruncateSwitchToDisposedMode();
+
+        var key = CalcHash([7, 8, 9]);
+        var indexFile = fileCollection.AddFile("chi");
+        var indexWriter = new MemWriter(indexFile.GetExclusiveAppenderWriter());
+        new FileHashIndex(2, 20, 1).WriteHeader(ref indexWriter);
+        indexWriter.WriteVUInt32(contentOfs);
+        indexWriter.WriteVUInt32(valueFile.Index);
+        indexWriter.WriteVUInt32(1);
+        indexWriter.WriteVUInt32(3);
+        indexWriter.WriteBlock(key.AsSyncReadOnlySpan());
+        indexWriter.WriteVUInt32(0);
+        indexWriter.Flush();
+        indexFile.HardFlushTruncateSwitchToDisposedMode();
+
+        using var cache = new DiskChunkCache(fileCollection, 20, 100000);
+        Assert.Equal(0, cache.Get(key).Result.Length);
+        Assert.Equal(0u, fileCollection.GetCount());
+    }
+
     // Before the fix entries of a damaged hash index were loaded as they were: a damaged length made Get allocate it,
     // and an entry pointing past its value file or into an unknown file was kept.
     [Fact]
@@ -38,6 +71,7 @@ public class DiskChunkCacheTest
         new BTDB.ChunkCache.FilePureValues(1).WriteHeader(ref valueWriter);
         var contentOfs = (uint)valueWriter.GetCurrentPosition();
         valueWriter.WriteBlock(new byte[] { 7, 8, 9 });
+        valueWriter.WriteUInt64LE(XxHash64.Hash([7, 8, 9]));
         valueWriter.Flush();
         valueFile.HardFlushTruncateSwitchToDisposedMode();
 

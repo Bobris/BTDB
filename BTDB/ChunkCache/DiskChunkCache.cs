@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -34,6 +35,20 @@ public class DiskChunkCache : IChunkCache, IDisposable
     internal Task? CurrentCompactionTask() => _compactionTask;
     CancellationTokenSource? _compactionCts;
     readonly object _startNewValueFileLocker = new object();
+
+    // Each value is followed by the XxHash64 of its content, so damage is a miss, not other content.
+    const int ValueChecksumLength = 8;
+
+    static void WriteValueChecksum(ref MemWriter writer, ReadOnlySpan<byte> content)
+    {
+        Span<byte> checksum = stackalloc byte[ValueChecksumLength];
+        BinaryPrimitives.WriteUInt64LittleEndian(checksum, XxHash64.Hash(content));
+        writer.WriteBlock(checksum);
+    }
+
+    static bool IsValueIntact(ReadOnlySpan<byte> valueWithChecksum) =>
+        XxHash64.Hash(valueWithChecksum[..^ValueChecksumLength]) ==
+        BinaryPrimitives.ReadUInt64LittleEndian(valueWithChecksum[^ValueChecksumLength..]);
 
     // Magic, file type and the VInt64 generation of FilePureValues
     const int MaxValueFileHeaderLength = 15 + 1 + 9;
@@ -105,7 +120,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 fileInfo = fileType switch
                 {
                     DiskChunkFileType.HashIndex => new FileHashIndex(ref reader),
-                    DiskChunkFileType.PureValues => new FilePureValues(ref reader),
+                    DiskChunkFileType.CheckedPureValues => new FilePureValues(ref reader),
                     _ => UnknownFile.Instance
                 };
             }
@@ -145,9 +160,9 @@ public class DiskChunkCache : IChunkCache, IDisposable
     {
         if (cacheValue.ContentLength == 0 || cacheValue.ContentLength > _sizeLimitOfOneValueFile) return false;
         if (!_fileInfos.TryGetValue(cacheValue.FileId, out var fileInfo) ||
-            fileInfo.FileType != DiskChunkFileType.PureValues) return false;
+            fileInfo.FileType != DiskChunkFileType.CheckedPureValues) return false;
         var file = _fileCollection.GetFile(cacheValue.FileId);
-        return file != null && (ulong)cacheValue.FileOfs + cacheValue.ContentLength <= file.GetSize();
+        return file != null && (ulong)cacheValue.FileOfs + cacheValue.ContentLength + ValueChecksumLength <= file.GetSize();
     }
 
     public void Put(ByteBuffer key, ByteBuffer content)
@@ -156,7 +171,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
         if (content.Length == 0) throw new ArgumentException("Empty Content cannot be stored");
         // Content which does not fit even into an empty value file is not cached, otherwise new value files would be
         // started forever
-        if (content.Length > _sizeLimitOfOneValueFile - MaxValueFileHeaderLength) return;
+        if (content.Length + ValueChecksumLength > _sizeLimitOfOneValueFile - MaxValueFileHeaderLength) return;
         var k = new ByteStructs.Key20(key);
         if (_cache.TryGetValue(k, out var cacheValue))
         {
@@ -167,7 +182,8 @@ public class DiskChunkCache : IChunkCache, IDisposable
         again:
         var writer = _cacheValueWriter;
         var trueWriter = new MemWriter(writer);
-        while (writer == null || trueWriter.GetCurrentPosition() + content.Length > _sizeLimitOfOneValueFile)
+        while (writer == null ||
+               trueWriter.GetCurrentPosition() + content.Length + ValueChecksumLength > _sizeLimitOfOneValueFile)
         {
             StartNewValueFile();
             writer = _cacheValueWriter;
@@ -181,6 +197,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
             cacheValue.FileId = _cacheValueFileId;
             cacheValue.FileOfs = (uint)trueWriter.GetCurrentPosition();
             trueWriter.WriteBlock(content);
+            WriteValueChecksum(ref trueWriter, content.AsSyncReadOnlySpan());
             trueWriter.Flush();
         }
 
@@ -261,7 +278,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
         var fileIdsToRemove = new StructList<uint>();
         foreach (var fileInfo in _fileInfos)
         {
-            if (fileInfo.Value.FileType != DiskChunkFileType.PureValues) continue;
+            if (fileInfo.Value.FileType != DiskChunkFileType.CheckedPureValues) continue;
             if (fileInfo.Key == _cacheValueFileId) continue;
             if (!usage.TryGetValue(fileInfo.Key, out var accessRate) && finishedUsageStats)
             {
@@ -322,10 +339,9 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 if (preserveRate < itemPair.Value.AccessRate)
                 {
                     var cacheValue = itemPair.Value;
-                    var content = new byte[cacheValue.ContentLength];
-                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(
-                        content.AsSpan(0, (int)cacheValue.ContentLength),
-                        cacheValue.FileOfs, true);
+                    var content = new byte[cacheValue.ContentLength + ValueChecksumLength];
+                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(content, cacheValue.FileOfs, true);
+                    if (!IsValueIntact(content)) goto remove;
                     var writer = _cacheValueWriter;
                     if (writer == null)
                     {
@@ -340,8 +356,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
                         }
 
                         var trueWriter = new MemWriter(writer);
-                        if (trueWriter.GetCurrentPosition() + cacheValue.ContentLength >
-                            _sizeLimitOfOneValueFile)
+                        if (trueWriter.GetCurrentPosition() + content.Length > _sizeLimitOfOneValueFile)
                         {
                             goto remove;
                         }
@@ -401,12 +416,16 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 newCacheValue.AccessRate = cacheValue.AccessRate + 1;
                 _cache.TryUpdate(k, newCacheValue, cacheValue);
                 // It is not problem if update fails, it will have just lower access rate then real
-                var result = new byte[cacheValue.ContentLength];
-                _fileCollection.GetFile(cacheValue.FileId).RandomRead(
-                    result.AsSpan(0, (int)cacheValue.ContentLength),
-                    cacheValue.FileOfs, false);
-                tcs.SetResult(ByteBuffer.NewAsync(result));
-                return tcs.Task;
+                var result = new byte[cacheValue.ContentLength + ValueChecksumLength];
+                _fileCollection.GetFile(cacheValue.FileId).RandomRead(result, cacheValue.FileOfs, false);
+                if (IsValueIntact(result))
+                {
+                    tcs.SetResult(ByteBuffer.NewAsync(result, 0, (int)cacheValue.ContentLength));
+                    return tcs.Task;
+                }
+
+                // Damaged content, or an entry pointing elsewhere, is no longer cached.
+                _cache.TryRemove(k, out _);
             }
         }
         catch
