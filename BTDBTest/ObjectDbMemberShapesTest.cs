@@ -542,4 +542,52 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal("n", ((ObjectAfterRename)read.Get(oid)!).Title);
         });
     }
+
+    public class GenericValueBase<T>
+    {
+        public T? Value { get; set; }
+        protected T? Hidden { get; set; }
+        T? Secret { get; set; }
+
+        public void SetHidden(T value) => Hidden = value;
+        public T? GetHidden() => Hidden;
+        public void SetSecret(T value) => Secret = value;
+        public T? GetSecret() => Secret;
+    }
+
+    public class FromGenericBase : GenericValueBase<string>
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+    }
+
+    public interface IFromGenericBases : IRelation<FromGenericBase>
+    {
+        void Insert(FromGenericBase value);
+        FromGenericBase FindById(ulong id);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PropertiesOfGenericBaseRoundTrip(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var row = new FromGenericBase { Id = 1, Value = "v" };
+                row.SetHidden("h");
+                row.SetSecret("s");
+                tr.GetRelation<IFromGenericBases>().Insert(row);
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using var read = _db.StartReadOnlyTransaction();
+            var loaded = read.GetRelation<IFromGenericBases>().FindById(1);
+            Assert.Equal("v", loaded.Value);
+            Assert.Equal("h", loaded.GetHidden());
+            Assert.Equal("s", loaded.GetSecret());
+        });
+    }
 }
