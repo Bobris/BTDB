@@ -84,3 +84,4 @@ import BtdbProofs.ReadOnlyDepth
 import BtdbProofs.KeyIndexOrder
 import BtdbProofs.FletcherDetect
 import BtdbProofs.CipherBlocks
+import BtdbProofs.Utf8Length
