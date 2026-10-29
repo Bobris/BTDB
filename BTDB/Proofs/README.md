@@ -150,6 +150,9 @@ arrive without a count (`../ODBLayer/ODBRoaringBitmap.cs`).
 `BtdbProofs/RoaringKind.lean` models how `RoaringBitmaps` chooses the encoding of a 16-bit container and reads its kind
 back from its length (`../Buffer/RoaringBitmaps.cs`).
 
+`BtdbProofs/QueryTopK.lean` models how a relation query ordered and then paged sorts its rows keeping only the first
+`skip + take` (`../ODBLayer/RelationQuery.cs`).
+
 `BtdbProofs/QueryPaging.lean` models how `RelationQuerySource.Bind` folds the `Skip` and `Take` calls of a relation
 query into one skip and an optional take (`../ODBLayer/RelationQuery.cs`).
 
@@ -244,6 +247,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `InheritedDependencies.collect_nodup`, `InheritedDependencies.collect_complete` | Walking a type's members and then its base types' members, most derived first, injects no name twice, and injects every `[Dependency]` member that no earlier member hides. |
 | `InheritedDependencies.previous_misses_base` | Before the 2026-10-29 fix only the type's own members were walked, so a dependency declared in its base was not injected (`IOCInheritedDependencyTest`). |
 | `QueryPaging.bind_correct` | For any rows and any sequence of `Skip` and `Take` calls, the skip and take a relation query binds give exactly the rows the calls give applied one after another, as LINQ does, with nonpositive skips ignored and negative takes taking nothing. |
+| `QueryTopK.top_k_correct` | Sorting with a limit, inserting each row at its sorted place, skipping one placed at the limit or later and dropping the last entry past it, keeps exactly the first `limit` rows of all rows sorted, whatever their order. |
 | `RoaringKind.choose_shortest`, `RoaringKind.kind_roundtrip` | The encoding `ChooseOutputKind` picks for a container (array, runs or raw bitmap) is the shortest of the three, and for a container with a set bit `ValidateAndGetKind` reads the same kind back from its length. |
 | `RoaringSource.fixed_keeps_valid`, `RoaringSource.previous_loses_valid` | For values in ascending order of their pages, `RoaringBitmap.Source` reads exactly those up to the maximum index, in order; before the 2026-10-29 fix the first value above the maximum ended them and lost later values of its page (`ObjectDbTableFreeContentTest.RoaringBitmapSourceSkipsValuesAboveMaximumInItsLastPage`). |
 | `RoaringCount.fixed_count_correct`, `RoaringCount.previous_wrong_count` | Through any page commands, sets, counts and flushes, `Count` of a roaring bitmap returns the number of its values; before the 2026-10-29 fix pages applied without their count and a set bit cached a count of 1 for 3 values (`ODBRoaringBitmapAndLazyListCoverageTest.BitmapWithPagesButNoCountYetCountsItsPages`). |

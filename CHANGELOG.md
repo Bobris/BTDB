@@ -78,6 +78,8 @@
     number of values;
   - `BTDB/Proofs/`, `RoaringBitmap.Source`: for page ascending values it reads exactly those up to the maximum index;
   - `BTDB/Proofs/`, Roaring bitmap containers: the encoding chosen is the shortest, and its length tells its kind;
+  - `BTDB/Proofs/`, sorted relation queries with paging: keeping only `skip + take` rows while sorting keeps exactly
+    the first rows of the full sort;
   - `BTDB/Proofs/`, relation query paging: folding `Skip` and `Take` calls into one skip and take gives the rows of
     the calls applied in order, for any rows;
   - `BTDB/Proofs/`, string key prefixes: `Constraint.String.StartsWith` with a value ending with a high surrogate
