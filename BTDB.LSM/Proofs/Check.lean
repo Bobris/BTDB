@@ -65,3 +65,5 @@ open Lsm
 #print axioms LevelTarget.target_mono
 #print axioms KeySuccessor.lt_successor
 #print axioms KeySuccessor.nothing_between
+#print axioms PrefixRange.prefix_between
+#print axioms PrefixRange.prefix_run
