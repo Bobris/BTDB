@@ -86,3 +86,4 @@ import BtdbProofs.FletcherDetect
 import BtdbProofs.CipherBlocks
 import BtdbProofs.Utf8Length
 import BtdbProofs.HiddenProperties
+import BtdbProofs.InheritedAttributes

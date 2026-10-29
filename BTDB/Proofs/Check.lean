@@ -247,3 +247,6 @@ open Btdb
 #print axioms Utf8Length.utf8_le_three
 #print axioms HiddenProperties.visible_unique
 #print axioms HiddenProperties.visible_complete
+#print axioms InheritedAttributes.own_kept
+#print axioms InheritedAttributes.fromOverridden_fresh
+#print axioms InheritedAttributes.inherited_kept

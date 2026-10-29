@@ -149,6 +149,9 @@ buffer of `ReflectionMetadata.FindByName`.
 `BtdbProofs/HiddenProperties.lean` models how `EmitHelpers.GetVisibleProperties` leaves out properties hidden by one
 of the same name in a derived class.
 
+`BtdbProofs/InheritedAttributes.lean` models how the source generator reads the attributes of a property with those
+of the properties it overrides.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -356,6 +359,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `CipherBlocks.and15_eq_mod`, `CipherBlocks.refuses_iff_partial` | The test `(length & 15) != 0` refuses exactly the lengths that are no whole number of 16-byte AES blocks; before the 2026-10-29 fix CBC decryption threw `CryptographicException` for them (`AesGcmSymmetricCipherTest`). |
 | `Utf8Length.utf8_le_three` | UTF-8 takes at most three bytes per UTF-16 code unit, surrogate pairs and lone surrogates included, so the stack buffer `FindByName` keeps for names up to 256 code units always fits; longer ones use the heap since the 2026-10-29 fix. |
 | `HiddenProperties.visible_unique`, `HiddenProperties.visible_complete` | Keeping only properties no more derived class hides leaves exactly one per name, the most derived, and drops no name; before the 2026-10-29 fix a property hidden with `new` gave ObjectDB and the event store two fields of one name (`ObjectDbMemberShapesTest`). |
+| `InheritedAttributes.own_kept`, `InheritedAttributes.fromOverridden_fresh`, `InheritedAttributes.inherited_kept` | The generator keeps a property's own attributes, takes an `Inherited` attribute of an overridden property unless a more derived member declares its single-use class, and so never duplicates one; before the 2026-10-29 fix it lost `[PrimaryKey]` and others on overrides (`RelationTests.VerifyRelationWithOverriddenKeyProperties`). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
