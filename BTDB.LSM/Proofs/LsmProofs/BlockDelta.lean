@@ -7,6 +7,8 @@ the entries before it (`psum d (r * R)`). `DeltaPrefix` takes the restart of the
 restart, adds the deltas of the entries from it to `count`, and returns 0 for no entries.
 
 * `delta_prefix_correct`: the result is the sum of the deltas of the first `count` entries.
+* `bounds_cover`: the `MinPrefix` and `MaxPrefix` the builder tracks, starting at 0 and updated after each entry,
+  bound every prefix sum of the block, the empty one included, which `Table.PointDeltaBounds` relies on.
 -/
 
 namespace Lsm.BlockDelta
@@ -55,5 +57,35 @@ theorem delta_prefix_correct (d : Nat → Int) (R rc count : Nat) :
     generalize min ((count - 1) / R) (rc - 1) * R = a at hle
     obtain ⟨k, rfl⟩ : ∃ k, count = a + k := ⟨count - a, by omega⟩
     rw [psum_split]
+
+/-- The builder's running delta, minimum and maximum prefix after `c` entries. -/
+def build (d : Nat → Int) : Nat → Int × Int × Int
+  | 0 => (0, 0, 0)
+  | c + 1 =>
+    let (delta, lo, hi) := build d c
+    let delta' := delta + d c
+    (delta', min lo delta', max hi delta')
+
+theorem bounds_cover (d : Nat → Int) (c : Nat) :
+    (build d c).1 = psum d c ∧ ∀ j, j ≤ c → (build d c).2.1 ≤ psum d j ∧ psum d j ≤ (build d c).2.2 := by
+  induction c with
+  | zero =>
+    refine ⟨rfl, fun j hj => ?_⟩
+    have : j = 0 := by omega
+    subst this
+    simp [build, psum]
+  | succ c ih =>
+    obtain ⟨hdelta, hbound⟩ := ih
+    simp only [build]
+    refine ⟨by rw [hdelta]; rfl, fun j hj => ?_⟩
+    rcases Nat.lt_or_ge j (c + 1) with h | h
+    · obtain ⟨h1, h2⟩ := hbound j (by omega)
+      constructor
+      · exact Int.le_trans (Int.min_le_left _ _) h1
+      · exact Int.le_trans h2 (Int.le_max_left _ _)
+    · have : j = c + 1 := by omega
+      subst this
+      simp only [psum, ← hdelta]
+      exact ⟨Int.min_le_right _ _, Int.le_max_right _ _⟩
 
 end Lsm.BlockDelta

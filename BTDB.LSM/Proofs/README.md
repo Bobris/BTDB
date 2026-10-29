@@ -33,7 +33,7 @@ or else a range-tombstone fragment.
 modelled by its result.
 
 `LsmProofs/BlockDelta.lean` models `RawBlock.DeltaPrefix`: the delta stored at the restart of the last counted entry
-plus the deltas decoded after it.
+plus the deltas decoded after it, and the prefix bounds `DataBlockBuilder` tracks.
 
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
@@ -104,6 +104,7 @@ Not modelled in `Wal.lean`:
 | `MergeMask.decided_ignores_older`, `MergeMask.newest_point_wins` | Once a component decides a key, by a point or a fragment, older components cannot change whether it is live, so `MergingIterator` seeking them past a newer fragment skips no live key; the newest point at a key decides it. |
 | `TombstoneFind.find_some`, `TombstoneFind.find_covered` | `TombstoneSet.Find` returns a fragment exactly when it contains the key, and the fragments its `coveredBefore` sums are exactly those ending at or before the key, the result `Rank.lean` assumes. |
 | `BlockDelta.delta_prefix_correct` | `DeltaPrefix(count)`, the delta stored at the restart of entry `count - 1`, capped at the last restart, plus the deltas of the entries from it to `count`, is the sum of the deltas of the first `count` entries. |
+| `BlockDelta.bounds_cover` | The `MinPrefix` and `MaxPrefix` a block builder tracks, starting at 0 and updated after each entry, bound every prefix sum of the block, the empty one included, as `Table.PointDeltaBounds` needs. |
 
 The fixed rule, as implemented:
 

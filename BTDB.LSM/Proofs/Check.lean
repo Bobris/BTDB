@@ -35,3 +35,4 @@ open Lsm
 #print axioms TombstoneFind.find_some
 #print axioms TombstoneFind.find_covered
 #print axioms BlockDelta.delta_prefix_correct
+#print axioms BlockDelta.bounds_cover
