@@ -130,6 +130,7 @@ Not modelled in `Wal.lean`:
 | `ClipCoverage.pieces_cover`, `ClipCoverage.dropped_zero` | A fragment cut at any table boundaries, each piece covering `Rank(end) − Rank(start)`, keeps the fragment's coverage in sum, and dropping pieces covering nothing does not change it, so `CoveredSum` and `CountFrom` stay exact after a compaction splits its output. |
 | `PrefixSuccessor.prefix_successor_correct`, `PrefixSuccessor.no_successor` | A key is below `PrefixSuccessor(p)` exactly when it is below `p` or starts with `p`, so a scan from `p` to it visits exactly the keys with the prefix; for a prefix of `0xff` bytes every key is below it or starts with it, so null is right. |
 | `Varint.round_trip`, `Varint.decoded_fits` | Every value below 2^64 decodes back from its encoding, leaving the bytes after it, and every value the decoder accepts is below 2^64; before the 2026-10-29 fix a tenth byte above 1 was accepted and lost bits (`LsmEncodingTest.OverlongValueIsDamage`). |
+| `Varint.zigzag_round_trip`, `Varint.zigzag_range` | The zigzag mapping of `WriteVInt64` is undone by `ReadVInt64`, and a value is a `long` exactly when its image is below 2^64, so every `long` reads back as written. |
 
 The fixed rule, as implemented:
 

@@ -8,6 +8,9 @@ tenth byte (`j = 9`) carries only bit 63; since the 2026-10-29 fix the decoder r
 
 * `round_trip`: every value below 2^64 decodes back from its encoding, leaving the bytes after it.
 * `decoded_fits`: every value the decoder accepts is below 2^64, so `ulong` holds it without losing bits.
+* `zigzag_round_trip`, `zigzag_range`: `WriteVInt64` maps a signed value to `2v` or `−2v − 1`
+  (`(value << 1) ^ (value >> 63)`), and `ReadVInt64` maps it back; a value is a `long` exactly when its image is below
+  2^64, so with `round_trip` every `long` reads back as written.
 -/
 
 namespace Lsm.Varint
@@ -99,5 +102,25 @@ theorem decoded_fits_from (bs : List Nat) (j v : Nat) (r : List Nat) (hj : j ≤
 theorem decoded_fits (bs : List Nat) (v : Nat) (r : List Nat) (hbytes : ∀ b ∈ bs, b < 256)
     (h : decode 0 bs = some (v, r)) : v < 2 ^ 64 :=
   decoded_fits_from bs 0 v r (by omega) hbytes h
+
+def zigzag (v : Int) : Nat := if 0 ≤ v then (2 * v).toNat else (-2 * v - 1).toNat
+
+def unzigzag (u : Nat) : Int := if u % 2 = 0 then (u / 2 : Nat) else -((u / 2 : Nat) : Int) - 1
+
+theorem zigzag_round_trip (v : Int) : unzigzag (zigzag v) = v := by
+  unfold zigzag unzigzag
+  by_cases h : 0 ≤ v
+  · simp only [h, ite_true]
+    have : (2 * v).toNat % 2 = 0 := by omega
+    simp only [this, ite_true]
+    omega
+  · simp only [h, ite_false]
+    have : (-2 * v - 1).toNat % 2 = 1 := by omega
+    simp only [this, show (1 : Nat) ≠ 0 by omega, ite_false]
+    omega
+
+theorem zigzag_range (v : Int) : (-(2 ^ 63) ≤ v ∧ v < 2 ^ 63) ↔ zigzag v < 2 ^ 64 := by
+  unfold zigzag
+  by_cases h : 0 ≤ v <;> simp only [h, ite_true, ite_false] <;> omega
 
 end Lsm.Varint
