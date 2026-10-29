@@ -23,7 +23,7 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
             [2048L, 256, 4, 10_000, 0, 2048L], [1024L, 128, 1_000_000, 10_000, 1024, 1024L],
             [4096L, 128, 64, 10_000, 2, 4096L]
         ];
-        foreach (var seed in new[] { 177, 348, 392, 434, 499, 501, 524, 690, 709, 745, 753, 921, 1064, 1086 })
+        foreach (var seed in new[] { 177, 348, 392, 434, 499, 501, 524, 690, 709, 745, 753, 921, 1064, 1086, 1165 })
         {
             var shape = shapes[seed % shapes.Length];
             yield return [seed, shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]];
@@ -291,7 +291,9 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         Same(step + " key index", () => expectedIndex, () => cursor.A.GetKeyIndex());
         if (!cursor.E.IsValid())
         {
-            if (actualKey != null && cursor.A.IsValid() && cursor.E.Transaction.CreateCursor() is var probe)
+            // A fuzzy cursor right before a live key is not on it, so it must not be synchronized onto that key.
+            if (actualKey != null && cursor.A.IsValid() && !((LsmKeyValueDBCursor)cursor.A).DebugBefore &&
+                cursor.E.Transaction.CreateCursor() is var probe)
             {
                 using (probe)
                     if (probe.Find(actualKey, 0) == FindResult.Exact)
