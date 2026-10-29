@@ -118,11 +118,21 @@ public class RawDataCoverageTest
         Assert.Same(some, ReflectionMetadata.FindByName(some.TruePersistedName.AsSpan()));
         Assert.Same(some, ReflectionMetadata.FindByType(some.Type));
         Assert.Null(ReflectionMetadata.FindByName("Surely.Not.Registered.Type".AsSpan()));
-        Assert.Throws<ArgumentOutOfRangeException>(() => ReflectionMetadata.FindByName(new string('x', 257).AsSpan()));
+        // Before the fix names over 256 characters threw, so a registered type with a longer name was not found.
+        Assert.Null(ReflectionMetadata.FindByName(new string('x', 257).AsSpan()));
+        var longName = new ClassMetadata
+        {
+            Type = typeof(LongNamed), Name = "LongNamed", Namespace = "", PersistedName = new string('L', 300),
+            Fields = [], Implements = []
+        };
+        ReflectionMetadata.Register(longName);
+        Assert.Same(longName, ReflectionMetadata.FindByName(longName.TruePersistedName.AsSpan()));
         Assert.Null(ReflectionMetadata.FindCollectionByType(typeof(UnregisteredStruct)));
         Assert.Null(ReflectionMetadata.FindCollectionByElementType(typeof(UnregisteredStruct)));
         // registering the same metadata again is no-op
         ReflectionMetadata.Register(some);
         Assert.Same(some, ReflectionMetadata.FindByType(some.Type));
     }
+
+    class LongNamed;
 }

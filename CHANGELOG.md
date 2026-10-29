@@ -215,6 +215,9 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- `ReflectionMetadata.FindByName(ReadOnlySpan<char>)` threw `ArgumentOutOfRangeException` for names over 256
+  characters, so a type registered under a longer name, as generic types can have, was not found by it. Such names are
+  looked up now.
 - `DiskChunkCache` returned other content than was stored for keys whose value file or hash index entry was damaged:
   values had no checksum. Each value is followed by its XxHash64 now, and `Get` returns nothing for damaged content
   and stops caching it. Value files written by earlier versions, without checksums, are dropped on open, so such a

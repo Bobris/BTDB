@@ -58,8 +58,8 @@ public static class ReflectionMetadata
 
     public static ClassMetadata? FindByName(ReadOnlySpan<char> name)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(name.Length, 256);
-        Span<byte> buf = stackalloc byte[name.Length * 3];
+        // Names of generic types can be long; only short ones are encoded on the stack.
+        var buf = name.Length <= 256 ? stackalloc byte[name.Length * 3] : new byte[Encoding.UTF8.GetMaxByteCount(name.Length)];
         var len = Encoding.UTF8.GetBytes(name, buf);
         return NameToMetadata.TryGetValueSeqLock(buf[..len], out var metadata, ref _lock)
             ? metadata
