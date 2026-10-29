@@ -619,6 +619,26 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyConstructorParameterDefaultsOfManyTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public enum Mode { A = 1, B = 2 }
+            [System.Flags] public enum Flags : byte { None = 0, X = 1, Y = 2 }
+
+            [BTDB.Generate]
+            public class Defaults
+            {
+                public Defaults(Mode mode = Mode.B, Mode? maybe = Mode.A, Mode? none = null, Flags flags = Flags.X | Flags.Y,
+                    decimal d = 1.5m, double x = double.NaN, float f = -0.0f, string s = "a\"b", string? n = null,
+                    char c = '\'', long l = long.MinValue, System.DateTime dt = default, ulong u = ulong.MaxValue)
+                {
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForAttributeDerivedFromDependency()
     {
         // Before the fix only DependencyAttribute itself was recognized, unlike reflection.
