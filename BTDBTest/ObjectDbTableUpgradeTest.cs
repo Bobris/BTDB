@@ -1200,8 +1200,28 @@ public class ObjectDbTableUpgradeTest : IDisposable
     {
     }
 
-    [Fact]
-    public void UpgradeNotNullableSecondaryKeyToNullableSecondaryKeyWorks()
+    // Before the fix IL emitted relations failed a debug assertion while copying the stored value into the nullable
+    // secondary key.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeNotNullableSecondaryKeyToNullableSecondaryKeyWorks(bool noEmit)
+    {
+        var old = IFieldHandler.UseNoEmitForRelations;
+        try
+        {
+            IFieldHandler.UseNoEmitForRelations = noEmit;
+            ObjectDB.ResetAllMetadataCaches();
+            UpgradeNotNullableSecondaryKeyToNullable();
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = old;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
+
+    void UpgradeNotNullableSecondaryKeyToNullable()
     {
         using (var tr = _db.StartTransaction())
         {

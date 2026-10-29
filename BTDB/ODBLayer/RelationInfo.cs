@@ -2083,7 +2083,11 @@ public class RelationInfo
 
         var pushCtx = WriterOrContextForHandler(writerCtxLocal);
         var sourceType = valueHandler.HandledType()!;
-        var specializedHandler = skHandler.SpecializeSaveForType(sourceType);
+        // A value stored before its secondary key field became nullable is converted below, a nullable handler cannot
+        // be specialized for it.
+        var specializedHandler = skHandler is NullableFieldHandler && !NullableFieldHandler.IsCompatibleWith(sourceType)
+            ? skHandler
+            : skHandler.SpecializeSaveForType(sourceType);
         if (specializedHandler.HandledType() == sourceType)
         {
             specializedHandler.Save(ilGenerator, pushWriter, pushCtx,

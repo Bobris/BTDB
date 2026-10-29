@@ -103,6 +103,9 @@
 
 ### Fixed
 
+- ObjectDB: in relations emitted as IL, updating a row stored before its secondary key field became nullable failed a
+  debug assertion in Debug builds while copying the stored value into the key. The value was converted correctly
+  otherwise, and now is without the assertion.
 - ObjectDB: `FindById` and `FindBy{SecondaryKey}` returning `ICollection<T>` or `IReadOnlyCollection<T>` threw
   `InvalidCastException` in relations without generated code, which are emitted as IL: their enumerator is no
   collection. They now return the enumerators the generated code returns.
