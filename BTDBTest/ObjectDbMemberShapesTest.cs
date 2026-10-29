@@ -265,4 +265,39 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal(5, loaded.GetSecret());
         });
     }
+
+    [Generate]
+    public class SecretObject : SecretBase
+    {
+        public string? Name { get; set; }
+    }
+
+    // Before the fix such an object lost the private property of its base class in both modes.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PrivateBasePropertiesOfStoredObjectsAreStored(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            ulong oid;
+            _db.RegisterType(typeof(SecretObject));
+            using (var tr = _db.StartTransaction())
+            {
+                var o = new SecretObject { Id = 1, Name = "n" };
+                o.SetSecret(5);
+                o.SetShared(6);
+                oid = tr.Store(o);
+                tr.Commit();
+            }
+
+            ReopenDb();
+            _db.RegisterType(typeof(SecretObject));
+            using var read = _db.StartReadOnlyTransaction();
+            var loaded = (SecretObject)read.Get(oid)!;
+            Assert.Equal("n", loaded.Name);
+            Assert.Equal(6, loaded.GetShared());
+            Assert.Equal(5, loaded.GetSecret());
+        });
+    }
 }
