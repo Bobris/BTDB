@@ -609,8 +609,10 @@
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
 - Bon: a damaged array or tuple item count above `int.MaxValue` became a negative capacity when deserialized into a
-  list, failing with `ArgumentOutOfRangeException`, and a large one sized collections far beyond the data. A container
-  declaring more items than its buffer has bytes, as no valid one can, is `InvalidDataException` now.
+  list, failing with `ArgumentOutOfRangeException`, and a large one sized collections far beyond the data; a dictionary's
+  count was doubled in a `uint`, so 2^31 + 1 pairs wrapped to one and the damaged dictionary read as valid. An array,
+  tuple, object, class or dictionary declaring more items than its buffer has bytes, as no valid one can, is
+  `InvalidDataException` now.
 - Source generator: the constructor chosen for a class could take a pointer or a ref struct, which no container or
   metadata can pass, so `[GenerateFor(typeof(string))]` generated a call of `string(sbyte*, int, int, Encoding)` that
   did not compile. Such constructors are skipped now.

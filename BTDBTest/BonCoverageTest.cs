@@ -475,6 +475,42 @@ public class BonCoverageTest
 
     static void WriteAfterFinish(BonBuilder builder) => builder.Write(2L);
 
+    // Before the fix a dictionary's count was doubled in a uint, so a damaged count of 2^31 + 1 wrapped to one pair
+    // and the dictionary read as valid. A count, of a dictionary, object or class, above the buffer's bytes is damage.
+    [Fact]
+    public void DamagedDictionaryCountDoesNotWrap()
+    {
+        var original = Build((ref BonBuilder b) =>
+        {
+            b.StartDictionary();
+            b.Write("key");
+            b.Write(7L);
+            b.FinishDictionary();
+        }).ToArray();
+        var huge = new MemWriter();
+        huge.WriteVUInt32((1u << 31) + 1);
+        var hugeBytes = huge.GetSpan().ToArray();
+        var wrapped = 0;
+        for (var at = 0; at < original.Length; at++)
+        {
+            if (original[at] != 1) continue;
+            var damaged = original[..at].Concat(hugeBytes).Concat(original[(at + 1)..]).ToArray();
+            try
+            {
+                var bon = new Bon(damaged);
+                if (bon.TryGetDictionary(out var dictionary) && dictionary.Items == 2) wrapped++;
+            }
+            catch (System.IO.InvalidDataException)
+            {
+            }
+            catch (System.IO.EndOfStreamException)
+            {
+            }
+        }
+
+        Assert.Equal(0, wrapped);
+    }
+
     [Fact]
     public void StringsAreDeduplicated()
     {

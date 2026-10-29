@@ -1183,8 +1183,9 @@ public struct Bon
         return ofs;
     }
 
-    /// Each item takes at least a byte of the buffer, so a container holds at most as many items as the buffer has bytes:
-    /// a larger count is damage, which would otherwise size the collections it is read into.
+    /// Each item, or each key and value pair, takes at least a byte of the buffer, so a container holds at most as many
+    /// items as the buffer has bytes: a larger count is damage, which would otherwise size the collections it is read
+    /// into, or wrap when a dictionary's pairs are doubled into items.
     static uint ReadItemCount(ref MemReader reader, ulong ofs)
     {
         var items = reader.ReadVUInt32();
@@ -1273,7 +1274,7 @@ public struct Bon
                 var ofsKeys = reader2.ReadVUInt64();
                 ofs = reader2.GetCurrentPositionWithoutController();
                 reader2.SetCurrentPositionWithoutController(ofsKeys);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items, code);
                 return true;
             }
@@ -1298,7 +1299,7 @@ public struct Bon
                 var ofsKeys = reader2.ReadVUInt64();
                 ofs = reader2.GetCurrentPositionWithoutController();
                 reader2.SetCurrentPositionWithoutController(ofsKeys);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 var nameOfs = reader2.ReadVUInt64();
                 var reader3 = reader2;
                 reader3.SetCurrentPositionWithoutController(nameOfs);
@@ -1358,7 +1359,7 @@ public struct Bon
                 var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items * 2, code);
                 return true;
             }
