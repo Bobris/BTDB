@@ -107,6 +107,8 @@
 
 ### Fixed
 
+- Source generator: members marked with an attribute derived from `DependencyAttribute` were not injected, because
+  only `DependencyAttribute` itself was recognized; reflection takes derived attributes too.
 - `AesGcmSymmetricCipher` took the nonces of `EncryptedString` values from `System.Random`, which is not a
   cryptographic generator. They now come from `RandomNumberGenerator`; the stored format is unchanged.
 - `DiskChunkCache` loaded the entries of a damaged hash index as they were: a damaged length made `Get` allocate up

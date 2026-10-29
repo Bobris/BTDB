@@ -619,6 +619,29 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForAttributeDerivedFromDependency()
+    {
+        // Before the fix only DependencyAttribute itself was recognized, unlike reflection.
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            public class InjectAttribute : BTDB.IOC.DependencyAttribute
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [Inject]
+                public ILogger Logger { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForDependenciesInheritedFromOtherAssembly()
     {
         // Private members of another assembly are not imported: the private setter is found by reflection, and the

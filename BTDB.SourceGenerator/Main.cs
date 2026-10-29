@@ -1520,8 +1520,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .FirstOrDefault(a =>
                     (a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
                      (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
-                    (a.AttributeClass?.Name == "DependencyAttribute" &&
-                     (a.AttributeClass?.InBTDBIOCNamespace() ?? false)))
+                    IsDependencyAttribute(a.AttributeClass))
             ;
         if (attr != null)
         {
@@ -2198,8 +2197,18 @@ public class SourceGenerator : IIncrementalGenerator
 
     static bool HasDependencyAttribute(ISymbol p)
     {
-        return p.GetAttributes().Any(a =>
-            a.AttributeClass?.Name == "DependencyAttribute" && a.AttributeClass.InBTDBIOCNamespace());
+        return p.GetAttributes().Any(a => IsDependencyAttribute(a.AttributeClass));
+    }
+
+    // Reflection takes attributes derived from DependencyAttribute too
+    static bool IsDependencyAttribute(INamedTypeSymbol? attributeClass)
+    {
+        for (var type = attributeClass; type is not null; type = type.BaseType)
+        {
+            if (type.Name == "DependencyAttribute" && type.InBTDBIOCNamespace()) return true;
+        }
+
+        return false;
     }
 
     static EquatableArray<IndexInfo> ExtractIndexInfo(IEnumerable<AttributeData> attributeDatas)

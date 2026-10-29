@@ -128,4 +128,26 @@ public class IOCInheritedDependencyTest
         // fields.
         Assert.Null(obj.PrivateField);
     }
+
+    public class InjectAttribute : DependencyAttribute
+    {
+    }
+
+    [Generate]
+    public class WithInjectAttribute
+    {
+        [Inject] public ILogger Logger { get; set; } = null!;
+    }
+
+    // Before the fix generated factories recognized only DependencyAttribute itself, unlike reflection, which also
+    // takes attributes derived from it.
+    [Fact]
+    public void AttributeDerivedFromDependencyIsInjected()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<WithInjectAttribute>().AsSelf();
+        var logger = new Logger();
+        builder.RegisterInstance<ILogger>(logger);
+        Assert.Same(logger, builder.Build().Resolve<WithInjectAttribute>().Logger);
+    }
 }
