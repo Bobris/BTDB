@@ -5492,6 +5492,14 @@ public class SourceGenerator : IIncrementalGenerator
             case "System.Guid":
                 declarations.Append($"{indent}writer.WriteGuid({valueExpression});\n");
                 return;
+            case "float":
+            case "System.Single":
+                declarations.Append($"{indent}writer.WriteSingle({valueExpression});\n");
+                return;
+            case "double":
+            case "System.Double":
+                declarations.Append($"{indent}writer.WriteDouble({valueExpression});\n");
+                return;
             case "decimal":
             case "System.Decimal":
                 declarations.Append($"{indent}writer.WriteDecimal({valueExpression});\n");

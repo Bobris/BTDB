@@ -104,6 +104,8 @@
 
 ### Fixed
 
+- Source generator: `UpdateById` with `double` or `float` values threw `NotSupportedException`, because the
+  generated code did not write them.
 - ObjectDB: in relations emitted as IL, updating a row stored before its secondary key field became nullable failed a
   debug assertion in Debug builds while copying the stored value into the key. The value was converted correctly
   otherwise, and now is without the assertion.

@@ -185,6 +185,32 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
         Assert.Equal((2, TagKind.Negative), table.FindByIdOrDefault(1)!.Pair);
     }
 
+    public class Measured
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public double D { get; set; }
+        public float F { get; set; }
+    }
+
+    public interface IMeasuredTable : IRelation<Measured>
+    {
+        Measured? FindByIdOrDefault(ulong id);
+        bool UpdateById(ulong id, double d, float f);
+    }
+
+    // Before the fix UpdateById threw NotSupportedException for double and float values.
+    [Fact]
+    public void FloatingPointValuesCanBeUpdated()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IMeasuredTable>();
+        table.Upsert(new() { Id = 1, D = 1.5, F = 2.5f });
+        Assert.True(table.UpdateById(1, -3.25, 4.5f));
+        var row = table.FindByIdOrDefault(1)!;
+        Assert.Equal(-3.25, row.D);
+        Assert.Equal(4.5f, row.F);
+    }
+
     public interface IRedeclaringPersonTable : IRelation<Person>
     {
         new void RemoveAll();

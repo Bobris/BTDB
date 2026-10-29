@@ -295,6 +295,33 @@ public class RelationCodeGenCoverageTests : GeneratorTestsBase
     }
 
     [Fact]
+    public void FloatingPointUpdateByIdValuesAreWritten()
+    {
+        // Before the fix double and float values were not recognized and generated code threw NotSupportedException.
+        var sources = GenerateAndCompile("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Measured
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public double D { get; set; }
+                public float F { get; set; }
+            }
+
+            public interface IMeasuredTable : IRelation<Measured>
+            {
+                void UpdateById(ulong id, double d, float f);
+            }
+            """);
+        var code = GetSource(sources, "TestNamespace.IMeasuredTable.g.cs");
+        Assert.DoesNotContain("NotSupportedException", code);
+        Assert.Contains("writer.WriteDouble(d);", code);
+        Assert.Contains("writer.WriteSingle(f);", code);
+    }
+
+    [Fact]
     public void FindByReturningCollectionsUsesCollectionEnumerators()
     {
         var sources = GenerateAndCompile("""
