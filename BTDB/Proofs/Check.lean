@@ -146,3 +146,8 @@ open Btdb
 #print axioms ChunkCachePut.previous_never_fits
 #print axioms RemovePartial.fixed_leaves_only_kept
 #print axioms RemovePartial.previous_leaves_removable
+#print axioms DispatcherOverloads.select_ok
+#print axioms DispatcherOverloads.select_nodup
+#print axioms DispatcherOverloads.select_complete
+#print axioms DispatcherOverloads.previous_picks_uncallable
+#print axioms DispatcherOverloads.previous_misses_second
