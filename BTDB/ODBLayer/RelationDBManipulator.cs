@@ -796,12 +796,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         var beforeRemove = _relationInfo.BeforeRemove;
         using var tempCursor = _kvtr.CreateCursor();
         var removed = 0;
-        var idx = 0;
-        while (enumerator.MoveNext())
+        // maxCount limits the removed items: items OnBeforeRemove keeps do not count, otherwise calling this until it
+        // removes nothing would stop before removable items following kept ones
+        while (removed < maxCount && enumerator.MoveNext())
         {
-            idx++;
-            if (idx > maxCount)
-                break;
             if (beforeRemove != null)
             {
                 var obj = enumerator.Current!;

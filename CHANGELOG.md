@@ -108,6 +108,9 @@
 
 ### Fixed
 
+- ObjectDB: `RemoveByIdPartial` counted the items an `OnBeforeRemove` method kept towards its `maxCount`, so it removed
+  fewer items than it could, and calling it until it removed nothing left removable items after kept ones. Only
+  removed items count now, as documented.
 - IOC: a type without a generated factory, built by reflection, failed to resolve when a nullable enum constructor
   parameter had a default value: the default is reported as its underlying number, which was passed as it was. It is
   now converted to the enum.
