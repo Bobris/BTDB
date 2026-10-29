@@ -49,7 +49,8 @@
     - a table's delta before a key, from the index and one block, a level's, from its tables, and a memtable's, from
       one path of its tree, is the sum of the deltas of its entries below the key;
     - splitting, merging and updating a memtable's tree keep it a search tree with exact subtree sums;
-    - cutting range tombstones at the table boundaries of a compaction keeps their coverage;
+    - cutting range tombstones at the table boundaries of a compaction keeps their coverage, and merging an erased
+      range into a memtable's fragments keeps them disjoint and covering exactly the old fragments and the range;
     - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix, and no key lies
       between a key and its successor, the key with a zero byte appended;
     - the sorted keys with a prefix are one run, as finding a key by its index among them assumes;

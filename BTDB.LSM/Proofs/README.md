@@ -51,6 +51,9 @@ through, and `UpdatePath`; the priority that picks the root of a merge is left a
 `LsmProofs/ClipCoverage.lean` models `LsmCompaction.Clip`, which cuts range-tombstone fragments at the boundaries of
 the tables a compaction writes.
 
+`LsmProofs/TombstoneMerge.lean` models how `LsmKeyValueDBTransaction.EraseRangeCore` merges an erased range into the
+memtable's range-tombstone fragments.
+
 `LsmProofs/PrefixSuccessor.lean` models `LsmKeys.PrefixSuccessor` over byte strings in lexicographic order.
 
 `LsmProofs/KeySuccessor.lean` models `LsmKeys.Successor`, the key with a zero byte appended, in the same order.
@@ -152,6 +155,7 @@ Not modelled in `Wal.lean`:
 | `MemtableTree.split_ok`, `MemtableTree.merge_ok` | `Split` of a search tree with exact subtree sums gives two such trees holding the keys below and the rest, and `Merge` of two such trees, left keys below right keys, gives one, whatever the priorities, so `PointDeltaBefore` stays exact after every change. |
 | `MemtableTree.update_ok` | `UpdatePath` on a key the tree holds keeps it a search tree with exact subtree sums, and changes its total by the new delta less the old one. |
 | `ClipCoverage.pieces_cover`, `ClipCoverage.dropped_zero` | A fragment cut at any table boundaries, each piece covering `Rank(end) − Rank(start)`, keeps the fragment's coverage in sum, and dropping pieces covering nothing does not change it, so `CoveredSum` and `CountFrom` stay exact after a compaction splits its output. |
+| `TombstoneMerge.merge_covers`, `TombstoneMerge.merge_disjoint` | Merging an erased range with the memtable fragments it overlaps or touches, keeping the rest, covers exactly the keys the old fragments or the range covered, and keeps non-empty, pairwise disjoint fragments disjoint, so the sorted result is a valid `TombstoneSet`. |
 | `PrefixSuccessor.prefix_successor_correct`, `PrefixSuccessor.no_successor` | A key is below `PrefixSuccessor(p)` exactly when it is below `p` or starts with `p`, so a scan from `p` to it visits exactly the keys with the prefix; for a prefix of `0xff` bytes every key is below it or starts with it, so null is right. |
 | `KeySuccessor.lt_successor`, `KeySuccessor.nothing_between` | A key is below `Successor(k)`, `k` with a zero byte appended, and no key lies strictly between them, which `FuzzyCursor.lean` assumes when it writes the successor of a key as the next position. |
 | `PrefixRange.prefix_between`, `PrefixRange.prefix_run` | A key between two keys with a prefix has the prefix, so in sorted keys those with a prefix are one run and `FindKeyIndex(prefix, index)`, stepping by rank from the first of them and checking the prefix of where it lands, finds the key with that index among them. |

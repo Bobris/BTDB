@@ -15,6 +15,7 @@ import LsmProofs.TablePointDelta
 import LsmProofs.MemtableDelta
 import LsmProofs.MemtableTree
 import LsmProofs.ClipCoverage
+import LsmProofs.TombstoneMerge
 import LsmProofs.PrefixSuccessor
 import LsmProofs.KeySuccessor
 import LsmProofs.PrefixRange
