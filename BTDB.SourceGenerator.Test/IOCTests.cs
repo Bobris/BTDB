@@ -557,6 +557,45 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForInheritedDependencies()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            public class GenericBase<T>
+            {
+                [BTDB.IOC.Dependency]
+                public T Generic { get; private set; }
+            }
+
+            public class BaseHandler : GenericBase<ILogger>
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger Public { get; set; }
+                [BTDB.IOC.Dependency]
+                public ILogger PrivateSetter { get; private set; }
+                [BTDB.IOC.Dependency]
+                protected ILogger ProtectedSetter { get; set; }
+                [BTDB.IOC.Dependency("Key1")]
+                public virtual ILogger Overridden { get; set; }
+                [BTDB.IOC.Dependency]
+                ILogger _field;
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler : BaseHandler
+            {
+                public override ILogger Overridden { get; set; }
+                [BTDB.IOC.Dependency]
+                public ILogger Own { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForNamedDependencyProperties()
     {
         // language=cs

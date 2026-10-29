@@ -1813,38 +1813,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         var relationItemMembers = GetRelationItemMembersIncludingInheritance(symbol).ToArray();
 
-        var propertyInfos = symbol.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(p => !p.IsStatic)
-            .Where(p => HasDependencyAttribute(p) &&
-                        p.SetMethod is not null)
-            .Select(p =>
-            {
-                var isComplex = p.SetMethod!.DeclaredAccessibility == Accessibility.Private ||
-                                p.SetMethod.IsInitOnly;
-                // if Set/init method have default implementation => then it could directly set backing field
-                var isFieldBased = isComplex && IsDefaultMethodImpl(p.SetMethod.DeclaringSyntaxReferences);
-                return new PropertyInfo(p.Name,
-                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    DetectDependencyName(p),
-                    p.Type.IsReferenceType,
-                    p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
-                    isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
-            }).Concat(
-                symbol.GetMembers()
-                    .OfType<IFieldSymbol>()
-                    .Where(p => !p.IsStatic)
-                    .Where(HasDependencyAttribute)
-                    .Select(p =>
-                    {
-                        return new PropertyInfo(p.Name,
-                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                            DetectDependencyName(p),
-                            p.Type.IsReferenceType,
-                            p.NullableAnnotation == NullableAnnotation.Annotated,
-                            p.DeclaredAccessibility != Accessibility.Public, true, p.Name);
-                    }))
-            .ToArray();
+        var propertyInfos = DependencyMembers(symbol, isPartial, model.Compilation).ToArray();
         var fields = relationItemMembers
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic && SerializableType(f.Type))
@@ -2136,6 +2105,67 @@ public class SourceGenerator : IIncrementalGenerator
         if (typeSymbol.Name == "ValueTask" && typeSymbol.InNamespace("System", "Threading", "Tasks"))
             return false;
         return true;
+    }
+
+    // Collects [Dependency] properties and fields, also those declared in base types. A member hidden or overridden in
+    // a derived type is taken from the most derived one, like reflection does.
+    static IEnumerable<PropertyInfo> DependencyMembers(INamedTypeSymbol symbol, bool isPartial, Compilation compilation)
+    {
+        // Generated code of a partial type is inside it, otherwise it is in a file class of the same assembly.
+        ISymbol within = isPartial ? symbol : compilation.Assembly;
+        bool Accessible(ISymbol member) => compilation.IsSymbolAccessibleWithin(member, within, symbol);
+        var seen = new HashSet<string>();
+        for (var type = symbol; type is not null && type.SpecialType != SpecialType.System_Object; type = type.BaseType)
+        {
+            var owner = SymbolEqualityComparer.Default.Equals(type, symbol)
+                ? null
+                : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            foreach (var member in type.GetMembers().OfType<IPropertySymbol>().Cast<ISymbol>()
+                         .Concat(type.GetMembers().OfType<IFieldSymbol>()))
+            {
+                if (member.IsStatic || member.IsImplicitlyDeclared) continue;
+                if (!seen.Add(member.Name)) continue;
+                if (member is IPropertySymbol p)
+                {
+                    var attributed = p;
+                    while (!HasDependencyAttribute(attributed) && attributed.OverriddenProperty is { } overridden)
+                        attributed = overridden;
+                    if (!HasDependencyAttribute(attributed)) continue;
+                    var setter = p.SetMethod;
+                    for (var o = p.OverriddenProperty; setter is null && o is not null; o = o.OverriddenProperty)
+                        setter = o.SetMethod;
+                    if (setter is null) continue;
+                    var isComplex = setter.DeclaredAccessibility == Accessibility.Private || setter.IsInitOnly ||
+                                    !Accessible(setter);
+                    // if Set/init method have default implementation => then it could directly set backing field
+                    var isFieldBased = isComplex && IsDefaultMethodImpl(setter.DeclaringSyntaxReferences);
+                    var inherited = !SymbolEqualityComparer.Default.Equals(setter.ContainingType, symbol);
+                    yield return new PropertyInfo(p.Name,
+                        p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        DetectDependencyName(attributed),
+                        p.Type.IsReferenceType,
+                        p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
+                        isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : setter.Name : null,
+                        inherited ? setter.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) : null,
+                        inherited && isComplex && setter.ContainingType.IsGenericType
+                            ? ExtractOwnerGenericInfo(setter.ContainingType)
+                            : null,
+                        setter.OriginalDefinition.Parameters.Last().Type
+                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+                }
+                else if (member is IFieldSymbol f && HasDependencyAttribute(f))
+                {
+                    yield return new PropertyInfo(f.Name,
+                        f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        DetectDependencyName(f),
+                        f.Type.IsReferenceType,
+                        f.NullableAnnotation == NullableAnnotation.Annotated,
+                        f.DeclaredAccessibility != Accessibility.Public || !Accessible(f), true, f.Name, owner,
+                        owner is not null && type.IsGenericType ? ExtractOwnerGenericInfo(type) : null,
+                        f.OriginalDefinition.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+                }
+            }
+        }
     }
 
     static bool HasDependencyAttribute(ISymbol p)
@@ -3308,14 +3338,34 @@ public class SourceGenerator : IIncrementalGenerator
                     propertyCode.Append($"if (f{parameterIndex} != null) ");
                 }
 
-                if (propertyInfo.IsComplex)
+                if (propertyInfo is { IsComplex: true, OwnerGeneric: { OwnerGenericFullName: { } ownerGenericFullName } ownerGeneric })
+                {
+                    var adapterParameters = ownerGeneric.OwnerGenericParameters.ToArray();
+                    var accessor = propertyInfo.IsFieldBased
+                        ? $"extern public static ref {NormalizeType(propertyInfo.GenericType!)} Access({ownerGenericFullName} @this);"
+                        : $"extern public static void Access({ownerGenericFullName} @this, {NormalizeType(propertyInfo.GenericType!)} value);";
+                    // language=c#
+                    additionalDeclarations.Append($$"""
+                            public static class DependencyAdapter{{name}}<{{string.Join(", ", adapterParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterParameters)}}
+                            {
+                                [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.{{(propertyInfo.IsFieldBased ? "Field" : "Method")}}, Name = "{{propertyInfo.BackingName}}")]
+                                {{accessor}}
+                            }
+
+                        """);
+                    var adapter = $"DependencyAdapter{name}<{ownerGeneric.OwnerGenericArguments}>.Access";
+                    propertyCode.Append(propertyInfo.IsFieldBased ? $"{adapter}(res) = " : $"{adapter}(res, ");
+                    propertyCode.Append(isReference ? $"global::System.Runtime.CompilerServices.Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                    propertyCode.Append(propertyInfo.IsFieldBased ? $"f{parameterIndex}(container2, ctx2));" : $"f{parameterIndex}(container2, ctx2)));");
+                }
+                else if (propertyInfo.IsComplex)
                 {
                     if (propertyInfo.IsFieldBased)
                     {
                         // language=c#
                         additionalDeclarations.Append($"""
                                 [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
-                                extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({generationInfo.FullName} @this);
+                                extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({propertyInfo.OwnerType ?? generationInfo.FullName} @this);
 
                             """);
                         propertyCode.Append($"FieldRef{name}(res) = ");
@@ -3327,7 +3377,7 @@ public class SourceGenerator : IIncrementalGenerator
                         // language=c#
                         additionalDeclarations.Append($"""
                                 [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
-                                extern static void MethodSetter{name}({generationInfo.FullName} @this, {normalizedType} value);
+                                extern static void MethodSetter{name}({propertyInfo.OwnerType ?? generationInfo.FullName} @this, {normalizedType} value);
 
                             """);
                         propertyCode.Append($"MethodSetter{name}(res, ");
@@ -5959,7 +6009,11 @@ record PropertyInfo(
     bool Optional,
     bool IsComplex,
     bool IsFieldBased,
-    string? BackingName);
+    string? BackingName,
+    string? OwnerType = null,
+    // Set for a member of a generic base type: its accessor must target the open generic type.
+    OwnerGenericInfo? OwnerGeneric = null,
+    string? GenericType = null);
 
 record FieldsInfo(
     string Name,

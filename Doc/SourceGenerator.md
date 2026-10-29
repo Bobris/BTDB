@@ -87,6 +87,9 @@ internal class MyService : IMyService
 If property name is different from named registration You can define named resolve of property by
 using `[Dependency("name")]` attribute.
 
+`[Dependency]` members declared in base classes are injected too, including private ones. A member overridden or
+hidden in a derived class is injected once.
+
 ### Delegates and Func<...>
 
 If you want to make resolvable some delegate mark its declaration by `[Generate]` attribute.

@@ -70,6 +70,8 @@
   - `BTDB/Proofs/`, merging re-serialized event descriptors: recording every descriptor met, it ends;
   - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, merged event descriptors: registering those nested in them, they can be stored;
+  - `BTDB/Proofs/`, injected `[Dependency]` members: walking a type's members and then its base types' injects each
+    name once and every dependency no derived member hides;
   - `BTDB/Proofs/`, generated file names of the source generator: the search for a free name ends, keeps a free name
     unchanged, and every name returned differs from the others ignoring case.
   - `BTDB/Proofs/`, range enumerators: stopping at the key bound lists exactly the range while the caller removes
@@ -90,6 +92,12 @@
 
 ### Fixed
 
+- Source generator: `[Dependency]` properties and fields declared in base classes were not injected, so a type
+  resolved through its generated factory left them null. They are now injected like those of the type itself,
+  including private setters and fields of a base class, members of generic base classes, and protected members of a
+  non-partial type. A member hidden or overridden in a derived class is injected once, with the `[Dependency]` name
+  of the nearest declaration that has the attribute. Breaking for types whose base dependencies are not registered:
+  resolving them now fails unless the member is nullable.
 - `BTreeKeyValueDB`: opening a database whose oldest transaction logs are missing and that has no usable key index
   deleted all remaining transaction logs and opened an empty database, unless `LenientOpen` was set. It now fails
   with `BTDBException` and keeps the files, so opening with `LenientOpen` can recover what they hold. Breaking for

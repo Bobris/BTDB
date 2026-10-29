@@ -123,3 +123,6 @@ open Btdb
 #print axioms NestedRegistration.register_grows
 #print axioms NestedRegistration.fixed_storable
 #print axioms NestedRegistration.previous_unstorable
+#print axioms InheritedDependencies.collect_nodup
+#print axioms InheritedDependencies.collect_complete
+#print axioms InheritedDependencies.previous_misses_base
