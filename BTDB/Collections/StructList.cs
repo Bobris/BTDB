@@ -202,6 +202,9 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
+        // Removed items must not stay reachable, as RemoveAt ensures too
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>() && _count != 0)
+            _a.AsSpan(0, (int)_count).Clear();
         _count = 0;
     }
 
@@ -222,6 +225,8 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
         }
 
         _count--;
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            _a![_count] = default!;
     }
 
     static void ThrowEmptyList()
@@ -361,7 +366,12 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
 
     public void SetCount(uint count)
     {
-        if (count <= _count) _count = count;
+        if (count <= _count)
+        {
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                _a.AsSpan((int)count, (int)(_count - count)).Clear();
+            _count = count;
+        }
         else RepeatAdd(default!, count - _count);
     }
 

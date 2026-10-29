@@ -211,6 +211,22 @@ public class CollectionsDifferentialTest
                 .OrderBy(p => p.Key, StringComparer.Ordinal));
     }
 
+    // Before the fix Pop, Clear and shrinking SetCount kept the removed items reachable from the backing array.
+    [Fact]
+    public void StructListDoesNotKeepRemovedReferences()
+    {
+        var list = new StructList<object>();
+        for (var i = 0; i < 4; i++) list.Add(new object());
+        list.Pop();
+        Assert.Null(list.UnsafeBackingArray![3]);
+        list.SetCount(1);
+        Assert.Null(list.UnsafeBackingArray![1]);
+        Assert.Null(list.UnsafeBackingArray![2]);
+        Assert.NotNull(list.UnsafeBackingArray![0]);
+        list.Clear();
+        Assert.Null(list.UnsafeBackingArray![0]);
+    }
+
     // Before the fix InsertRange resized the array on every call, so it shrank the capacity Reserve made.
     [Fact]
     public void StructListInsertRangeKeepsReservedCapacity()

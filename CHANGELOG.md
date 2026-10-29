@@ -101,6 +101,9 @@
 
 ### Fixed
 
+- `StructList.Pop`, `Clear` and a shrinking `SetCount` kept removed items reachable from the backing array, so for
+  example the cursor stack of `InMemoryKeyValueDB` kept tree nodes of old versions alive. They now clear the removed
+  slots when the items hold references, as `RemoveAt` does.
 - `StructList.InsertRange` resized its array on every call, even when it had room, so it shrank the capacity
   `Reserve` made and copied the items again each time. It now grows the array only when needed.
   `StructList.ReplaceItem(item, newItem)` of a missing item throws `ArgumentOutOfRangeException`, as the other
