@@ -245,3 +245,5 @@ open Btdb
 #print axioms CipherBlocks.and15_eq_mod
 #print axioms CipherBlocks.refuses_iff_partial
 #print axioms Utf8Length.utf8_le_three
+#print axioms HiddenProperties.visible_unique
+#print axioms HiddenProperties.visible_complete

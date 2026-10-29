@@ -78,6 +78,7 @@
     parameter count exactly the keys in the range from key indices, for every pair of propositions; the branchless
     `PackUnpack` length functions match the modelled encodings, readers take each encoding's length from its first
     byte correctly, and unpacking returns every packed 64-bit value.
+  - `BTDB/Proofs/`, stored properties: leaving out hidden properties keeps exactly one per name, the most derived.
   - `BTDB/Proofs/`, type names: UTF-8 takes at most three bytes per UTF-16 code unit, which sizes the lookup buffer.
   - `BTDB/Proofs/`, ordered encryption: decryption refuses exactly the data that is no whole number of blocks.
   - `BTDB/Proofs/`, key indexes: loading accepts exactly keys in strictly increasing order.
