@@ -173,6 +173,9 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             return _descriptor;
         }
 
+        /// The value as stored, a long cast to ulong for a signed enum.
+        internal ulong RawValue => _value;
+
         public override string ToString()
         {
             return ((EnumTypeDescriptor)_descriptor).UlongValueToString(_value);
@@ -407,6 +410,28 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
 
         var saveType = _signed ? typeof(long) : typeof(ulong);
+        if (targetType == typeof(DynamicEnum) || targetType == typeof(object))
+        {
+            // An enum loaded without its type is a DynamicEnum, which a list loaded so holds as an object: it saves the
+            // value it read. Other values held as an object convert to the saved integer as before.
+            var signed = _signed;
+            var otherObject = targetType == typeof(object)
+                ? this.BuildConvertingSaver(typeof(object), saveType, typeConverterFactory)
+                : null;
+            return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+            {
+                if (Unsafe.As<byte, object>(ref value) is DynamicEnum dynamicEnum)
+                {
+                    if (signed) writer.WriteVInt64((long)dynamicEnum.RawValue);
+                    else writer.WriteVUInt64(dynamicEnum.RawValue);
+                    return;
+                }
+
+                if (otherObject == null) throw new InvalidCastException("Cannot save a null DynamicEnum.");
+                otherObject(ref writer, ctx, ref value);
+            };
+        }
+
         if (targetType == saveType)
         {
             if (_signed)
@@ -522,19 +547,29 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        if (_signed)
+        // A value held as a reference, like the DynamicEnum items of a list loaded without its type, is not the integer
+        // conv.i8 expects: converted so, its address was saved.
+        if (!valueType.IsValueType)
         {
-            ilGenerator
-                .ConvI8()
-                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!);
+            ilGenerator.Call(typeof(EnumTypeDescriptor).GetMethod(_signed ? nameof(SignedValueOf) : nameof(UnsignedValueOf))!);
+        }
+        else if (_signed)
+        {
+            ilGenerator.ConvI8();
         }
         else
         {
-            ilGenerator
-                .ConvU8()
-                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!);
+            ilGenerator.ConvU8();
         }
+
+        ilGenerator.Call(typeof(MemWriter).GetMethod(_signed ? nameof(MemWriter.WriteVInt64) : nameof(MemWriter.WriteVUInt64))!);
     }
+
+    public static long SignedValueOf(object? value) =>
+        value is DynamicEnum dynamicEnum ? (long)dynamicEnum.RawValue : Convert.ToInt64(value);
+
+    public static ulong UnsignedValueOf(object? value) =>
+        value is DynamicEnum dynamicEnum ? dynamicEnum.RawValue : Convert.ToUInt64(value);
 
     public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {

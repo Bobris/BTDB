@@ -90,6 +90,10 @@
 
 ### Fixed
 
+- Event store: an enum loaded without its type, a `DynamicEnum`, failed to store again, alone or in a list loaded
+  without its type, as the enum descriptor converted it to an integer it is not. It now saves the value it read. With
+  IL emitted (`IFieldHandler.UseNoEmitForDescriptors = false`) the enum saver instead converted such an object
+  reference with `conv.i8` and saved its address as the enum's value, silently storing garbage.
 - Event store: a nested collection in an `object` member, like a `List<List<int>>`, failed to load with "Cannot find
   collection metadata", as no member declares its preferred `ICollection<ICollection<int>>`. Such an `object` member
   now loads it as the collections of objects it holds, as it does a collection of a type the reader does not know.

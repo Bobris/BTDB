@@ -46,8 +46,8 @@ public class EventLayerDynamicReserializeTest
 
     /// Dynamically loaded collections know their descriptors, so they can be stored again
     /// (their descriptors are merged into serializer's descriptors).
-    /// Re-serialization of DynamicEnum and DynamicObject is not supported yet; nested dynamic lists are since the
-    /// 2026-10-29 fix, which registers the descriptors nested in merged ones.
+    /// Re-serialization of DynamicObject is not supported yet. Nested dynamic lists are since the 2026-10-29 fix,
+    /// which registers the descriptors nested in merged ones, and DynamicEnum since it saves the value it read.
     [Theory]
     [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
     [InlineData(EventLayer.Mapping, EventLayer.Store1)]
@@ -72,7 +72,7 @@ public class EventLayerDynamicReserializeTest
             EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide));
         foreach (var (name, value) in fields)
         {
-            if (name is not ("Strings" or "Map" or "Nested")) continue; // see limitation above
+            if (name is not ("Strings" or "Map" or "Nested" or "Enums" or "Flags")) continue; // see limitation above
             var expected = typeof(CollectionsOfSimpleValues).GetProperty(name)!.GetValue(original);
             var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, value);
             Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));

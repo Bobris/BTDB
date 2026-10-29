@@ -177,4 +177,17 @@ public class EventLayerEmitModeTest
             new EventLayerDynamicReserializeTest().DynamicNestedCollectionsCanBeSerializedAgain(layer, layer);
         });
     }
+
+    // Before the fix the emitted saver of an enum converted a DynamicEnum, an enum loaded without its type, with conv.i8,
+    // so it saved the object's address instead of its value.
+    [Theory]
+    [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
+    [InlineData(EventLayer.Mapping, EventLayer.Store2)]
+    [InlineData(EventLayer.Store2, EventLayer.Store1)]
+    [InlineData(EventLayer.Store2, EventLayer.Store2)]
+    public void DynamicEnumsSaveTheirValueWithEmit(EventLayer readLayer, EventLayer writeLayer)
+    {
+        RunWithEmitMode(false,
+            () => new EventLayerDynamicReserializeTest().DynamicCollectionsCanBeSerializedAgain(readLayer, writeLayer));
+    }
 }
