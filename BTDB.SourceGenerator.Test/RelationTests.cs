@@ -2136,6 +2136,35 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task HookMethodsOfGenericBaseClassAreCalledThroughAdapters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class RoomBase<TNote>
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public TNote Note { get; set; } = default!;
+
+                [OnBeforeRemove]
+                bool Keep(IObjectDBTransaction transaction) => Id == 1;
+
+                [OnSerialize]
+                protected void Normalize() { }
+            }
+
+            public class Room : RoomBase<string>
+            {
+            }
+
+            public interface IRoomTable : IRelation<Room>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task HookMethodsOfBaseClassAreCalledThroughTheirClass()
     {
         // Before the fix accessors of non-public hook methods of a base class targeted the derived class, which

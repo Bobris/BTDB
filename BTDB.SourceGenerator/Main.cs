@@ -1970,7 +1970,7 @@ public class SourceGenerator : IIncrementalGenerator
                 methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 [], methodSymbol.DeclaredAccessibility is Accessibility.Public,
                 methodSymbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                Purpose.OnSerialize));
+                Purpose.OnSerialize, GenericHookOwner(methodSymbol, symbol)));
         }
 
         foreach (var methodSymbol in relationItemMethods.Where(m => m
@@ -2008,7 +2008,7 @@ public class SourceGenerator : IIncrementalGenerator
                     GetEnumUnderlyingType(p.Type))).ToArray(),
                 methodSymbol.DeclaredAccessibility is Accessibility.Public,
                 methodSymbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                Purpose.OnBeforeRemove));
+                Purpose.OnBeforeRemove, GenericHookOwner(methodSymbol, symbol)));
         }
 
         // No IOC and no metadata => no generation
@@ -3827,6 +3827,25 @@ public class SourceGenerator : IIncrementalGenerator
                         methodIndex++;
                         // UnsafeAccessor does not search base types, so a method of a base class needs its declaring type
                         var onSerializeOwner = HookOwnerType(m, generationInfo);
+                        if (m.OwnerGeneric is { OwnerGenericFullName: { } openOwner } ownerGeneric)
+                        {
+                            var adapterParameters = ownerGeneric.OwnerGenericParameters.ToArray();
+                            // language=c#
+                            declarations.Append($$"""
+                                    public static class OnSerializeAdapter{{methodIndex}}<{{string.Join(", ", adapterParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterParameters)}}
+                                    {
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{m.Name}}")]
+                                        extern public static void Call({{openOwner}} @this);
+                                    }
+
+                                """);
+                            metadataCode.Append($"""
+                                            {ActivatorName(generationInfo)}OnSerializeAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(global::System.Runtime.CompilerServices.Unsafe.As<{generationInfo.FullName}>(@this));
+
+                                """);
+                            continue;
+                        }
+
                         if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
@@ -3934,6 +3953,25 @@ public class SourceGenerator : IIncrementalGenerator
                         methodIndex++;
                         var onBeforeRemoveResultType = NormalizeType(m.ResultType ?? "void");
                         var onBeforeRemoveOwner = HookOwnerType(m, generationInfo);
+                        if (m.OwnerGeneric is { OwnerGenericFullName: { } openOwner } ownerGeneric)
+                        {
+                            var adapterParameters = ownerGeneric.OwnerGenericParameters.ToArray();
+                            // language=c#
+                            declarations.Append($$"""
+                                    public static class OnBeforeRemoveAdapter{{methodIndex}}<{{string.Join(", ", adapterParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterParameters)}}
+                                    {
+                                        [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{m.Name}}")]
+                                        extern public static {{onBeforeRemoveResultType}} Call({{openOwner}} @this{{OnBeforeRemoveDeclareParams(m.Parameters)}});
+                                    }
+
+                                """);
+                            metadataCode.Append($"""
+                                                {maybeOr}{ActivatorName(generationInfo)}OnBeforeRemoveAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(val{OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex, true)});
+
+                                """);
+                            continue;
+                        }
+
                         if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
@@ -4138,6 +4176,14 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return (indexOfInKeyValue, primaryKeyFields, secondaryKeys, valueFields);
+    }
+
+    /// The generic base class declaring a hook method, for an accessor of the open generic class.
+    static OwnerGenericInfo? GenericHookOwner(IMethodSymbol method, INamedTypeSymbol symbol)
+    {
+        var owner = method.ContainingType;
+        if (!owner.IsGenericType || SymbolEqualityComparer.Default.Equals(owner, symbol)) return null;
+        return ExtractOwnerGenericInfo(owner);
     }
 
     /// The base class declaring a non-public hook method, when it is not the generated type and not generic.
@@ -6203,7 +6249,9 @@ record MethodInfo(
     EquatableArray<ParameterInfo> Parameters,
     bool IsPublic,
     string? DefinedInType,
-    Purpose Purpose = Purpose.None);
+    Purpose Purpose = Purpose.None,
+    // Set for a method of a generic base class: its accessor must target the open generic class.
+    OwnerGenericInfo? OwnerGeneric = null);
 
 // Name == null for primary key, InKeyValue could be true only for primary key, IncludePrimaryKeyOrder is used only for secondary key
 record IndexInfo(string? Name, uint Order, bool InKeyValue, uint IncludePrimaryKeyOrder);

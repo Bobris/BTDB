@@ -149,4 +149,54 @@ public class ObjectDbBeforeRemovePartialTest : ObjectDbTestBase
             ObjectDB.ResetAllMetadataCaches();
         }
     }
+
+    public class GenericGuardedBase<TNote>
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public TNote Note { get; set; } = default!;
+        [NotStored] public int Serialized { get; set; }
+
+        [OnBeforeRemove]
+        bool KeepOne() => Id == 1;
+
+        [OnSerialize]
+        protected void Count() => Serialized++;
+    }
+
+    public class GenericGuarded : GenericGuardedBase<string>
+    {
+    }
+
+    public interface IGenericGuardedTable : IRelation<GenericGuarded>
+    {
+        int RemoveById(ulong id);
+    }
+
+    // Before the fix generated relations could not call non-public hook methods of a generic base class.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HookMethodsOfGenericBaseClassAreCalled(bool noEmit)
+    {
+        var old = IFieldHandler.UseNoEmitForRelations;
+        try
+        {
+            IFieldHandler.UseNoEmitForRelations = noEmit;
+            ObjectDB.ResetAllMetadataCaches();
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IGenericGuardedTable>();
+            var item = new GenericGuarded { Id = 1, Note = "a" };
+            table.Upsert(item);
+            table.Upsert(new() { Id = 2, Note = "b" });
+            Assert.Equal(1, item.Serialized);
+            Assert.Equal(0, table.RemoveById(1));
+            Assert.Equal(1, table.RemoveById(2));
+            Assert.Equal(new ulong[] { 1 }, table.Select(r => r.Id));
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = old;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
 }

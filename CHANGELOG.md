@@ -112,8 +112,7 @@
 
 - ObjectDB: non-public `OnBeforeRemove` and `OnSerialize` methods of a base class of a relation item threw
   `MissingMethodException` in generated relations, whose accessors targeted the derived class, and private ones were
-  not called at all in relations emitted as IL. They are now called in both. A hook method of a generic base class is
-  still not supported by generated relations.
+  not called at all in relations emitted as IL. They are now called in both, also from generic base classes.
 - ObjectDB: `RemoveByIdPartial` counted the items an `OnBeforeRemove` method kept towards its `maxCount`, so it removed
   fewer items than it could, and calling it until it removed nothing left removable items after kept ones. Only
   removed items count now, as documented.
