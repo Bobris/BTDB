@@ -99,6 +99,8 @@
     positions below its end and keeps the ranges sorted and disjoint;
   - `BTDB/Proofs/`, `PtrLenList.TryInclude`: once the included range starts in a gap, merging the ranges it reaches
     adds exactly its positions and keeps the ranges sorted and disjoint;
+  - `BTDB/Proofs/`, `PtrLenList.FindFreeSizeAfter`: the position it returns is the first one at or after the start
+    from which the requested positions are free;
   - `BTDB/Proofs/`, Fletcher-32 checksums: blocks of 360 words, one more than the textbook bound, never overflow the
     32-bit sums, and the result keeps both sums in 16 bits;
   - `BTDB/Proofs/`, IOC disposal: in every interleaving of two threads creating instances and one disposing their

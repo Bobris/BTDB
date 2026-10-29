@@ -56,3 +56,4 @@ import BtdbProofs.DisposeRace
 import BtdbProofs.MemoryStreamSize
 import BtdbProofs.ProviderDisposal
 import BtdbProofs.PtrLenInclude
+import BtdbProofs.PtrLenFree

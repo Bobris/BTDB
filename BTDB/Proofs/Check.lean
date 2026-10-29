@@ -176,3 +176,5 @@ open Btdb
 #print axioms ProviderDisposal.previous_twice
 #print axioms PtrLenInclude.absorb_mem
 #print axioms PtrLenInclude.absorb_sorted
+#print axioms PtrLenFree.fit_free
+#print axioms PtrLenFree.fit_first
