@@ -3543,6 +3543,9 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append(additionalDeclarations);
 
         var metadataCode = new StringBuilder();
+        // Adapters for members of generic base classes stay outside of the generic Activator: nested in it they would
+        // have its type parameters too, which UnsafeAccessor rejects for an owner with other generic parameters.
+        var adapterDeclarations = generationInfo.GenericParameters.IsEmpty ? declarations : new StringBuilder();
         var nameWithGeneric = "";
         if (!IsReflectionMetadataExcluded(generationInfo.FullName))
         {
@@ -3681,7 +3684,7 @@ public class SourceGenerator : IIncrementalGenerator
                         if (useGenericOwnerAdapter)
                         {
                             // language=c#
-                            declarations.Append($$"""
+                            adapterDeclarations.Append($$"""
                                     public static class FieldAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "{{field.BackingName}}")]
@@ -3711,7 +3714,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                         // language=c#
                         metadataCode.Append($"""
-                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {(useGenericOwnerAdapter ? $"{ActivatorName(generationInfo)}FieldAdapter{fieldIndex}<{field.OwnerGenericArguments}>.Field" : $"{ActivatorName(generationInfo)}Field{fieldIndex}")}(dummy)),
+                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {(useGenericOwnerAdapter ? $"FieldAdapter{fieldIndex}<{field.OwnerGenericArguments}>.Field" : $"{ActivatorName(generationInfo)}Field{fieldIndex}")}(dummy)),
 
                             """);
                     }
@@ -3722,13 +3725,17 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             var normalizedGenericType = NormalizeType(field.GenericType);
                             // language=c#
-                            declarations.Append($$"""
+                            adapterDeclarations.Append($$"""
                                     public static class GetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
                                         extern public static {{normalizedGenericType}} Getter({{ownerAdapterType}} @this);
                                     }
-                                    static void GenGetter{{fieldIndex}}(object @this, ref byte value)
+
+                                """);
+                            // language=c#
+                            declarations.Append($$"""
+                                    {{(generationInfo.GenericParameters.IsEmpty ? "" : "public ")}}static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                     {
                                         global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value) = GetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Getter(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this));
                                     }
@@ -3775,13 +3782,17 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             var normalizedGenericType = NormalizeType(field.GenericType);
                             // language=c#
-                            declarations.Append($$"""
+                            adapterDeclarations.Append($$"""
                                     public static class SetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
                                         extern public static void Setter({{ownerAdapterType}} @this, {{normalizedGenericType}} value);
                                     }
-                                    static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+
+                                """);
+                            // language=c#
+                            declarations.Append($$"""
+                                    {{(generationInfo.GenericParameters.IsEmpty ? "" : "public ")}}static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                     {
                                         SetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Setter(global::System.Runtime.CompilerServices.Unsafe.As<{{field.OwnerFullName}}>(@this), global::System.Runtime.CompilerServices.Unsafe.As<byte, {{normalizedType}}>(ref value));
                                     }
@@ -3863,7 +3874,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             var adapterParameters = ownerGeneric.OwnerGenericParameters.ToArray();
                             // language=c#
-                            declarations.Append($$"""
+                            adapterDeclarations.Append($$"""
                                     public static class OnSerializeAdapter{{methodIndex}}<{{string.Join(", ", adapterParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterParameters)}}
                                     {
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{m.Name}}")]
@@ -3872,7 +3883,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                                 """);
                             metadataCode.Append($"""
-                                            {ActivatorName(generationInfo)}OnSerializeAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(global::System.Runtime.CompilerServices.Unsafe.As<{generationInfo.FullName}>(@this));
+                                            OnSerializeAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(global::System.Runtime.CompilerServices.Unsafe.As<{generationInfo.FullName}>(@this));
 
                                 """);
                             continue;
@@ -3989,7 +4000,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             var adapterParameters = ownerGeneric.OwnerGenericParameters.ToArray();
                             // language=c#
-                            declarations.Append($$"""
+                            adapterDeclarations.Append($$"""
                                     public static class OnBeforeRemoveAdapter{{methodIndex}}<{{string.Join(", ", adapterParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterParameters)}}
                                     {
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{{m.Name}}")]
@@ -3998,7 +4009,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                                 """);
                             metadataCode.Append($"""
-                                                {maybeOr}{ActivatorName(generationInfo)}OnBeforeRemoveAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(val{OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex, true)});
+                                                {maybeOr}OnBeforeRemoveAdapter{methodIndex}<{ownerGeneric.OwnerGenericArguments}>.Call(val{OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex, true)});
 
                                 """);
                             continue;
@@ -4061,6 +4072,8 @@ public class SourceGenerator : IIncrementalGenerator
 
                     """);
             }
+
+            if (adapterDeclarations != declarations) declarations.Append(adapterDeclarations);
         }
 
         var dispatchers = new StringBuilder();

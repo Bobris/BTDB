@@ -116,6 +116,10 @@
 
 ### Fixed
 
+- Source generator: a generic class, generated through `[GenerateFor]`, that inherits members from a generic base class
+  made the module initializer throw `MissingFieldException`, failing every type of its assembly. The accessors of those
+  members, and of hook methods of the base, were nested in the generic `Activator` and so had its type parameters too,
+  which `UnsafeAccessor` rejects. They are declared beside it now.
 - IOC: generated factories read only string keys of `[FromKeyedServices]`, as the text of their literal, so the key
   `1` became `"1"` and an enum or type key became the parameter name, and when a member also had `[Dependency]` the
   attribute declared first won. They now pass keys of any constant type and prefer the `[Dependency]` name, like the

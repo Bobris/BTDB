@@ -402,6 +402,36 @@ public class MetadataTests : GeneratorTestsBase
             """);
     }
 
+    // Before the fix the adapters of a generic class were nested in its generic Activator, which gave them its type
+    // parameters too, so UnsafeAccessor did not find the base members and the module initializer threw.
+    [Fact]
+    public Task VerifyGenericDerivedClassFromGenericBaseDeclaresAdaptersOutsideActivator()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public class Box<T>
+            {
+                T _computed = default!;
+
+                public T Value { get; set; } = default!;
+
+                public T Computed
+                {
+                    get => _computed;
+                    set => _computed = value;
+                }
+            }
+
+            [BTDB.GenerateFor(typeof(Derived<int>))]
+            public class Derived<T> : Box<T>
+            {
+                public T Extra { get; set; } = default!;
+            }
+            """);
+    }
+
     [Fact]
     public Task VerifyDerivedClassFromExternalGenericBaseUsesFieldAccessForAutoProperties()
     {
