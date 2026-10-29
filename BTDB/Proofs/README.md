@@ -153,6 +153,9 @@ narrower member (`../Bon/Bon.cs`, `../Serialization/BonSerializer.cs`).
 `BtdbProofs/PtrLenExclude.lean` models how `PtrLenList.TryExclude` removes the rest of a range that starts in a gap
 (`../KVDBLayer/Helpers/PtrLenList.cs`).
 
+`BtdbProofs/Fletcher.lean` models how `Checksum.CalcFletcher32` adds words to its sums and folds them
+(`../Buffer/Checksum.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -289,6 +292,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `FirstDifference.diff3_eq`, `FirstDifference.diff4_eq` | `FindFirstDifference` of a key and a key in two parts, and of two keys in two parts each, returns the common prefix length of the joined keys, without joining them. |
 | `PtrLenExclude.cut_mem`, `PtrLenExclude.cut_sorted` | On sorted, disjoint ranges, the rest of an exclusion that starts in a gap leaves a position included exactly when it was and is not below the end of the exclusion, and keeps the ranges sorted and disjoint. |
 | `PtrLenExclude.previous_adds` | Before the 2026-10-29 fix the first range after the gap was trimmed even when the exclusion ended before it, so excluding `[5, 8)` from `[20, 24)` included position 10 (`PtrLenListDifferentialTest`). |
+| `Fletcher.block_fits`, `Fletcher.odd_fits`, `Fletcher.result_fits`, `Fletcher.fold_mod` | Fletcher-32 sums stay below 2^32 through every block of up to 360 words and the last odd byte, folding returns them to the bounds a block starts from without changing them modulo 65535, and the result keeps both sums in 16 bits. |
 | `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |

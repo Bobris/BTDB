@@ -163,3 +163,7 @@ open Btdb
 #print axioms PtrLenExclude.cut_mem
 #print axioms PtrLenExclude.cut_sorted
 #print axioms PtrLenExclude.previous_adds
+#print axioms Fletcher.block_fits
+#print axioms Fletcher.odd_fits
+#print axioms Fletcher.result_fits
+#print axioms Fletcher.fold_mod

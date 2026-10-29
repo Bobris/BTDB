@@ -83,6 +83,8 @@
     joined keys;
   - `BTDB/Proofs/`, `PtrLenList.TryExclude`: once the excluded range starts in a gap, the rest of it removes exactly the
     positions below its end and keeps the ranges sorted and disjoint;
+  - `BTDB/Proofs/`, Fletcher-32 checksums: blocks of 360 words, one more than the textbook bound, never overflow the
+    32-bit sums, and the result keeps both sums in 16 bits;
   - `BTDB/Proofs/`, `DiskChunkCache.Put`: content it caches fits after at most one new value file;
   - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;

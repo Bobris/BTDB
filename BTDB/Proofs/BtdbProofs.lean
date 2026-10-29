@@ -51,3 +51,4 @@ import BtdbProofs.DispatcherContainers
 import BtdbProofs.BonInteger
 import BtdbProofs.FirstDifference
 import BtdbProofs.PtrLenExclude
+import BtdbProofs.Fletcher
