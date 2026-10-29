@@ -187,6 +187,22 @@ public class RelationTests : GeneratorTestsBase
             """);
     }
 
+    // Before the fix the explicitly implemented IList indexer of List<T> was a field, with an accessor for
+    // System.Collections.IList.get_Item missing its index parameter.
+    [Fact]
+    public Task VerifyCollectionSubclassHasNoIndexerField()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class NumberList : System.Collections.Generic.List<int>
+            {
+            }
+            """);
+    }
+
     [Fact]
     public Task VerifyRelationAllocateId()
     {

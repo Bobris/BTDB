@@ -219,6 +219,9 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- The source generator took an explicitly implemented indexer of a referenced base class, as `List<T>` has for
+  `IList`, for a field of a class derived from it, generating an accessor of `System.Collections.IList.get_Item`
+  without its index parameter. Properties with parameters are left out like other indexers now.
 - ObjectDB reflection left out private properties of base classes, which the source generator's metadata stores: a
   relation of such a type failed with "different metadata and reflection version info", and in emit mode such a
   property was not stored, as in events stored with `SerializeNonPublicProperties`. Reflection takes them now, in the
