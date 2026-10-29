@@ -307,7 +307,8 @@ public class EventStoreFileCoverageTest
         Assert.Equal(5, Assert.IsType<Ev>(Assert.Single(Assert.Single(observer.Events))).Num);
     }
 
-    // Block checksums catch flipped bits, so reading a damaged store reports a prefix of the stored events and stops.
+    // Block checksums catch damage, so reading a store with bytes flipped, inserted, removed or cut off reports a prefix
+    // of the stored events and stops.
     [Theory]
     [MemberData(nameof(DamageSeeds))]
     public void DamagedStoreReadsOnlyPrefixOfStoredEvents(int seed)
@@ -328,9 +329,30 @@ public class EventStoreFileCoverageTest
         var original = storage.Data;
         for (var round = 0; round < 30; round++)
         {
-            var data = (byte[])original.Clone();
+            var content = original.ToList();
             for (var changes = random.Next(1, 3); changes > 0; changes--)
-                data[random.Next(data.Length)] ^= (byte)(1 << random.Next(8));
+            {
+                var at = random.Next(content.Count);
+                switch (random.Next(4))
+                {
+                    case 0:
+                        content.RemoveRange(at, content.Count - at);
+                        break;
+                    case 1:
+                        content.Insert(at, (byte)random.Next(256));
+                        break;
+                    case 2:
+                        content.RemoveAt(at);
+                        break;
+                    default:
+                        content[at] ^= (byte)(1 << random.Next(8));
+                        break;
+                }
+
+                if (content.Count == 0) content.Add(0);
+            }
+
+            var data = content.ToArray();
             var reader = new EventStoreManager().OpenReadOnlyStore(new ArrayEventFileStorage(data));
             var observer = new CollectingEventObserver();
             try
