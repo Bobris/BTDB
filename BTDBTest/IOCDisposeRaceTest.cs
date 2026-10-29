@@ -20,6 +20,23 @@ public class IOCDisposeRaceTest
         public void Dispose() => Interlocked.Increment(ref Disposed);
     }
 
+    // Before the fix a disposed scope returned the instances it had disposed; ones it does not own it still gives.
+    [Fact]
+    public void ResolvingFromDisposedScopeThrows()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterTypeWithFallback<TrackedService>().AsSelf().Scoped();
+        var container = builder.Build();
+        var scope = container.CreateScope();
+        scope.Resolve<TrackedService>();
+        scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Assert.Throws<ObjectDisposedException>(() => scope.Resolve<TrackedService>());
+        Assert.Throws<ObjectDisposedException>(() => scope.ResolveOptional(typeof(TrackedService)));
+        var other = container.CreateScope();
+        Assert.NotNull(other.Resolve<TrackedService>());
+        other.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
     // Before the fix an instance created while the scope was being disposed could miss the disposal, either because it
     // was added after disposal took the instances, or because adding it threw before disposing it.
     [Fact]

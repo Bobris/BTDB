@@ -124,6 +124,8 @@
 
 ### Fixed
 
+- IOC: a disposed scope returned the scoped instances it had disposed. Resolving one now throws
+  `ObjectDisposedException`, like creating a new owned instance does; instances the scope does not own still resolve.
 - IOC: a scoped or singleton instance created while its container was being disposed could stay undisposed: it was
   added after disposal took the owned instances, or adding it threw `ObjectDisposedException` without disposing it.
   Such an instance is now disposed before the exception.

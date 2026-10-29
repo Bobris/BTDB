@@ -712,9 +712,13 @@ public class ContainerImpl : IRootContainer
                     {
                         if (instance is InstanceLocker)
                         {
-                            return currentContainer.WaitForScoped(cReg.ScopedId);
+                            instance = currentContainer.WaitForScoped(cReg.ScopedId);
                         }
 
+                        // A disposed scope still gives instances it does not own, but not the ones it disposed.
+                        if (Volatile.Read(ref currentContainer._disposeState) != 0 &&
+                            instance is IDisposable or IAsyncDisposable)
+                            ObjectDisposedException.ThrowIf(true, currentContainer);
                         return instance;
                     }
 
