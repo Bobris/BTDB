@@ -213,3 +213,6 @@ open Btdb
 #print axioms ReadGrowth.allocation_from
 #print axioms StringKeyOrder.enc_order
 #print axioms StringKeyOrder.differs_from_ordinal
+#print axioms PowerOfTwo.smear_eq
+#print axioms PowerOfTwo.power_of_two_of_and_pred
+#print axioms PowerOfTwo.powerOf2_correct

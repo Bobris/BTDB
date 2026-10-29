@@ -170,6 +170,8 @@
     though `ulong` arithmetic can wrap.
   - `BTDB/Proofs/`, collections read from data: their capacity is never above the bytes left, and is the stored count
     for valid data.
+  - `BTDB/Proofs/`, hash collections: bucket counts are rounded up to the smallest power of two not below the
+    capacity asked for.
   - `BTDB/Proofs/`, Bon: a container holds at most as many items as its buffer has bytes, so the check refuses only
     damage.
   - `BTDB/Proofs/`, IOC: a service resolving itself while it is created fails instead of waiting for itself forever.

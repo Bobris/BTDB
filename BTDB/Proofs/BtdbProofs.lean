@@ -70,3 +70,4 @@ import BtdbProofs.IocSelfWait
 import BtdbProofs.BonItemBound
 import BtdbProofs.CapacityHint
 import BtdbProofs.StringKeyOrder
+import BtdbProofs.PowerOfTwo
