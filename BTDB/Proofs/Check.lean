@@ -256,3 +256,5 @@ open Btdb
 #print axioms DependencyMembers.collect_nodup
 #print axioms DependencyMembers.collect_complete
 #print axioms DependencyMembers.collect_first
+#print axioms UpdateByIdParams.full_check_sound
+#print axioms UpdateByIdParams.cut_misses

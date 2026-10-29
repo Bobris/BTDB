@@ -89,3 +89,4 @@ import BtdbProofs.HiddenProperties
 import BtdbProofs.InheritedAttributes
 import BtdbProofs.PropertyOrder
 import BtdbProofs.DependencyMembers
+import BtdbProofs.UpdateByIdParams
