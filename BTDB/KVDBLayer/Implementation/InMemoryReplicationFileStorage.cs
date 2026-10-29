@@ -193,6 +193,8 @@ public class InMemoryReplicationFileStorage : IReplicationFileStorage
         public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
         {
             var storage = Volatile.Read(ref _data);
+            var capacity = (ulong)storage.Length * OneBufSize;
+            if (position > capacity || (ulong)data.Length > capacity - position) throw new EndOfStreamException();
             while (!data.IsEmpty)
             {
                 var buf = storage[(int)(position / OneBufSize)];

@@ -36,10 +36,12 @@ public class InMemoryFileCollectionTest
 
     // Before the fix a read far past the end, as a damaged value pointer asks for, failed with an index or overflow
     // error instead of the end of stream the other file collections report.
-    [Fact]
-    public void ReadFarPastTheEndIsEndOfStream()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReadFarPastTheEndIsEndOfStream(bool replicated)
     {
-        using var files = new InMemoryFileCollection();
+        using IFileCollection files = replicated ? new InMemoryReplicationFileStorage() : new InMemoryFileCollection();
         var file = files.AddFile("trl");
         var writer = new MemWriter(file.GetAppenderWriter());
         writer.WriteInt32LE(42);
