@@ -127,3 +127,4 @@ open Btdb
 #print axioms InheritedDependencies.collect_complete
 #print axioms InheritedDependencies.previous_misses_base
 #print axioms StringOrdered.high_surrogate_match
+#print axioms QueryPaging.bind_correct

@@ -132,6 +132,9 @@ type remembers (`../EventStore2Layer/`), over any graph of descriptors.
 `BtdbProofs/NestedRegistration.lean` models how `EventSerializer` registers a descriptor merged from an object loaded
 without its type, and the descriptors nested in it (`../EventStore2Layer/`).
 
+`BtdbProofs/QueryPaging.lean` models how `RelationQuerySource.Bind` folds the `Skip` and `Take` calls of a relation
+query into one skip and an optional take (`../ODBLayer/RelationQuery.cs`).
+
 `BtdbProofs/InheritedDependencies.lean` models how the source generator collects the `[Dependency]` members of a type
 and its base types (`../../BTDB.SourceGenerator/Main.cs`).
 
@@ -222,6 +225,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `NestedRegistration.fixed_storable`, `NestedRegistration.previous_unstorable` | Registering every nested descriptor, a merged descriptor can be stored; before the 2026-10-29 fix only it was registered, and storing a dynamic list of nullables failed on its nested descriptor (`EventLayerDynamicReserializeTest.DynamicNestedCollectionsCanBeSerializedAgain`). |
 | `InheritedDependencies.collect_nodup`, `InheritedDependencies.collect_complete` | Walking a type's members and then its base types' members, most derived first, injects no name twice, and injects every `[Dependency]` member that no earlier member hides. |
 | `InheritedDependencies.previous_misses_base` | Before the 2026-10-29 fix only the type's own members were walked, so a dependency declared in its base was not injected (`IOCInheritedDependencyTest`). |
+| `QueryPaging.bind_correct` | For any rows and any sequence of `Skip` and `Take` calls, the skip and take a relation query binds give exactly the rows the calls give applied one after another, as LINQ does, with nonpositive skips ignored and negative takes taking nothing. |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |
