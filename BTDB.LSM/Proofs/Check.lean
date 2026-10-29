@@ -44,3 +44,5 @@ open Lsm
 #print axioms MemtableTree.update_ok
 #print axioms ClipCoverage.pieces_cover
 #print axioms ClipCoverage.dropped_zero
+#print axioms PrefixSuccessor.prefix_successor_correct
+#print axioms PrefixSuccessor.no_successor

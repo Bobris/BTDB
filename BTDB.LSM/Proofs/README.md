@@ -48,6 +48,8 @@ through, and `UpdatePath`; the priority that picks the root of a merge is left a
 `LsmProofs/ClipCoverage.lean` models `LsmCompaction.Clip`, which cuts range-tombstone fragments at the boundaries of
 the tables a compaction writes.
 
+`LsmProofs/PrefixSuccessor.lean` models `LsmKeys.PrefixSuccessor` over byte strings in lexicographic order.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -124,6 +126,7 @@ Not modelled in `Wal.lean`:
 | `MemtableTree.split_ok`, `MemtableTree.merge_ok` | `Split` of a search tree with exact subtree sums gives two such trees holding the keys below and the rest, and `Merge` of two such trees, left keys below right keys, gives one, whatever the priorities, so `PointDeltaBefore` stays exact after every change. |
 | `MemtableTree.update_ok` | `UpdatePath` on a key the tree holds keeps it a search tree with exact subtree sums, and changes its total by the new delta less the old one. |
 | `ClipCoverage.pieces_cover`, `ClipCoverage.dropped_zero` | A fragment cut at any table boundaries, each piece covering `Rank(end) − Rank(start)`, keeps the fragment's coverage in sum, and dropping pieces covering nothing does not change it, so `CoveredSum` and `CountFrom` stay exact after a compaction splits its output. |
+| `PrefixSuccessor.prefix_successor_correct`, `PrefixSuccessor.no_successor` | A key is below `PrefixSuccessor(p)` exactly when it is below `p` or starts with `p`, so a scan from `p` to it visits exactly the keys with the prefix; for a prefix of `0xff` bytes every key is below it or starts with it, so null is right. |
 
 The fixed rule, as implemented:
 
