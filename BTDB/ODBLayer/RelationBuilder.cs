@@ -595,13 +595,7 @@ public class RelationBuilder : IRelationBuilder
         WriteRelationPKPrefix(il, pushWriter);
         var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var prefixParameters = parameters.AsSpan(..^2);
-        var count = SaveMethodParameters(il, method.Name, prefixParameters, primaryKeyFields, pushWriter,
-            ctxLocFactory);
-        if (count != prefixParameters.Length)
-        {
-            RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                $"Number of parameters in {method.Name} is bigger than primary key count {primaryKeyFields.Length}.");
-        }
+        SaveMethodParameters(il, method.Name, prefixParameters, primaryKeyFields, pushWriter, ctxLocFactory);
 
         var spanLocal = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
         il
@@ -2119,6 +2113,12 @@ public class RelationBuilder : IRelationBuilder
             }
 
             SaveKeyFieldFromArgument(ilGenerator, field, idx, par.ParameterType, pushWriter, ctxLocFactory);
+        }
+
+        if (idx < methodParameters.Length)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Number of parameters in {methodName} is bigger than key count {fields.Length}.");
         }
 
         return (ushort)idx;

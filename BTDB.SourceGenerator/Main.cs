@@ -614,7 +614,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 var listByNoAdvError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
-                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true);
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, prefixIncludesInKeyValues: true);
                 if (listByNoAdvError != null) return listByNoAdvError;
                 continue;
             }
@@ -632,7 +632,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 var anyByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    indexOfInKeyValue, secondaryKeys, true, true);
+                    indexOfInKeyValue, secondaryKeys, true, true, true);
                 if (anyByError != null) return anyByError;
                 continue;
             }
@@ -653,7 +653,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 var countByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
-                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true);
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true, true);
                 if (countByError != null) return countByError;
                 continue;
             }
@@ -682,17 +682,19 @@ public class SourceGenerator : IIncrementalGenerator
 
                 // UpdateById takes every primary key field including InKeyValues, so none of them is cut off.
                 var updateByIdError = CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
-                    uint.MaxValue, secondaryKeys, true);
+                    uint.MaxValue, secondaryKeys, true, keyParamCount: primaryKeyFields.Length);
                 if (updateByIdError != null) return updateByIdError;
                 continue;
             }
 
-            if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal))
+            if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal))
             {
                 var (indexName, hasVariant) = StripVariant(secondaryKeys, method.Name, false);
 
                 // Check if method has special suffix like "Partial"
-                var methodSuffix = method.Name.Substring(("RemoveBy" + indexName).Length);
+                var methodSuffix = method.Name.Substring(method.Name.IndexOf("By", StringComparison.Ordinal) + 2 +
+                                                         indexName.Length);
                 var hasSpecialSuffix = methodSuffix.StartsWith("Partial", StringComparison.Ordinal) ||
                                        methodSuffix.StartsWith("OrDefault", StringComparison.Ordinal);
 
@@ -720,9 +722,12 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
-                // Validate parameters normally if no AdvancedEnumeratorParam (skip parameter count check to allow prefix matching)
+                // Removing a counted number of items takes a key prefix, removing one item its whole key. One item with
+                // an AdvancedEnumeratorParam is generated as a throw.
+                var removesOne = method.ReturnType.SpecialType is SpecialType.System_Void or SpecialType.System_Boolean &&
+                                 !CheckIfLastParameterIsAdvancedEnumeratorParam(method, out _);
                 var removeByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
-                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true);
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, !removesOne, true);
                 if (removeByError != null) return removeByError;
                 continue;
             }
@@ -772,8 +777,7 @@ public class SourceGenerator : IIncrementalGenerator
                 continue;
             }
 
-            if (method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
-                method.Name.StartsWith("Contains", StringComparison.Ordinal))
+            if (method.Name.StartsWith("Contains", StringComparison.Ordinal))
                 continue;
             // Find a matching method in RelationDBManipulator<relationType>
             var baseMethod = constructedType.GetMembers(method.Name)
@@ -1306,7 +1310,9 @@ public class SourceGenerator : IIncrementalGenerator
         uint[] primaryKeyFields, uint inKeyValueIndex,
         (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys,
         bool skipNumberOfParametersCheck = false,
-        bool allowAdvancedEnumeratorParam = false)
+        bool allowAdvancedEnumeratorParam = false,
+        bool prefixIncludesInKeyValues = false,
+        int keyParamCount = int.MaxValue)
     {
         if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
                 out var generationError))
@@ -1315,7 +1321,7 @@ public class SourceGenerator : IIncrementalGenerator
         ITypeSymbol? aepGenericType = null;
         var hasAdvancedEnumeratorParam = allowAdvancedEnumeratorParam &&
                                          CheckIfLastParameterIsAdvancedEnumeratorParam(method, out aepGenericType);
-        var paramCount = method.Parameters.Length - (hasAdvancedEnumeratorParam ? 1 : 0);
+        var paramCount = Math.Min(method.Parameters.Length - (hasAdvancedEnumeratorParam ? 1 : 0), keyParamCount);
 
         // For non-prefix-based queries (returns single item, not IEnumerable), validate parameter count matches key count
         var isPrefixBased = IsEnumerableOrCollectionOfTWhereTIsClass(method.ReturnType);
@@ -1348,11 +1354,23 @@ public class SourceGenerator : IIncrementalGenerator
                     method.Parameters[method.Parameters.Length - 1].Locations[0]);
             }
         }
-
-        var validationMax = hasAdvancedEnumeratorParam ? Math.Max(fi.Length, paramCount) : fi.Length;
-        for (var i = 0; i < validationMax; i++)
+        else if (paramCount > fi.Length)
         {
-            if (i >= paramCount) break;
+            // A key prefix may go on past the fields above, up to the whole index, so the parameters there are written
+            // into the key too. Listing, counting and testing by primary key may take its InKeyValue fields as well.
+            fullIndexFields = indexName == "Id" && prefixIncludesInKeyValues
+                ? primaryKeyFields
+                : GetFullIndexFields(indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys);
+            if (paramCount > fullIndexFields.Length)
+            {
+                return GenerationError("BTDB0016",
+                    $"Too many parameters for index '{indexName}' in method '{method.Name}'",
+                    method.Locations[0]);
+            }
+        }
+
+        for (var i = 0; i < paramCount; i++)
+        {
             var param = method.Parameters[i];
             var f = fields[(int)(i < fi.Length ? fi[i] : fullIndexFields[i])];
             if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase) &&

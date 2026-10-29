@@ -118,6 +118,13 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
                 "BTDB0016"),
         ["CountByAdvancedParamTypeMismatchOnSecondaryKey"] =
             ("int CountByName(AdvancedEnumeratorParam<int> name);", "BTDB0031"),
+        ["FindByIdPrefixTooManyParameters"] =
+            ("IEnumerable<Person> FindById(ulong tenantId, ulong id, string name);", "BTDB0016"),
+        ["ListByNameTooManyParameters"] =
+            ("IEnumerable<Person> ListByName(string name, ulong tenantId, ulong id, string extra);", "BTDB0016"),
+        ["CountByNamePrimaryKeyTypeMismatch"] = ("int CountByName(string name, string tenantId);", "BTDB0015"),
+        ["RemoveByIdNotWholeKey"] = ("bool RemoveById(ulong tenantId);", "BTDB0020"),
+        ["ShallowRemoveByIdNameMismatch"] = ("void ShallowRemoveById(ulong tenantId, ulong key);", "BTDB0014"),
         ["UpdateByIdMustReturnVoidOrBool"] = ("int UpdateById(ulong tenantId, ulong id, string name);", "BTDB0039"),
         ["UpdateByIdNotEnoughParameters"] = ("void UpdateById(ulong tenantId);", "BTDB0040"),
         ["UpdateByIdForbidsListValue"] =
@@ -191,13 +198,22 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
             """, expectedId);
     }
 
-    /// UpdateById takes InKeyValue fields after the primary key, so they are checked like the other key parameters.
+    /// UpdateById takes InKeyValue fields after the primary key, and listing, counting and testing by primary key may
+    /// take them in their prefix, so they are checked like the other key parameters; removing takes none.
     [Theory]
     [InlineData("void UpdateById(ulong id, string? name);", "BTDB0014")]
     [InlineData("void UpdateById(ulong id, string version, string? name);", "BTDB0015")]
-    public void ReportsUpdateByIdInKeyValueParameterMismatch(string member, string expectedId)
+    [InlineData("IEnumerable<Item> ListById(ulong id, string name);", "BTDB0014")]
+    [InlineData("int CountById(ulong id, string version);", "BTDB0015")]
+    [InlineData("bool AnyById(ulong id, string name);", "BTDB0014")]
+    [InlineData("IEnumerable<Item> ListById(ulong id, int version, string name);", "BTDB0016")]
+    [InlineData("bool RemoveById(ulong id, int version);", "BTDB0020")]
+    [InlineData("bool ShallowRemoveById(ulong id, string name);", "BTDB0020")]
+    [InlineData("int RemoveById(ulong id, int version);", "BTDB0016")]
+    public void ReportsKeyParameterMismatchWithInKeyValue(string member, string expectedId)
     {
         AssertSingleGeneratorDiagnostic($$"""
+            using System.Collections.Generic;
             using BTDB.ODBLayer;
 
             namespace TestNamespace;

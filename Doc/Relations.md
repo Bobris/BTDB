@@ -889,7 +889,8 @@ Also, it does not FreeContent so don't use with properties of IDictionary type (
 
 Fields with InKeyValue are allowed only at end of primary key, and they cannot be in any secondary keys.
 Primary key without InKeyValue fields must be unique. In example above it means that where cannot be two persons with
-same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById for
+same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById, and after
+the primary key in ListById, CountById and AnyById, for
 relatively fast searching without need to introduce Secondary Keys. This is very useful for implementation of expiration
 of relation rows. UpdateById method in example could be used for modification of LastLogin for known tenantId and email.
 

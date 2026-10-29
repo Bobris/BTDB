@@ -37,6 +37,9 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         void Update(Person person);
         Person FindById(uint tenantId, string email);
         void RemoveById(uint tenantId, string email);
+        IEnumerable<Person> ListById(uint tenantId, string email, DateTime lastLogin);
+        int CountById(uint tenantId, string email, DateTime lastLogin);
+        bool AnyById(uint tenantId, string email, DateTime lastLogin);
     }
 
     [Fact]
@@ -88,6 +91,22 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         var t = tr.GetRelation<IPersonTable>();
         t.RemoveById(1, "b@b.cd");
         Assert.Equal(3, t.Count);
+    }
+
+    /// Listing, counting and testing by primary key take a prefix that may go on into the InKeyValue fields.
+    [Fact]
+    public void KeyPrefixWithInKeyValueWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var lastLogin = new DateTime(2022, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        Assert.Equal("B", string.Join("", t.ListById(1, "b@b.cd", lastLogin).Select(p => p.Name)));
+        Assert.Equal(1, t.CountById(1, "b@b.cd", lastLogin));
+        Assert.True(t.AnyById(1, "b@b.cd", lastLogin));
+        Assert.Equal(0, t.CountById(1, "b@b.cd", lastLogin.AddDays(1)));
+        Assert.False(t.AnyById(1, "a@b.cd", lastLogin));
     }
 
     [Fact]

@@ -214,6 +214,17 @@
 
 ### Fixed
 
+- Relation methods taking key parameters accepted parameters past the key. The source generator checked only the
+  key fields before the first InKeyValue field (for secondary keys, only the declared fields), so with the generated
+  (no-emit) relations a wrong name, type or extra parameter was written into the key and the method quietly found,
+  counted or removed nothing. For example, `CountById(ulong id, string name)` returned 0 for a key ending in
+  `[InKeyValue] int Version`, and `CountByName(string name, string id)` returned 0 for a `ulong Id`. Emit mode ignored
+  extra parameters. Now the generator reports BTDB0014, BTDB0015 or BTDB0016:
+  - `ListById`, `CountById` and `AnyById` check InKeyValue fields too;
+  - other key methods, secondary-key methods included, check every key field;
+  - a void or bool `RemoveById` and `ShallowRemoveById` must take the whole key (BTDB0020), as emit mode requires;
+    `ShallowRemoveById` was not validated at all before.
+  Emit mode throws "Number of parameters in … is bigger than key count".
 - The source generator did not check the InKeyValue parameters of `UpdateById`, which must follow the primary key.
   `UpdateById(ulong id, string? name)` on a relation whose key ends with `[InKeyValue] int Version` compiled, and with
   the generated (no-emit) relations it wrote `name` into the key in place of `Version` and left `Name` unchanged; emit
