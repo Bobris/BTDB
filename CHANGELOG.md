@@ -103,7 +103,7 @@
 
 - Source generator: lookups by a key that is a list or set of items other than `string` and `ulong`, like
   `ListByTags(List<int> tags)`, threw `NotSupportedException`, although such keys are stored. The generated code now
-  writes them like the key handler does: the count, then the items.
+  writes them like the key handler does: the count, then the items, enums and nullable items included.
 - ObjectDB: saving an empty `HashSet` as a key failed with `NullReferenceException`, because an empty `HashSet` has no
   entries until its first item.
 - `StructList.Pop`, `Clear` and a shrinking `SetCount` kept removed items reachable from the backing array, so for

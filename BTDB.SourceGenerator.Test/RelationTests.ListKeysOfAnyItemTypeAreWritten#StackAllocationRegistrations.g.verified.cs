@@ -19,5 +19,23 @@ static file class StackAllocationRegistrations
             ptr = 0;
         }
 
+        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof(global::Kind), &Allocate2);
+        static void Allocate2(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+        {
+            global::Kind value = default;
+            ptr = (nint)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
+            chain(ref ctx);
+            ptr = 0;
+        }
+
+        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof(global::Kind?), &Allocate3);
+        static void Allocate3(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+        {
+            global::Kind? value = default;
+            ptr = (nint)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
+            chain(ref ctx);
+            ptr = 0;
+        }
+
     }
 }

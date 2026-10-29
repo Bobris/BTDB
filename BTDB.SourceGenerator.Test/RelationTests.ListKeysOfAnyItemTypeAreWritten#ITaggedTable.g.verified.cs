@@ -12,6 +12,8 @@ using BTDB.ODBLayer;
 //           SecondaryIndex Tags: 0
 // Field: Days global::System.Collections.Generic.HashSet<global::System.DateTime> reference
 //           SecondaryIndex Days: 0
+// Field: Kinds global::System.Collections.Generic.List<global::Kind?> reference
+//           SecondaryIndex Kinds: 0
 
 namespace BTDB.GeneratedRelations;
 [global::System.Runtime.CompilerServices.CompilerGenerated]
@@ -52,6 +54,26 @@ file class ITaggedTableRegistration
             WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
             if (days == null) writer.WriteVUInt32(0); else { writer.WriteVUInt32((uint)days.Count); foreach (var item12 in days) {
                 writer.WriteDateTime(item12);
+            } }
+            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<global::Tagged>(this, writer.GetSpan(), remappedSecondaryKeyIndex, 0);
+        }
+
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
+        global::System.Collections.Generic.IEnumerable<global::Tagged> global::ITaggedTable.ListByKinds(global::System.Collections.Generic.List<global::Kind?> kinds)
+        {
+            var remappedSecondaryKeyIndex = RemapPrimeSK(2u);
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
+            if (kinds == null) writer.WriteVUInt32(0); else { writer.WriteVUInt32((uint)kinds.Count); foreach (var item12 in kinds) {
+                if (!item12.HasValue)
+                {
+                    writer.WriteBool(false);
+                }
+                else
+                {
+                    writer.WriteBool(true);
+                    writer.WriteVInt64((long)item12.Value);
+                }
             } }
             return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<global::Tagged>(this, writer.GetSpan(), remappedSecondaryKeyIndex, 0);
         }

@@ -2145,17 +2145,21 @@ public class RelationTests : GeneratorTestsBase
             using System.Collections.Generic;
             using BTDB.ODBLayer;
 
+            public enum Kind : short { Negative = -3, Positive = 7 }
+
             public class Tagged
             {
                 [PrimaryKey(1)] public ulong Id { get; set; }
                 [SecondaryKey("Tags")] public List<int?> Tags { get; set; } = new();
                 [SecondaryKey("Days")] public HashSet<DateTime> Days { get; set; } = new();
+                [SecondaryKey("Kinds")] public List<Kind?> Kinds { get; set; } = new();
             }
 
             public interface ITaggedTable : IRelation<Tagged>
             {
                 IEnumerable<Tagged> ListByTags(List<int?> tags);
                 IEnumerable<Tagged> ListByDays(HashSet<DateTime> days);
+                IEnumerable<Tagged> ListByKinds(List<Kind?> kinds);
             }
             """);
     }

@@ -848,7 +848,7 @@ public class SourceGenerator : IIncrementalGenerator
                 method.Parameters.Select(p =>
                     new ParameterInfo(p.Name, p.Type.ToDisplayString(MethodSignatureTypeFormat), null,
                         p.Type.IsReferenceType, p.IsOptional, null,
-                        GetEnumUnderlyingType(p.Type))).ToArray(), true,
+                        GetEnumUnderlyingType(p.Type), GetItemEnumUnderlyingType(p.Type))).ToArray(), true,
                 method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
             var methodReturnType = method.ReturnType as INamedTypeSymbol;
             if (methodReturnType is { TypeKind: TypeKind.Interface })
@@ -3208,7 +3208,7 @@ public class SourceGenerator : IIncrementalGenerator
         var parameterIndex = 0;
 
         var constructorParameters = generationInfo.ConstructorParameters ?? EquatableArray<ParameterInfo>.Empty;
-        foreach (var (name, type, _, _, _, _, _) in constructorParameters)
+        foreach (var (name, type, _, _, _, _, _, _) in constructorParameters)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
@@ -3305,7 +3305,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (generationInfo.ConstructorParameters != null)
         {
-            foreach (var (name, type, keyCode, isReference, optional, defaultValue, _) in generationInfo
+            foreach (var (name, type, keyCode, isReference, optional, defaultValue, _, _) in generationInfo
                          .ConstructorParameters)
             {
                 var normalizeType = NormalizeType(type);
@@ -3485,7 +3485,7 @@ public class SourceGenerator : IIncrementalGenerator
         if (generationInfo.PrivateConstructor)
         {
             var constructorParametersText = new StringBuilder();
-            foreach (var (name, type, _, _, _, _, _) in constructorParameters)
+            foreach (var (name, type, _, _, _, _, _, _) in constructorParameters)
             {
                 if (constructorParametersText.Length > 0) constructorParametersText.Append(", ");
                 constructorParametersText.Append($"{type} {name}");
@@ -5153,6 +5153,16 @@ public class SourceGenerator : IIncrementalGenerator
             or "global::Microsoft.Extensions.Primitives.StringValues" or "Microsoft.Extensions.Primitives.StringValues";
     }
 
+    /// The underlying type of the enum items of a list or set key, which its type name does not tell.
+    static string? GetItemEnumUnderlyingType(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } collection &&
+            collection.Name is "List" or "IList" or "HashSet" or "ISet" &&
+            collection.InNamespace("System", "Collections", "Generic"))
+            return GetEnumUnderlyingType(collection.TypeArguments[0]);
+        return null;
+    }
+
     static string? GetEnumUnderlyingType(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is INamedTypeSymbol
@@ -5481,11 +5491,12 @@ public class SourceGenerator : IIncrementalGenerator
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
         AppendWriteOrderableValue(declarations, parameter.Identifier, parameter.Type, parameter.EnumUnderlyingType,
-            "            ", parameter.IsReference);
+            "            ", parameter.IsReference, parameter.ItemEnumUnderlyingType);
     }
 
     static void AppendWriteOrderableValue(StringBuilder declarations, string valueExpression, string valueType,
-        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false)
+        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false,
+        string? itemEnumUnderlyingType = null)
     {
         if (isReferenceType && valueType.EndsWith("?", StringComparison.Ordinal))
         {
@@ -5620,7 +5631,7 @@ public class SourceGenerator : IIncrementalGenerator
                     var item = $"item{indent.Length}";
                     declarations.Append(
                         $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var {item} in {valueExpression}) {{\n");
-                    AppendWriteValue(declarations, item, elementType, null, indent + "    ");
+                    AppendWriteValue(declarations, item, elementType, itemEnumUnderlyingType, indent + "    ");
                     declarations.Append($"{indent}}} }}\n");
                     return;
                 }
@@ -6071,7 +6082,8 @@ record ParameterInfo(
     bool IsReference,
     bool Optional,
     string? DefaultValue,
-    string? EnumUnderlyingType = null)
+    string? EnumUnderlyingType = null,
+    string? ItemEnumUnderlyingType = null)
 {
     /// The name written as code, with the verbatim prefix a keyword needs.
     public string Identifier => CSharpSyntaxUtilities.EscapeIdentifier(Name);

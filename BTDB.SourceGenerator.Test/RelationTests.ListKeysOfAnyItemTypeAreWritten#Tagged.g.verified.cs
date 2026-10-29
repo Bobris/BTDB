@@ -15,6 +15,8 @@ static file class TaggedRegistration
     extern static ref global::System.Collections.Generic.List<int?> Field2(global::Tagged @this);
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Days>k__BackingField")]
     extern static ref global::System.Collections.Generic.HashSet<global::System.DateTime> Field3(global::Tagged @this);
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Kinds>k__BackingField")]
+    extern static ref global::System.Collections.Generic.List<global::Kind?> Field4(global::Tagged @this);
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -52,10 +54,16 @@ static file class TaggedRegistration
                 Type = typeof(global::System.Collections.Generic.HashSet<global::System.DateTime>),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field3(dummy)),
             },
+            new global::BTDB.Serialization.FieldMetadata
+            {
+                Name = "Kinds",
+                Type = typeof(global::System.Collections.Generic.List<global::Kind?>),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field4(dummy)),
+            },
         ];
         metadata.PrimaryKeyFields = [0];
         metadata.IndexOfInKeyValue = 1;
-        metadata.SecondaryKeys = [("Tags", [1, 0]), ("Days", [2, 0])];
+        metadata.SecondaryKeys = [("Tags", [1, 0]), ("Days", [2, 0]), ("Kinds", [3, 0])];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

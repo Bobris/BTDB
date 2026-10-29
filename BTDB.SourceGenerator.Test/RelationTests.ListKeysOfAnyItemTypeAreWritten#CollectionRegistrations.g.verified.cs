@@ -73,5 +73,24 @@ static file class CollectionRegistrations
         {
             return new BTDB.ODBLayer.ODBSet<global::System.DateTime>(tr, config, id);
         }
+
+        HashSetEntry<global::Kind?> e3 = new();
+        BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+        {
+            Type = typeof(global::System.Collections.Generic.List<global::Kind?>),
+            ElementKeyType = typeof(global::Kind?),
+            Creator = &Create3,
+            Adder = &Add3,
+        });
+
+        static object Create3(uint capacity)
+        {
+            return new global::System.Collections.Generic.List<global::Kind?>((int)capacity);
+        }
+
+        static void Add3(object c, ref byte value)
+        {
+            global::System.Runtime.CompilerServices.Unsafe.As<global::System.Collections.Generic.List<global::Kind?>>(c).Add(global::System.Runtime.CompilerServices.Unsafe.As<byte, global::Kind?>(ref value));
+        }
     }
 }
