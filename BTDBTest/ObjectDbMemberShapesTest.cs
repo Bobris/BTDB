@@ -432,4 +432,29 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Null(rows.FindByIdOrDefault(2));
         });
     }
+
+    // Queries map properties to the fields they are stored under, also when PersistedName renames them.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void QueriesOverRenamedPropertiesMatchLinq(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using var tr = _db.StartTransaction();
+            var rows = tr.GetRelation<IRenamedRows>();
+            var all = new[]
+            {
+                new RenamedRow { Id = 1, Name = "a", Age = 30 }, new RenamedRow { Id = 2, Name = "b", Age = 20 },
+                new RenamedRow { Id = 3, Name = "c", Age = 40 }
+            };
+            foreach (var row in all) rows.Insert(row);
+            Assert.Equal(all.Where(r => r.Age > 25).Select(r => r.Id),
+                rows.Query<RenamedRow>().Where(r => r.Age > 25).AsEnumerable().Select(r => r.Id));
+            Assert.Equal(all.Where(r => r.Name == "b").Select(r => r.Id),
+                rows.Query<RenamedRow>().Where(r => r.Name == "b").AsEnumerable().Select(r => r.Id));
+            Assert.Equal(all.OrderBy(r => r.Age).Select(r => r.Id),
+                rows.Query<RenamedRow>().OrderBy(r => r.Age).AsEnumerable().Select(r => r.Id));
+        });
+    }
 }
