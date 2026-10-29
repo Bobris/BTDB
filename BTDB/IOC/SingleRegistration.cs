@@ -113,10 +113,14 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
         var dependencies = new StructList<(string, Type, MethodInvoker)>();
         foreach (var propertyInfo in implementationType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (!propertyInfo.CanWrite) continue;
             var depAttr = propertyInfo.GetCustomAttribute<DependencyAttribute>();
             if (depAttr == null) continue;
-            var setter = propertyInfo.GetSetMethod(true);
+            // A private setter of a base class is visible only through the base class's own PropertyInfo, CanWrite of the
+            // inherited one is false
+            var setter = propertyInfo.GetSetMethod(true) ??
+                         propertyInfo.DeclaringType!.GetProperty(propertyInfo.Name,
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                             BindingFlags.DeclaredOnly)?.GetSetMethod(true);
             if (setter == null) continue;
             var setterInvoker = MethodInvoker.Create(setter);
             dependencies.Add((depAttr.Name ?? propertyInfo.Name, propertyInfo.PropertyType, setterInvoker));

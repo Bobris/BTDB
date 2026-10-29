@@ -28,6 +28,29 @@ public class IOCReflectionFallbackTest
         public int Count { get; }
     }
 
+    public class WithDependencies
+    {
+        [Dependency] public ILogger PrivateSetter { get; private set; } = null!;
+        [Dependency] public ILogger Public { get; set; } = null!;
+    }
+
+    public class DerivedWithDependencies : WithDependencies
+    {
+    }
+
+    // Before the fix a private setter declared in a base class was not found, so its dependency was not injected.
+    [Fact]
+    public void DependenciesWithPrivateSettersOfBaseClassAreInjected()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterTypeWithFallback(typeof(DerivedWithDependencies)).AsSelf();
+        var logger = new Logger();
+        builder.RegisterInstance<ILogger>(logger);
+        var obj = (DerivedWithDependencies)builder.Build().Resolve(typeof(DerivedWithDependencies))!;
+        Assert.Same(logger, obj.Public);
+        Assert.Same(logger, obj.PrivateSetter);
+    }
+
     static object Resolve(Type type)
     {
         var builder = new ContainerBuilder();
