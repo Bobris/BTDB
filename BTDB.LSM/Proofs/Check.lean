@@ -38,3 +38,4 @@ open Lsm
 #print axioms BlockDelta.bounds_cover
 #print axioms TablePointDelta.point_delta_before_correct
 #print axioms TablePointDelta.level_point_delta_before_correct
+#print axioms MemtableDelta.delta_before_correct

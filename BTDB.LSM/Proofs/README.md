@@ -38,6 +38,9 @@ plus the deltas decoded after it, and the prefix bounds `DataBlockBuilder` track
 `LsmProofs/TablePointDelta.lean` models `Table.PointDeltaBefore`: the delta stored before the block that may hold
 the key plus the block's delta prefix up to the key.
 
+`LsmProofs/MemtableDelta.lean` models `Memtable.PointDeltaBefore`: one walk down a search tree whose nodes keep their
+subtree delta sums.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -110,6 +113,7 @@ Not modelled in `Wal.lean`:
 | `BlockDelta.bounds_cover` | The `MinPrefix` and `MaxPrefix` a block builder tracks, starting at 0 and updated after each entry, bound every prefix sum of the block, the empty one included, as `Table.PointDeltaBounds` needs. |
 | `TablePointDelta.point_delta_before_correct` | `Table.PointDeltaBefore`, the index's delta before the last block starting at or before the key plus the deltas of that block's entries below the key, is the sum of the deltas of all the table's entries below the key. |
 | `TablePointDelta.level_point_delta_before_correct` | `LevelComponent.PointDeltaBefore` composes its tables the same way, by the first table ending after the key, and a key after every table gets the level's whole delta sum. |
+| `MemtableDelta.delta_before_correct` | `Memtable.PointDeltaBefore`, adding the left subtree sum and the node's delta at each node below the key on one path from the root, is the sum of the deltas of all keys below the key, for a search tree whose nodes keep their subtree sums. |
 
 The fixed rule, as implemented:
 
