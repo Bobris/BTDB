@@ -722,4 +722,31 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("static file class FooRegistration4BTDB", GetSource(sources, "TestNamespace.Foo.g.cs"));
         Assert.Contains("static file class FooRegistration", GetSource(sources, "TestNamespace.Outer.Foo.g.cs"));
     }
+
+    // Before the fix generated code of a partial class declared the members Creator and Constr in it, which clashed with
+    // members of the class of those names, like a Creator property.
+    [Fact]
+    public void PartialClassCanHaveMembersNamedLikeGeneratedOnes()
+    {
+        GenerateAndCompile("""
+            namespace TestNamespace;
+
+            public interface ILogger { }
+
+            [BTDB.Generate]
+            public partial class WithPrivateConstructor
+            {
+                WithPrivateConstructor(ILogger logger) { }
+                public string? Creator { get; set; }
+                public string? Constr { get; set; }
+            }
+
+            [BTDB.Generate]
+            public partial class WithDefaultConstructor
+            {
+                public string? Creator { get; set; }
+                public int Constr;
+            }
+            """);
+    }
 }

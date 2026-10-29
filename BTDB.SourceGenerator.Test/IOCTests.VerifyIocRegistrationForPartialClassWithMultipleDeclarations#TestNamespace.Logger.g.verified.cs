@@ -9,7 +9,7 @@ namespace TestNamespace;
 public partial class Logger
 {
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
-    extern static global::TestNamespace.Logger Creator();
+    extern static global::TestNamespace.Logger Creator4BTDB();
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -32,7 +32,7 @@ public partial class Logger
         metadata.Type = typeof(global::TestNamespace.Logger);
         metadata.Namespace = "TestNamespace";
         metadata.Implements = [typeof(global::TestNamespace.ILogger)];
-        metadata.Creator = &Creator;
+        metadata.Creator = &Creator4BTDB;
         var dummy = global::System.Runtime.CompilerServices.Unsafe.As<global::TestNamespace.Logger>(metadata);
         metadata.Fields = [
         ];

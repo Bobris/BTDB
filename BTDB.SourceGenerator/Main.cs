@@ -3554,6 +3554,9 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var declarations = new StringBuilder();
+        // Generated code of a partial type is in it, next to its members, so it uses names they are unlikely to have.
+        var constrName = generationInfo.IsPartial ? "Constr4BTDB" : "Constr";
+        var creatorName = generationInfo.IsPartial ? "Creator4BTDB" : "Creator";
         if (generationInfo.IsPartial)
         {
             foreach (var parentDeclaration in generationInfo.ParentDeclarations.Reverse())
@@ -3598,7 +3601,7 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             declarations.Append($"""
                     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
-                    extern static {generationInfo.FullName} Constr({constructorParametersText});
+                    extern static {generationInfo.FullName} {constrName}({constructorParametersText});
 
                 """);
         }
@@ -3629,7 +3632,7 @@ public class SourceGenerator : IIncrementalGenerator
                         // language=c#
                         declarations.Append($"""
                                 [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
-                                extern public static {nameWithGeneric} Creator();
+                                extern public static {nameWithGeneric} {creatorName}();
 
                         """);
                     }
@@ -3638,7 +3641,7 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     // language=c#
                     declarations.Append($$"""
-                                public static object Creator()
+                                public static object {{creatorName}}()
                                 {
                                     return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
                                 }
@@ -3655,7 +3658,7 @@ public class SourceGenerator : IIncrementalGenerator
                         // language=c#
                         declarations.Append($"""
                             [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Constructor)]
-                            extern static {generationInfo.FullName} Creator();
+                            extern static {generationInfo.FullName} {creatorName}();
 
                         """);
                     }
@@ -3664,7 +3667,7 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     // language=c#
                     declarations.Append($$"""
-                            static object Creator()
+                            static object {{creatorName}}()
                             {
                                 return global::System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
                             }
@@ -3692,7 +3695,7 @@ public class SourceGenerator : IIncrementalGenerator
             metadataCode.Append($$"""
 
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
-                        metadata.Creator = &{{(reuseConstructorAccessorForMetadata ? "" : ActivatorName(generationInfo))}}{{(reuseConstructorAccessorForMetadata ? "Constr" : "Creator")}};
+                        metadata.Creator = &{{(reuseConstructorAccessorForMetadata ? "" : ActivatorName(generationInfo))}}{{(reuseConstructorAccessorForMetadata ? constrName : creatorName)}};
                         var dummy = global::System.Runtime.CompilerServices.Unsafe.As<{{(isTuple ? "TupleStunt" : generationInfo.FullName)}}>(metadata);
                         metadata.Fields = [
 
@@ -4169,7 +4172,7 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             {{factoryCode}}return (container2, ctx2) =>
                             {
-                                var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}});
+                                var res = {{(generationInfo.PrivateConstructor ? constrName : "new " + generationInfo.FullName)}}({{parametersCode}});
                                 {{propertyCode}}return res;
                             };
                         });{{metadataCode}}{{dispatchers}}

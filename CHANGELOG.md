@@ -124,6 +124,9 @@
 
 ### Fixed
 
+- Source generator: generated code of a partial class declared the members `Creator` and `Constr` in it, so a member
+  of the class with either name, like a `Creator` property, made it fail to compile. They are named `Creator4BTDB`
+  and `Constr4BTDB` in partial classes now.
 - Source generator: the registration class generated for a type `Foo`, a file class `FooRegistration` in its namespace,
   hid a type `FooRegistration` of that namespace in the generated file, so generated code using that type did not
   compile. Such a registration class gets another name now.
