@@ -158,3 +158,5 @@ open Btdb
 #print axioms BonInteger.read_exact
 #print axioms BonInteger.fits_exact
 #print axioms BonInteger.previous_wraps
+#print axioms FirstDifference.diff3_eq
+#print axioms FirstDifference.diff4_eq

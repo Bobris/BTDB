@@ -79,6 +79,8 @@
     and the same ones each time;
   - `BTDB/Proofs/`, Bon integers: every `long` reads back as itself, and a value read or loaded into a member is the
     stored integer, within the member's range;
+  - `BTDB/Proofs/`, `TreeNodeUtils.FindFirstDifference`: comparing keys given in parts finds the common prefix of the
+    joined keys;
   - `BTDB/Proofs/`, `DiskChunkCache.Put`: content it caches fits after at most one new value file;
   - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;
