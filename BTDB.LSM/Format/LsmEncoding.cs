@@ -105,10 +105,11 @@ ref struct LsmDecoder
         while (true)
         {
             var b = ReadByte();
+            // The tenth byte holds only the top bit of a 64-bit value.
+            if (shift == 63 && b > 1) throw Corrupted();
             result |= (ulong)(b & 0x7f) << shift;
             if (b < 0x80) return result;
             shift += 7;
-            if (shift > 63) throw Corrupted();
         }
     }
 
@@ -118,9 +119,20 @@ ref struct LsmDecoder
         return (long)(value >> 1) ^ -(long)(value & 1);
     }
 
-    public int ReadVInt32() => checked((int)ReadVInt64());
+    // A value out of range is damage like any other, not an overflow.
+    public int ReadVInt32()
+    {
+        var value = ReadVInt64();
+        if (value is < int.MinValue or > int.MaxValue) throw Corrupted();
+        return (int)value;
+    }
 
-    public int ReadVUInt32() => checked((int)ReadVUInt64());
+    public int ReadVUInt32()
+    {
+        var value = ReadVUInt64();
+        if (value > int.MaxValue) throw Corrupted();
+        return (int)value;
+    }
 
     public int ReadInt32()
     {

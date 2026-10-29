@@ -139,6 +139,8 @@
 
 ### Fixed
 
+- LSM decoding: a length or other 32-bit value out of range in damaged data threw `OverflowException`, and a 64-bit
+  value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
 - `LsmBlockCache`: a block loaded while the cache was being disposed was added to it anyway, so its native memory was
