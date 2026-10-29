@@ -30,3 +30,4 @@ import LsmProofs.CompactionPointer
 import LsmProofs.Bloom
 import LsmProofs.ClockEviction
 import LsmProofs.LevelTarget
+import LsmProofs.TakeBound

@@ -90,3 +90,5 @@ open Lsm
 #print axioms WalContiguous.take_maximal
 #print axioms LeaseTiming.writes_end_before_takeover
 #print axioms LeaseTiming.margin_needed
+#print axioms TakeBound.take_check_correct
+#print axioms TakeBound.old_check_wraps

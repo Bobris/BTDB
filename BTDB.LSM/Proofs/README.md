@@ -72,6 +72,8 @@ memtable's range-tombstone fragments.
 
 `LsmProofs/LeaseTiming.lean` models the writer lease deadline against the expiry the storage records.
 
+`LsmProofs/TakeBound.lean` models the bound check of `LsmDecoder.Take`, which slices the next bytes of the data.
+
 `LsmProofs/Varint.lean` models the LEB128 integers of `LsmEncoder.WriteVUInt64` and `LsmDecoder.ReadVUInt64`.
 
 `LsmProofs/Bloom.lean` models `BloomFilter.Build` and `MayContain` with double hashing.
@@ -177,6 +179,7 @@ Not modelled in `Wal.lean`:
 | `LeaseTiming.writes_end_before_takeover`, `LeaseTiming.margin_needed` | A writer starting writes only before `request + LeaseDuration - LeaseSafetyMargin` on its clock, each taking at most the margin, finishes them before another writer can hold the lease, whatever constant offsets the clocks have, and without the margin a write can end after the takeover. |
 | `Varint.round_trip`, `Varint.decoded_fits` | Every value below 2^64 decodes back from its encoding, leaving the bytes after it, and every value the decoder accepts is below 2^64; before the 2026-10-29 fix a tenth byte above 1 was accepted and lost bits (`LsmEncodingTest.OverlongValueIsDamage`). |
 | `Varint.zigzag_round_trip`, `Varint.zigzag_range` | The zigzag mapping of `WriteVInt64` is undone by `ReadVInt64`, and a value is a `long` exactly when its image is below 2^64, so every `long` reads back as written. |
+| `TakeBound.take_check_correct`, `TakeBound.old_check_wraps` | The check `length > n - position` refuses exactly the lengths running past the data; before the 2026-10-29 fix `position + length > n` wrapped negative in 32 bits for a length near `int.MaxValue` and let it through (`LsmEncodingTest.LengthPastTheEndIsDamageEvenNearIntMaxValue`). |
 | `Bloom.no_false_negative` | Every hash added to a Bloom filter passes `MayContain`, whatever else was added before or after it, since adding only sets bits. |
 | `ClockEviction.inv_step`, `ClockEviction.stopped_all_pinned` | Every slot of the current run of passed pinned slots stays pinned, so when eviction stops with the shard over capacity, after passing as many pinned slots in a row as the ring holds, every slot is pinned; before the 2026-10-29 fix a fixed step budget could stop it with an unpinned slot left (`NativeClockCacheTest.EvictionPastPinnedBlocksReachesCapacity`). |
 | `ClockEviction.step_decreases`, `ClockEviction.progress` | Every step frees a slot, clears a reference or lengthens the run, so eviction ends, and while the run is shorter than the ring a step applies. |

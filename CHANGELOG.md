@@ -29,6 +29,7 @@
     - the poison-event attempt journal skips an event that crashes every run reaching it within `Attempts + 1` runs,
       skips nothing before it, and skips an event only after `Attempts` starts of it.
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
+    - a slice the decoder takes is refused exactly when it runs past the data, whatever its length;
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;
     - opening loads the manifest with the highest number among those listed, whatever stray objects lie among them,
