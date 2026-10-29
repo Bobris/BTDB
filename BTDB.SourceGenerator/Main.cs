@@ -680,8 +680,9 @@ public class SourceGenerator : IIncrementalGenerator
                 if (duplicateParamError != null)
                     return duplicateParamError;
 
+                // UpdateById takes every primary key field including InKeyValues, so none of them is cut off.
                 var updateByIdError = CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
-                    indexOfInKeyValue, secondaryKeys, true);
+                    uint.MaxValue, secondaryKeys, true);
                 if (updateByIdError != null) return updateByIdError;
                 continue;
             }

@@ -212,6 +212,10 @@
 
 ### Fixed
 
+- The source generator did not check the InKeyValue parameters of `UpdateById`, which must follow the primary key.
+  `UpdateById(ulong id, string? name)` on a relation whose key ends with `[InKeyValue] int Version` compiled, and with
+  the generated (no-emit) relations it wrote `name` into the key in place of `Version` and left `Name` unchanged; emit
+  mode threw "Parameter and key mismatch". The generator reports BTDB0014 or BTDB0015 for such parameters now.
 - `ODBIterator` reported an encrypted string that failed to decrypt, as with another key, and then read its
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no

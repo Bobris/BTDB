@@ -590,4 +590,37 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal("s", loaded.GetSecret());
         });
     }
+
+    public class InKeyValueRenamed
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        [InKeyValue(2)] [BTDB.FieldHandler.PersistedName("StoredVersion")] public int Version { get; set; }
+        public string? Name { get; set; }
+    }
+
+    public interface IInKeyValueRenameds : IRelation<InKeyValueRenamed>
+    {
+        void Insert(InKeyValueRenamed value);
+        InKeyValueRenamed FindById(ulong id);
+        bool UpdateById(ulong id, int version, string? name);
+        System.Collections.Generic.IEnumerable<InKeyValueRenamed> ScanById(Constraint<ulong> id, Constraint<long> version);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RenamedInKeyValueFieldRoundTrips(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using var tr = _db.StartTransaction();
+            var rows = tr.GetRelation<IInKeyValueRenameds>();
+            rows.Insert(new InKeyValueRenamed { Id = 1, Version = 3, Name = "a" });
+            Assert.Equal(3, rows.FindById(1).Version);
+            Assert.True(rows.UpdateById(1, 4, "b"));
+            var updated = rows.FindById(1);
+            Assert.Equal((4, "b"), (updated.Version, updated.Name));
+            Assert.Single(rows.ScanById(Constraint.Unsigned.Exact(1), Constraint.Signed.Exact(4)));
+        });
+    }
 }

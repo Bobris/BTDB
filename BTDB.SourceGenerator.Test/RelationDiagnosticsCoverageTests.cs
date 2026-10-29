@@ -191,6 +191,31 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
             """, expectedId);
     }
 
+    /// UpdateById takes InKeyValue fields after the primary key, so they are checked like the other key parameters.
+    [Theory]
+    [InlineData("void UpdateById(ulong id, string? name);", "BTDB0014")]
+    [InlineData("void UpdateById(ulong id, string version, string? name);", "BTDB0015")]
+    public void ReportsUpdateByIdInKeyValueParameterMismatch(string member, string expectedId)
+    {
+        AssertSingleGeneratorDiagnostic($$"""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Item
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [InKeyValue(2)] public int Version { get; set; }
+                public string? Name { get; set; }
+            }
+
+            public interface IItemTable : IRelation<Item>
+            {
+                {{member}}
+            }
+            """, expectedId);
+    }
+
     [Fact]
     public void InternalErrorIsReportedAsDiagnostic()
     {
