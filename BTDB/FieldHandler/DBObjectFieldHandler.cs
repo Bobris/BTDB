@@ -339,7 +339,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
                         $"Public field {type.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
                 }
 
-                var props = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var props = type.GetVisibleInstanceProperties();
                 foreach (var pi in props)
                 {
                     if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;

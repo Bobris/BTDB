@@ -218,7 +218,7 @@ public class RelationBuilder : IRelationBuilder
 
     RelationVersionInfo CreateVersionInfoByReflection()
     {
-        var props = ItemType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var props = ItemType.GetVisibleInstanceProperties();
         var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
         var secondaryKeyFields = new List<TableFieldInfo>();
         var secondaryKeys =

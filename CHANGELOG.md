@@ -216,6 +216,10 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- ObjectDB took a property hidden with `new` by one of the same name in a derived class for a field of its own: a
+  relation of such a type failed with "different metadata and reflection version info", in emit mode its two fields
+  of one name were loaded wrong, and storing such an object failed converting between their types. Only the most
+  derived property is a field now, as the source generator's metadata has it.
 - `ReflectionMetadata.FindByName(ReadOnlySpan<char>)` threw `ArgumentOutOfRangeException` for names over 256
   characters, so a type registered under a longer name, as generic types can have, was not found by it. Such names are
   looked up now.

@@ -1,0 +1,146 @@
+using BTDB;
+using BTDB.ODBLayer;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace BTDBTest;
+
+[Collection("IFieldHandler.UseNoEmitForRelations")]
+public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBase(output)
+{
+    [Generate]
+    public class Modern
+    {
+        [PrimaryKey] public ulong Id { get; init; }
+        public required string Name { get; init; }
+        public int Count { get; set; }
+        public string? Note { get; private set; }
+
+        public void SetNote(string note) => Note = note;
+    }
+
+    public interface IModerns : IRelation<Modern>
+    {
+        void Insert(Modern value);
+        Modern FindById(ulong id);
+    }
+
+    [Generate]
+    public record RecordRow([property: PrimaryKey] ulong Id, string Title)
+    {
+        public int Extra { get; set; }
+    }
+
+    public interface IRecordRows : IRelation<RecordRow>
+    {
+        void Insert(RecordRow value);
+        RecordRow FindById(ulong id);
+    }
+
+    [Fact]
+    public void InitRequiredAndPrivateSettersRoundTrip()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var m = new Modern { Id = 1, Name = "n", Count = 3 };
+            m.SetNote("note");
+            tr.GetRelation<IModerns>().Insert(m);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var read = _db.StartReadOnlyTransaction();
+        var loaded = read.GetRelation<IModerns>().FindById(1);
+        Assert.Equal("n", loaded.Name);
+        Assert.Equal(3, loaded.Count);
+        Assert.Equal("note", loaded.Note);
+    }
+
+    [Fact]
+    public void RecordWithPrimaryConstructorRoundTrips()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IRecordRows>().Insert(new RecordRow(1, "t") { Extra = 5 });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var read = _db.StartReadOnlyTransaction();
+        var loaded = read.GetRelation<IRecordRows>().FindById(1);
+        Assert.Equal("t", loaded.Title);
+        Assert.Equal(5, loaded.Extra);
+    }
+
+    public class HidingBase
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public int X { get; set; }
+    }
+
+    [Generate]
+    public class Hiding : HidingBase
+    {
+        public new string? X { get; set; }
+    }
+
+    public interface IHidings : IRelation<Hiding>
+    {
+        void Insert(Hiding value);
+        Hiding FindById(ulong id);
+    }
+
+    // Before the fix reflection listed a property hidden with `new` as a field of its own, beside the derived one: the
+    // relation failed to build as its metadata differed, or in emit mode two fields of one name were loaded wrong.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HiddenBasePropertyIsNotStored(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, StoreAndLoadHiding);
+    }
+
+    void StoreAndLoadHiding()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var h = new Hiding { Id = 1, X = "derived" };
+            ((HidingBase)h).X = 7;
+            tr.GetRelation<IHidings>().Insert(h);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var read = _db.StartReadOnlyTransaction();
+        var loaded = read.GetRelation<IHidings>().FindById(1);
+        Assert.Equal("derived", loaded.X);
+        Assert.Equal(0, ((HidingBase)loaded).X);
+    }
+
+    [Generate]
+    public class HidingObject : HidingBase
+    {
+        public new string? X { get; set; }
+    }
+
+    // Before the fix storing such an object failed, its table field taking the hidden property's type.
+    [Fact]
+    public void HiddenBasePropertyOfStoredObjectIsNotStored()
+    {
+        ulong oid;
+        _db.RegisterType(typeof(HidingObject));
+        using (var tr = _db.StartTransaction())
+        {
+            var h = new HidingObject { Id = 1, X = "derived" };
+            ((HidingBase)h).X = 7;
+            oid = tr.Store(h);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(HidingObject));
+        using var read = _db.StartReadOnlyTransaction();
+        var loaded = (HidingObject)read.Get(oid)!;
+        Assert.Equal("derived", loaded.X);
+    }
+}

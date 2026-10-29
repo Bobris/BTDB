@@ -461,8 +461,7 @@ public class RelationInfo
                     .Stloc(0);
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
-                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                       BindingFlags.Instance).Where(pi =>
+                var props = instanceType.GetVisibleInstanceProperties().Where(pi =>
                     pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
                     pi.GetIndexParameters().Length == 0).ToList();
                 var usedFields = 0;
@@ -747,8 +746,7 @@ public class RelationInfo
                 var instanceTableFieldInfos = new StructList<TableFieldInfo>();
                 var loadInstructions =
                     new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
-                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                       BindingFlags.Instance);
+                var props = instanceType.GetVisibleInstanceProperties();
                 var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
 
                 var publicFields = instanceType.GetFields(BindingFlags.Public | BindingFlags.Instance);
@@ -1484,7 +1482,7 @@ public class RelationInfo
         Action<IILGen> pushWriter, Action<IILGen> pushTransaction, Action<IILGen>? pushLenOfKey)
     {
         var writerCtxLocal = CreateWriterCtx(ilGen, fields, pushTransaction);
-        var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var props = ClientType.GetVisibleInstanceProperties();
         var wasInKeyValueField = false;
         foreach (var field in fields)
         {

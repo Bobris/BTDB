@@ -188,8 +188,7 @@ public class TableInfo
                     .Stloc(1);
             }
 
-            var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                   BindingFlags.Instance);
+            var props = _clientType!.GetVisibleInstanceProperties();
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
@@ -403,7 +402,7 @@ public class TableInfo
                     .Stloc(1);
             }
 
-            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            var props = ClientType.GetVisibleInstanceProperties();
             for (var i = 0; i < ClientTableVersionInfo.FieldCount; i++)
             {
                 var field = ClientTableVersionInfo[i];
@@ -439,7 +438,7 @@ public class TableInfo
                 $"Public field {_clientType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
         }
 
-        var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var props = _clientType.GetVisibleInstanceProperties();
         var fields = new StructList<TableFieldInfo>();
         fields.Reserve((uint)props.Length);
         foreach (var pi in props)
@@ -731,8 +730,7 @@ public class TableInfo
                     .Stloc(1);
             }
 
-            var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                   BindingFlags.Instance);
+            var props = _clientType!.GetVisibleInstanceProperties();
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
