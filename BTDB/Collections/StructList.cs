@@ -409,6 +409,8 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
     public void ReplaceItem(T originalItem, T newItem)
     {
         var index = IndexOf(originalItem);
+        if (index < 0)
+            throw new ArgumentOutOfRangeException(nameof(originalItem), originalItem, "Item not found in List");
         _a![index] = newItem;
     }
 
@@ -446,7 +448,8 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
         if ((uint)idx > _count) ThrowIndexOutOfRange(idx);
         if (values.IsEmpty) return;
         var totalCount = _count + (uint)values.Length;
-        Expand(totalCount);
+        if (totalCount > (_a?.Length ?? 0))
+            Expand(totalCount);
         _count = totalCount;
         AsSpan(idx, (int)_count - values.Length - idx).CopyTo(AsSpan(idx + values.Length));
         values.CopyTo(AsSpan(idx));

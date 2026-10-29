@@ -100,6 +100,10 @@
 
 ### Fixed
 
+- `StructList.InsertRange` resized its array on every call, even when it had room, so it shrank the capacity
+  `Reserve` made and copied the items again each time. It now grows the array only when needed.
+  `StructList.ReplaceItem(item, newItem)` of a missing item throws `ArgumentOutOfRangeException`, as the other
+  item-based methods do, instead of `IndexOutOfRangeException`.
 - `LruCache.IncreaseCapacity` and `SpanByteLruCache.IncreaseCapacity` grew the cache beyond its maximum capacity, so it
   then held more items than the maximum before evicting the least recently used one. They now grow it at most to the
   maximum.
