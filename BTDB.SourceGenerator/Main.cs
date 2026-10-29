@@ -60,6 +60,11 @@ public class SourceGenerator : IIncrementalGenerator
                         if (ModelExtensions.GetSymbolInfo(semanticModel, typeParam.Type)
                                 .Symbol is not INamedTypeSymbol symb)
                             return null!;
+                        // The generated creator and metadata treat the type as a reference type.
+                        if (symb.IsValueType)
+                            return GenerationError("BTDB0054",
+                                "GenerateFor supports classes, not the value type " + symb.ToDisplayString(),
+                                typeParam.GetLocation());
                         var constructorParametersExpression = attributeSyntax.ArgumentList!.Arguments
                             .FirstOrDefault(a => a.NameEquals?.Name.Identifier.ValueText == "ConstructorParameters")
                             ?.Expression;

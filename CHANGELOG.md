@@ -605,6 +605,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- Source generator: `[GenerateFor(typeof(SomeStruct))]` generated a creator and metadata written for a class, so the
+  generated code failed to compile with errors about reference types. A value type is now reported as BTDB0054 and
+  nothing is generated for it.
 - `StructList<T>.Reserve` given less than the capacity, but more than the count, shrank the array to it, dropping
   capacity reserved before. It only ever grows the array now.
 - `BonSerializerFactory` refused a multi-dimensional array, to serialize or to deserialize into, with

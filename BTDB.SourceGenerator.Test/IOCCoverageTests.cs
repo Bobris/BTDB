@@ -549,6 +549,23 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("IDispatcher", diagnostic.GetMessage());
     }
 
+    // Before the fix a struct named by GenerateFor got a creator and metadata written for a class, which did not compile.
+    [Theory]
+    [InlineData("public struct Target { public int X { get; set; } }")]
+    [InlineData("public record struct Target(int A, string B);")]
+    public void GenerateForValueTypeIsReported(string declaration)
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic($$"""
+            namespace TestNamespace;
+
+            {{declaration}}
+
+            [BTDB.GenerateFor(typeof(Target))]
+            public class Registrations { }
+            """, "BTDB0054");
+        Assert.Contains("TestNamespace.Target", diagnostic.GetMessage());
+    }
+
     // Before the fix a member of a type the generated code cannot access, like a private nested class of a class that is
     // not partial, made the generated metadata fail to compile.
     [Fact]
