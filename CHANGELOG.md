@@ -204,6 +204,9 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- An object stored again after `IObjectDBTransaction.Delete` in the same transaction was missing from the
+  transaction's cache, so `Get` returned null for it until the commit, and `StoreAndFlush` did not store it at all. It
+  is cached and stored again now.
 - `IObjectDBTransaction.Enumerate` missed new objects not flushed yet when an object stored after them was already
   written, as by `StoreAndFlush`: only those newer than the last stored object were added. All of them are now.
 - ObjectDB accepted two storable types under one name, as registering names a type without its namespace or enclosing

@@ -109,6 +109,58 @@ public class ObjectDBTransactionCoverageTest : FieldHandlerCoverageTestBase
         Assert.Equal([1, 2], tr.Enumerate<Node>().Select(n => n.Value).OrderBy(v => v));
     }
 
+    // Before the fix an object stored again after its deletion was missing from the transaction's cache, so Get
+    // returned null until the commit, and StoreAndFlush did not store it at all.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ObjectStoredAgainAfterDeleteCanBeGot(bool bigCache, bool flush)
+    {
+        ulong oid;
+        using (var tr = _db.StartTransaction())
+        {
+            oid = tr.Store(new Node { Value = 1 });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            if (bigCache)
+                for (var i = 0; i < ManyObjects; i++) tr.Store(new Node { Value = 100 + i });
+            var node = (Node)tr.Get(oid)!;
+            tr.Delete(node);
+            Assert.Null(tr.Get(oid));
+            node.Value = 2;
+            Assert.Equal(oid, flush ? tr.StoreAndFlush(node) : tr.Store(node));
+            Assert.Same(node, tr.Get(oid));
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+            Assert.Equal(2, ((Node)tr.Get(oid)!).Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ObjectDeletedBeforeStoringIsStoredWhenStoredExplicitly(bool flush)
+    {
+        ulong oid;
+        using (var tr = _db.StartTransaction())
+        {
+            var node = new Node { Value = 5 };
+            tr.Delete(node);
+            oid = flush ? tr.StoreAndFlush(node) : tr.Store(node);
+            Assert.Same(node, tr.Get(oid));
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+            Assert.Equal(5, ((Node)tr.Get(oid)!).Value);
+    }
+
     [Fact]
     public void DeletingUnknownObjectsInBigCacheModeIsIgnored()
     {

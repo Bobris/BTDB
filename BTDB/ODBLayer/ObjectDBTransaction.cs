@@ -623,6 +623,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         {
             if (_objSmallMetadata.TryGetValue(@object, out metadata))
             {
+                RestoreDeletedToObjCache(metadata, @object);
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
@@ -642,6 +643,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         {
             if (_objBigMetadata.TryGetValue(@object, out metadata))
             {
+                RestoreDeletedToObjCache(metadata, @object);
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
@@ -678,12 +680,14 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         {
             if (_objSmallMetadata.TryGetValue(@object, out metadata))
             {
+                RestoreDeletedToObjCache(metadata, @object);
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
                     _objSmallCache!.Add(metadata.Id, @object);
                 }
 
+                if (metadata.State == DBObjectState.Deleted) metadata.State = DBObjectState.Dirty;
                 StoreObject(@object);
                 metadata.State = DBObjectState.Read;
                 return metadata.Id;
@@ -693,6 +697,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         {
             if (_objBigMetadata.TryGetValue(@object, out metadata))
             {
+                RestoreDeletedToObjCache(metadata, @object);
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
@@ -700,6 +705,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                     _objBigCache!.Add(metadata.Id, new WeakReference(@object));
                 }
 
+                if (metadata.State == DBObjectState.Deleted) metadata.State = DBObjectState.Dirty;
                 StoreObject(@object);
                 metadata.State = DBObjectState.Read;
                 return metadata.Id;
@@ -710,6 +716,25 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         AddToObjCache(id, @object, new DBObjectMetadata(id, DBObjectState.Read));
         StoreObject(@object);
         return id;
+    }
+
+    /// Storing a deleted object explicitly stores it again: it is dirty and in the cache, as before its deletion.
+    void RestoreDeletedToObjCache(DBObjectMetadata metadata, object obj)
+    {
+        // One deleted before it was stored gets its oid and its place in the cache like a new object.
+        if (metadata.State != DBObjectState.Deleted || metadata.Id == 0) return;
+        metadata.State = DBObjectState.Dirty;
+        if (_objSmallCache != null)
+        {
+            _objSmallCache[metadata.Id] = obj;
+        }
+        else
+        {
+            CompactObjCacheIfNeeded();
+            _objBigCache![metadata.Id] = new WeakReference(obj);
+        }
+
+        AddToDirtySet(metadata.Id, obj);
     }
 
     public ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline)
