@@ -139,6 +139,7 @@ Not modelled in `Wal.lean`:
 | `Bloom.no_false_negative` | Every hash added to a Bloom filter passes `MayContain`, whatever else was added before or after it, since adding only sets bits. |
 | `LevelLookup.lookup_some` | Over a level's sorted, disjoint table spans, `LevelComponent.TryGet` reads table `i` exactly when `i` spans the key, so a key between tables reads none. |
 | `LevelLookup.overlaps_iff` | `LsmVersion.Overlapping`'s test, `Upper > lower` and `Lower < upper`, holds exactly when a table's span and the range share a key. |
+| `LevelLookup.replace_sorted` | `LsmVersion.Replace`, sorting kept and new tables by `Lower`, gives a level where every table ends at or before each later one starts, when the tables are not empty and pairwise disjoint. |
 
 The fixed rule, as implemented:
 
