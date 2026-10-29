@@ -1926,22 +1926,45 @@ public class SourceGenerator : IIncrementalGenerator
                     p.SetMethod is not null && p.GetMethod is not null)
                 .Select(p => p.Type)).ToList();
 
-        if (fieldTypes.Any(t => !SerializableType(t)))
+        var serializable = fieldTypes.All(SerializableType);
+        if (!serializable)
         {
             fields = [];
+            inaccessibleMember = null;
         }
-        else if (inaccessibleMember != null &&
-                 !IsReflectionMetadataExcluded(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+
+        // The factory names constructor parameter and dependency types where the metadata does.
+        inaccessibleMember ??= constructor?.Parameters.FirstOrDefault(p =>
+            !IsTypeAccessible(p.Type, model.Compilation, metadataWithin));
+        for (var type = symbol;
+             inaccessibleMember == null && type is not null && type.SpecialType != SpecialType.System_Object;
+             type = type.BaseType)
         {
-            var memberType = inaccessibleMember is IFieldSymbol field ? field.Type : ((IPropertySymbol)inaccessibleMember).Type;
+            inaccessibleMember = type.GetMembers().FirstOrDefault(m =>
+                m is IPropertySymbol { IsStatic: false } or IFieldSymbol { IsStatic: false } &&
+                HasDependencyAttribute(m) &&
+                !IsTypeAccessible(m is IFieldSymbol f ? f.Type : ((IPropertySymbol)m).Type, model.Compilation,
+                    metadataWithin));
+        }
+
+        if (inaccessibleMember != null &&
+            !IsReflectionMetadataExcluded(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+        {
+            var memberType = inaccessibleMember switch
+            {
+                IFieldSymbol field => field.Type,
+                IPropertySymbol property => property.Type,
+                _ => ((IParameterSymbol)inaccessibleMember).Type
+            };
             return GenerationError("BTDB0053",
-                "Member " + inaccessibleMember.Name + " of " +
-                symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + " has type " +
+                (inaccessibleMember is IParameterSymbol ? "Parameter " : "Member ") + inaccessibleMember.Name +
+                " of " + symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + " has type " +
                 memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) +
                 ", which generated code cannot access; make the type more accessible or the class partial",
                 inaccessibleMember.Locations[0]);
         }
-        else
+
+        if (serializable)
         {
             GatherCollections(model, fieldTypes, collections, nested, processed);
         }

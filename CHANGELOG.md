@@ -124,9 +124,9 @@
 
 ### Fixed
 
-- Source generator: a stored member whose type generated code cannot access, like a private nested class of a class
-  that is not partial, made the generated metadata fail to compile. It is now reported as BTDB0053, naming the member;
-  making the class partial lets generated code use such types.
+- Source generator: a stored member, constructor parameter or `[Dependency]` member whose type generated code cannot
+  access, like a private nested class of a class that is not partial, made the generated code fail to compile. It is
+  now reported as BTDB0053, naming the member; making the class partial lets generated code use such types.
 - IOC: with `UseBtdbIoc`, a disposable singleton, scoped or registered instance resolved through the service provider
   was disposed twice, by the provider, which disposes what factories return, and by the BTDB container owning it. The
   container now leaves such instances to the provider.

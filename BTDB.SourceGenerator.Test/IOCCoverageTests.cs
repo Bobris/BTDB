@@ -581,11 +581,35 @@ public class IOCCoverageTests : GeneratorTestsBase
                 [BTDB.Generate]
                 public partial class UsesPrivateType
                 {
+                    UsesPrivateType(Hidden hidden) { }
+                    [BTDB.IOC.Dependency] Hidden? Dep { get; set; }
                     private Hidden? Field { get; set; }
                     private Hidden[]? Array { get; set; }
                     private class Hidden { public int X { get; set; } }
                 }
             }
             """);
+    }
+
+    [Theory]
+    [InlineData("WithPrivateTypes(Hidden hidden) { }", "Parameter hidden")]
+    [InlineData("[BTDB.IOC.Dependency] Hidden? Dep { get; set; }", "Member Dep")]
+    [InlineData("[BTDB.IOC.Dependency] Hidden? _depField;", "Member _depField")]
+    public void DependencyOfInaccessibleTypeIsReported(string member, string reported)
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic($$"""
+            namespace TestNamespace;
+
+            public class Outer
+            {
+                [BTDB.Generate]
+                public class WithPrivateTypes
+                {
+                    {{member}}
+                    class Hidden { }
+                }
+            }
+            """, "BTDB0053");
+        Assert.StartsWith(reported + " of", diagnostic.GetMessage());
     }
 }
