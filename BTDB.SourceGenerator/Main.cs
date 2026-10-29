@@ -1514,21 +1514,27 @@ public class SourceGenerator : IIncrementalGenerator
         return methodReturnType.ToDisplayString(MethodSignatureTypeFormat);
     }
 
+    // The key code of a dependency, null for its name. Like reflection, the name a [Dependency] attribute gives comes
+    // first, then the key of FromKeyedServicesAttribute, which can be of any constant type.
     static string? DetectDependencyName(ISymbol parameterSymbol)
     {
-        var attr = parameterSymbol.GetAttributes()
-                .FirstOrDefault(a =>
-                    (a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
-                     (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
-                    IsDependencyAttribute(a.AttributeClass))
-            ;
-        if (attr != null)
+        var attributes = parameterSymbol.GetAttributes();
+        var dependencyName = GetStringArgForAttributeData(attributes.FirstOrDefault(a => IsDependencyAttribute(a.AttributeClass)));
+        if (dependencyName is not null) return SymbolDisplay.FormatLiteral(dependencyName, quote: true);
+        var keyed = attributes.FirstOrDefault(a =>
+            a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
+            (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false));
+        if (keyed is not { ConstructorArguments.Length: > 0 }) return null;
+        var key = keyed.ConstructorArguments[0];
+        return key switch
         {
-            var val = GetStringArgForAttributeData(attr);
-            if (val is not null) return SymbolDisplay.FormatLiteral(val, quote: true);
-        }
-
-        return null;
+            { IsNull: true } => null,
+            { Kind: TypedConstantKind.Type, Value: ITypeSymbol type } =>
+                $"typeof({type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})",
+            { Kind: TypedConstantKind.Primitive or TypedConstantKind.Enum, Type: { } keyType } =>
+                CSharpSyntaxUtilities.FormatLiteral(key.Value, new(keyType)),
+            _ => null
+        };
     }
 
     GenerationInfo? DetectErrors(ReadOnlySpan<FieldsInfo> fields, Location location)

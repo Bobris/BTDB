@@ -108,6 +108,53 @@ public class IOCReflectionFallbackTest
         Assert.Same(other, obj.B);
     }
 
+    public class KeyedParameters
+    {
+        public KeyedParameters([Microsoft.Extensions.DependencyInjection.FromKeyedServices(1)] ILogger number,
+            [Microsoft.Extensions.DependencyInjection.FromKeyedServices(Mode.B)] ILogger enumKey,
+            [Dependency("named")][Microsoft.Extensions.DependencyInjection.FromKeyedServices("ignored")] ILogger named)
+            => (Number, EnumKey, Named) = (number, enumKey, named);
+
+        public ILogger Number { get; }
+        public ILogger EnumKey { get; }
+        public ILogger Named { get; }
+    }
+
+    [BTDB.Generate]
+    public class GeneratedKeyedParameters : KeyedParameters
+    {
+        public GeneratedKeyedParameters([Microsoft.Extensions.DependencyInjection.FromKeyedServices(1)] ILogger number,
+            [Microsoft.Extensions.DependencyInjection.FromKeyedServices(Mode.B)] ILogger enumKey,
+            [Dependency("named")][Microsoft.Extensions.DependencyInjection.FromKeyedServices("ignored")] ILogger named)
+            : base(number, enumKey, named)
+        {
+        }
+    }
+
+    // Before the fix generated factories resolved the key 1 as "1" and an enum key as the parameter name, and took the
+    // key of the attribute declared first, so they resolved other services than reflection does.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KeysOfAnyTypeAreResolvedLikeReflection(bool generated)
+    {
+        var builder = new ContainerBuilder();
+        var type = generated ? typeof(GeneratedKeyedParameters) : typeof(KeyedParameters);
+        if (generated) builder.RegisterType<GeneratedKeyedParameters>().AsSelf();
+        else builder.RegisterTypeWithFallback(type).AsSelf();
+        var number = new Logger();
+        var enumKey = new Logger();
+        var named = new Logger();
+        builder.RegisterInstance<ILogger>(number).Keyed<ILogger>(1);
+        builder.RegisterInstance<ILogger>(enumKey).Keyed<ILogger>(Mode.B);
+        builder.RegisterInstance<ILogger>(named).Named<ILogger>("named");
+        builder.RegisterInstance<ILogger>(new Logger()).Named<ILogger>("ignored");
+        var obj = (KeyedParameters)builder.Build().Resolve(type)!;
+        Assert.Same(number, obj.Number);
+        Assert.Same(enumKey, obj.EnumKey);
+        Assert.Same(named, obj.Named);
+    }
+
     public enum Mode
     {
         A = 1,

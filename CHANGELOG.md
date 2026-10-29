@@ -116,6 +116,10 @@
 
 ### Fixed
 
+- IOC: generated factories read only string keys of `[FromKeyedServices]`, as the text of their literal, so the key
+  `1` became `"1"` and an enum or type key became the parameter name, and when a member also had `[Dependency]` the
+  attribute declared first won. They now pass keys of any constant type and prefer the `[Dependency]` name, like the
+  reflection fallback.
 - Bon: `TryGetLong` read an integer above `long.MaxValue` as a wrapped negative long, and a crafted negative one below
   `long.MinValue` as a positive one. It now returns false for them and leaves the item unread, like an item of another
   type; untyped deserialization reads such a negative one as a double.

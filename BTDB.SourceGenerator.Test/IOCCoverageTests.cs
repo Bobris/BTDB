@@ -373,6 +373,40 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("UnsafeAccessorKind.Field, Name = \"ReadonlyField\"", GetSource(sources, "TestNamespace.Shapes.g.cs"));
     }
 
+    // Before the fix only string keys were read, as the text of their literal, so the key 1 became "1" and enum and type
+    // keys were replaced by the parameter name, and the attribute declared first won, unlike in reflection, where the
+    // name of [Dependency] comes first.
+    [Fact]
+    public void DependencyKeysMatchReflection()
+    {
+        var sources = GenerateAndCompile("""
+            using Microsoft.Extensions.DependencyInjection;
+            namespace TestNamespace;
+
+            public interface ILogger { }
+            public enum Mode { A = 1, B = 2 }
+
+            [BTDB.Generate]
+            public class Keys
+            {
+                public Keys([FromKeyedServices(1)] ILogger a, [FromKeyedServices(Mode.B)] ILogger b,
+                    [FromKeyedServices(typeof(Mode))] ILogger c, [FromKeyedServices("k")][BTDB.IOC.Dependency("d")] ILogger d,
+                    [BTDB.IOC.Dependency][FromKeyedServices("k")] ILogger e, [FromKeyedServices(Name)] ILogger f)
+                {
+                }
+
+                const string Name = "constant";
+            }
+            """);
+        var code = GetSource(sources, "TestNamespace.Keys.g.cs");
+        Assert.Contains("typeof(global::TestNamespace.ILogger), (int)(1));", code);
+        Assert.Contains("typeof(global::TestNamespace.ILogger), (global::TestNamespace.Mode)(2));", code);
+        Assert.Contains("typeof(global::TestNamespace.ILogger), typeof(global::TestNamespace.Mode));", code);
+        Assert.Contains("var f3 = container.CreateFactory(ctx, typeof(global::TestNamespace.ILogger), \"d\");", code);
+        Assert.Contains("var f4 = container.CreateFactory(ctx, typeof(global::TestNamespace.ILogger), \"k\");", code);
+        Assert.Contains("var f5 = container.CreateFactory(ctx, typeof(global::TestNamespace.ILogger), \"constant\");", code);
+    }
+
     [Fact]
     public void DefaultInterfaceDispatcherReimplementedByClassIsNotUsedFromInterface()
     {
