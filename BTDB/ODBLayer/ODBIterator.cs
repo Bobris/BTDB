@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
@@ -543,6 +544,30 @@ public class ODBIterator
         _visitor?.EndList();
     }
 
+    // A value that failed to decrypt, as with another key, is reported instead of its buffer read as a string. Ordered
+    // encryption cannot tell another key, so its output is reported as a failure when it is no string.
+    unsafe void VisitDecryptedString(bool decrypted, int encryptedLength, byte[] dec)
+    {
+        string? text = null;
+        if (decrypted)
+        {
+            try
+            {
+                fixed (void* _ = dec)
+                {
+                    var r = MemReader.CreateFromPinnedSpan(dec);
+                    text = r.ReadString();
+                }
+            }
+            catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
+            {
+                decrypted = false;
+            }
+        }
+
+        _visitor?.ScalarAsText(decrypted ? text! : $"Encrypted[{encryptedLength}] failed to decrypt");
+    }
+
     unsafe void IterateHandler(ref MemReader reader, IFieldHandler handler, bool skipping,
         HashSet<int>? knownInlineRefs)
     {
@@ -704,18 +729,8 @@ public class ODBIterator
             else
             {
                 var enc = reader.ReadByteArrayAsSpan();
-                var size = cipher.CalcOrderedPlainSizeFor(enc);
-                var dec = GC.AllocateUninitializedArray<byte>(size);
-                if (!cipher.OrderedDecrypt(enc, dec))
-                {
-                    _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
-                }
-
-                fixed (void* _ = dec)
-                {
-                    var r = MemReader.CreateFromPinnedSpan(dec);
-                    _visitor?.ScalarAsText(r.ReadString()!);
-                }
+                var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcOrderedPlainSizeFor(enc));
+                VisitDecryptedString(cipher.OrderedDecrypt(enc, dec), enc.Length, dec);
             }
         }
         else if (handler is EncryptedStringHandler)
@@ -731,18 +746,8 @@ public class ODBIterator
             else
             {
                 var enc = reader.ReadByteArrayAsSpan();
-                var size = cipher.CalcPlainSizeFor(enc);
-                var dec = GC.AllocateUninitializedArray<byte>(size);
-                if (!cipher.Decrypt(enc, dec))
-                {
-                    _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
-                }
-
-                fixed (void* _ = dec)
-                {
-                    var r = MemReader.CreateFromPinnedSpan(dec);
-                    _visitor?.ScalarAsText(r.ReadString()!);
-                }
+                var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcPlainSizeFor(enc));
+                VisitDecryptedString(cipher.Decrypt(enc, dec), enc.Length, dec);
             }
         }
         else if (handler is TupleFieldHandler tupleFieldHandler)

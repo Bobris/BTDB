@@ -44,4 +44,13 @@ public class AesGcmSymmetricCipherTest
         cipher.OrderedEncrypt(new byte[] { 1, 2, 3 }, second);
         Assert.Equal(first, second);
     }
+
+    // Before the fix a length that is no whole number of blocks threw CryptographicException instead of failing.
+    [Fact]
+    public void OrderedDecryptOfPartialBlockFails()
+    {
+        var cipher = new AesGcmSymmetricCipher(new byte[AesGcmSymmetricCipher.KeySize]);
+        var damaged = new byte[17];
+        Assert.False(cipher.OrderedDecrypt(damaged, new byte[cipher.CalcOrderedPlainSizeFor(damaged)]));
+    }
 }

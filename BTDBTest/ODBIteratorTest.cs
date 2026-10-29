@@ -743,6 +743,30 @@ public class ODBIteratorTest : IDisposable
         IterateWithApprove();
     }
 
+    // Before the fix a value that failed to decrypt was reported, and then its undecrypted buffer was read as a string
+    // anyway, which threw or reported garbage.
+    [Fact]
+    public void IterateSecretStringWithWrongKeyReportsFailure()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRelationWithSecrets>("IRelationWithSecrets");
+            var table = creator(tr);
+            table.Insert(new WithSecretString { Id = 1, Name = "James Bond", Code = "007" });
+            tr.Commit();
+        }
+
+        _db.Dispose();
+        _db = new ObjectDB();
+        _db.Open(_lowDb, false, new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[32])));
+        using var tr2 = _db.StartTransaction();
+        var visitor = new ToStringVisitor();
+        new ODBIterator(tr2, visitor).Iterate();
+        var text = visitor.ToString();
+        Assert.Contains("failed to decrypt", text);
+        Assert.DoesNotContain("007", text);
+    }
+
     public class WithComputedSecondaryKey
     {
         [PrimaryKey] public ulong Id { get; set; }

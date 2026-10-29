@@ -186,6 +186,10 @@
 
 ### Fixed
 
+- `ODBIterator` reported an encrypted string that failed to decrypt, as with another key, and then read its
+  undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
+  ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
+  whole number of blocks returns false instead of throwing `CryptographicException`.
 - LSM decoding: a length or other 32-bit value out of range in damaged data threw `OverflowException`, and a 64-bit
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now. So is a length
   whose end, near `int.MaxValue`, did not fit an `int`, which threw `ArgumentOutOfRangeException`.

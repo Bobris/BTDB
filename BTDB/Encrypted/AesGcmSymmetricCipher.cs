@@ -85,6 +85,8 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
 
     public bool OrderedDecrypt(ReadOnlySpan<byte> encryptedInput, Span<byte> outputBuffer)
     {
+        // Whole blocks only: damaged data fails the decryption instead of throwing.
+        if ((encryptedInput.Length & 15) != 0) return false;
         // Every value is encrypted on its own with a zero IV, so each decryption must start a new CBC chain.
         lock (_lock)
         {
