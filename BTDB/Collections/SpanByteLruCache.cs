@@ -392,7 +392,9 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
 
     public void IncreaseCapacity(int newCapacity)
     {
-        if (newCapacity < _buckets.Length) return;
+        // More entries than the maximum capacity would fill before the least recently used one is evicted.
+        if (newCapacity > _maxCapacity) newCapacity = _maxCapacity;
+        if (newCapacity <= _buckets.Length) return;
         newCapacity = HashHelpers.PowerOf2(newCapacity);
 
         var entries = new Entry[newCapacity];

@@ -100,6 +100,9 @@
 
 ### Fixed
 
+- `LruCache.IncreaseCapacity` and `SpanByteLruCache.IncreaseCapacity` grew the cache beyond its maximum capacity, so it
+  then held more items than the maximum before evicting the least recently used one. They now grow it at most to the
+  maximum.
 - ObjectDB: `float?` and `double?` key fields are refused like `float` and `double`; only the latter were checked.
   Their key encoding does not keep the order of negative values. Breaking: relations, `IDictionary` and `IOrderedSet`
   fields with such keys no longer open.
