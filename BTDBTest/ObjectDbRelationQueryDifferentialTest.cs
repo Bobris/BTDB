@@ -108,6 +108,75 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
             $"{throwingPredicates} of {PredicatesPerSeed} predicates threw.");
     }
 
+    static readonly Expression<Func<DiffRow, bool>>[] EdgeArithmeticPredicates =
+    [
+        p => (p.Score - p.Score + long.MinValue) % -1 == 0,
+        p => (p.Age - p.Age + int.MinValue) / -1 == 0,
+        p => (p.Age - p.Age + int.MinValue) % -1 == 0,
+        p => p.Age % (p.Age - p.Age) == 0,
+        p => p.Score / (p.Score - p.Score) == 0,
+        p => checked((byte)(p.Age + 300)) == 5,
+        p => (byte)(p.Age + 300) == 44,
+        p => checked(-(p.Age - p.Age + int.MinValue)) == 0,
+        p => -(p.Age - p.Age + int.MinValue) == int.MinValue,
+        p => (int)(p.Ratio * double.NaN) == 0,
+        p => (int)(p.Ratio + 1e20) == 0,
+        p => checked((int)(p.Ratio + 1e20)) == 0,
+        p => (long)(p.Ratio - 1e30) < 0,
+        p => (uint)(p.Ratio - 5) > 0,
+        p => (p.Delta * p.Delta) % 7 == 1,
+        p => (long)p.Rank * -1 < 0,
+        p => checked(p.Rank - 4000000000u) > 0,
+        p => p.Rank - 4000000000u > 0,
+        p => p.Level - 1 < 0,
+        p => checked((uint)(p.Age - 1000)) > 0,
+        p => (ulong)(p.Age - 1000) > 0,
+        p => p.Price % 0.3m == 0.1m,
+        p => p.Price / (p.Price - p.Price) > 0,
+        p => p.Price * 1e28m > 0,
+        p => (int)p.Price == 3,
+        p => (int)(p.Price * 1e20m) == 0,
+        p => (float)p.Ratio == 0.5f,
+        p => p.Bonus * 2 > 10,
+        p => p.Bonus % (p.Age - p.Age) == 0,
+        p => -p.Delta < 0,
+        p => (short)(p.Delta * 1000) < 0,
+        p => checked((short)(p.Delta * 1000)) < 0,
+        p => (sbyte)p.Level < 0,
+        p => checked((sbyte)p.Level) < 0,
+        p => (double)p.Score / 0 > 0,
+        p => p.Ratio % 0 == 0,
+        p => (decimal)p.Ratio > 1m,
+        p => (decimal)(p.Ratio * double.PositiveInfinity) > 1m,
+        p => (long)p.Price * p.Score > 0,
+        p => checked(p.Score * p.Score) > 0,
+        p => checked(p.Age * p.Age * p.Age * p.Age) > 0,
+        p => checked(p.Level + p.Level) > 300,
+        p => checked(p.Score + long.MaxValue) > 0,
+        p => checked(p.Score - long.MaxValue) < 0,
+    ];
+
+    // Arithmetic and conversions at the limits of their types: overflow, division by zero, NaN and infinities.
+    [Fact]
+    public void EdgeArithmeticMatchesLinqToObjects()
+    {
+        FillRows(new Random(7));
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var failures = new List<string>();
+        foreach (var predicate in EdgeArithmeticPredicates)
+        {
+            var expected = Run(() => rows.Where(predicate.Compile()));
+            var actual = Run(() => table.Query<DiffRow>().Where(predicate).AsEnumerable());
+            if (expected.Rows.SequenceEqual(actual.Rows) && expected.Exception?.GetType() == actual.Exception?.GetType())
+                continue;
+            failures.Add($"{predicate}: expected ({expected.Rows.Count}, {expected.Exception?.GetType().Name}) actual ({actual.Rows.Count}, {actual.Exception?.GetType().Name} {actual.Exception?.Message})");
+        }
+
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
     [Theory]
     [MemberData(nameof(Seeds))]
     public void TerminalOperatorsMatchLinqToObjects(int seed)
