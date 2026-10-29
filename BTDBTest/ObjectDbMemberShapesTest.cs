@@ -457,4 +457,55 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
                 rows.Query<RenamedRow>().OrderBy(r => r.Age).AsEnumerable().Select(r => r.Id));
         });
     }
+
+    public class BeforeRename
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public string? Name { get; set; }
+        public int Count { get; set; }
+    }
+
+    public interface IBeforeRenames : IRelation<BeforeRename>
+    {
+        void Insert(BeforeRename value);
+    }
+
+    public class AfterRename
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        [BTDB.FieldHandler.PersistedName("Name")] public string? Title { get; set; }
+        public int Count { get; set; }
+    }
+
+    public interface IAfterRenames : IRelation<AfterRename>
+    {
+        AfterRename FindById(ulong id);
+        bool UpdateById(ulong id, string? title);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RenamingPropertyWithPersistedNameKeepsData(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.InitRelation<IBeforeRenames>("Renamed")(tr).Insert(new BeforeRename { Id = 1, Name = "n", Count = 2 });
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var after = tr.InitRelation<IAfterRenames>("Renamed")(tr);
+                Assert.Equal("n", after.FindById(1).Title);
+                Assert.Equal(2, after.FindById(1).Count);
+                Assert.True(after.UpdateById(1, "t"));
+                Assert.Equal("t", after.FindById(1).Title);
+                tr.Commit();
+            }
+        });
+    }
 }
