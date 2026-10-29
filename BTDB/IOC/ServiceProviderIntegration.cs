@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,9 @@ sealed class ServiceProviderIntegration
 {
     ContainerImpl? _rootContainer;
     IServiceProvider? _rootServiceProvider;
+
+    // The service provider disposes the disposable instances export factories return, so the container must not.
+    readonly ConditionalWeakTable<object, object?> _disposedByServiceProvider = new();
     IReadOnlyList<ServiceCollectionExport>? _exports;
     Func<IContainer, IResolvingCtx?, object?>?[]? _exportFactories;
 
@@ -114,8 +118,12 @@ sealed class ServiceProviderIntegration
         var container = ReferenceEquals(serviceProvider, rootServiceProvider)
             ? _rootContainer ??= serviceProvider.GetRequiredService<ContainerImpl>()
             : serviceProvider.GetRequiredService<ContainerScope>().Container;
-        return GetOrCreateExportFactory(serviceProvider, exportIndex)(container, null)!;
+        var instance = GetOrCreateExportFactory(serviceProvider, exportIndex)(container, null)!;
+        if (instance is IDisposable or IAsyncDisposable) _disposedByServiceProvider.AddOrUpdate(instance, null);
+        return instance;
     }
+
+    public bool IsDisposedByServiceProvider(object instance) => _disposedByServiceProvider.TryGetValue(instance, out _);
 
     Func<IContainer, IResolvingCtx?, object?> GetOrCreateExportFactory(IServiceProvider serviceProvider,
         int exportIndex)

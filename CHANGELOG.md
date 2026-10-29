@@ -124,6 +124,9 @@
 
 ### Fixed
 
+- IOC: with `UseBtdbIoc`, a disposable singleton, scoped or registered instance resolved through the service provider
+  was disposed twice, by the provider, which disposes what factories return, and by the BTDB container owning it. The
+  container now leaves such instances to the provider.
 - IOC: a disposed scope returned the scoped instances it had disposed. Resolving one now throws
   `ObjectDisposedException`, like creating a new owned instance does; instances the scope does not own still resolve.
 - IOC: a scoped or singleton instance created while its container was being disposed could stay undisposed: it was

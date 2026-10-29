@@ -979,12 +979,15 @@ public class ContainerImpl : IRootContainer
         var orphans = Interlocked.Exchange(ref _ownedInstances, null);
         while (orphans != null)
         {
-            DisposeOwned(orphans.Instance);
+            if (!IsDisposedByServiceProvider(orphans.Instance)) DisposeOwned(orphans.Instance);
             orphans = orphans.Next;
         }
 
         ObjectDisposedException.ThrowIf(true, this);
     }
+
+    bool IsDisposedByServiceProvider(object instance) =>
+        _serviceProviderIntegration?.IsDisposedByServiceProvider(instance) == true;
 
     static void DisposeOwned(object instance)
     {
@@ -1006,7 +1009,7 @@ public class ContainerImpl : IRootContainer
         var ownedInstances = Interlocked.Exchange(ref _ownedInstances, null);
         while (ownedInstances != null)
         {
-            await DisposeOwnedAsync(ownedInstances.Instance);
+            if (!IsDisposedByServiceProvider(ownedInstances.Instance)) await DisposeOwnedAsync(ownedInstances.Instance);
             ownedInstances = ownedInstances.Next;
         }
 

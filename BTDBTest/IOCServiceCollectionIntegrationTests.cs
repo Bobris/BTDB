@@ -29,6 +29,50 @@ public partial class IocTests
 
     public sealed class TransientMsDiService;
 
+    public sealed class DisposableBtDbSingleton : IDisposable
+    {
+        public int Disposed;
+        public void Dispose() => Disposed++;
+    }
+
+    public sealed class DisposableBtDbScoped : IDisposable
+    {
+        public int Disposed;
+        public void Dispose() => Disposed++;
+    }
+
+    // Before the fix an instance resolved through the service provider was disposed by it, as it disposes what
+    // factories return, and again by the BTDB container owning it.
+    [Fact]
+    public async Task UseBtdbIocDisposesEachInstanceOnce()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterTypeWithFallback<DisposableBtDbSingleton>().AsSelf().SingleInstance();
+        containerBuilder.RegisterTypeWithFallback<DisposableBtDbScoped>().AsSelf().Scoped();
+        var registered = new DisposableBtDbScoped();
+        containerBuilder.RegisterInstance<IDisposable>(registered);
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder, ContainerVerification.None);
+        var sp = services.BuildServiceProvider();
+        var singleton = sp.GetRequiredService<DisposableBtDbSingleton>();
+        Assert.Same(registered, sp.GetRequiredService<IDisposable>());
+        var scope = sp.CreateAsyncScope();
+        var scoped = scope.ServiceProvider.GetRequiredService<DisposableBtDbScoped>();
+        var scopedThroughContainer = scope.ServiceProvider.GetRequiredService<IContainer>().Resolve<DisposableBtDbScoped>();
+        Assert.Same(scoped, scopedThroughContainer);
+        // Resolved only by the container, so only the container disposes it.
+        var otherScope = sp.CreateAsyncScope();
+        var onlyInContainer = otherScope.ServiceProvider.GetRequiredService<IContainer>().Resolve<DisposableBtDbScoped>();
+        await scope.DisposeAsync();
+        await otherScope.DisposeAsync();
+        Assert.Equal(1, scoped.Disposed);
+        Assert.Equal(1, onlyInContainer.Disposed);
+        Assert.Equal(0, singleton.Disposed);
+        await sp.DisposeAsync();
+        Assert.Equal(1, singleton.Disposed);
+        Assert.Equal(1, registered.Disposed);
+    }
+
     [Fact]
     public void BtDbOnlyModeDoesNotCreateServiceProviderForPureBtDbRegistrations()
     {
