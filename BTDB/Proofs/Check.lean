@@ -172,3 +172,5 @@ open Btdb
 #print axioms MemoryStreamSize.inv_preserved
 #print axioms MemoryStreamSize.grown_reads_zero
 #print axioms MemoryStreamSize.previous_reads_old
+#print axioms ProviderDisposal.fixed_once
+#print axioms ProviderDisposal.previous_twice
