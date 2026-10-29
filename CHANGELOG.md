@@ -71,6 +71,7 @@
   - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, merged event descriptors: registering those nested in them, they can be stored;
   - `BTDB/Proofs/`, LRU caches: no sequence of operations makes them hold more than their maximum capacity;
+  - `BTDB/Proofs/`, `DiskChunkCache.Put`: content it caches fits after at most one new value file;
   - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;
   - `BTDB/Proofs/`, keys of several fields: with prefix free, order keeping encodings of all fields but the last, a

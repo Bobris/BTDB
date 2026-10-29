@@ -142,3 +142,5 @@ open Btdb
 #print axioms ListKey.needs_count
 #print axioms QueryTopK.top_k_correct
 #print axioms SnappyExpansion.expansion_bound
+#print axioms ChunkCachePut.fixed_starts_at_most_one
+#print axioms ChunkCachePut.previous_never_fits
