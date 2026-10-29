@@ -690,13 +690,7 @@ public class SourceGenerator : IIncrementalGenerator
             if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal))
             {
-                var (indexName, hasVariant) = StripVariant(secondaryKeys, method.Name, false);
-
-                // Check if method has special suffix like "Partial"
-                var methodSuffix = method.Name.Substring(method.Name.IndexOf("By", StringComparison.Ordinal) + 2 +
-                                                         indexName.Length);
-                var hasSpecialSuffix = methodSuffix.StartsWith("Partial", StringComparison.Ordinal) ||
-                                       methodSuffix.StartsWith("OrDefault", StringComparison.Ordinal);
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 if (method.Name == "RemoveByIdPartial")
                 {
@@ -705,10 +699,6 @@ public class SourceGenerator : IIncrementalGenerator
                     if (removePartialError != null) return removePartialError;
                     continue;
                 }
-
-                // Skip validation for other special variants like "OrDefault"
-                if (hasVariant || hasSpecialSuffix)
-                    continue;
 
                 if (indexName != "Id")
                 {

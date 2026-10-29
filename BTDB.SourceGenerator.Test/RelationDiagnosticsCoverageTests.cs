@@ -125,6 +125,7 @@ public class RelationDiagnosticsCoverageTests : GeneratorTestsBase
         ["CountByNamePrimaryKeyTypeMismatch"] = ("int CountByName(string name, string tenantId);", "BTDB0015"),
         ["RemoveByIdNotWholeKey"] = ("bool RemoveById(ulong tenantId);", "BTDB0020"),
         ["ShallowRemoveByIdNameMismatch"] = ("void ShallowRemoveById(ulong tenantId, ulong key);", "BTDB0014"),
+        ["RemoveByIdOrDefaultKeyNameMismatch"] = ("bool RemoveByIdOrDefault(ulong tenantId, ulong key);", "BTDB0014"),
         ["RemoveByIdPartialMustReturnCount"] = ("bool RemoveByIdPartial(ulong tenantId, int maxCount);", "BTDB0057"),
         ["RemoveByIdPartialNeedsMaxCount"] = ("int RemoveByIdPartial(ulong tenantId, int count);", "BTDB0057"),
         ["RemoveByIdPartialNeedsParameters"] = ("int RemoveByIdPartial();", "BTDB0057"),
