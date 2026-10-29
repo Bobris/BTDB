@@ -98,6 +98,13 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
         return BuildFactory(implementationType, ci);
     }
 
+    static bool IsNullable(ParameterInfo parameter)
+    {
+        if (Nullable.GetUnderlyingType(parameter.ParameterType) != null) return true;
+        return !parameter.ParameterType.IsValueType &&
+               new NullabilityInfoContext().Create(parameter).WriteState == NullabilityState.Nullable;
+    }
+
     internal static Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx, object>> BuildFactory(
         Type implementationType, ConstructorInfo constructorInfo)
     {
@@ -120,8 +127,14 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
             StructList<(Func<IContainer, IResolvingCtx, object>?, object?)> parameterFactories = new();
             foreach (var parameter in parameters)
             {
-                parameterFactories.Add((container.CreateFactory(ctx, parameter.ParameterType, parameter.Name),
-                    parameter.DefaultValue));
+                var factory = container.CreateFactory(ctx, parameter.ParameterType, parameter.Name);
+                // Like generated factories: a parameter without a default value is null when nullable, else required.
+                // Its DefaultValue would be DBNull.Value, which the constructor cannot take.
+                var fallback = parameter.HasDefaultValue ? parameter.DefaultValue : null;
+                if (factory == null && !parameter.HasDefaultValue && !IsNullable(parameter))
+                    throw new ArgumentException(
+                        $"Cannot resolve {parameter.ParameterType.ToSimpleName()} {parameter.Name} parameter of {implementationType.ToSimpleName()}");
+                parameterFactories.Add((factory, fallback));
             }
 
             StructList<(MethodInvoker, Func<IContainer, IResolvingCtx, object>)> dependencyFactories = new();

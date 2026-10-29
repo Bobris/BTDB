@@ -104,6 +104,10 @@
 
 ### Fixed
 
+- IOC: a type without a generated factory, built by reflection, passed `DBNull.Value` for a constructor parameter that
+  could not be resolved and had no default value, so resolving it failed with a confusing conversion error, even
+  for a nullable parameter. Like generated factories, it now passes null for a nullable parameter and otherwise
+  throws `ArgumentException` naming the parameter.
 - Source generator: `UpdateById` with `double` or `float` values threw `NotSupportedException`, because the
   generated code did not write them.
 - ObjectDB: in relations emitted as IL, updating a row stored before its secondary key field became nullable failed a
