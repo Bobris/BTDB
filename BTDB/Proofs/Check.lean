@@ -200,3 +200,6 @@ open Btdb
 #print axioms ChunkIndexLoad.newest_only_loses
 #print axioms EquatableHash.hash_respects_equal
 #print axioms EquatableHash.old_hash_breaks
+#print axioms IocSelfWait.self_wait_never_ends
+#print axioms IocSelfWait.fixed_self_wait_fails
+#print axioms IocSelfWait.other_wait_unchanged

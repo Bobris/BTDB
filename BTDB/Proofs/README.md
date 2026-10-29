@@ -100,6 +100,9 @@ that doubles as bytes arrive.
 `BtdbProofs/EquatableHash.lean` models the equality and hash of `EquatableArray<T>`, whose default value equals an empty
 array.
 
+`BtdbProofs/IocSelfWait.lean` models the IOC container's wait for a singleton or scoped instance another resolve is
+creating, under a reentrant lock.
+
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
@@ -282,6 +285,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ReadGrowth.allocation_bounded`, `ReadGrowth.full_read_ends_at_length` | Whatever length damaged data declares, reading it allocates at most `max(4096, buffered) + 4 * present` bytes, `present` being what the input holds, and a complete block ends in an array of exactly its length; before the 2026-10-29 fix four readers allocated the declared length at once (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`). |
 | `ChunkIndexLoad.load_is_latest`, `ChunkIndexLoad.newest_only_loses` | Loading every hash index file oldest first, a later entry replacing an earlier, maps each key to its last entry in the whole history; before the 2026-10-29 fix only the newest file was loaded, first entry winning, which loses chunks stored before the previous reopen (`ChunkStorageTest.ItRemembersContentStoredBeforeAndAfterAReopen`). |
 | `EquatableHash.hash_respects_equal`, `EquatableHash.old_hash_breaks` | Hashing the default and an empty array both as 0 gives equal arrays equal hashes; before the 2026-10-29 fix the empty array hashed as `HashCode` of no items, a per-process seed, unlike the default array it equals (`EquatableArrayTests.DefaultAndEmptyArraysHashAlike`). |
+| `IocSelfWait.self_wait_never_ends`, `IocSelfWait.fixed_self_wait_fails`, `IocSelfWait.other_wait_unchanged` | The thread creating an instance and resolving it again passes its own reentrant lock at once and never sees the locker replaced, so before the 2026-10-29 fix it looped forever; the fixed wait fails at once for it and waits as before for every other thread (`IocTests.ServiceResolvingItselfWhileCreatedFails`). |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
