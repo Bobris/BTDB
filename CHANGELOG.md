@@ -196,6 +196,11 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- `IObjectDB.InitializeRelations` could drop relations registered meanwhile: each call published the registry and
+  factories it had copied before waiting for the writer, so of two concurrent calls the one finishing last dropped the
+  relations of the other, and relations auto-registered while it waited were dropped too. Calls now run one at a time
+  and publish only when nothing changed since they copied, starting again otherwise; the relation registry is guarded
+  by a lock.
 - `CompactorScheduler`: removing one database, as disposing it does, cancelled the compaction running for another,
   and neither that one nor the databases due after it were scheduled again until their transaction log moved to a new
   file. They stay due now; a compaction that fails waits the usual time before it is tried again.

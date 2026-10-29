@@ -304,9 +304,30 @@ public class ObjectDB : IObjectDB
     public async ValueTask InitializeRelations(IEnumerable<Type> relationTypes)
     {
         ArgumentNullException.ThrowIfNull(relationTypes);
+        var types = relationTypes.ToArray();
+        // Calls run one at a time; InitRelation does not take this lock, so waiting for the writer cannot deadlock.
+        await _initializeRelationsLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            while (!await TryInitializeRelations(types).ConfigureAwait(false))
+            {
+            }
+        }
+        finally
+        {
+            _initializeRelationsLock.Release();
+        }
+    }
+
+    readonly SemaphoreSlim _initializeRelationsLock = new(1, 1);
+
+    /// False when relations or factories registered meanwhile, by InitRelation or RegisterCustomRelation, changed
+    /// what this call copied; publishing its copy would drop them, so it starts again.
+    async ValueTask<bool> TryInitializeRelations(Type[] relationTypes)
+    {
         var previousRelations = _relationsInfo;
         var previousFactories = RelationFactories;
-        var relations = new RelationsInfo(previousRelations);
+        var relations = new RelationsInfo(previousRelations, out var version);
         var factories = new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>(previousFactories);
         var prepared = new List<RelationInfo>();
         var needsWriting = false;
@@ -322,7 +343,7 @@ public class ObjectDB : IObjectDB
                                                     " must be a closed interface implementing ICovariantRelation<>");
                 var name = type.GetCustomAttribute<PersistedNameAttribute>()?.Name ?? type.ToSimpleName();
                 var builder = RelationBuilder.GetFromCache(type, RelationInfoResolver);
-                var relation = relations.CreateByName(read, name, type, builder, false);
+                var relation = relations.CreateByName(read, name, type, builder, false)!;
                 factories.Add(type, (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator(relation));
                 prepared.Add(relation);
                 needsWriting |= relation.NeedsInitialization(read);
@@ -330,16 +351,11 @@ public class ObjectDB : IObjectDB
         }
 
         if (!needsWriting)
-        {
-            _relationsInfo = relations;
-            RelationFactories = factories;
-            return;
-        }
+            return TryPublishRelations(previousRelations, version, previousFactories, relations, factories);
 
         using var write = (IInternalObjectDBTransaction)await StartWritingTransaction().ConfigureAwait(false);
         // Publish all factories together so OnCreate can access any relation in this registration set.
-        _relationsInfo = relations;
-        RelationFactories = factories;
+        if (!TryPublishRelations(previousRelations, version, previousFactories, relations, factories)) return false;
         try
         {
             foreach (var relation in prepared) relation.Initialize(write);
@@ -356,10 +372,29 @@ public class ObjectDB : IObjectDB
         }
         catch
         {
+            relations.Retire();
             _relationsInfo = previousRelations;
             RelationFactories = previousFactories;
+            previousRelations.Unretire();
             throw;
         }
+
+        return true;
+    }
+
+    bool TryPublishRelations(RelationsInfo previousRelations, long version,
+        Dictionary<Type, Func<IObjectDBTransaction, IRelation>> previousFactories, RelationsInfo relations,
+        Dictionary<Type, Func<IObjectDBTransaction, IRelation>> factories)
+    {
+        if (!previousRelations.TryRetire(version)) return false;
+        if (Interlocked.CompareExchange(ref RelationFactories, factories, previousFactories) != previousFactories)
+        {
+            previousRelations.Unretire();
+            return false;
+        }
+
+        _relationsInfo = relations;
+        return true;
     }
 
     internal void UnregisterRelation(Type type)

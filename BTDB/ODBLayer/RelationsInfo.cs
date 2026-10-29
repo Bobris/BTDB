@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.Serialization;
@@ -29,22 +30,63 @@ public class RelationsInfo
     public readonly Dictionary<uint, RelationInfo> Id2Relation = new();
     uint _freeId = 1;
     readonly IRelationInfoResolver _relationInfoResolver;
+    // InitializeRelations publishes a copy; it may replace this one only while nothing changed since it was copied,
+    // and a replaced one takes no more relations, so no registration is lost or given an id twice.
+    readonly object _lock = new();
+    long _version;
+    bool _retired;
 
     public RelationsInfo(IRelationInfoResolver relationInfoResolver)
     {
         _relationInfoResolver = relationInfoResolver;
     }
 
-    internal RelationsInfo(RelationsInfo source)
+    internal RelationsInfo(RelationsInfo source, out long sourceVersion)
     {
         _relationInfoResolver = source._relationInfoResolver;
-        _freeId = source._freeId;
-        foreach (var pair in source._name2Id) _name2Id.Add(pair.Key, pair.Value);
-        foreach (var pair in source.Id2Relation) Id2Relation.Add(pair.Key, pair.Value);
+        lock (source._lock)
+        {
+            sourceVersion = source._version;
+            _freeId = source._freeId;
+            foreach (var pair in source._name2Id) _name2Id.Add(pair.Key, pair.Value);
+            foreach (var pair in source.Id2Relation) Id2Relation.Add(pair.Key, pair.Value);
+        }
     }
 
-    internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
+    internal bool TryRetire(long version)
+    {
+        lock (_lock)
+        {
+            if (_retired || _version != version) return false;
+            _retired = true;
+            return true;
+        }
+    }
+
+    internal void Retire()
+    {
+        lock (_lock) _retired = true;
+    }
+
+    internal void Unretire()
+    {
+        lock (_lock) _retired = false;
+    }
+
+    /// Null when this registry was replaced; the caller retries with the current one.
+    internal RelationInfo? CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
         IRelationBuilder builder, bool initialize = true)
+    {
+        lock (_lock)
+        {
+            if (_retired) return null;
+            _version++;
+            return CreateByNameLocked(tr, name, interfaceType, builder, initialize);
+        }
+    }
+
+    RelationInfo CreateByNameLocked(IInternalObjectDBTransaction tr, string name, Type interfaceType,
+        IRelationBuilder builder, bool initialize)
     {
         name = string.Intern(name);
         if (!_name2Id.TryGetValue(name, out var id))
@@ -74,7 +116,12 @@ public class RelationsInfo
             {
                 tr.RegisterRollbackAction(() =>
                 {
-                    Id2Relation.Remove(id);
+                    lock (_lock)
+                    {
+                        _version++;
+                        Id2Relation.Remove(id);
+                    }
+
                     ((ObjectDB)tr.Owner).UnregisterRelation(interfaceType);
                 });
             }
@@ -85,15 +132,18 @@ public class RelationsInfo
 
     internal void LoadRelations(IEnumerable<KeyValuePair<uint, string>> relationNames)
     {
-        foreach (var name in relationNames)
+        lock (_lock)
         {
-            _name2Id[string.Intern(name.Value)] = name.Key;
-            if (name.Key >= _freeId) _freeId = name.Key + 1;
+            foreach (var name in relationNames)
+            {
+                _name2Id[string.Intern(name.Value)] = name.Key;
+                if (name.Key >= _freeId) _freeId = name.Key + 1;
+            }
         }
     }
 
     public IEnumerable<RelationInfo> EnumerateRelationInfos()
     {
-        return Id2Relation.Values;
+        lock (_lock) return Id2Relation.Values.ToArray();
     }
 }

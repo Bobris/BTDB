@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.FieldHandler;
@@ -1091,7 +1092,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     Func<IObjectDBTransaction, IRelation> InitRelation(string relationName, Type interfaceType)
     {
         var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
-        var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
+        RelationInfo? relationInfo;
+        while ((relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder)) == null)
+            Thread.Yield();
         var factory = (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator(relationInfo);
         if (relationInfo.DeferredInitialization)
         {

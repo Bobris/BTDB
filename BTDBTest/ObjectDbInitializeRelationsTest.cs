@@ -223,6 +223,46 @@ public class ObjectDbInitializeRelationsTest : ObjectDbTestBase
         Assert.Single(tr.GetRelation<IOtherItems>());
     }
 
+    // Before the fix each call published the registrations it had copied before waiting for the writer, so the one
+    // finishing last dropped those of the other.
+    [Fact]
+    public async Task ConcurrentInitializationsKeepBothRegistrations()
+    {
+        Task first, second;
+        using (var writer = await _db.StartWritingTransaction())
+        {
+            first = _db.InitializeRelations([typeof(IItems)]).AsTask();
+            second = _db.InitializeRelations([typeof(IOtherItems)]).AsTask();
+            Assert.False(first.IsCompleted || second.IsCompleted);
+        }
+
+        await Task.WhenAll(first, second);
+        using var tr = _db.StartReadOnlyTransaction();
+        Assert.Empty(tr.GetRelation<IItems>());
+        Assert.Empty(tr.GetRelation<IOtherItems>());
+    }
+
+    [Fact]
+    public async Task InitializationKeepsRelationInitializedWhileItWaitedForWriter()
+    {
+        Task first;
+        using (var writer = await _db.StartWritingTransaction())
+        {
+            first = _db.InitializeRelations([typeof(IItems)]).AsTask();
+            var objectDb = _db;
+            objectDb.AllowAutoRegistrationOfRelations = true;
+            using (var read = _db.StartReadOnlyTransaction())
+                read.GetRelation<IOtherItems>();
+            objectDb.AllowAutoRegistrationOfRelations = false;
+            Assert.False(first.IsCompleted);
+        }
+
+        await first;
+        using var tr = _db.StartReadOnlyTransaction();
+        Assert.Empty(tr.GetRelation<IItems>());
+        Assert.Empty(tr.GetRelation<IOtherItems>());
+    }
+
     [Fact]
     public async Task ConflictingNamesDoNotPublishPartialRegistration()
     {
