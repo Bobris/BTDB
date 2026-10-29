@@ -223,6 +223,9 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             lock (_lock)
             {
                 MapContent();
+                // A damaged position past the mapping would read memory that is not this file's.
+                if (position > (ulong)_cachedLength || (ulong)data.Length > (ulong)_cachedLength - position)
+                    throw new EndOfStreamException();
                 new Span<byte>(_pointer + position, data.Length).CopyTo(data);
             }
         }

@@ -168,7 +168,7 @@ public class OnDiskFileCollection : IFileCollection
             readonly File _file;
             internal ulong Ofs;
             readonly byte[] _buf;
-            const int BufLength = 32768;
+            internal const int BufLength = 32768;
 
             public Writer(File file)
             {
@@ -256,7 +256,11 @@ public class OnDiskFileCollection : IFileCollection
                 }
 
                 if (data.Length == 0) return;
-                _writer.GetBuffer().AsSpan((int)(position - _writer.Ofs), data.Length).CopyTo(data);
+                // Bytes past the written ones can only be in the writer's buffer; a damaged position past it is no data.
+                var bufferOffset = position - _writer.Ofs;
+                if (bufferOffset > Writer.BufLength || (ulong)data.Length > Writer.BufLength - bufferOffset)
+                    throw new EndOfStreamException();
+                _writer.GetBuffer().AsSpan((int)bufferOffset, data.Length).CopyTo(data);
             }
         }
 

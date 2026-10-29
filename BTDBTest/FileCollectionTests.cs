@@ -100,6 +100,27 @@ public class FileCollectionTests : IDisposable
         Assert.Equal(6u, collection.AddFile("trl").Index);
     }
 
+    // Before the fix a read past the end, as a damaged value pointer asks for, failed with ArgumentOutOfRangeException
+    // in OnDiskFileCollection and read memory outside the mapping in OnDiskMemoryMappedFileCollection.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReadFarPastTheEndIsEndOfStream(bool memoryMapped)
+    {
+        using IFileCollection collection = memoryMapped
+            ? new OnDiskMemoryMappedFileCollection(_dir)
+            : new OnDiskFileCollection(_dir);
+        var file = collection.AddFile("trl");
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.WriteInt32LE(42);
+        writer.Flush();
+        var data = new byte[16];
+        Assert.Throws<EndOfStreamException>(() => file.RandomRead(data, 1ul << 32, false));
+        Assert.Throws<EndOfStreamException>(() => file.RandomRead(data, ulong.MaxValue - 4, false));
+        file.RandomRead(data.AsSpan(0, 4), 0, false);
+        Assert.Equal(42, PackUnpack.UnpackInt32LE(data, 0));
+    }
+
     public void Dispose()
     {
         Directory.Delete(_dir, true);
