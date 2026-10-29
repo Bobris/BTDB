@@ -167,3 +167,5 @@ open Btdb
 #print axioms Fletcher.odd_fits
 #print axioms Fletcher.result_fits
 #print axioms Fletcher.fold_mod
+#print axioms DisposeRace.fixed_disposes_once
+#print axioms DisposeRace.previous_leaks

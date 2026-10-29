@@ -52,3 +52,4 @@ import BtdbProofs.BonInteger
 import BtdbProofs.FirstDifference
 import BtdbProofs.PtrLenExclude
 import BtdbProofs.Fletcher
+import BtdbProofs.DisposeRace
