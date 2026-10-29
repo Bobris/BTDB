@@ -2136,6 +2136,31 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ListKeysOfAnyItemTypeAreWritten()
+    {
+        // Before the fix lookups by list keys of items other than string and ulong threw NotSupportedException.
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Tagged
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Tags")] public List<int?> Tags { get; set; } = new();
+                [SecondaryKey("Days")] public HashSet<DateTime> Days { get; set; } = new();
+            }
+
+            public interface ITaggedTable : IRelation<Tagged>
+            {
+                IEnumerable<Tagged> ListByTags(List<int?> tags);
+                IEnumerable<Tagged> ListByDays(HashSet<DateTime> days);
+            }
+            """);
+    }
+
+    [Fact]
     public Task NullableDoubleIndexIsRejected()
     {
         // language=cs

@@ -5614,10 +5614,39 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"{indent}writer.WriteStringValues({valueExpression});\n");
                 return;
             default:
+                if (TryGetKeyCollectionElementType(normalizedType, out var elementType))
+                {
+                    // Like ListFieldOrderedHandler: the count, then the items as values, not as keys
+                    var item = $"item{indent.Length}";
+                    declarations.Append(
+                        $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var {item} in {valueExpression}) {{\n");
+                    AppendWriteValue(declarations, item, elementType, null, indent + "    ");
+                    declarations.Append($"{indent}}} }}\n");
+                    return;
+                }
+
                 declarations.Append(
                     $"{indent}throw new NotSupportedException(\"Key does not support type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static bool TryGetKeyCollectionElementType(string type, out string elementType)
+    {
+        foreach (var prefix in new[]
+                 {
+                     "System.Collections.Generic.List<", "System.Collections.Generic.IList<",
+                     "System.Collections.Generic.HashSet<", "System.Collections.Generic.ISet<"
+                 })
+        {
+            if (!type.StartsWith(prefix, StringComparison.Ordinal) || !type.EndsWith(">", StringComparison.Ordinal))
+                continue;
+            elementType = TypeUtilities.RemoveGlobalPrefix(type.Substring(prefix.Length, type.Length - prefix.Length - 1));
+            return true;
+        }
+
+        elementType = "";
+        return false;
     }
 
     static bool TryGetTupleElementTypes(string type, out string[] elementTypes)

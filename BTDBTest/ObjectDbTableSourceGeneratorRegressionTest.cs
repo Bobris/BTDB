@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.ODBLayer;
@@ -71,6 +72,35 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
         Assert.Null(table.FindByIdOrDefault(2)!.Rate);
         Assert.True(table.UpdateById(2, 21.5m));
         Assert.Equal(21.5m, table.FindByIdOrDefault(2)!.Other);
+    }
+
+    public class Tagged
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        [SecondaryKey("Tags")] public List<int> Tags { get; set; } = [];
+        [SecondaryKey("Days")] public HashSet<DateTime> Days { get; set; } = [];
+    }
+
+    public interface ITaggedTable : IRelation<Tagged>
+    {
+        IEnumerable<Tagged> ListByTags(List<int> tags);
+        IEnumerable<Tagged> ListByDays(HashSet<DateTime> days);
+    }
+
+    // Before the fix generated lookups threw NotSupportedException for list keys of items other than string and ulong.
+    [Fact]
+    public void ListKeysOfAnyItemTypeCanBeLookedUp()
+    {
+        var day = new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ITaggedTable>();
+        table.Upsert(new() { Id = 1, Tags = [1, -2], Days = [day] });
+        table.Upsert(new() { Id = 2, Tags = [3], Days = [] });
+        Assert.Equal(1ul, Assert.Single(table.ListByTags([1, -2])).Id);
+        Assert.Equal(2ul, Assert.Single(table.ListByTags([3])).Id);
+        Assert.Empty(table.ListByTags([1]));
+        Assert.Equal(1ul, Assert.Single(table.ListByDays([day])).Id);
+        Assert.Equal(2ul, Assert.Single(table.ListByDays([])).Id);
     }
 
     public interface IRedeclaringPersonTable : IRelation<Person>
