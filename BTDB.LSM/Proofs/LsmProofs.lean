@@ -21,6 +21,7 @@ import LsmProofs.KeySuccessor
 import LsmProofs.PrefixRange
 import LsmProofs.WalBatch
 import LsmProofs.WalSplit
+import LsmProofs.NewestManifest
 import LsmProofs.Varint
 import LsmProofs.LevelLookup
 import LsmProofs.CompactionPointer

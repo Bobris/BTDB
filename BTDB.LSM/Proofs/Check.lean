@@ -81,3 +81,5 @@ open Lsm
 #print axioms CompactionPointer.pick_after
 #print axioms CompactionPointer.picks_cycle
 #print axioms CompactionPointer.every_table_picked
+#print axioms NewestManifest.newest_is_listed_and_greatest
+#print axioms NewestManifest.none_without_manifests
