@@ -243,6 +243,69 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.DoesNotContain("VerifyHandlers", GetSource(sources, "TestNamespace.ExplicitHandler.g.cs"));
     }
 
+    // Before the fix the first one-parameter method with the dispatcher name was used, so a static or private overload
+    // made the generated code fail to compile and a class handling two message types was registered for one of them.
+    [Fact]
+    public void DispatcherRegistersEveryAccessibleOverload()
+    {
+        var sources = GenerateAndCompile("""
+            using BTDB.IOC;
+
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public interface IHandler<in TMessage> : IDispatcher
+            {
+                void Consume(TMessage message);
+            }
+
+            public class Message
+            {
+            }
+
+            public class Other
+            {
+            }
+
+            public class Handler : IHandler<Message>
+            {
+                static void Consume(string text)
+                {
+                }
+
+                void Consume(int value)
+                {
+                }
+
+                public void Consume(Message message)
+                {
+                }
+            }
+
+            public class TwoHandler : IHandler<Message>, IHandler<Other>
+            {
+                public void Consume(Message message)
+                {
+                }
+
+                public void Consume(Other message)
+                {
+                }
+            }
+            """);
+        var handler = GetSource(sources, "TestNamespace.Handler.g.cs");
+        Assert.Contains("ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Message)", handler);
+        Assert.DoesNotContain("typeof(string)", handler);
+        var twoHandler = GetSource(sources, "TestNamespace.TwoHandler.g.cs");
+        Assert.Contains("ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Message)", twoHandler);
+        Assert.Contains("ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Other)", twoHandler);
+    }
+
     [Fact]
     public void DefaultInterfaceDispatcherReimplementedByClassIsNotUsedFromInterface()
     {

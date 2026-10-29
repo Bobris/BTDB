@@ -47,17 +47,45 @@ public class InheritedMethodHandler : HandlerBase<InheritedHandlerMessage>
 {
 }
 
+public class FirstHandlerMessage
+{
+}
+
+public class SecondHandlerMessage
+{
+}
+
+public class TwoMessagesHandler : IDefaultMethodHandler<FirstHandlerMessage>,
+    IDefaultMethodHandler<SecondHandlerMessage>
+{
+    public List<string> Calls { get; } = [];
+
+    public void Consume(FirstHandlerMessage message) => Calls.Add("first");
+
+    public void Consume(SecondHandlerMessage message) => Calls.Add("second");
+}
+
 public class IocDispatcherTests
 {
+    // Before the fix only the first Consume overload was registered, so the other message type had no handler.
+    [Fact]
+    public unsafe void DispatcherCallsEveryOverloadOfHandler()
+    {
+        var container = BuildContainer();
+        var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);
+
+        consume(container, new FirstHandlerMessage());
+        consume(container, new SecondHandlerMessage());
+
+        Assert.Equal(["first", "second"], container.Resolve<TwoMessagesHandler>().Calls);
+    }
+
     // Before the fix a dispatcher method declared in a base class of the handler was not found, so messages of the
     // handler were not dispatched to it.
     [Fact]
     public unsafe void DispatcherCallsMethodOfHandlerBaseClass()
     {
-        var builder = new ContainerBuilder();
-        builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
-        builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
-        var container = builder.Build();
+        var container = BuildContainer();
         var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);
 
         consume(container, new InheritedHandlerMessage());
@@ -68,10 +96,7 @@ public class IocDispatcherTests
     [Fact]
     public unsafe void DispatcherCallsDefaultInterfaceMethod()
     {
-        var builder = new ContainerBuilder();
-        builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
-        builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
-        var container = builder.Build();
+        var container = BuildContainer();
         var verify = IDefaultMethodDispatcher.CreateVerifyDispatcher(container);
         var consume = IDefaultMethodDispatcher.CreateConsumeDispatcher(container);
 
@@ -79,5 +104,15 @@ public class IocDispatcherTests
         consume(container, new DefaultMethodMessage());
 
         Assert.Equal(["default verify", "consume"], container.Resolve<DefaultMethodHandler>().Calls);
+    }
+
+    // Creating a dispatcher resolves every handler registered for it, so all of them are registered.
+    static IContainer BuildContainer()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<DefaultMethodHandler>().AsSelf().SingleInstance();
+        builder.RegisterType<InheritedMethodHandler>().AsSelf().SingleInstance();
+        builder.RegisterType<TwoMessagesHandler>().AsSelf().SingleInstance();
+        return builder.Build();
     }
 }

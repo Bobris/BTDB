@@ -1709,21 +1709,13 @@ public class SourceGenerator : IIncrementalGenerator
         foreach (var (name, _, _, ifaceName, _) in symbol.AllInterfaces.SelectMany(
                      DetectDispatcherInfo))
         {
-            var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
-                m.Name == name && m.Parameters.Length == 1) ?? FindInheritedDispatcherMethod(symbol, name);
-            string? callType = null;
-            if (m == null)
+            foreach (var (m, callType) in FindDispatcherMethods(symbol, name))
             {
-                // Default interface methods are not members of the class and can only be called through the interface.
-                m = FindDefaultInterfaceDispatcherMethod(symbol, name);
-                if (m == null) continue;
-                callType = m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                dispatchers.Add(new(name,
+                    m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
+                    ifaceName, callType));
             }
-
-            dispatchers.Add(new(name,
-                m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
-                ifaceName, callType));
         }
 
         var containingNamespace = symbol.ContainingNamespace;
@@ -2754,41 +2746,48 @@ public class SourceGenerator : IIncrementalGenerator
         return false;
     }
 
-    static IMethodSymbol? FindInheritedDispatcherMethod(INamedTypeSymbol symbol, string name)
+    // Finds a method for each message type the class handles: its own and inherited methods first, the most derived
+    // one winning, then default interface methods. CallType is the interface to call a default implementation through.
+    static List<(IMethodSymbol Method, string? CallType)> FindDispatcherMethods(INamedTypeSymbol symbol, string name)
     {
-        for (var baseType = symbol.BaseType; baseType != null; baseType = baseType.BaseType)
+        var result = new List<(IMethodSymbol Method, string? CallType)>();
+        var handled = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        for (var type = symbol; type != null; type = type.BaseType)
         {
-            foreach (var m in baseType.GetMembers(name).OfType<IMethodSymbol>())
+            foreach (var m in type.GetMembers(name).OfType<IMethodSymbol>())
             {
-                if (m is not { IsStatic: false, Parameters.Length: 1 }) continue;
-                if (m.DeclaredAccessibility != Accessibility.Public &&
-                    !(m.DeclaredAccessibility is Accessibility.Internal or Accessibility.ProtectedOrInternal &&
-                      SymbolEqualityComparer.Default.Equals(m.ContainingAssembly, symbol.ContainingAssembly))) continue;
-                return m;
+                if (!IsDispatcherMethodCandidate(m, symbol)) continue;
+                if (handled.Add(m.Parameters[0].Type)) result.Add((m, null));
             }
         }
 
-        return null;
-    }
-
-    static IMethodSymbol? FindDefaultInterfaceDispatcherMethod(INamedTypeSymbol symbol, string name)
-    {
         foreach (var iface in symbol.AllInterfaces)
         {
             if (iface.DeclaredAccessibility == Accessibility.Private) continue;
             foreach (var m in iface.GetMembers(name).OfType<IMethodSymbol>())
             {
-                if (m is not { IsStatic: false, IsAbstract: false, Parameters.Length: 1 }) continue;
-                if (m.DeclaredAccessibility != Accessibility.Public &&
-                    !(m.DeclaredAccessibility == Accessibility.Internal &&
-                      SymbolEqualityComparer.Default.Equals(m.ContainingAssembly, symbol.ContainingAssembly))) continue;
+                if (m.IsAbstract || !IsDispatcherMethodCandidate(m, symbol)) continue;
                 // Skip default implementations the class overrides explicitly or that a more derived interface reimplements.
                 if (!SymbolEqualityComparer.Default.Equals(symbol.FindImplementationForInterfaceMember(m), m)) continue;
-                return m;
+                if (handled.Add(m.Parameters[0].Type))
+                    result.Add((m, m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
             }
         }
 
-        return null;
+        return result;
+    }
+
+    // Generated registrations live in a file class of the handler's assembly, so they can call only public and internal
+    // instance methods.
+    static bool IsDispatcherMethodCandidate(IMethodSymbol m, INamedTypeSymbol symbol)
+    {
+        if (m is not
+            {
+                IsStatic: false, IsGenericMethod: false, MethodKind: MethodKind.Ordinary, Parameters.Length: 1
+            } || m.Parameters[0].RefKind != RefKind.None) return false;
+        return m.DeclaredAccessibility == Accessibility.Public ||
+               m.DeclaredAccessibility is Accessibility.Internal or Accessibility.ProtectedOrInternal &&
+               SymbolEqualityComparer.Default.Equals(m.ContainingAssembly, symbol.ContainingAssembly);
     }
 
     static DispatcherInfo[] DetectDispatcherInfo(INamedTypeSymbol symbol)
