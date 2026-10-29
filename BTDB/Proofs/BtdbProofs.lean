@@ -48,3 +48,4 @@ import BtdbProofs.ChunkCachePut
 import BtdbProofs.RemovePartial
 import BtdbProofs.DispatcherOverloads
 import BtdbProofs.DispatcherContainers
+import BtdbProofs.BonInteger

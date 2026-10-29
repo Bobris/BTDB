@@ -144,6 +144,9 @@ on a handler (`../../BTDB.SourceGenerator/Main.cs`).
 `BtdbProofs/DispatcherContainers.lean` models how a generated dispatcher keeps the handler factories of each root
 container (`../IOC/IContainer.cs`).
 
+`BtdbProofs/BonInteger.lean` models how Bon stores an integer as a sign and a magnitude and reads it as a `long` or a
+narrower member (`../Bon/Bon.cs`, `../Serialization/BonSerializer.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -275,6 +278,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `DispatcherOverloads.previous_picks_uncallable`, `DispatcherOverloads.previous_misses_second` | Before the 2026-10-29 fix the first method with the name and one parameter was used, so a static or private overload broke compilation and a handler of two message types was registered for one (`IOCCoverageTests.DispatcherRegistersEveryAccessibleOverload`, `IocDispatcherTests`). |
 | `DispatcherContainers.get_built_for_root`, `DispatcherContainers.get_stable` | After any sequence of calls, a dispatcher call gets the handler factory built for the root container it is called with, and keeps getting the same one. |
 | `DispatcherContainers.previous_wrong_root` | Before the 2026-10-29 fix one factory per process was kept, so creating a dispatcher for a second container made the first container's calls use the second's handlers (`IocDispatcherTests.DispatcherOfEachContainerCallsItsHandlers`). |
+| `BonInteger.read_write`, `BonInteger.read_exact`, `BonInteger.fits_exact` | Every `long` Bon writes reads back as itself; a value `TryGetLong` returns, or a typed deserializer loads into a member, is the stored integer, within the range of `long` and of the member. |
+| `BonInteger.previous_wraps` | Before the 2026-10-29 fix the magnitude was cast to `long`, so `ulong.MaxValue` read as `-1` (`BonTests.IntegersOutsideOfLongAreNotReadAsLong`, `BonSerializerCoverageTest.IntegersOutsideOfMemberTypeAreLeftDefault`). |
 | `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |

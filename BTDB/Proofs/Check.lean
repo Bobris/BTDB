@@ -154,3 +154,7 @@ open Btdb
 #print axioms DispatcherContainers.get_built_for_root
 #print axioms DispatcherContainers.get_stable
 #print axioms DispatcherContainers.previous_wrong_root
+#print axioms BonInteger.read_write
+#print axioms BonInteger.read_exact
+#print axioms BonInteger.fits_exact
+#print axioms BonInteger.previous_wraps
