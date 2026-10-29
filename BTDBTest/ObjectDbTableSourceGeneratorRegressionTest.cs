@@ -46,32 +46,31 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
 
     public class Price
     {
-        [PrimaryKey(1)] public decimal Amount { get; set; }
-        [SecondaryKey("Rate")] public decimal? Rate { get; set; }
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public decimal? Rate { get; set; }
         public decimal Other { get; set; }
     }
 
     public interface IPriceTable : IRelation<Price>
     {
-        Price? FindByIdOrDefault(decimal amount);
-        IEnumerable<Price> ListByRate(decimal? rate);
-        bool UpdateById(decimal amount, decimal other);
+        Price? FindByIdOrDefault(ulong id);
+        bool UpdateById(ulong id, decimal other);
     }
 
+    // Decimal key fields are refused (BTDB0035), decimal values are stored.
     [Fact]
-    public void DecimalKeysAndUpdateByIdValuesWork()
+    public void DecimalValuesAndUpdateByIdValuesWork()
     {
         using var tr = _db.StartTransaction();
         var table = tr.GetRelation<IPriceTable>();
-        table.Upsert(new() { Amount = 1.5m, Rate = 0.25m, Other = 10m });
-        table.Upsert(new() { Amount = 2.5m, Rate = null, Other = 20m });
+        table.Upsert(new() { Id = 1, Rate = 0.25m, Other = 10m });
+        table.Upsert(new() { Id = 2, Rate = null, Other = 20m });
 
-        Assert.Equal(10m, table.FindByIdOrDefault(1.5m)!.Other);
-        Assert.Null(table.FindByIdOrDefault(3.5m));
-        Assert.Equal(1.5m, Assert.Single(table.ListByRate(0.25m)).Amount);
-        Assert.Equal(2.5m, Assert.Single(table.ListByRate(null)).Amount);
-        Assert.True(table.UpdateById(2.5m, 21.5m));
-        Assert.Equal(21.5m, table.FindByIdOrDefault(2.5m)!.Other);
+        Assert.Equal(10m, table.FindByIdOrDefault(1)!.Other);
+        Assert.Equal(0.25m, table.FindByIdOrDefault(1)!.Rate);
+        Assert.Null(table.FindByIdOrDefault(2)!.Rate);
+        Assert.True(table.UpdateById(2, 21.5m));
+        Assert.Equal(21.5m, table.FindByIdOrDefault(2)!.Other);
     }
 
     public interface IRedeclaringPersonTable : IRelation<Person>

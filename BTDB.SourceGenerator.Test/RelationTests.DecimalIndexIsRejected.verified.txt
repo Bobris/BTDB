@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+
+public interface IDecimalIndexTable : IRelation<DecimalIndexEntity>
+                 ^^^^^^^^^^^^^^^^^^
+{
+*/
+ : (8,17)-(8,35),
+      Message: Field 'Price' type 'decimal?' cannot be used in indexes,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0035,
+        Title: Field 'Price' type 'decimal?' cannot be used in indexes,
+        MessageFormat: Field 'Price' type 'decimal?' cannot be used in indexes,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

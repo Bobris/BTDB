@@ -1541,7 +1541,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var f = fields[i];
             var indexes = f.Indexes.GetArray() ?? [];
-            if (indexes.Length > 0 && IsFloatOrDoubleType(f.Type))
+            if (indexes.Length > 0 && IsUnorderableKeyType(f.Type))
             {
                 return GenerationError("BTDB0035",
                     $"Field '{f.Name}' type '{f.Type}' cannot be used in indexes", location);
@@ -5910,15 +5910,11 @@ public class SourceGenerator : IIncrementalGenerator
         return true;
     }
 
-    static bool IsFloatOrDoubleType(string type)
+    // Their key encodings do not keep their order; a decimal key also keeps its scale, so 1.0 and 1.00 differ.
+    static bool IsUnorderableKeyType(string type)
     {
         var normalized = NormalizeType(type);
-        if (normalized is "float" or "double")
-        {
-            return true;
-        }
-
-        return false;
+        return normalized is "float" or "double" or "decimal" or "decimal?";
     }
 
     static bool IsBoolType(string type)

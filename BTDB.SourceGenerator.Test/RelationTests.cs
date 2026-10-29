@@ -2136,6 +2136,26 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task DecimalIndexIsRejected()
+    {
+        // A decimal key would sort by its scale first, and 1.0 and 1.00 would be different keys.
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class DecimalIndexEntity
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Price")] public decimal? Price { get; set; }
+            }
+
+            public interface IDecimalIndexTable : IRelation<DecimalIndexEntity>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task ContainsSupportsMoreKeyTypes()
     {
         // language=cs

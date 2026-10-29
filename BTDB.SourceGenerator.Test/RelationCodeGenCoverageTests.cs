@@ -269,34 +269,28 @@ public class RelationCodeGenCoverageTests : GeneratorTestsBase
     }
 
     [Fact]
-    public void DecimalKeysAndUpdateByIdValuesAreWritten()
+    public void DecimalUpdateByIdValuesAreWritten()
     {
         // decimal is displayed by its C# keyword, which was not recognized and generated code threw
-        // NotSupportedException at runtime instead of writing the value.
+        // NotSupportedException at runtime instead of writing the value. Decimal keys are refused (BTDB0035).
         var sources = GenerateAndCompile("""
-            using System.Collections.Generic;
             using BTDB.ODBLayer;
 
             namespace TestNamespace;
 
             public class Price
             {
-                [PrimaryKey(1)] public decimal Amount { get; set; }
-                [SecondaryKey("Rate")] public decimal? Rate { get; set; }
+                [PrimaryKey(1)] public ulong Id { get; set; }
                 public decimal Other { get; set; }
             }
 
             public interface IPriceTable : IRelation<Price>
             {
-                Price FindById(decimal amount);
-                IEnumerable<Price> ListByRate(decimal? rate);
-                void UpdateById(decimal amount, decimal other);
+                void UpdateById(ulong id, decimal other);
             }
             """);
         var code = GetSource(sources, "TestNamespace.IPriceTable.g.cs");
         Assert.DoesNotContain("NotSupportedException", code);
-        Assert.Contains("writer.WriteDecimal(amount);", code);
-        Assert.Contains("writer.WriteDecimal(rate.Value);", code);
         Assert.Contains("writer.WriteDecimal(other);", code);
     }
 

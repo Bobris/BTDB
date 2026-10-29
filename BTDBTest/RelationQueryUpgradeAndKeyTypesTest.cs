@@ -283,19 +283,6 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
     }
 
     [Generate]
-    public class KeyDecimal
-    {
-        [PrimaryKey(1)] public decimal K { get; set; }
-        [PrimaryKey(2)] public int Sub { get; set; }
-        public int V { get; set; }
-    }
-
-    public interface IKeyDecimalTable : IRelation<KeyDecimal>
-    {
-        void Insert(KeyDecimal row);
-    }
-
-    [Generate]
     public class KeyTimeSpan
     {
         [PrimaryKey(1)] public TimeSpan K { get; set; }
@@ -342,10 +329,10 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
     [Generate]
     public class ValueEqualityKeys
     {
-        [PrimaryKey(1)] public decimal Price { get; set; }
+        [PrimaryKey(1)] public int Group { get; set; }
         [PrimaryKey(2)] public DateTimeOffset At { get; set; }
         [PrimaryKey(3)] public DateTime When { get; set; }
-        [SecondaryKey("Amount")] public decimal Amount { get; set; }
+        public decimal Amount { get; set; }
         [SecondaryKey("Seen")] public DateTimeOffset Seen { get; set; }
         [SecondaryKey("Stamp")] public DateTime Stamp { get; set; }
         public int V { get; set; }
@@ -358,8 +345,9 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
         void Insert(ValueEqualityKeys row);
     }
 
-    /// C# equality of decimal ignores scale, of DateTimeOffset ignores the offset and of DateTime ignores Kind, while
-    /// their stored key bytes keep them; equality conditions on such key fields must still match like LINQ.
+    /// C# equality of DateTimeOffset ignores the offset and of DateTime ignores Kind, while their stored key bytes keep
+    /// them; equality conditions on such key fields must still match like LINQ. Decimal equality ignores scale too, but
+    /// decimal key fields are refused, so it is checked on a value.
     [Fact]
     public void EqualityOnKeysWithNonCanonicalEncodingMatchesLinq()
     {
@@ -368,14 +356,18 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
         {
             var table = tr.GetRelation<IValueEqualityKeysTable>();
             var v = 0;
+            var group = 0;
             foreach (var price in new[] { 1.5m, 2.50m, 3m })
-            foreach (var hours in new[] { 0, 2 })
             {
-                table.Insert(new()
+                group++;
+                foreach (var hours in new[] { 0, 2 })
                 {
-                    Price = price, At = new(instant.AddHours(hours)), When = instant.AddDays(hours),
-                    Amount = price, Seen = new(instant.AddHours(hours)), Stamp = instant.AddDays(hours), V = v++
-                });
+                    table.Insert(new()
+                    {
+                        Group = group, At = new(instant.AddHours(hours)), When = instant.AddDays(hours),
+                        Amount = price, Seen = new(instant.AddHours(hours)), Stamp = instant.AddDays(hours), V = v++
+                    });
+                }
             }
 
             tr.Commit();
@@ -393,17 +385,15 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
         var prices = new[] { 1.500m, 3.0m };
         var ats = new[] { shiftedAt };
         var whens = new[] { unspecifiedWhen };
-        AssertSame(rows, query, "Price == 2.500m", q => q.Where(r => r.Price == price250).ToList());
-        AssertSame(rows, query, "Price == 1.50m && At", q => q.Where(r => r.Price == price15 && r.At == shiftedAt).ToList());
-        AssertSame(rows, query, "Price in", q => q.Where(r => prices.Contains(r.Price)).ToList());
-        AssertSame(rows, query, "Price, At, When", q => q.Where(r => r.Price == 3m && r.At == shiftedAt && r.When == unspecifiedWhen).ToList());
+        AssertSame(rows, query, "Amount == 1.50m && At", q => q.Where(r => r.Amount == price15 && r.At == shiftedAt).ToList());
+        AssertSame(rows, query, "Group, At, When", q => q.Where(r => r.Group == 3 && r.At == shiftedAt && r.When == unspecifiedWhen).ToList());
         AssertSame(rows, query, "Amount == 2.500m", q => q.Where(r => r.Amount == price250).ToList());
         AssertSame(rows, query, "Amount in", q => q.Count(r => prices.Contains(r.Amount)));
         AssertSame(rows, query, "Seen == shifted", q => q.Where(r => r.Seen == shiftedAt).ToList());
         AssertSame(rows, query, "Seen in", q => q.Count(r => ats.Contains(r.Seen)));
         AssertSame(rows, query, "Stamp == unspecified", q => q.Where(r => r.Stamp == unspecifiedWhen).ToList());
         AssertSame(rows, query, "Stamp in", q => q.Count(r => whens.Contains(r.Stamp)));
-        AssertSame(rows, query, "Price == 2.5m exact scale", q => q.Where(r => r.Price == 2.50m).ToList());
+        AssertSame(rows, query, "Amount == 2.5m exact scale", q => q.Where(r => r.Amount == 2.50m).ToList());
     }
 
     [Fact]
@@ -415,7 +405,6 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
         {
             var dates = tr.GetRelation<IKeyDateTimeTable>();
             var guidTable = tr.GetRelation<IKeyGuidTable>();
-            var decimals = tr.GetRelation<IKeyDecimalTable>();
             var spans = tr.GetRelation<IKeyTimeSpanTable>();
             var offsets = tr.GetRelation<IKeyDateTimeOffsetTable>();
             var sbytes = tr.GetRelation<IKeySByteTable>();
@@ -425,7 +414,6 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
                 guidTable.Insert(new() { K = guids[i], V = i });
                 for (var sub = 0; sub < 3; sub++)
                 {
-                    decimals.Insert(new() { K = i / 4m - 1, Sub = sub, V = i + sub });
                     spans.Insert(new() { K = TimeSpan.FromMinutes(i - 4), Sub = sub, V = i + sub });
                     offsets.Insert(new() { K = new DateTimeOffset(baseDate.AddHours(i)), Sub = sub, V = i + sub });
                     sbytes.Insert(new()
@@ -458,15 +446,6 @@ public class RelationQueryUpgradeAndKeyTypesTest : ObjectDbTestBase
             AssertSame(rows, table.Query<KeyGuid>(), "Guid ==", q => q.Where(r => r.K == key).Select(r => r.V).ToList());
             AssertSame(rows, table.Query<KeyGuid>(), "Guid !=", q => q.Where(r => r.K != key).Select(r => r.V).ToList());
             AssertSame(rows, table.Query<KeyGuid>(), "Guid in", q => q.Count(r => guids.Take(3).ToArray().Contains(r.K)));
-        }
-        {
-            var table = readTr.GetRelation<IKeyDecimalTable>();
-            var rows = table.ToList();
-            var key = 0.25m;
-            AssertSame(rows, table.Query<KeyDecimal>(), "decimal ==", q => q.Where(r => r.K == key).Select(r => r.V).ToList());
-            AssertSame(rows, table.Query<KeyDecimal>(), "decimal == sub", q => q.Where(r => r.K == key && r.Sub > 0).Select(r => r.V).ToList());
-            AssertSame(rows, table.Query<KeyDecimal>(), "decimal 0.250 ==", q => q.Count(r => r.K == 0.250m));
-            AssertSame(rows, table.Query<KeyDecimal>(), "decimal <", q => q.Where(r => r.K < 0).Select(r => r.V).ToList());
         }
         {
             var table = readTr.GetRelation<IKeyTimeSpanTable>();
