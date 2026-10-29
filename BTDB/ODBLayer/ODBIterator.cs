@@ -708,46 +708,38 @@ public class ODBIterator
                     .First();
                 IterateHandler(ref reader, itemHandler, skipping, null);
             }
+            else if (!skipping && (_visitor?.NeedScalarAsText() ?? false))
+            {
+                _visitor.ScalarAsText("null");
+            }
+        }
+        else if (handler is OrderedEncryptedStringHandler or EncryptedStringHandler)
+        {
+            var cipher = _tr.Owner.GetSymmetricCipher();
+            if (skipping || !(_visitor?.NeedScalarAsText() ?? false))
+            {
+                reader.SkipByteArray();
+            }
+            else if (cipher is InvalidSymmetricCipher)
+            {
+                var length = reader.ReadVUInt32();
+                _visitor.ScalarAsText($"Encrypted[{length}]");
+                if (length > 0)
+                    reader.SkipBlock(length - 1);
+            }
             else
             {
-                if (_visitor?.NeedScalarAsText() ?? false)
+                var enc = reader.ReadByteArrayAsSpan();
+                if (handler is OrderedEncryptedStringHandler)
                 {
-                    _visitor.ScalarAsText("null");
+                    var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcOrderedPlainSizeFor(enc));
+                    VisitDecryptedString(cipher.OrderedDecrypt(enc, dec), enc.Length, dec);
                 }
-            }
-        }
-        else if (handler is OrderedEncryptedStringHandler)
-        {
-            var cipher = _tr.Owner.GetSymmetricCipher();
-            if (cipher is InvalidSymmetricCipher)
-            {
-                var length = reader.ReadVUInt32();
-                _visitor?.ScalarAsText($"Encrypted[{length}]");
-                if (length > 0)
-                    reader.SkipBlock(length - 1);
-            }
-            else
-            {
-                var enc = reader.ReadByteArrayAsSpan();
-                var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcOrderedPlainSizeFor(enc));
-                VisitDecryptedString(cipher.OrderedDecrypt(enc, dec), enc.Length, dec);
-            }
-        }
-        else if (handler is EncryptedStringHandler)
-        {
-            var cipher = _tr.Owner.GetSymmetricCipher();
-            if (cipher is InvalidSymmetricCipher)
-            {
-                var length = reader.ReadVUInt32();
-                _visitor?.ScalarAsText($"Encrypted[{length}]");
-                if (length > 0)
-                    reader.SkipBlock(length - 1);
-            }
-            else
-            {
-                var enc = reader.ReadByteArrayAsSpan();
-                var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcPlainSizeFor(enc));
-                VisitDecryptedString(cipher.Decrypt(enc, dec), enc.Length, dec);
+                else
+                {
+                    var dec = GC.AllocateUninitializedArray<byte>(cipher.CalcPlainSizeFor(enc));
+                    VisitDecryptedString(cipher.Decrypt(enc, dec), enc.Length, dec);
+                }
             }
         }
         else if (handler is TupleFieldHandler tupleFieldHandler)

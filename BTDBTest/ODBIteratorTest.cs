@@ -767,6 +767,45 @@ public class ODBIteratorTest : IDisposable
         Assert.DoesNotContain("007", text);
     }
 
+    public class WithSkippedFields
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public EncryptedString Code { get; set; }
+        public int? Missing { get; set; }
+        public string Plain { get; set; }
+    }
+
+    public interface IRelationWithSkippedFields : IRelation<WithSkippedFields>
+    {
+        void Insert(WithSkippedFields value);
+    }
+
+    sealed class SkippingVisitor : ToStringVisitor, IODBVisitor
+    {
+        bool IODBVisitor.StartField(string name) => name == nameof(WithSkippedFields.Plain) && StartField(name);
+    }
+
+    // Before the fix a skipped encrypted string was decrypted and reported, and a skipped null nullable reported as
+    // "null", inside whatever the visitor was in.
+    [Fact]
+    public void SkippedFieldsAreNotReported()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRelationWithSkippedFields>("IRelationWithSkippedFields");
+            creator(tr).Insert(new WithSkippedFields { Id = 1, Code = "007", Plain = "visible" });
+            tr.Commit();
+        }
+
+        using var tr2 = _db.StartTransaction();
+        var visitor = new SkippingVisitor();
+        new ODBIterator(tr2, visitor).Iterate();
+        var text = visitor.ToString();
+        Assert.Contains("ScalarStr visible", text);
+        Assert.DoesNotContain("007", text);
+        Assert.DoesNotContain("null", text);
+    }
+
     public class WithComputedSecondaryKey
     {
         [PrimaryKey] public ulong Id { get; set; }

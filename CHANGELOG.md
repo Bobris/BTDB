@@ -190,6 +190,8 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- `ODBIterator` decrypted and reported an encrypted string in a field the visitor skipped, and reported a null
+  nullable in a skipped field as "null", so they showed up inside whatever the visitor was in. Both are skipped now.
 - LSM decoding: a length or other 32-bit value out of range in damaged data threw `OverflowException`, and a 64-bit
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now. So is a length
   whose end, near `int.MaxValue`, did not fit an `int`, which threw `ArgumentOutOfRangeException`.
