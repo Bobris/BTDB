@@ -927,7 +927,16 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         using var cursor = _keyValueTr!.CreateCursor();
         if (cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, stackalloc byte[10])))
+        {
+            // The deleted object may be a singleton, whose cached content must not outlive it.
+            Span<byte> buffer = stackalloc byte[5];
+            var tableId = (uint)PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref buffer));
+            var tableInfo = _owner.TablesInfo.FindById(tableId);
+            if (tableInfo != null && tableInfo.MayBeSingletonOid(oid))
+                tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             cursor.EraseCurrent();
+        }
+
         if (obj == null) return;
         DBObjectMetadata metadata = null;
         if (_objSmallMetadata != null)
@@ -1020,7 +1029,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         writer.WriteVUInt32(tableInfo.Id);
         writer.WriteVUInt32(tableInfo.ClientTypeVersion);
         tableInfo.Saver(this, metadata, ref writer, o);
-        if (tableInfo.IsSingletonOid(metadata.Id))
+        if (tableInfo.MayBeSingletonOid(metadata.Id))
         {
             tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
         }
@@ -1123,6 +1132,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         cursor.EraseAll(ObjectDB.AllDictionariesPrefix);
         cursor.EraseAll(ObjectDB.AllRelationsPKPrefix);
         cursor.EraseAll(ObjectDB.AllRelationsSKPrefix);
+        foreach (var tableInfo in _owner.TablesInfo.EnumerateTableInfos())
+            tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
     }
 
 }

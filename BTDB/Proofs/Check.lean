@@ -216,3 +216,6 @@ open Btdb
 #print axioms PowerOfTwo.smear_eq
 #print axioms PowerOfTwo.power_of_two_of_and_pred
 #print axioms PowerOfTwo.powerOf2_correct
+#print axioms SingletonCache.reachable_inv
+#print axioms SingletonCache.lookup_correct
+#print axioms SingletonCache.writer_store_ignored

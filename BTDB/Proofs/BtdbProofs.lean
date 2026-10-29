@@ -71,3 +71,4 @@ import BtdbProofs.BonItemBound
 import BtdbProofs.CapacityHint
 import BtdbProofs.StringKeyOrder
 import BtdbProofs.PowerOfTwo
+import BtdbProofs.SingletonCache

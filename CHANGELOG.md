@@ -172,6 +172,8 @@
     for valid data.
   - `BTDB/Proofs/`, hash collections: bucket counts are rounded up to the smallest power of two not below the
     capacity asked for.
+  - `BTDB/Proofs/`, ObjectDB singletons: a transaction taking a singleton from the shared content cache gets the one
+    of its snapshot, whatever readers cache concurrently.
   - `BTDB/Proofs/`, Bon: a container holds at most as many items as its buffer has bytes, so the check refuses only
     damage.
   - `BTDB/Proofs/`, IOC: a service resolving itself while it is created fails instead of waiting for itself forever.
@@ -190,6 +192,10 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- ObjectDB could serve a stale singleton from its shared content cache after a commit changed it: storing the
+  singleton got by enumeration or by its oid before the database had loaded its oid, deleting it by its oid, and
+  `DeleteAllData` did not invalidate the cached content, which a reader could cache meanwhile or had cached before.
+  They invalidate it now.
 - `ODBIterator` decrypted and reported an encrypted string in a field the visitor skipped, and reported a null
   nullable in a skipped field as "null", so they showed up inside whatever the visitor was in. Both are skipped now.
 - LSM decoding: a length or other 32-bit value out of range in damaged data threw `OverflowException`, and a 64-bit

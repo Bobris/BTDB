@@ -946,4 +946,12 @@ public class TableInfo
     {
         return (ulong)Interlocked.Read(ref _singletonOid) == id;
     }
+
+    // Until the singleton oid is loaded any object may be the singleton, got by enumeration or by its oid, and a
+    // reader can load it and cache the old content meanwhile.
+    internal bool MayBeSingletonOid(ulong id)
+    {
+        var singletonOid = (ulong)Interlocked.Read(ref _singletonOid);
+        return singletonOid == 0 || singletonOid == id;
+    }
 }
