@@ -52,6 +52,7 @@
       bits;
     - a table's Bloom filter passes every key added to it;
     - evicting from the block cache ends, and stops over capacity only when every block left is pinned;
+    - level size targets are the exact products capped at `long.MaxValue`, never smaller for a deeper level;
     - looking up a key in a level reads a table exactly when its span holds the key, a compaction takes exactly the
       tables overlapping its range, and replacing them keeps the level sorted and disjoint.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
@@ -159,6 +160,9 @@
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
+- `LsmKeyValueDB` compaction: a level's size target past `long.MaxValue`, as `LevelMultiplier = 1000` gives level 5
+  of seven, wrapped around to a negative or zero target, so the level never compacted down or always did. The target
+  is capped at `long.MaxValue` now.
 - `LsmBlockCache`: evicting blocks could stop with a shard still over capacity and an unpinned block left, because
   passing pinned blocks used up the eviction's fixed step budget. Eviction now stops only after passing every block of
   the shard pinned in a row.

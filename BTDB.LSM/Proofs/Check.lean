@@ -61,3 +61,5 @@ open Lsm
 #print axioms ClockEviction.inv_step
 #print axioms ClockEviction.step_decreases
 #print axioms ClockEviction.progress
+#print axioms LevelTarget.target_eq
+#print axioms LevelTarget.target_mono

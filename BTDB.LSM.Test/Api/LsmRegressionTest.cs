@@ -225,6 +225,27 @@ public class LsmRegressionTest
             };
         }
     }
+
+    // Before the fix a level target past long.MaxValue wrapped: with a multiplier of 1000 level 5 got a negative
+    // target, so its score was negative and it never compacted down.
+    [Theory]
+    [InlineData(256L * 1024 * 1024, 1000)]
+    [InlineData(1L << 32, 1 << 16)]
+    [InlineData(long.MaxValue, 2)]
+    public void LevelTargetSaturatesInsteadOfWrapping(long levelBaseBytes, int levelMultiplier)
+    {
+        var options = new Engine.LsmCompactionOptions { LevelBaseBytes = levelBaseBytes, LevelMultiplier = levelMultiplier };
+        var previous = Engine.LsmCompaction.LevelTarget(options, 1);
+        Assert.Equal(levelBaseBytes, previous);
+        for (var level = 2; level < 8; level++)
+        {
+            var target = Engine.LsmCompaction.LevelTarget(options, level);
+            Assert.True(target >= previous, $"level {level}: {target} < {previous}");
+            previous = target;
+        }
+
+        Assert.Equal(long.MaxValue, previous);
+    }
 }
 
 sealed class FailingReadStorage(InMemoryLsmStorage inner) : ILsmStorage

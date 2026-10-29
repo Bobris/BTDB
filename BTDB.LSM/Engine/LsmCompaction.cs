@@ -62,8 +62,10 @@ static class LsmCompaction
 {
     public static long LevelTarget(LsmCompactionOptions options, int level)
     {
+        // Saturates: a wrapped product could be negative or zero, so its level would never compact or always would.
         var target = options.LevelBaseBytes;
-        for (var i = 1; i < level; i++) target *= options.LevelMultiplier;
+        for (var i = 1; i < level; i++)
+            target = target > long.MaxValue / options.LevelMultiplier ? long.MaxValue : target * options.LevelMultiplier;
         return target;
     }
 
