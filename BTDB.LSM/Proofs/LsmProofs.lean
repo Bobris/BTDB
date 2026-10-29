@@ -16,6 +16,7 @@ import LsmProofs.MemtableDelta
 import LsmProofs.MemtableTree
 import LsmProofs.ClipCoverage
 import LsmProofs.PrefixSuccessor
+import LsmProofs.KeySuccessor
 import LsmProofs.Varint
 import LsmProofs.LevelLookup
 import LsmProofs.Bloom

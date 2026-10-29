@@ -63,3 +63,5 @@ open Lsm
 #print axioms ClockEviction.progress
 #print axioms LevelTarget.target_eq
 #print axioms LevelTarget.target_mono
+#print axioms KeySuccessor.lt_successor
+#print axioms KeySuccessor.nothing_between

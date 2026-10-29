@@ -47,7 +47,8 @@
       one path of its tree, is the sum of the deltas of its entries below the key;
     - splitting, merging and updating a memtable's tree keep it a search tree with exact subtree sums;
     - cutting range tombstones at the table boundaries of a compaction keeps their coverage;
-    - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix;
+    - a scan from a key prefix up to its successor visits exactly the keys starting with the prefix, and no key lies
+      between a key and its successor, the key with a zero byte appended;
     - variable-length integers, signed ones too, read back as written, and every one the decoder accepts fits in 64
       bits;
     - a table's Bloom filter passes every key added to it;
