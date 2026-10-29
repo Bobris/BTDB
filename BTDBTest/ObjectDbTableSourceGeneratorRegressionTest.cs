@@ -113,6 +113,30 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
         Assert.Equal(2ul, Assert.Single(table.ListByKinds([])).Id);
     }
 
+    public class TupleKeyed
+    {
+        [PrimaryKey(1)] public (int Id, TagKind Kind) Key { get; set; }
+        public int V { get; set; }
+    }
+
+    public interface ITupleKeyedTable : IRelation<TupleKeyed>
+    {
+        TupleKeyed? FindByIdOrDefault((int Id, TagKind Kind) key);
+    }
+
+    // Before the fix generated lookups threw NotSupportedException for tuple keys with enum elements.
+    [Fact]
+    public void TupleKeysWithEnumElementsCanBeLookedUp()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ITupleKeyedTable>();
+        table.Upsert(new() { Key = (1, TagKind.Negative), V = 10 });
+        table.Upsert(new() { Key = (1, TagKind.Positive), V = 20 });
+        Assert.Equal(10, table.FindByIdOrDefault((1, TagKind.Negative))!.V);
+        Assert.Equal(20, table.FindByIdOrDefault((1, TagKind.Positive))!.V);
+        Assert.Null(table.FindByIdOrDefault((2, TagKind.Positive)));
+    }
+
     public interface IRedeclaringPersonTable : IRelation<Person>
     {
         new void RemoveAll();

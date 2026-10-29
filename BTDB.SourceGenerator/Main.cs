@@ -848,7 +848,7 @@ public class SourceGenerator : IIncrementalGenerator
                 method.Parameters.Select(p =>
                     new ParameterInfo(p.Name, p.Type.ToDisplayString(MethodSignatureTypeFormat), null,
                         p.Type.IsReferenceType, p.IsOptional, null,
-                        GetEnumUnderlyingType(p.Type), GetItemEnumUnderlyingType(p.Type))).ToArray(), true,
+                        GetEnumUnderlyingType(p.Type), GetNestedEnums(p.Type))).ToArray(), true,
                 method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
             var methodReturnType = method.ReturnType as INamedTypeSymbol;
             if (methodReturnType is { TypeKind: TypeKind.Interface })
@@ -5153,14 +5153,45 @@ public class SourceGenerator : IIncrementalGenerator
             or "global::Microsoft.Extensions.Primitives.StringValues" or "Microsoft.Extensions.Primitives.StringValues";
     }
 
-    /// The underlying type of the enum items of a list or set key, which its type name does not tell.
-    static string? GetItemEnumUnderlyingType(ITypeSymbol typeSymbol)
+    /// The enums anywhere in a type, like tuple elements or list items, with their underlying types, as
+    /// "Type=Underlying;..." with types named like key writers see them; their type names do not tell they are enums.
+    static string? GetNestedEnums(ITypeSymbol typeSymbol)
     {
-        if (typeSymbol is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } collection &&
-            collection.Name is "List" or "IList" or "HashSet" or "ISet" &&
-            collection.InNamespace("System", "Collections", "Generic"))
-            return GetEnumUnderlyingType(collection.TypeArguments[0]);
-        return null;
+        var found = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        CollectNestedEnums(typeSymbol, found);
+        return found.Count == 0 ? null : string.Join(";", found.Select(p => p.Key + "=" + p.Value));
+    }
+
+    static void CollectNestedEnums(ITypeSymbol typeSymbol, SortedDictionary<string, string> found)
+    {
+        if (typeSymbol is not INamedTypeSymbol named) return;
+        if (named is { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying })
+        {
+            found[named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "")] =
+                underlying.ToDisplayString();
+            return;
+        }
+
+        foreach (var typeArgument in named.TypeArguments) CollectNestedEnums(typeArgument, found);
+    }
+
+    static Dictionary<string, string>? ParseNestedEnums(string? nestedEnums)
+    {
+        if (nestedEnums == null) return null;
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in nestedEnums.Split(';'))
+        {
+            var separator = pair.IndexOf('=');
+            result[pair.Substring(0, separator)] = pair.Substring(separator + 1);
+        }
+
+        return result;
+    }
+
+    static string? NestedEnumUnderlyingType(string valueType, Dictionary<string, string>? nestedEnums)
+    {
+        if (nestedEnums == null) return null;
+        return nestedEnums.TryGetValue(valueType.Replace("global::", "").Trim(), out var underlying) ? underlying : null;
     }
 
     static string? GetEnumUnderlyingType(ITypeSymbol typeSymbol)
@@ -5364,7 +5395,8 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     static void AppendWriteValue(StringBuilder declarations, string valueExpression, string valueType,
-        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false)
+        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false,
+        Dictionary<string, string>? nestedEnums = null)
     {
         if (isReferenceType && valueType.EndsWith("?", StringComparison.Ordinal))
         {
@@ -5382,11 +5414,12 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"{indent}{{\n");
             declarations.Append($"{indent}    writer.WriteBool(true);\n");
             AppendWriteValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
-                enumUnderlyingType, indent + "    ");
+                enumUnderlyingType, indent + "    ", false, nestedEnums);
             declarations.Append($"{indent}}}\n");
             return;
         }
 
+        enumUnderlyingType ??= NestedEnumUnderlyingType(valueType, nestedEnums);
         if (enumUnderlyingType != null)
         {
             var normalizedUnderlying = NormalizeSupportedValueType(enumUnderlyingType);
@@ -5417,7 +5450,7 @@ public class SourceGenerator : IIncrementalGenerator
             for (var i = 0; i < tupleElementTypes.Length; i++)
             {
                 AppendWriteValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i], null,
-                    indent);
+                    indent, false, nestedEnums);
             }
 
             return;
@@ -5491,12 +5524,12 @@ public class SourceGenerator : IIncrementalGenerator
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
         AppendWriteOrderableValue(declarations, parameter.Identifier, parameter.Type, parameter.EnumUnderlyingType,
-            "            ", parameter.IsReference, parameter.ItemEnumUnderlyingType);
+            "            ", parameter.IsReference, ParseNestedEnums(parameter.NestedEnums));
     }
 
     static void AppendWriteOrderableValue(StringBuilder declarations, string valueExpression, string valueType,
         string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false,
-        string? itemEnumUnderlyingType = null)
+        Dictionary<string, string>? nestedEnums = null)
     {
         if (isReferenceType && valueType.EndsWith("?", StringComparison.Ordinal))
         {
@@ -5514,11 +5547,12 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"{indent}{{\n");
             declarations.Append($"{indent}    writer.WriteBool(true);\n");
             AppendWriteOrderableValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
-                enumUnderlyingType, indent + "    ");
+                enumUnderlyingType, indent + "    ", false, nestedEnums);
             declarations.Append($"{indent}}}\n");
             return;
         }
 
+        enumUnderlyingType ??= NestedEnumUnderlyingType(valueType, nestedEnums);
         if (enumUnderlyingType != null)
         {
             var normalizedUnderlying = NormalizeSupportedValueType(enumUnderlyingType);
@@ -5548,9 +5582,8 @@ public class SourceGenerator : IIncrementalGenerator
         {
             for (var i = 0; i < tupleElementTypes.Length; i++)
             {
-                AppendWriteOrderableValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i],
-                    null,
-                    indent);
+                AppendWriteOrderableValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i], null,
+                    indent, false, nestedEnums);
             }
 
             return;
@@ -5631,7 +5664,7 @@ public class SourceGenerator : IIncrementalGenerator
                     var item = $"item{indent.Length}";
                     declarations.Append(
                         $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var {item} in {valueExpression}) {{\n");
-                    AppendWriteValue(declarations, item, elementType, itemEnumUnderlyingType, indent + "    ");
+                    AppendWriteValue(declarations, item, elementType, null, indent + "    ", false, nestedEnums);
                     declarations.Append($"{indent}}} }}\n");
                     return;
                 }
@@ -6083,7 +6116,7 @@ record ParameterInfo(
     bool Optional,
     string? DefaultValue,
     string? EnumUnderlyingType = null,
-    string? ItemEnumUnderlyingType = null)
+    string? NestedEnums = null)
 {
     /// The name written as code, with the verbatim prefix a keyword needs.
     public string Identifier => CSharpSyntaxUtilities.EscapeIdentifier(Name);

@@ -101,6 +101,9 @@
 
 ### Fixed
 
+- Source generator: lookups by a tuple key with enum elements, like `FindById((int Id, Color Color) key)`, threw
+  `NotSupportedException`, because the generator knew tuple elements only by their type names. Relation method
+  parameters now carry the underlying types of the enums anywhere in their types.
 - Source generator: lookups by a key that is a list or set of items other than `string` and `ulong`, like
   `ListByTags(List<int> tags)`, threw `NotSupportedException`, although such keys are stored. The generated code now
   writes them like the key handler does: the count, then the items, enums and nullable items included.

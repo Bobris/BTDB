@@ -2136,6 +2136,30 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task TupleKeysWithEnumElementsAreWritten()
+    {
+        // Before the fix lookups by tuple keys with enum elements threw NotSupportedException.
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public enum Kind : short { Negative = -3, Positive = 7 }
+            public enum Flag : byte { A = 1 }
+
+            public class TupleKeyed
+            {
+                [PrimaryKey(1)] public (int Id, Kind Kind, Flag? Flag) Key { get; set; }
+                public int V { get; set; }
+            }
+
+            public interface ITupleKeyedTable : IRelation<TupleKeyed>
+            {
+                TupleKeyed? FindByIdOrDefault((int Id, Kind Kind, Flag? Flag) key);
+            }
+            """);
+    }
+
+    [Fact]
     public Task ListKeysOfAnyItemTypeAreWritten()
     {
         // Before the fix lookups by list keys of items other than string and ulong threw NotSupportedException.
