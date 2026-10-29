@@ -180,6 +180,13 @@ sealed unsafe class NativeClockCache : IDisposable
                 Pointer = (byte*)NativeMemory.Alloc((nuint)Math.Max(1, data.Length))
             };
             data.CopyTo(new Span<byte>(slot.Pointer, data.Length));
+            // Disposed while loading: Dispose already freed the shard, so the entry is only for this pin.
+            if (_disposed != 0)
+            {
+                slot.Dead = true;
+                return new(slot);
+            }
+
             shard.Slots.Add((file, offset), slot);
             shard.Ring.Add(slot);
             shard.Size += data.Length;

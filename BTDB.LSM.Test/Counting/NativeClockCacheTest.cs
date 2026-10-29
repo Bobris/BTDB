@@ -36,6 +36,22 @@ public class NativeClockCacheTest
         Assert.True(cache.SizeBytes <= 64 * 1024 + 1024 * 4, $"{cache.SizeBytes}");
     }
 
+    // Before the fix a block loaded while the cache was disposed was added to it anyway, so it was never freed.
+    [Fact]
+    public void BlockLoadedWhileDisposingIsNotKept()
+    {
+        var cache = new NativeClockCache(64 * 1024, 1);
+        var pin = cache.Pin(new(0, 1), 0, () =>
+        {
+            cache.Dispose();
+            return Block(1, 0, 1024);
+        });
+        Assert.Equal(1ul, BitConverter.ToUInt64(pin.Span));
+        Assert.False(cache.Contains(new(0, 1), 0));
+        Assert.Equal(0, cache.SizeBytes);
+        pin.Dispose();
+    }
+
     [Fact]
     public void PinnedEntryStaysReadableAfterEvictionOfItsFile()
     {
