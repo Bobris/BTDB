@@ -200,7 +200,9 @@
   whole number of blocks returns false instead of throwing `CryptographicException`.
 - ObjectDB loaded an object stored under a name as the interface registered under it, failing with
   `MemberAccessException`, when the interface took the name before its implementation: a relation field of interface
-  type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now.
+  type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
+  before the implementation is registered reports the type as not registered instead of binding the table to the
+  interface for the rest of the session.
 - `IObjectDBTransaction.Enumerate` missed new objects not flushed yet when an object stored after them was already
   written, as by `StoreAndFlush`: only those newer than the last stored object were added. All of them are now.
 - ObjectDB accepted two storable types under one name, as registering names a type without its namespace or enclosing

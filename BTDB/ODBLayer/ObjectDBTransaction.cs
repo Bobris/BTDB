@@ -780,7 +780,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         if (tableInfo.ClientType == null)
         {
             var typeByName = _owner.Type2NameRegistry.FindTypeByName(tableInfo.Name);
-            if (typeByName != null)
+            // An interface or abstract class shares the name only until its implementation is registered; binding the
+            // table to it would keep the implementation out for good.
+            if (typeByName is { IsInterface: false, IsAbstract: false })
             {
                 tableInfo.ClientType = typeByName;
             }

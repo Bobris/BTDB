@@ -1,3 +1,4 @@
+using System;
 using BTDB;
 using BTDB.ODBLayer;
 using BTDB.KVDBLayer;
@@ -81,5 +82,32 @@ public class ObjectDbTypeNameClashTest : ObjectDbTestBase
         var loaded = read.InitRelation<IDrawings>("Drawings")(read);
         _db.RegisterType(typeof(Shape));
         Assert.Equal(3, Assert.IsType<Shape>(loaded.FindById(1).Shape).Sides);
+    }
+
+    // Before the fix a read before the implementation was registered bound the table to the interface, failing with
+    // MemberAccessException then and for the rest of the session.
+    [Fact]
+    public void ReadingBeforeImplementationIsRegisteredDoesNotBindTableToInterface()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var drawings = tr.InitRelation<IDrawings>("Drawings")(tr);
+            _db.RegisterType(typeof(Shape));
+            drawings.Insert(new Drawing { Id = 1, Shape = new Shape { Sides = 3 } });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        Func<IObjectDBTransaction, IDrawings> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<IDrawings>("Drawings");
+            var ex = Assert.Throws<BTDBException>(() => creator(tr).FindById(1));
+            Assert.Contains("not registered", ex.Message);
+        }
+
+        _db.RegisterType(typeof(Shape));
+        using var read = _db.StartTransaction();
+        Assert.Equal(3, Assert.IsType<Shape>(creator(read).FindById(1).Shape).Sides);
     }
 }
