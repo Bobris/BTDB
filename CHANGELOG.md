@@ -35,7 +35,8 @@
     - manifest fencing gives every writer session a fresh epoch;
     - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
       components;
-    - cursors keep their position when another cursor changes a key suffix.
+    - cursors keep their position when another cursor changes a key suffix;
+    - seeking in a data block through its restarts finds the first entry at or after the key.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the

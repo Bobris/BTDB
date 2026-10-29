@@ -29,3 +29,4 @@ open Lsm
 #print axioms Rank.count_correct
 #print axioms FuzzyCursor.notify_position
 #print axioms FuzzyCursor.notify_kind
+#print axioms BlockSeek.lower_bound_correct

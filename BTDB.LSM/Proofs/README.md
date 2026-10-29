@@ -23,6 +23,9 @@ fragments, sorted and disjoint as `TombstoneSet` keeps them. Point deltas and `C
 state below each component, as consistent components store them. `TombstoneSet.Find` is modelled by its result, not
 its binary search.
 
+`LsmProofs/BlockSeek.lean` models `RawBlock.LowerBound`: finding the first restart past the key, then scanning the
+entries of the restart before it. The binary search over restarts is modelled by its result.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -88,6 +91,7 @@ Not modelled in `Wal.lean`:
 | `Rank.rank_component` | One component's step of `RankFrom` is exact: the live keys below `x` are its point deltas below `x`, less the `CoveredBelow` of its fragments ending at or before `x`, plus the rank below the component at the start of the fragment containing `x`, else at `x`. |
 | `Rank.rank_correct`, `Rank.count_correct` | `RankFrom` over a stack is the number of live keys below `x`, and `CountFrom`, the sum of `DeltaSum − CoveredSum`, is the number of live keys. |
 | `FuzzyCursor.notify_position`, `FuzzyCursor.notify_kind` | After `UpdateKeySuffix` replaces a key by the only key with its prefix, every cursor of the transaction has the position it had, and current cursors stay current and fuzzy ones fuzzy. Before the 2026-10-28 fix a fuzzy cursor kept its erased key, which the renamed key could pass (`LsmRegressionTest.KeySuffixUpdateKeepsFuzzyCursorOnItsSide`), and a cursor whose erased key was created again did not follow it (`CursorOnRecreatedKeyFollowsKeySuffixUpdate`). |
+| `BlockSeek.lower_bound_correct` | Seeking in a data block of sorted entries with a restart every `R` entries, by the first restart past the key and a scan of the restart before it, returns the first entry at or after the key (after it, when the key is excluded), or the entry count. |
 
 The fixed rule, as implemented:
 
