@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
@@ -357,7 +358,22 @@ public static class EmitHelpers
 
     public static PropertyInfo[] GetVisibleProperties(this Type type, BindingFlags bindingFlags)
     {
-        var props = type.GetProperties(bindingFlags);
+        PropertyInfo[] props;
+        if ((bindingFlags & (BindingFlags.NonPublic | BindingFlags.Instance)) ==
+            (BindingFlags.NonPublic | BindingFlags.Instance))
+        {
+            // Reflection leaves out private properties of base classes, which the source generator's metadata has:
+            // every class's own properties are taken, the most derived class first, each in declaration order.
+            var all = new List<PropertyInfo>();
+            for (var current = type; current != null && current != typeof(object); current = current.BaseType)
+                all.AddRange(current.GetProperties(bindingFlags | BindingFlags.DeclaredOnly));
+            props = all.ToArray();
+        }
+        else
+        {
+            props = type.GetProperties(bindingFlags);
+        }
+
         return props.Where(p => !props.Any(o => o.Name == p.Name && o.DeclaringType != p.DeclaringType &&
                                                  o.DeclaringType!.IsSubclassOf(p.DeclaringType!))).ToArray();
     }

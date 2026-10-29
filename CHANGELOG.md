@@ -218,6 +218,10 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- ObjectDB reflection left out private properties of base classes, which the source generator's metadata stores: a
+  relation of such a type failed with "different metadata and reflection version info", and in emit mode such a
+  property was not stored. Reflection takes them now, in the generator's order; a relation or table stored in emit
+  mode gets them as new fields on its next version.
 - An overriding property lost the `[PrimaryKey]`, `[SecondaryKey]` and `[NotStored]` attributes of the virtual
   property it overrides in the source generator, which reported BTDB0020 for a relation keyed by such properties, and
   reflection lost `[SecondaryKey]` and, in the event store, `[NotStored]`. Both inherit them now, as `Inherited`

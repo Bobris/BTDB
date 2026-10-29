@@ -214,4 +214,55 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal(2ul, table.FindByName("b").Id);
         });
     }
+
+    public class SecretBase
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        int Secret { get; set; }
+        protected int Shared { get; set; }
+
+        public int GetSecret() => Secret;
+        public void SetSecret(int value) => Secret = value;
+        public int GetShared() => Shared;
+        public void SetShared(int value) => Shared = value;
+    }
+
+    [Generate]
+    public class WithSecret : SecretBase
+    {
+        public string? Name { get; set; }
+    }
+
+    public interface IWithSecrets : IRelation<WithSecret>
+    {
+        void Insert(WithSecret value);
+        WithSecret FindById(ulong id);
+    }
+
+    // Before the fix reflection left out private properties of base classes, which the source generator's metadata has:
+    // the relation failed to build as its metadata differed, and in emit mode such a property was not stored.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PrivateBasePropertiesAreHandledAlike(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var row = new WithSecret { Id = 1, Name = "n" };
+                row.SetSecret(5);
+                row.SetShared(6);
+                tr.GetRelation<IWithSecrets>().Insert(row);
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using var read = _db.StartReadOnlyTransaction();
+            var loaded = read.GetRelation<IWithSecrets>().FindById(1);
+            Assert.Equal("n", loaded.Name);
+            Assert.Equal(6, loaded.GetShared());
+            Assert.Equal(5, loaded.GetSecret());
+        });
+    }
 }
