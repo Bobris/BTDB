@@ -7,7 +7,8 @@
 - `bool` `Constraint<bool>`/`Constraint.Bool`
 - `float` (`Single`) (cannot be used as key)
 - `double` (`Double`) (cannot be used as key)
-- `Decimal` (cannot be used as key, its key encoding sorts by the scale first and keeps 1.0 and 1.00 apart)
+- `Decimal` (cannot be used as key, including `IDictionary` and `IOrderedSet` keys, its key encoding sorts by the
+  scale first and keeps 1.0 and 1.00 apart)
 - `string` `Constraint<string>`/`Constraint.String` (keys sort by Unicode code point, which differs from
   `string.CompareOrdinal` only between a surrogate and a character from U+E000 to U+FFFF)
 - `EncryptedString`

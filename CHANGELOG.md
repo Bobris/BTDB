@@ -101,7 +101,8 @@
 - ObjectDB: `decimal` and `decimal?` key fields are refused, like `float` and `double`: the source generator reports
   BTDB0035 and the runtime throws `NotSupportedException`. A decimal key sorted by its scale first and kept equal
   values with different scales apart, so 2 sorted before 1.5, negative values after positive ones, and looking up
-  1.00 missed a row stored as 1.0. Breaking: relations with decimal key fields no longer open.
+  1.00 missed a row stored as 1.0. Breaking: relations with decimal key fields no longer open, and neither do
+  `IDictionary` and `IOrderedSet` fields with decimal keys, which the same check covers.
 - `RoaringBitmap.Source` of values: the first value above the maximum index ended the values, so later valid values
   of the same page were lost, and a page coming again after a later one was built out of the order merging expects.
   Values above the maximum are now skipped within its page, and pages out of ascending order throw
