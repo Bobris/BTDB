@@ -132,3 +132,5 @@ open Btdb
 #print axioms RoaringKind.kind_roundtrip
 #print axioms RoaringSource.fixed_keeps_valid
 #print axioms RoaringSource.previous_loses_valid
+#print axioms KeyConcat.key_order
+#print axioms KeyConcat.key_order_needs_prefix_free
