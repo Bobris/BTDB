@@ -35,6 +35,9 @@ public class DiskChunkCache : IChunkCache, IDisposable
     CancellationTokenSource? _compactionCts;
     readonly object _startNewValueFileLocker = new object();
 
+    // Magic, file type and the VInt64 generation of FilePureValues
+    const int MaxValueFileHeaderLength = 15 + 1 + 9;
+
     internal static readonly byte[] MagicStartOfFile =
     {
         (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C',
@@ -140,6 +143,9 @@ public class DiskChunkCache : IChunkCache, IDisposable
     {
         if (key.Length != _keySize) throw new ArgumentException("Key has wrong Length not equal to KeySize");
         if (content.Length == 0) throw new ArgumentException("Empty Content cannot be stored");
+        // Content which does not fit even into an empty value file is not cached, otherwise new value files would be
+        // started forever
+        if (content.Length > _sizeLimitOfOneValueFile - MaxValueFileHeaderLength) return;
         var k = new ByteStructs.Key20(key);
         if (_cache.TryGetValue(k, out var cacheValue))
         {

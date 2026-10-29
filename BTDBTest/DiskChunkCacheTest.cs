@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -23,6 +24,20 @@ public class DiskChunkCacheTest
     ByteBuffer CalcHash(byte[] bytes)
     {
         return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
+    }
+
+    // Before the fix content larger than one value file made Put start new value files forever.
+    [Fact]
+    public void ContentLargerThanValueFileIsNotCached()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        using var cache = new DiskChunkCache(fileCollection, 20, 1000);
+        var key = CalcHash([1]);
+        var put = Task.Run(() => cache.Put(key, ByteBuffer.NewAsync(new byte[200])));
+        Assert.True(put.Wait(TimeSpan.FromSeconds(10)));
+        Assert.Equal(0, cache.Get(key).Result.Length);
+        cache.Put(key, ByteBuffer.NewAsync(new byte[50]));
+        Assert.Equal(50, cache.Get(key).Result.Length);
     }
 
     [Fact]

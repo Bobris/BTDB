@@ -106,6 +106,8 @@
 
 ### Fixed
 
+- `DiskChunkCache.Put` of content larger than one value file, an eighth of the capacity, never returned: it started
+  new value files forever. Such content is now not cached, as `Get` of it returns nothing.
 - IOC: a type without a generated factory, built by reflection, injected only public `[Dependency]` properties. Like
   generated factories, it now injects `[Dependency]` properties of any accessibility and `[Dependency]` fields, in
   the type and its base classes; a member hidden or overridden in a derived class is injected once.
