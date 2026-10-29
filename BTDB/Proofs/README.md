@@ -165,6 +165,9 @@ narrower member (`../Bon/Bon.cs`, `../Serialization/BonSerializer.cs`).
 `BtdbProofs/ProviderDisposal.lean` models which instances the BTDB container and the service provider dispose with
 `UseBtdbIoc` (`../IOC/ServiceProviderIntegration.cs`, `../IOC/ContainerImpl.cs`).
 
+`BtdbProofs/PtrLenInclude.lean` models how `PtrLenList.TryInclude` merges the ranges an included range starting in a
+gap reaches (`../KVDBLayer/Helpers/PtrLenList.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -301,6 +304,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `FirstDifference.diff3_eq`, `FirstDifference.diff4_eq` | `FindFirstDifference` of a key and a key in two parts, and of two keys in two parts each, returns the common prefix length of the joined keys, without joining them. |
 | `PtrLenExclude.cut_mem`, `PtrLenExclude.cut_sorted` | On sorted, disjoint ranges, the rest of an exclusion that starts in a gap leaves a position included exactly when it was and is not below the end of the exclusion, and keeps the ranges sorted and disjoint. |
 | `PtrLenExclude.previous_adds` | Before the 2026-10-29 fix the first range after the gap was trimmed even when the exclusion ended before it, so excluding `[5, 8)` from `[20, 24)` included position 10 (`PtrLenListDifferentialTest`). |
+| `PtrLenInclude.absorb_mem`, `PtrLenInclude.absorb_sorted` | Once an included range starts in a gap, merging the ranges it reaches leaves a position included exactly when it was or lies in the included range, and keeps the ranges sorted and disjoint. |
 | `Fletcher.block_fits`, `Fletcher.odd_fits`, `Fletcher.result_fits`, `Fletcher.fold_mod` | Fletcher-32 sums stay below 2^32 through every block of up to 360 words and the last odd byte, folding returns them to the bounds a block starts from without changing them modulo 65535, and the result keeps both sums in 16 bits. |
 | `DisposeRace.fixed_disposes_once` | In every interleaving of two threads tracking new instances and one disposing the container, each instance is disposed exactly once and none stays owned. |
 | `DisposeRace.previous_leaks` | Before the 2026-10-29 fix, reading the dispose flag before adding the instance left some interleaving with an instance never disposed (`IOCDisposeRaceTest`). |

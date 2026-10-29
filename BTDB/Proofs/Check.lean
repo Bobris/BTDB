@@ -174,3 +174,5 @@ open Btdb
 #print axioms MemoryStreamSize.previous_reads_old
 #print axioms ProviderDisposal.fixed_once
 #print axioms ProviderDisposal.previous_twice
+#print axioms PtrLenInclude.absorb_mem
+#print axioms PtrLenInclude.absorb_sorted

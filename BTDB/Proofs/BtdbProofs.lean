@@ -55,3 +55,4 @@ import BtdbProofs.Fletcher
 import BtdbProofs.DisposeRace
 import BtdbProofs.MemoryStreamSize
 import BtdbProofs.ProviderDisposal
+import BtdbProofs.PtrLenInclude
