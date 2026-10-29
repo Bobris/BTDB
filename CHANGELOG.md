@@ -585,6 +585,10 @@
   a running writer. `CreateKvi` called while a writing transaction holds the log writes an index only when the last
   commit is already durable (always with `DurableTransactions`), and otherwise skips it with a logged warning. Found
   by simulating crashes at every file operation, also beside a concurrent writer.
+- `SeqLock.RetryRead` read the counter again with only acquire semantics, so on arm64, Apple silicon included, the
+  data reads before it could complete after it and a read seeing a half-done write passed as consistent (a stress
+  test saw 831 such reads in 15 million). It now issues a read barrier first. `RefDictionary`,
+  `SpanByteNoRemoveDictionary`, the IOC container and the serialization metadata registry read under it.
 - The chunk storage sub-database of `BTreeKeyValueDB` (`GetSubDB<IChunkStorage>`) lost every chunk stored before the
   previous reopen: each open writes a new hash index file with only what it stores, but opening loaded only the
   newest one. Opening now loads them all, oldest first, and a later entry for a key replaces an earlier one, so a

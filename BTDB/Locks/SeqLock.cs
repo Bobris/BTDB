@@ -52,6 +52,9 @@ public struct SeqLock
 
     public bool RetryRead(ref uint seqCounter)
     {
+        // The data reads must complete before the counter is read again; an acquire read of the counter alone lets
+        // them move after it on weakly ordered CPUs such as arm64, so a torn read could pass as consistent.
+        Volatile.ReadBarrier();
         var current = Volatile.Read(ref _counter);
         if (seqCounter != current)
         {
