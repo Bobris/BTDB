@@ -1,4 +1,5 @@
 using BTDB;
+using BTDB.ODBLayer;
 using BTDB.KVDBLayer;
 using Xunit;
 using Xunit.Abstractions;
@@ -40,5 +41,45 @@ public class ObjectDbTypeNameClashTest : ObjectDbTestBase
         Assert.DoesNotContain(typeof(Second.Person), _db.GetPolymorphicTypes(typeof(object)));
         Assert.Equal("Person2", _db.RegisterType(typeof(Second.Person), "Person2"));
         Assert.Equal("Person", _db.RegisterType(typeof(First.Person)));
+    }
+
+    public interface IShape;
+
+    [Generate]
+    public class Shape : IShape
+    {
+        public int Sides { get; set; }
+    }
+
+    public class Drawing
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IShape? Shape { get; set; }
+    }
+
+    public interface IDrawings : IRelation<Drawing>
+    {
+        void Insert(Drawing drawing);
+        Drawing FindById(ulong id);
+    }
+
+    // Before the fix the interface, registered as Shape by the relation's field, kept the name, and loading the stored
+    // Shape tried to create an instance of the interface.
+    [Fact]
+    public void ImplementationRegisteredAfterItsInterfaceLoads()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var drawings = tr.InitRelation<IDrawings>("Drawings")(tr);
+            _db.RegisterType(typeof(Shape));
+            drawings.Insert(new Drawing { Id = 1, Shape = new Shape { Sides = 3 } });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var read = _db.StartTransaction();
+        var loaded = read.InitRelation<IDrawings>("Drawings")(read);
+        _db.RegisterType(typeof(Shape));
+        Assert.Equal(3, Assert.IsType<Shape>(loaded.FindById(1).Shape).Sides);
     }
 }

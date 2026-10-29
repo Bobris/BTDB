@@ -3,11 +3,12 @@
 
 A model of `Type2NameRegistry.RegisterType` (`../../ODBLayer/Type2NameRegistry.cs`). Types are numbers, each storable
 or not (an interface or abstract class is not). The registry keeps each registered type's name, and loading an object
-stored under a name creates the type the name was registered for first. `RegisterType` refuses a type already
-registered under another name and, since the 2026-10-29 fix, a storable type whose name a storable type took.
+stored under a name creates the storable type registered under it (since the 2026-10-29 fix also when an interface took
+the name first). `RegisterType` refuses a type already registered under another name and, since the 2026-10-29 fix, a
+storable type whose name a storable type took.
 
-* `reachable_inv`: no two storable types are registered under one name, so the type loaded under a name is the one
-  stored under it.
+* `reachable_inv`: no two storable types are registered under one name, so the storable type loaded under a name is
+  the one stored under it.
 * `old_shares`: the registry before the fix registered two storable types under one name
   (`ObjectDbTypeNameClashTest`).
 -/

@@ -198,6 +198,9 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- ObjectDB loaded an object stored under a name as the interface registered under it, failing with
+  `MemberAccessException`, when the interface took the name before its implementation: a relation field of interface
+  type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now.
 - `IObjectDBTransaction.Enumerate` missed new objects not flushed yet when an object stored after them was already
   written, as by `StoreAndFlush`: only those newer than the last stored object were added. All of them are now.
 - ObjectDB accepted two storable types under one name, as registering names a type without its namespace or enclosing

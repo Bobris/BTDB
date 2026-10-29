@@ -45,7 +45,8 @@ public class Type2NameRegistry : IType2NameRegistry
             }
 
             _type2Name.TryAdd(type, asName);
-            _name2Type.TryAdd(asName, type);
+            // Objects stored under the name are of the storable type, also when its interface took the name first.
+            if (!_name2Type.TryAdd(asName, type) && CanBeStored(type)) _name2Type[asName] = type;
         }
 
         return asName;
