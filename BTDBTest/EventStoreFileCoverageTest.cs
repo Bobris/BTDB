@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BTDB;
@@ -305,4 +306,45 @@ public class EventStoreFileCoverageTest
         manager.OpenReadOnlyStore(file).ReadFromStartToEnd(observer);
         Assert.Equal(5, Assert.IsType<Ev>(Assert.Single(Assert.Single(observer.Events))).Num);
     }
+
+    // Block checksums catch flipped bits, so reading a damaged store reports a prefix of the stored events and stops.
+    [Theory]
+    [MemberData(nameof(DamageSeeds))]
+    public void DamagedStoreReadsOnlyPrefixOfStoredEvents(int seed)
+    {
+        var random = new Random(seed);
+        var storage = new ArrayEventFileStorage([]);
+        var manager = new EventStoreManager { CompressionStrategy = new NoCompressionStrategy() };
+        var appender = manager.AppendToStore(storage);
+        var stored = new List<int>();
+        for (var i = 0; i < 30; i++)
+        {
+            var count = random.Next(1, 4);
+            var events = Enumerable.Range(0, count).Select(j => (object)new Ev { Text = new string('x', random.Next(random.Next(4) == 0 ? 3000 : 20)), Num = i * 10 + j }).ToArray();
+            appender.Store(null, events);
+            stored.AddRange(events.Select(e => ((Ev)e).Num));
+        }
+
+        var original = storage.Data;
+        for (var round = 0; round < 30; round++)
+        {
+            var data = (byte[])original.Clone();
+            for (var changes = random.Next(1, 3); changes > 0; changes--)
+                data[random.Next(data.Length)] ^= (byte)(1 << random.Next(8));
+            var reader = new EventStoreManager().OpenReadOnlyStore(new ArrayEventFileStorage(data));
+            var observer = new CollectingEventObserver();
+            try
+            {
+                reader.ReadFromStartToEnd(observer);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+            }
+
+            var read = observer.Events.SelectMany(e => e).Select(e => ((Ev)e!).Num).ToList();
+            Assert.True(read.SequenceEqual(stored.Take(read.Count)), $"Seed {seed} round {round}: read events not stored");
+        }
+    }
+
+    public static IEnumerable<object[]> DamageSeeds() => Enumerable.Range(1, 200).Select(s => new object[] { s });
 }
