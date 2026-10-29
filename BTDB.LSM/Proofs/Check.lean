@@ -88,3 +88,5 @@ open Lsm
 #print axioms WalContiguous.take_consecutive
 #print axioms WalContiguous.take_listed
 #print axioms WalContiguous.take_maximal
+#print axioms LeaseTiming.writes_end_before_takeover
+#print axioms LeaseTiming.margin_needed

@@ -37,7 +37,8 @@
       a record is cut into for its chunks put together are the record, with only the first flagged first and only
       the final one flagged last, so replaying them rebuilds exactly the record;
     - counted entries add up across components, and the compaction merge preserves each key's state and count;
-    - manifest fencing gives every writer session a fresh epoch;
+    - manifest fencing gives every writer session a fresh epoch, and a writer's writes started before its lease
+      deadline end before another writer can hold the lease;
     - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
       components;
     - cursors keep their position when another cursor changes a key suffix;

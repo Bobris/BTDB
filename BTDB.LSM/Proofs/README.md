@@ -70,6 +70,8 @@ memtable's range-tombstone fragments.
 
 `LsmProofs/WalContiguous.lean` models how opening picks the contiguous run of listed WAL chunks to replay.
 
+`LsmProofs/LeaseTiming.lean` models the writer lease deadline against the expiry the storage records.
+
 `LsmProofs/Varint.lean` models the LEB128 integers of `LsmEncoder.WriteVUInt64` and `LsmDecoder.ReadVUInt64`.
 
 `LsmProofs/Bloom.lean` models `BloomFilter.Build` and `MayContain` with double hashing.
@@ -172,6 +174,7 @@ Not modelled in `Wal.lean`:
 | `WalSplit.split_flatten`, `WalSplit.split_first`, `WalSplit.split_last`, `WalSplit.split_empty`, `WalSplit.replay_record` | Whatever room each chunk leaves, the parts `PlanChunks` cuts a payload into put together are the payload, only the first is flagged first and only the final one last, and an empty payload is one part flagged both; replaying a record's parts as recovery does gives back exactly the record, whatever an earlier torn record left behind. |
 | `NewestManifest.newest_is_listed_and_greatest`, `NewestManifest.none_without_manifests` | Among listed objects in any order, stray names included, the chosen manifest is a listed one with a number at least every listed manifest's, and none is chosen exactly when no manifest is listed; before the 2026-10-29 fix the last listed name was chosen (`LsmRegressionTest.StrayObjectsBesideWalChunksAndManifestsAreIgnored`). |
 | `WalContiguous.take_consecutive`, `WalContiguous.take_listed`, `WalContiguous.take_maximal` | Over the sorted chunk numbers listed from the replay's next chunk, opening replays consecutive listed chunks from it and stops exactly at the first missing number, so no chunk after a gap is replayed and none before it is skipped. |
+| `LeaseTiming.writes_end_before_takeover`, `LeaseTiming.margin_needed` | A writer starting writes only before `request + LeaseDuration - LeaseSafetyMargin` on its clock, each taking at most the margin, finishes them before another writer can hold the lease, whatever constant offsets the clocks have, and without the margin a write can end after the takeover. |
 | `Varint.round_trip`, `Varint.decoded_fits` | Every value below 2^64 decodes back from its encoding, leaving the bytes after it, and every value the decoder accepts is below 2^64; before the 2026-10-29 fix a tenth byte above 1 was accepted and lost bits (`LsmEncodingTest.OverlongValueIsDamage`). |
 | `Varint.zigzag_round_trip`, `Varint.zigzag_range` | The zigzag mapping of `WriteVInt64` is undone by `ReadVInt64`, and a value is a `long` exactly when its image is below 2^64, so every `long` reads back as written. |
 | `Bloom.no_false_negative` | Every hash added to a Bloom filter passes `MayContain`, whatever else was added before or after it, since adding only sets bits. |
