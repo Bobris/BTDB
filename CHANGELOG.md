@@ -90,6 +90,10 @@
 
 ### Fixed
 
+- Bon: a string with a lone surrogate, which UTF-8 cannot hold, is written with the replacement character U+FFFD in
+  its place, and strings and object keys are compared after that replacement. Before, two object keys differing only
+  in a lone surrogate were both accepted and written as the same key. A `Dictionary` whose string keys differ only so
+  fails to load, as its keys repeat.
 - ObjectDB: a `DateTime` key with `Local` kind was stored with the kind in its highest bits, so it sorted after every
   UTC key, `DateTime` range constraints missed it, and its UTC equivalent did not find it. Keys and `DateTime`
   constraints now refuse `Local` kind with `ArgumentOutOfRangeException`, as they already refused `Unspecified`;

@@ -652,6 +652,7 @@ public struct BonBuilder
     {
         if (_state is not State.ObjectKey and not State.ClassKey) ThrowWrongState();
         _objKeysSet ??= [];
+        name = WellFormed(name);
         if (!_objKeysSet!.Add(name)) return false;
         _objKeys.Add(WriteDedupString(name));
         _state = _state == State.ObjectKey ? State.ObjectValue : State.ClassValue;
@@ -897,8 +898,34 @@ public struct BonBuilder
         throw new InvalidOperationException("State " + _state + " is not valid for this operation");
     }
 
+    // Bon stores UTF-8, which cannot hold a lone surrogate: it is written as the replacement character U+FFFD, and so
+    // compared as one, so two strings differing only in lone surrogates are the same string, and the same key.
+    internal static string WellFormed(string value)
+    {
+        var span = value.AsSpan();
+        var first = span.IndexOfAnyInRange('\uD800', '\uDFFF');
+        if (first < 0) return value;
+        char[]? result = null;
+        for (var i = first; i < span.Length; i++)
+        {
+            var c = span[i];
+            if (!char.IsSurrogate(c)) continue;
+            if (char.IsHighSurrogate(c) && i + 1 < span.Length && char.IsLowSurrogate(span[i + 1]))
+            {
+                i++;
+                continue;
+            }
+
+            result ??= span.ToArray();
+            result[i] = '\uFFFD';
+        }
+
+        return result == null ? value : new(result);
+    }
+
     ulong WriteDedupString(string value)
     {
+        value = WellFormed(value);
         _strCache ??= new(512);
         ref var pos = ref _strCache.GetOrAddValueRef(value, out var added);
         if (!added)

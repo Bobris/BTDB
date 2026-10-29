@@ -126,6 +126,35 @@ public class BonCoverageTest
         else Assert.Equal(value, double.Parse(json, System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    // UTF-8 cannot hold a lone surrogate, so it is written as U+FFFD; keys compare so too, before the fix two keys
+    // differing only in a lone surrogate were both written and came out the same.
+    [Fact]
+    public void LoneSurrogatesAreWrittenAsReplacementCharacter()
+    {
+        var buf = Build((ref BonBuilder b) =>
+        {
+            b.StartObject();
+            b.WriteKey("a\ud800");
+            b.Write("x\udc00y");
+            Assert.False(b.TryWriteKey("a\ud801"));
+            b.WriteKey("pair\ud83d\ude00");
+            b.Write("ok\ud83d\ude00\ud800");
+            b.FinishObject();
+        });
+        var bon = new Bon(buf);
+        Assert.True(bon.TryGetObject(out var obj));
+        var read = new List<string>();
+        var values = obj.Values();
+        while (obj.NextKey() is { } key)
+        {
+            read.Add(key);
+            values.TryGetString(out var value);
+            read.Add(value);
+        }
+
+        Assert.Equal(["a\ufffd", "x\ufffdy", "pair\ud83d\ude00", "ok\ud83d\ude00\ufffd"], read);
+    }
+
     // Before the fix ticks out of range, which only damage leaves, failed with ArgumentException.
     [Fact]
     public void DamagedDateTimeIsInvalidData()
