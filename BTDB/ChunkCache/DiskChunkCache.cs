@@ -135,8 +135,19 @@ public class DiskChunkCache : IChunkCache, IDisposable
             cacheValue.AccessRate = reader.ReadVUInt32();
             cacheValue.ContentLength = reader.ReadVUInt32();
             reader.ReadBlock(keyBuf.AsSyncSpan());
+            // A damaged entry must not make Get allocate up to 4 GB or return a short read as content
+            if (!IsStoredContent(cacheValue)) continue;
             _cache.TryAdd(new ByteStructs.Key20(keyBuf), cacheValue);
         }
+    }
+
+    bool IsStoredContent(in CacheValue cacheValue)
+    {
+        if (cacheValue.ContentLength == 0 || cacheValue.ContentLength > _sizeLimitOfOneValueFile) return false;
+        if (!_fileInfos.TryGetValue(cacheValue.FileId, out var fileInfo) ||
+            fileInfo.FileType != DiskChunkFileType.PureValues) return false;
+        var file = _fileCollection.GetFile(cacheValue.FileId);
+        return file != null && (ulong)cacheValue.FileOfs + cacheValue.ContentLength <= file.GetSize();
     }
 
     public void Put(ByteBuffer key, ByteBuffer content)

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.ChunkCache;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -24,6 +25,48 @@ public class DiskChunkCacheTest
     ByteBuffer CalcHash(byte[] bytes)
     {
         return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
+    }
+
+    // Before the fix entries of a damaged hash index were loaded as they were: a damaged length made Get allocate it,
+    // and an entry pointing past its value file or into an unknown file was kept.
+    [Fact]
+    public void DamagedHashIndexEntriesAreSkipped()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        var valueFile = fileCollection.AddFile("cav");
+        var valueWriter = new MemWriter(valueFile.GetAppenderWriter());
+        new BTDB.ChunkCache.FilePureValues(1).WriteHeader(ref valueWriter);
+        var contentOfs = (uint)valueWriter.GetCurrentPosition();
+        valueWriter.WriteBlock(new byte[] { 7, 8, 9 });
+        valueWriter.Flush();
+        valueFile.HardFlushTruncateSwitchToDisposedMode();
+
+        var keys = Enumerable.Range(0, 4).Select(i => CalcHash([(byte)i])).ToArray();
+        var indexFile = fileCollection.AddFile("chi");
+        var indexWriter = new MemWriter(indexFile.GetExclusiveAppenderWriter());
+        new FileHashIndex(2, 20, keys.Length).WriteHeader(ref indexWriter);
+        foreach (var (key, ofs, fileId, length) in new[]
+                 {
+                     (keys[0], contentOfs, valueFile.Index, 3u), (keys[1], contentOfs, valueFile.Index, 0x7FFFFFF0u),
+                     (keys[2], contentOfs + 2, valueFile.Index, 3u), (keys[3], contentOfs, 999u, 3u)
+                 })
+        {
+            indexWriter.WriteVUInt32(ofs);
+            indexWriter.WriteVUInt32(fileId);
+            indexWriter.WriteVUInt32(1);
+            indexWriter.WriteVUInt32(length);
+            indexWriter.WriteBlock(key.AsSyncReadOnlySpan());
+        }
+
+        indexWriter.WriteVUInt32(0);
+        indexWriter.Flush();
+        indexFile.HardFlushTruncateSwitchToDisposedMode();
+
+        using var cache = new DiskChunkCache(fileCollection, 20, 100000);
+        Assert.Equal(new byte[] { 7, 8, 9 }, cache.Get(keys[0]).Result.AsSyncReadOnlySpan().ToArray());
+        var before = GC.GetTotalAllocatedBytes(true);
+        for (var i = 1; i < keys.Length; i++) Assert.Equal(0, cache.Get(keys[i]).Result.Length);
+        Assert.True(GC.GetTotalAllocatedBytes(true) - before < 1_000_000);
     }
 
     // Before the fix content larger than one value file made Put start new value files forever.
