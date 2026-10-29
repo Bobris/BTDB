@@ -221,6 +221,10 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- Two properties stored under one name, as `PersistedName` can make, were saved and loaded into each other: a relation
+  failed saving with `NullReferenceException` in emit mode and lost one of them otherwise, a stored object lost one,
+  and an event failed to load converting between them. Relations, stored objects and events refuse such a type now
+  with a `BTDBException` naming the clashing name.
 - The source generator took an explicitly implemented indexer of a referenced base class, as `List<T>` has for
   `IList`, for a field of a class derived from it, generating an accessor of `System.Collections.IList.get_Item`
   without its index parameter. Properties with parameters are left out like other indexers now.

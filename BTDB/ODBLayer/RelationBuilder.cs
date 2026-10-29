@@ -103,11 +103,13 @@ public class RelationBuilder : IRelationBuilder
         if (!IFieldHandler.UseNoEmitForRelations)
         {
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
+            CheckUniqueFieldNames(ClientRelationVersionInfo);
         }
         else
         {
             var v1 = CreateVersionInfoByMetadata();
             var v2 = CreateVersionInfoByReflection();
+            CheckUniqueFieldNames(v2);
             if (!RelationVersionInfo.Equal(v1, v2))
                 throw new InvalidOperationException("" + ItemType.ToSimpleName() +
                                                     " has different metadata and reflection version info: " + v1 +
@@ -120,6 +122,20 @@ public class RelationBuilder : IRelationBuilder
         LoadTypes = [ItemType];
         DelegateCreator = Build();
     }
+
+    // Two properties stored under one name, as PersistedName can make, would be saved and loaded into each other.
+    void CheckUniqueFieldNames(RelationVersionInfo versionInfo)
+    {
+        var names = new HashSet<string>();
+        foreach (var field in versionInfo.PrimaryKeyFields.Span)
+            if (!names.Add(field.Name)) ThrowDuplicateFieldName(field.Name);
+        foreach (var field in versionInfo.Fields.Span)
+            if (!names.Add(field.Name)) ThrowDuplicateFieldName(field.Name);
+    }
+
+    void ThrowDuplicateFieldName(string name) =>
+        RelationInfoResolver.ActualOptions.ThrowBTDBException(
+            $"Relation {_name} stores two properties of {ItemType.ToSimpleName()} under the name {name}; give one a different PersistedName.");
 
     unsafe object CreatePristineInstance()
     {

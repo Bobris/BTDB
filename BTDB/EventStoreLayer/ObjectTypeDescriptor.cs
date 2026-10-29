@@ -124,6 +124,11 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
         _fields.Sort(Comparer<KeyValuePair<string, ITypeDescriptor>>.Create((l, r) =>
             string.Compare(l.Key, r.Key, StringComparison.InvariantCulture)));
+        // Two properties stored under one name, as PersistedName can make, would be saved and loaded into each other.
+        for (var i = 1; i < _fields.Count; i++)
+            if (_fields[i].Key == _fields[i - 1].Key)
+                throw new BTDBException(
+                    $"Type {_type.ToSimpleName()} stores two properties under the name {_fields[i].Key}; give one a different PersistedName.");
         return true;
     }
 

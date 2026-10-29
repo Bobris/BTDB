@@ -462,6 +462,12 @@ public class TableInfo
                 FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false));
         }
 
+        // Two properties stored under one name, as PersistedName can make, would be saved and loaded into each other.
+        var names = new HashSet<string>();
+        foreach (var field in fields)
+            if (!names.Add(field.Name))
+                throw new BTDBException(
+                    $"Type {_clientType.ToSimpleName()} stores two properties under the name {field.Name}; give one a different PersistedName.");
         var tvi = new TableVersionInfo(fields.ToArray());
         if (LastPersistedVersion == 0)
         {
