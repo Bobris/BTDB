@@ -70,6 +70,7 @@
   - `BTDB/Proofs/`, merging re-serialized event descriptors: recording every descriptor met, it ends;
   - `BTDB/Proofs/`, converting savers: converting to the type a descriptor saves, creating a saver ends;
   - `BTDB/Proofs/`, merged event descriptors: registering those nested in them, they can be stored;
+  - `BTDB/Proofs/`, `RoaringBitmap.Source`: for page ascending values it reads exactly those up to the maximum index;
   - `BTDB/Proofs/`, Roaring bitmap containers: the encoding chosen is the shortest, and its length tells its kind;
   - `BTDB/Proofs/`, relation query paging: folding `Skip` and `Take` calls into one skip and take gives the rows of
     the calls applied in order, for any rows;

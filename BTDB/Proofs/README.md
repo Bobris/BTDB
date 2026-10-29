@@ -132,6 +132,9 @@ type remembers (`../EventStore2Layer/`), over any graph of descriptors.
 `BtdbProofs/NestedRegistration.lean` models how `EventSerializer` registers a descriptor merged from an object loaded
 without its type, and the descriptors nested in it (`../EventStore2Layer/`).
 
+`BtdbProofs/RoaringSource.lean` models how `RoaringBitmap.Source` reads its values up to the maximum index
+(`../ODBLayer/RoaringBitmap.cs`).
+
 `BtdbProofs/RoaringKind.lean` models how `RoaringBitmaps` chooses the encoding of a 16-bit container and reads its kind
 back from its length (`../Buffer/RoaringBitmaps.cs`).
 
@@ -230,6 +233,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `InheritedDependencies.previous_misses_base` | Before the 2026-10-29 fix only the type's own members were walked, so a dependency declared in its base was not injected (`IOCInheritedDependencyTest`). |
 | `QueryPaging.bind_correct` | For any rows and any sequence of `Skip` and `Take` calls, the skip and take a relation query binds give exactly the rows the calls give applied one after another, as LINQ does, with nonpositive skips ignored and negative takes taking nothing. |
 | `RoaringKind.choose_shortest`, `RoaringKind.kind_roundtrip` | The encoding `ChooseOutputKind` picks for a container (array, runs or raw bitmap) is the shortest of the three, and for a container with a set bit `ValidateAndGetKind` reads the same kind back from its length. |
+| `RoaringSource.fixed_keeps_valid`, `RoaringSource.previous_loses_valid` | For values in ascending order of their pages, `RoaringBitmap.Source` reads exactly those up to the maximum index, in order; before the 2026-10-29 fix the first value above the maximum ended them and lost later values of its page (`ObjectDbTableFreeContentTest.RoaringBitmapSourceSkipsValuesAboveMaximumInItsLastPage`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
 | `SerializerPlaceholder.fixed_no_stale_placeholder` | Once no creation of a type runs, its placeholder is not cached, so no later serialization waits for it and no deserialization recurses through it. |

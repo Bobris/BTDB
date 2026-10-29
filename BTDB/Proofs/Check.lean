@@ -130,3 +130,5 @@ open Btdb
 #print axioms QueryPaging.bind_correct
 #print axioms RoaringKind.choose_shortest
 #print axioms RoaringKind.kind_roundtrip
+#print axioms RoaringSource.fixed_keeps_valid
+#print axioms RoaringSource.previous_loses_valid

@@ -37,3 +37,4 @@ import BtdbProofs.NestedRegistration
 import BtdbProofs.InheritedDependencies
 import BtdbProofs.QueryPaging
 import BtdbProofs.RoaringKind
+import BtdbProofs.RoaringSource
