@@ -26,6 +26,9 @@ public class KeyValueDBExportImporterTest
             a.AsSpan().SequenceCompareTo(b)));
         using var tr = db.StartTransaction();
         using var cursor = tr.CreateCursor();
+        // The empty key sorts first and has the shortest length prefix.
+        cursor.CreateOrUpdateKeyValue([], [7]);
+        model[[]] = [7];
         for (var i = 0; i < 300; i++)
         {
             // Include keys and values bigger than import buffers and 512 bytes stack buffer of Export
