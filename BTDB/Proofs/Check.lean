@@ -186,3 +186,5 @@ open Btdb
 #print axioms FirstDifference.common_prefix_eq
 #print axioms IocDefaults.all_listed
 #print axioms IocDefaults.default_last
+#print axioms FileIds.allocate_fresh
+#print axioms FileIds.allocate_inv

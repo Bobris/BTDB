@@ -60,3 +60,4 @@ import BtdbProofs.PtrLenFree
 import BtdbProofs.XxHashStream
 import BtdbProofs.ExportFormat
 import BtdbProofs.IocDefaults
+import BtdbProofs.FileIds

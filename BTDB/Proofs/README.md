@@ -84,6 +84,9 @@ one or two UTF-16 units do not fit.
 `BtdbProofs/FileGuid.lean` models how `FileCollectionWithFileInfos` picks the database Guid from its files' headers;
 files with another Guid are foreign and deleted on open.
 
+`BtdbProofs/FileIds.lean` models `FileIdAllocator`, which hands out odd IDs to transaction logs and even ones to other
+files.
+
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
@@ -259,6 +262,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Replay.previous_loses_later_commit` | Before the 2026-10-28 fix, replay ended at a start inside an open transaction, so the next session's commits were lost on the following open (`TransactionLogDamageTest.CommitsAfterACrashInsideATransactionSurviveTheNextOpen`). |
 | `FileGuid.majority_chosen` | The Guid most files carry is the database's, so a Guid more than half of the files carry is picked in every listing order. |
 | `FileGuid.previous_picks_foreign` | Before the 2026-10-28 fix the first listed file decided, so one foreign or damaged file listed first made every database file foreign, and opening deleted them (`KeyValueDBFileInfosTest.ForeignFileListedFirstDoesNotDeleteTheDatabase`). |
+| `FileIds.allocate_fresh`, `FileIds.allocate_inv` | An allocated file ID is not 0, has the requested parity and is none of the observed IDs, and observing it keeps that true for every later allocation. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
