@@ -217,3 +217,9 @@ public class LsmRelationIndexEvolutionTest(ITestOutputHelper output) : RelationI
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
 }
+
+[Collection(LsmObjectDb.Name)]
+public class LsmObjectDbSingletonCacheTest(ITestOutputHelper output) : ObjectDbSingletonCacheTest(output)
+{
+    protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
