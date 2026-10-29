@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -108,6 +109,53 @@ public class ChunkStorageTest : IDisposable
         {
             Assert.Equal([3], (await tr.Get(CalcHash([2]))).ToByteArray());
             Assert.Equal([1], (await tr.Get(CalcHash([0]))).ToByteArray());
+        }
+    }
+
+    [Fact]
+    public async Task ItKeepsContentStoredInSeveralTransactionsAcrossReopen()
+    {
+        for (byte i = 0; i < 3; i++)
+            using (var tr = _cs.StartTransaction())
+                tr.Put(CalcHash([i]), ByteBuffer.NewAsync([i, i]), true);
+        using (var tr = _cs.StartTransaction())
+            for (byte i = 0; i < 3; i++)
+                Assert.Equal([i, i], (await tr.Get(CalcHash([i]))).ToByteArray());
+        ReopenStorage();
+        using (var tr = _cs.StartTransaction())
+            for (byte i = 0; i < 3; i++)
+                Assert.Equal([i, i], (await tr.Get(CalcHash([i]))).ToByteArray());
+    }
+
+    [Fact]
+    public async Task OnDiskItKeepsContentStoredInSeveralTransactionsAcrossReopen()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-chunks-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            for (var round = 0; round < 2; round++)
+            {
+                using var files = new OnDiskFileCollection(directory);
+                using var db = new BTreeKeyValueDB(files);
+                var storage = db.GetSubDB<IChunkStorage>(1);
+                for (var i = (byte)(round * 3); i < round * 3 + 3; i++)
+                    using (var tr = storage.StartTransaction())
+                        tr.Put(CalcHash([i]), ByteBuffer.NewAsync([i, i]), true);
+                using (var tr = storage.StartTransaction())
+                    for (byte i = 0; i < round * 3 + 3; i++)
+                        Assert.Equal([i, i], (await tr.Get(CalcHash([i]))).ToByteArray());
+            }
+
+            using (var files = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(files))
+            using (var tr = db.GetSubDB<IChunkStorage>(1).StartTransaction())
+                for (byte i = 0; i < 6; i++)
+                    Assert.Equal([i, i], (await tr.Get(CalcHash([i]))).ToByteArray());
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
         }
     }
 }
