@@ -2166,6 +2166,21 @@ public class RelationInfo
         }
     }
 
+    /// The instance methods of a type and its base types, private ones of base types included, which GetMethods does not
+    /// return; an override is returned once, as the most derived method.
+    internal static IEnumerable<MethodInfo> InstanceMethodsWithBases(Type type)
+    {
+        var seen = new HashSet<MethodInfo>();
+        for (var t = type; t != null && t != typeof(object); t = t.BaseType)
+        {
+            foreach (var method in t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic |
+                                                BindingFlags.DeclaredOnly))
+            {
+                if (seen.Add(method.GetBaseDefinition())) yield return method;
+            }
+        }
+    }
+
     RelationBeforeRemove? CreateBeforeRemove(IContainer? container)
     {
         if (!IFieldHandler.UseNoEmitForRelations)
@@ -2179,8 +2194,7 @@ public class RelationInfo
     RelationBeforeRemove? CreateBeforeRemoveByReflection(IContainer? container, string functionName)
     {
         var hasBeforeRemove = false;
-        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                         BindingFlags.NonPublic))
+        foreach (var methodInfo in InstanceMethodsWithBases(ClientType))
         {
             if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
             if (methodInfo.ReturnType != typeof(void) && methodInfo.ReturnType != typeof(bool))
@@ -2198,8 +2212,7 @@ public class RelationInfo
         ilGenerator
             .LdcI4(0)
             .Stloc(resultLoc);
-        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                         BindingFlags.NonPublic))
+        foreach (var methodInfo in InstanceMethodsWithBases(ClientType))
         {
             if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
             var parameters = methodInfo.GetParameters();
@@ -2273,8 +2286,7 @@ public class RelationInfo
                 ilGenerator
                     .LdcI4(0)
                     .Stloc(offsetInKeyValue);
-                foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                                 BindingFlags.NonPublic))
+                foreach (var methodInfo in InstanceMethodsWithBases(ClientType))
                 {
                     if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
                     if (methodInfo.GetParameters().Length != 0)

@@ -2136,6 +2136,37 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task HookMethodsOfBaseClassAreCalledThroughTheirClass()
+    {
+        // Before the fix accessors of non-public hook methods of a base class targeted the derived class, which
+        // UnsafeAccessor does not search, so the calls threw MissingMethodException.
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class RoomBase
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public string Note { get; set; } = "";
+
+                [OnBeforeRemove]
+                bool Keep() => Id == 1;
+
+                [OnSerialize]
+                protected void Normalize() => Note = Note.Trim();
+            }
+
+            public class Room : RoomBase
+            {
+            }
+
+            public interface IRoomTable : IRelation<Room>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task TupleKeysWithEnumElementsAreWritten()
     {
         // Before the fix lookups by tuple keys and updates of tuple values with enum elements threw

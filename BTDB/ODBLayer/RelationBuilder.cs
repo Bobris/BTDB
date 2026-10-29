@@ -801,7 +801,7 @@ public class RelationBuilder : IRelationBuilder
 
     static bool DoesNotHaveOnBeforeRemove(Type itemType)
     {
-        return itemType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        return RelationInfo.InstanceMethodsWithBases(itemType)
             .All(m => m.GetCustomAttribute<OnBeforeRemoveAttribute>() == null);
     }
 

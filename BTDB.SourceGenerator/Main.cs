@@ -3825,12 +3825,14 @@ public class SourceGenerator : IIncrementalGenerator
                     else
                     {
                         methodIndex++;
+                        // UnsafeAccessor does not search base types, so a method of a base class needs its declaring type
+                        var onSerializeOwner = HookOwnerType(m, generationInfo);
                         if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($"""
                                     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                    extern static void OnSerialize{methodIndex}({generationInfo.FullName} @this);
+                                    extern static void OnSerialize{methodIndex}({onSerializeOwner ?? generationInfo.FullName} @this);
 
                                 """);
                         }
@@ -3839,7 +3841,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($"""
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                        extern public static void OnSerialize{methodIndex}({nameWithGeneric} @this);
+                                        extern public static void OnSerialize{methodIndex}({onSerializeOwner ?? nameWithGeneric} @this);
 
                                 """);
                         }
@@ -3931,12 +3933,13 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         methodIndex++;
                         var onBeforeRemoveResultType = NormalizeType(m.ResultType ?? "void");
+                        var onBeforeRemoveOwner = HookOwnerType(m, generationInfo);
                         if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($"""
                                     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                    extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+                                    extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({onBeforeRemoveOwner ?? generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
                         }
@@ -3945,7 +3948,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($"""
                                         [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                        extern public static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+                                        extern public static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({onBeforeRemoveOwner ?? nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
                         }
@@ -4135,6 +4138,14 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return (indexOfInKeyValue, primaryKeyFields, secondaryKeys, valueFields);
+    }
+
+    /// The base class declaring a non-public hook method, when it is not the generated type and not generic.
+    static string? HookOwnerType(MethodInfo method, GenerationInfo generationInfo)
+    {
+        var owner = method.DefinedInType;
+        if (owner is null || owner == generationInfo.FullName || owner.Contains('<')) return null;
+        return owner;
     }
 
     static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)

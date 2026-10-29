@@ -56,4 +56,97 @@ public class ObjectDbBeforeRemovePartialTest : ObjectDbTestBase
             ObjectDB.ResetAllMetadataCaches();
         }
     }
+
+    public class GuardedBase
+    {
+        [PrimaryKey(1)] public ulong CompanyId { get; set; }
+        [PrimaryKey(2)] public ulong Id { get; set; }
+        public string Note { get; set; } = "";
+
+        [OnBeforeRemove]
+        protected bool KeepOdd() => Id % 2 == 1;
+
+        [OnBeforeRemove]
+        bool KeepThree() => Id == 4;
+
+        [OnSerialize]
+        void Normalize() => Note = Note.Trim();
+    }
+
+    public class Guarded : GuardedBase
+    {
+    }
+
+    public interface IGuardedTable : IRelation<Guarded>
+    {
+        Guarded? FindByIdOrDefault(ulong companyId, ulong id);
+        int RemoveById(ulong companyId);
+    }
+
+    // Before the fix generated relations called non-public OnBeforeRemove and OnSerialize methods of a base class
+    // through an accessor of the derived class, which threw MissingMethodException.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HookMethodsOfBaseClassAreCalled(bool noEmit)
+    {
+        var old = IFieldHandler.UseNoEmitForRelations;
+        try
+        {
+            IFieldHandler.UseNoEmitForRelations = noEmit;
+            ObjectDB.ResetAllMetadataCaches();
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IGuardedTable>();
+            for (ulong i = 1; i <= 6; i++) table.Upsert(new() { CompanyId = 1, Id = i, Note = " n " });
+            Assert.Equal("n", table.FindByIdOrDefault(1, 2)!.Note);
+            Assert.Equal(2, table.RemoveById(1));
+            Assert.Equal(new ulong[] { 1, 3, 4, 5 }, table.Select(r => r.Id));
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = old;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
+
+    public class CountedBase
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        [NotStored] public int Serialized { get; set; }
+
+        [OnSerialize]
+        protected virtual void Count() => Serialized += 100;
+    }
+
+    public class Counted : CountedBase
+    {
+        protected override void Count() => Serialized++;
+    }
+
+    public interface ICountedTable : IRelation<Counted>
+    {
+    }
+
+    // An overridden hook method runs once, as its override.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OverriddenHookMethodRunsOnce(bool noEmit)
+    {
+        var old = IFieldHandler.UseNoEmitForRelations;
+        try
+        {
+            IFieldHandler.UseNoEmitForRelations = noEmit;
+            ObjectDB.ResetAllMetadataCaches();
+            using var tr = _db.StartTransaction();
+            var item = new Counted { Id = 1 };
+            tr.GetRelation<ICountedTable>().Upsert(item);
+            Assert.Equal(1, item.Serialized);
+        }
+        finally
+        {
+            IFieldHandler.UseNoEmitForRelations = old;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
 }
