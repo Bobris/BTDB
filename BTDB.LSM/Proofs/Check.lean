@@ -78,3 +78,6 @@ open Lsm
 #print axioms WalSplit.replay_record
 #print axioms TombstoneMerge.merge_covers
 #print axioms TombstoneMerge.merge_disjoint
+#print axioms CompactionPointer.pick_after
+#print axioms CompactionPointer.picks_cycle
+#print axioms CompactionPointer.every_table_picked

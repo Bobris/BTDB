@@ -60,7 +60,9 @@
     - evicting from the block cache ends, and stops over capacity only when every block left is pinned;
     - level size targets are the exact products capped at `long.MaxValue`, never smaller for a deeper level;
     - looking up a key in a level reads a table exactly when its span holds the key, a compaction takes exactly the
-      tables overlapping its range, and replacing them keeps the level sorted and disjoint.
+      tables overlapping its range, and replacing them keeps the level sorted and disjoint;
+    - the table a level compacts next goes round its tables, so each is picked within as many picks as the level has
+      tables while it does not change.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
     for every prefix-free, order-preserving key encoding, and the unsigned and signed variable-length integer
     encodings are such encodings; `Find` with a prefix length answers its contract, and a range scan starts at the

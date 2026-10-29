@@ -78,6 +78,9 @@ saturating at `long.MaxValue`.
 `LsmProofs/LevelLookup.lean` models how `LevelComponent.TryGet` picks the table that may hold a key; it is the same
 search and test as `TombstoneSet.Find` over the table spans.
 
+`LsmProofs/CompactionPointer.lean` models how `LsmCompaction.Pick` chooses the table of a level to compact, by a
+pointer to the last chosen table's lower key.
+
 `LsmProofs/FuzzyCursor.lean` models `LsmKeyValueDBCursor.NotifyRenamed`: how cursors that are current, fuzzy at an
 erased key, or fuzzy right before a live key follow a key suffix update by another cursor.
 
@@ -169,6 +172,7 @@ Not modelled in `Wal.lean`:
 | `LevelTarget.target_eq`, `LevelTarget.target_mono` | The target of level `k + 1` is `min(LevelBaseBytes * LevelMultiplier^k, long.MaxValue)`, so deeper levels never get a smaller one; before the 2026-10-29 fix the product wrapped to a negative or zero target (`LsmRegressionTest.LevelTargetSaturatesInsteadOfWrapping`). |
 | `LevelLookup.lookup_some` | Over a level's sorted, disjoint table spans, `LevelComponent.TryGet` reads table `i` exactly when `i` spans the key, so a key between tables reads none. |
 | `LevelLookup.overlaps_iff` | `LsmVersion.Overlapping`'s test, `Upper > lower` and `Lower < upper`, holds exactly when a table's span and the range share a key. |
+| `CompactionPointer.pick_after`, `CompactionPointer.picks_cycle`, `CompactionPointer.every_table_picked` | Over a level's tables sorted by distinct lower keys, the pick after table `i` is table `(i + 1) % n`, so while the level does not change every table is picked within `n` picks of any table. |
 | `LevelLookup.replace_sorted` | `LsmVersion.Replace`, sorting kept and new tables by `Lower`, gives a level where every table ends at or before each later one starts, when the tables are not empty and pairwise disjoint. |
 
 The fixed rule, as implemented:
