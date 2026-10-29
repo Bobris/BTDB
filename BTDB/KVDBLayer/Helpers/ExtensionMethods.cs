@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.StreamLayer;
 
@@ -11,9 +12,16 @@ public static class ExtensionMethods
     {
         var buf = new byte[cursor.GetStorageSizeOfCurrentKey().Key];
         var memoryBuf = buf.AsMemory();
-        cursor.GetKeyMemory(ref memoryBuf, true);
-        return buf;
+        return Whole(buf, cursor.GetKeyMemory(ref memoryBuf, true));
     }
+
+    // The stored size is only a hint, as a value written compressed by older versions stores fewer bytes: one longer
+    // than the buffer is read into another.
+    static byte[] Whole(byte[] buffer, ReadOnlyMemory<byte> read) =>
+        read.Length == buffer.Length && MemoryMarshal.TryGetArray(read, out var segment) &&
+        ReferenceEquals(segment.Array, buffer) && segment.Offset == 0
+            ? buffer
+            : read.ToArray();
 
     public static void GetKeyIntoMemWriter(this IKeyValueDBCursor cursor, ref MemWriter writer)
     {
@@ -30,8 +38,7 @@ public static class ExtensionMethods
     {
         var buf = new byte[cursor.GetStorageSizeOfCurrentKey().Value];
         var memoryBuf = buf.AsMemory();
-        cursor.GetValueMemory(ref memoryBuf, true);
-        return buf;
+        return Whole(buf, cursor.GetValueMemory(ref memoryBuf, true));
     }
 
     public static bool CreateKey(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> keyBuf)

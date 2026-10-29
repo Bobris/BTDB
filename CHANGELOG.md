@@ -206,6 +206,9 @@
   type `IShape` registers it as `Shape` too. The implementation takes the name from the interface now, and a read
   before the implementation is registered reports the type as not registered instead of binding the table to the
   interface for the rest of the session.
+- `SlowGetValue` and `SlowGetKey` returned a buffer sized by the stored size of the current key, which for a value
+  written compressed by older versions of `BTreeKeyValueDB` is the compressed size, so they returned its beginning only.
+  They return what the cursor read now.
 - An object stored again after `IObjectDBTransaction.Delete` in the same transaction was missing from the
   transaction's cache, so `Get` returned null for it until the commit, and `StoreAndFlush` did not store it at all. It
   is cached and stored again now. Storing a deleted singleton after `Singleton` created a new one under its oid threw

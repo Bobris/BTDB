@@ -555,4 +555,46 @@ public class KeyValueDBMiscCoverageTest
         snapshot.Dispose();
         Assert.Throws<ObjectDisposedException>(() => snapshot.WriteTo(Dest(), maxGeneration + 1, mapping));
     }
+
+    // A value written compressed by older versions reports its compressed size as its stored size.
+    public class CompressedSizeCursor : System.Reflection.DispatchProxy
+    {
+        public IKeyValueDBCursor Inner = null!;
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name == nameof(IKeyValueDBCursor.GetStorageSizeOfCurrentKey))
+            {
+                var size = Inner.GetStorageSizeOfCurrentKey();
+                return new KeyValuePair<uint, uint>(size.Key, size.Value / 4);
+            }
+
+            try
+            {
+                return targetMethod.Invoke(Inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException e)
+            {
+                throw e.InnerException!;
+            }
+        }
+    }
+
+    // Before the fix the buffer was sized by the stored size, and returned also when the value did not fit and was read
+    // into a larger one, as for a value written compressed by older versions.
+    [Fact]
+    public void SlowGetValueReturnsWholeValueLargerThanItsStoredSize()
+    {
+        using var db = new InMemoryKeyValueDB();
+        var value = new byte[1000];
+        value[^1] = 1;
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([1], value);
+        Assert.True(cursor.FindExactKey([1]));
+        var proxy = System.Reflection.DispatchProxy.Create<IKeyValueDBCursor, CompressedSizeCursor>();
+        ((CompressedSizeCursor)(object)proxy).Inner = cursor;
+        Assert.Equal(value, proxy.SlowGetValue());
+        Assert.Equal([1], proxy.SlowGetKey());
+    }
 }
