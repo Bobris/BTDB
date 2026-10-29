@@ -85,3 +85,6 @@ open Lsm
 #print axioms NewestManifest.none_without_manifests
 #print axioms PrefixRange.nearest_below_decides
 #print axioms PrefixRange.nearest_above_decides
+#print axioms WalContiguous.take_consecutive
+#print axioms WalContiguous.take_listed
+#print axioms WalContiguous.take_maximal

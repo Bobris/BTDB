@@ -22,6 +22,7 @@ import LsmProofs.PrefixRange
 import LsmProofs.WalBatch
 import LsmProofs.WalSplit
 import LsmProofs.NewestManifest
+import LsmProofs.WalContiguous
 import LsmProofs.Varint
 import LsmProofs.LevelLookup
 import LsmProofs.CompactionPointer

@@ -31,7 +31,8 @@
   - `BTDB.LSM/Proofs/`, `LsmKeyValueDB`:
     - across writer takeovers and flushes every acknowledged commit stays in every replay, and every replay is a
       prefix of one writer's history;
-    - opening loads the manifest with the highest number among those listed, whatever stray objects lie among them;
+    - opening loads the manifest with the highest number among those listed, whatever stray objects lie among them,
+      and replays the WAL chunks from the next one up to the first missing, no further;
     - a WAL upload takes the oldest pending records, at least one, and as many as fit the batch limit, and the parts
       a record is cut into for its chunks put together are the record, with only the first flagged first and only
       the final one flagged last, so replaying them rebuilds exactly the record;
