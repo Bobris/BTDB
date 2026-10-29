@@ -166,6 +166,51 @@ public class CollectionsDifferentialTest
         }
     }
 
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void SpanByteNoRemoveDictionaryMatchesDictionary(int seed)
+    {
+        var random = new Random(seed);
+        var dictionary = new SpanByteNoRemoveDictionary<int>(random.Next(0, 5));
+        var reference = new Dictionary<string, int>();
+        var keyCount = random.Next(4, 300);
+        for (var step = 0; step < 3000; step++)
+        {
+            // Keys of varied length, the empty one included.
+            var key = random.Next(10) == 0 ? "" : new string('k', random.Next(keyCount) % 9) + random.Next(keyCount);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(key);
+            switch (random.Next(4))
+            {
+                case 0:
+                case 1:
+                    dictionary.GetOrAddValueRef(bytes) = step;
+                    reference[key] = step;
+                    break;
+                case 2:
+                {
+                    Assert.Equal(reference.TryGetValue(key, out var expected), dictionary.TryGetValue(bytes, out var value));
+                    Assert.Equal(expected, value);
+                    Assert.Equal(reference.ContainsKey(key), dictionary.ContainsKey(bytes));
+                    break;
+                }
+                default:
+                    if (reference.TryGetValue(key, out var existing)) Assert.Equal(existing, dictionary[bytes]);
+                    break;
+            }
+
+            Assert.Equal(reference.Count, dictionary.Count);
+        }
+
+        Assert.Equal(reference.OrderBy(p => p.Key, StringComparer.Ordinal),
+            dictionary.Select(p => new KeyValuePair<string, int>(System.Text.Encoding.UTF8.GetString(p.Key), p.Value))
+                .OrderBy(p => p.Key, StringComparer.Ordinal));
+        var copy = new KeyValuePair<byte[], int>[dictionary.Count + 1];
+        dictionary.CopyTo(copy, 1);
+        Assert.Equal(reference.OrderBy(p => p.Key, StringComparer.Ordinal),
+            copy.Skip(1).Select(p => new KeyValuePair<string, int>(System.Text.Encoding.UTF8.GetString(p.Key), p.Value))
+                .OrderBy(p => p.Key, StringComparer.Ordinal));
+    }
+
     // Before the fix InsertRange resized the array on every call, so it shrank the capacity Reserve made.
     [Fact]
     public void StructListInsertRangeKeepsReservedCapacity()
