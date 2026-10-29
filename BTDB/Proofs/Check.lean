@@ -194,3 +194,5 @@ open Btdb
 #print axioms ReadBounds.naive_wraps
 #print axioms SeqLockRead.accepted_read_is_consistent
 #print axioms SeqLockRead.late_read_can_tear
+#print axioms ReadGrowth.allocation_bounded
+#print axioms ReadGrowth.full_read_ends_at_length

@@ -92,6 +92,9 @@ files.
 `BtdbProofs/SeqLockRead.lean` models the read protocol of `SeqLock` over a counter that only grows and data that changes
 only while the counter is odd.
 
+`BtdbProofs/ReadGrowth.lean` models `MemReader.ReadBlockGrowing`, which reads a block of a declared length into an array
+that doubles as bytes arrive.
+
 `BtdbProofs/TrlChain.lean` models how `BTreeKeyValueDB.LinkTransactionLogFileIds` walks the transaction logs back
 over the predecessor IDs in their headers.
 
@@ -271,6 +274,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `FileIds.load_max_ge`, `FileIds.next_fresh` | A standalone collection's largest ID found on open is at least every file's ID in any listing order, and the next ID is not 0 and above them all; before the 2026-10-29 fix an `int` maximum wrapped to 0 after a file named with the largest `uint` (`FileCollectionTests.FileAfterTheLargestPossibleIdIsRefused`). |
 | `ReadBounds.refused_iff`, `ReadBounds.naive_wraps` | `position > capacity \|\| length > capacity - position` on `ulong`s refuses exactly the reads with `position + length > capacity`, though the subtraction and the naive sum can wrap; the naive sum accepts some reads past the end. Before the 2026-10-29 fix such reads were not refused (`FileCollectionTests.ReadFarPastTheEndIsEndOfStream`). |
 | `SeqLockRead.accepted_read_is_consistent`, `SeqLockRead.late_read_can_tear` | A read accepted because the counter was even and unchanged saw the data as at its first counter read, provided the data read happened between the two counter reads; a data read landing after the second one, as loads may on arm64 without the barrier `RetryRead` issues since the 2026-10-29 fix, can see a half-done write (`SeqLockTests.ReadsThatPassRetryNeverSeeAHalfDoneWrite`). |
+| `ReadGrowth.allocation_bounded`, `ReadGrowth.full_read_ends_at_length` | Whatever length damaged data declares, reading it allocates at most `max(4096, buffered) + 4 * present` bytes, `present` being what the input holds, and a complete block ends in an array of exactly its length; before the 2026-10-29 fix four readers allocated the declared length at once (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`). |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
 | `KviDurability.fixed_safe` | Flushing the log before the key index, with the index's root taken under the same exclusion, keeps every durable index at or before the durable log end in every reachable state. |
