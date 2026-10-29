@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -172,7 +173,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 }
 
                 count--;
-                var obj = new ListWithDescriptor<object?>((int)count, this);
+                var obj = new ListWithDescriptor<object?>((int)CollectionMetadata.CapacityFor(count, reader), this);
                 while (count-- != 0)
                 {
                     object? item = null;
@@ -199,6 +200,10 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 }
 
                 count--;
+                // An array is created with its length, so a damaged count past the bytes left, each item taking one
+                // at least, must fail before it is allocated.
+                if (count > (uint)CollectionMetadata.CapacityFor(count, reader) && reader.Controller == null)
+                    throw new InvalidDataException("Event array declares " + count + " items, more than its data holds.");
                 var obj = Array.CreateInstance(itemType, (int)count);
                 if (_typeSerializers.PreserveDescriptors)
                     TypeSerializers.Object2DescriptorMap.Add(obj, this);
@@ -231,7 +236,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             }
 
             count--;
-            var obj = collectionMetadata!.Creator(count);
+            var obj = collectionMetadata!.Creator(CollectionMetadata.CapacityFor(count, reader));
             if (_typeSerializers.PreserveDescriptors)
                 TypeSerializers.Object2DescriptorMap.Add(obj, this);
             var loaderCtx = new ListItemLoaderCtx

@@ -181,7 +181,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 }
 
                 count--;
-                var obj = new DictionaryWithDescriptor<object, object?>((int)count, this);
+                var obj = new DictionaryWithDescriptor<object, object?>((int)CollectionMetadata.CapacityFor(count, reader), this);
                 while (count-- != 0)
                 {
                     object? key = null;
@@ -216,7 +216,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             }
 
             count--;
-            var obj = collectionMetadata!.Creator(count);
+            var obj = collectionMetadata!.Creator(CollectionMetadata.CapacityFor(count, reader));
             if (_typeSerializers.PreserveDescriptors)
                 TypeSerializers.Object2DescriptorMap.Add(obj, this);
             var loaderCtx = new DictionaryKeyValueLoaderCtx

@@ -608,6 +608,10 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- Event stores: a damaged count of a list, dictionary or array in an event, or of an enum's names in its descriptor,
+  sized what it was read into, so past `int.MaxValue` deserializing failed with `ArgumentOutOfRangeException` on a
+  negative capacity or length. Counts only hint capacities now, and an array declaring more items than its data
+  holds is `InvalidDataException` before it is allocated.
 - ObjectDB: a damaged count of a stored list, set or dictionary sized the collection it was read into, so past
   `int.MaxValue` reading the object failed with `ArgumentOutOfRangeException` on a negative capacity, in both the
   emitted and the interpreted loaders. The count only hints the capacity now, at most the bytes left, and a damaged

@@ -68,7 +68,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _signed = (header & 1) != 0;
         _flags = (header & 2) != 0;
         var count = header >> 2;
-        _pairs = new List<KeyValuePair<string, ulong>>((int)count);
+        _pairs = new List<KeyValuePair<string, ulong>>((int)CollectionMetadata.CapacityFor(count, reader));
         for (var i = 0; i < count; i++)
         {
             _pairs.Add(_signed
