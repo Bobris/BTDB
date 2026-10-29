@@ -1678,6 +1678,13 @@ public class SourceGenerator : IIncrementalGenerator
                typeSymbol.InODBLayerNamespace();
     }
 
+    /// A constructor taking the type itself would recurse, and no container or generated metadata can pass a pointer or
+    /// a ref struct, like string(char*) needs.
+    static bool IsUsableConstructor(IMethodSymbol constructor, INamedTypeSymbol type) =>
+        !constructor.Parameters.Any(p =>
+            SymbolEqualityComparer.Default.Equals(p.Type, type) ||
+            p.Type is IPointerTypeSymbol or IFunctionPointerTypeSymbol || p.Type.IsRefLikeType);
+
     static GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol,
         TypeDeclarationSyntax? classDeclarationSyntax,
         bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model,
@@ -1751,7 +1758,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             if (symbolConstructor.IsStatic)
                 continue;
-            if (symbolConstructor.Parameters.Any(p => SymbolEqualityComparer.Default.Equals(p.Type, symbol)))
+            if (!IsUsableConstructor(symbolConstructor, symbol))
                 continue;
             if (constructorParameters != null)
             {

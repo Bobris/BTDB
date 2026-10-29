@@ -549,6 +549,27 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("IDispatcher", diagnostic.GetMessage());
     }
 
+    // Before the fix the longest constructor was taken even when it needed a pointer or a ref struct, which nothing can
+    // pass, so GenerateFor of string generated code calling string(sbyte*, int, int, Encoding) that did not compile.
+    [Fact]
+    public void ConstructorsTakingPointersOrRefStructsAreNotChosen()
+    {
+        GenerateAndCompile("""
+            namespace TestNamespace;
+
+            public class Target
+            {
+                public unsafe Target(byte* data, int length) { }
+                public Target(System.ReadOnlySpan<byte> data, int a, int b) { }
+                public Target(string name) { }
+            }
+
+            [BTDB.GenerateFor(typeof(string))]
+            [BTDB.GenerateFor(typeof(Target))]
+            public class Registrations { }
+            """);
+    }
+
     // Before the fix a struct or a delegate named by GenerateFor got a creator and metadata written for a class, which did
     // not compile.
     [Theory]

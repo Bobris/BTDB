@@ -605,6 +605,9 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- Source generator: the constructor chosen for a class could take a pointer or a ref struct, which no container or
+  metadata can pass, so `[GenerateFor(typeof(string))]` generated a call of `string(sbyte*, int, int, Encoding)` that
+  did not compile. Such constructors are skipped now.
 - Source generator: `[GenerateFor(typeof(SomeStruct))]`, or of a delegate, generated a creator and metadata written for
   a class, so the generated code failed to compile. Such a type is now reported as BTDB0054 and nothing is generated
   for it; a delegate gets its factory from `[Generate]` on its own declaration.
