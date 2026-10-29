@@ -577,6 +577,11 @@
   a running writer. `CreateKvi` called while a writing transaction holds the log writes an index only when the last
   commit is already durable (always with `DurableTransactions`), and otherwise skips it with a logged warning. Found
   by simulating crashes at every file operation, also beside a concurrent writer.
+- `OnDiskFileCollection`, `OnDiskMemoryMappedFileCollection` and `InMemoryFileCollection` kept the largest file ID in
+  an `int`. A stray file named with the largest `uint`, like `4294967295.bin`, made the next file get ID 0, which every
+  later open skips as no file, so the commits of a transaction log created there were lost; an ID above `int.MaxValue`
+  listed before a smaller one also lowered the largest ID. The largest ID is a `uint` now, and allocating past it
+  throws `InvalidOperationException` instead of wrapping around to 0.
 - Opening a `BTreeKeyValueDB` whose transaction log header had a damaged predecessor ID pointing at a later log
   hung forever following the cycle. The chain walk now requires every predecessor to have a lower file ID, as
   `OpenAsync` already did, and fails the open with `BTDBException` otherwise. Found by flipping header bits.

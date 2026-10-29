@@ -17,7 +17,7 @@ public class InMemoryFileCollection : IFileCollection
 #pragma warning disable 420
 
     volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
-    int _maxFileId;
+    uint _maxFileId;
 
     public InMemoryFileCollection()
     {
@@ -347,7 +347,7 @@ public class InMemoryFileCollection : IFileCollection
 
     public IFileCollectionFile AddFile(string humanHint)
     {
-        var index = (uint)Interlocked.Increment(ref _maxFileId);
+        var index = FileIdAllocator.Next(ref _maxFileId);
         var file = new File(this, index);
         Dictionary<uint, File> newFiles;
         Dictionary<uint, File> oldFiles;

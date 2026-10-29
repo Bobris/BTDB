@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace BTDB.KVDBLayer;
 
@@ -28,5 +29,17 @@ internal struct FileIdAllocator
         if (next > uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
         Observe((uint)next);
         return (uint)next;
+    }
+
+    /// Advances maxFileId to the next ID and returns it, safely from several threads. It never wraps around to 0, which
+    /// means no file, so a file found with the largest uint ID leaves none to allocate.
+    internal static uint Next(ref uint maxFileId)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref maxFileId);
+            if (current == uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
+            if (Interlocked.CompareExchange(ref maxFileId, current + 1, current) == current) return current + 1;
+        }
     }
 }

@@ -24,7 +24,7 @@ public class OnDiskFileCollection : IFileCollection
 #pragma warning disable 420
 
     volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
-    int _maxFileId;
+    uint _maxFileId;
     readonly FileAccess _fileAccess;
     IDeleteFileCollectionStrategy? _deleteFileCollectionStrategy;
 
@@ -320,7 +320,7 @@ public class OnDiskFileCollection : IFileCollection
             if (id == 0) continue;
             var file = new File(this, id, filePath, _fileAccess);
             _files.Add(id, file);
-            if (id > _maxFileId) _maxFileId = (int)id;
+            if (id > _maxFileId) _maxFileId = id;
         }
     }
 
@@ -331,7 +331,7 @@ public class OnDiskFileCollection : IFileCollection
 
     public IFileCollectionFile AddFile(string? humanHint)
     {
-        var index = (uint)Interlocked.Increment(ref _maxFileId);
+        var index = FileIdAllocator.Next(ref _maxFileId);
         var fileName = index.ToString("D8") + "." + (humanHint ?? "");
         var file = new File(this, index, Path.Combine(_directory, fileName), _fileAccess);
         Dictionary<uint, File> newFiles;

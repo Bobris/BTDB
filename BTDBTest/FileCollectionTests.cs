@@ -55,6 +55,34 @@ public class FileCollectionTests : IDisposable
         Assert.Equal((byte)42, data[0]);
     }
 
+    // Before the fix the largest file ID was kept in an int, so a stray file named with the largest uint made the next
+    // file get ID 0, which every later open skips as no file: a transaction log created there was lost.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FileAfterTheLargestPossibleIdIsRefused(bool memoryMapped)
+    {
+        File.WriteAllBytes(Path.Combine(_dir, uint.MaxValue + ".bin"), [1]);
+        using IFileCollection collection = memoryMapped
+            ? new OnDiskMemoryMappedFileCollection(_dir)
+            : new OnDiskFileCollection(_dir);
+        Assert.Throws<InvalidOperationException>(() => collection.AddFile("trl"));
+        Assert.DoesNotContain(Directory.GetFiles(_dir), path => Path.GetFileName(path).StartsWith("00000000"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FileAfterAnIdAboveIntMaxValueGetsTheNextId(bool memoryMapped)
+    {
+        File.WriteAllBytes(Path.Combine(_dir, "3000000000.bin"), [1]);
+        File.WriteAllBytes(Path.Combine(_dir, "00000005.trl"), [1]);
+        using IFileCollection collection = memoryMapped
+            ? new OnDiskMemoryMappedFileCollection(_dir)
+            : new OnDiskFileCollection(_dir);
+        Assert.Equal(3000000001u, collection.AddFile("trl").Index);
+    }
+
     public void Dispose()
     {
         Directory.Delete(_dir, true);

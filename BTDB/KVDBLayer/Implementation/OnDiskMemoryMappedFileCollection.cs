@@ -23,7 +23,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 #pragma warning disable 420
 
     volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
-    int _maxFileId;
+    uint _maxFileId;
     IDeleteFileCollectionStrategy? _deleteFileCollectionStrategy;
 
     sealed unsafe class File : IFileCollectionFile
@@ -292,7 +292,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             if (id == 0) continue;
             var file = new File(this, id, filePath);
             _files.Add(id, file);
-            if (id > _maxFileId) _maxFileId = (int)id;
+            if (id > _maxFileId) _maxFileId = id;
         }
     }
 
@@ -303,7 +303,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
     public IFileCollectionFile AddFile(string? humanHint)
     {
-        var index = (uint)Interlocked.Increment(ref _maxFileId);
+        var index = FileIdAllocator.Next(ref _maxFileId);
         var fileName = index.ToString("D8") + "." + (humanHint ?? "");
         var file = new File(this, index, Path.Combine(_directory, fileName));
         Dictionary<uint, File> newFiles;
