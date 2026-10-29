@@ -174,8 +174,8 @@
   - `BTDB/Proofs/`, IOC: a service resolving itself while it is created fails instead of waiting for itself forever.
   - `BTDB/Proofs/`, `EquatableArray<T>`: equal arrays, the default one and an empty one included, hash alike.
   - `BTDB/Proofs/`, chunk storage: loading its hash index files gives each chunk key its latest entry across reopens.
-  - `BTDB/Proofs/`, `MemReader`: reading a block of any declared length allocates at most a constant plus four times
-    the bytes the input holds.
+  - `BTDB/Proofs/`, `MemReader` and the export importer: reading a block of any declared length allocates at most a
+    constant plus four times the bytes the input holds.
   - `BTDB/Proofs/`, `SeqLock`: a read accepted by an unchanged even counter is consistent when its data reads come
     between the two counter reads, and can see a half-done write when they come after the second.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the

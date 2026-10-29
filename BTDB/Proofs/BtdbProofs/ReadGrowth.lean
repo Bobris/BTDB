@@ -18,6 +18,8 @@ on: the array itself, and the next ones while it filled and is shorter than `len
   `ReadStringInUtf8` and the span and memory readers allocated `length` at once
   (`MemReaderWriterRoundTripTest.LengthsBeyondTheInputFailWithoutAllocatingThem`).
 * `full_read_ends_at_length`: when the input holds the whole block, the last array has exactly `length` bytes.
+* `importer_allocation_bounded`: the export importer's `ReadSized`, growing its reused buffer the same way, allocates at
+  most the buffer it starts with plus four times what the stream holds, for any damaged key or value size.
 -/
 
 namespace Btdb.ReadGrowth
@@ -77,5 +79,20 @@ theorem full_read_ends_at_length (length present s : Nat) (hp : length ≤ prese
     intro hpos hle
     rw [last, dite_eq_right h]
     omega
+
+/-- Growing from an array of any size `s` allocates at most `s` plus four times the bytes present. -/
+theorem allocation_from (length present s : Nat) : total length present s ≤ s + 4 * present := by
+  by_cases hs : s ≤ present
+  · have := total_filled length present s hs
+    omega
+  · rw [total_stop length present s (by omega)]
+    omega
+
+/-- `KeyValueDBExportImporter.ReadSized` and `ReadSizedAsync` grow their buffer the same way, starting from 4096 bytes or
+from what an earlier key or value grew it to: a damaged size makes an import allocate at most that plus four times what
+the stream holds. -/
+theorem importer_allocation_bounded (length present buffer : Nat) :
+    total length present buffer ≤ buffer + 4 * present :=
+  allocation_from length present buffer
 
 end Btdb.ReadGrowth
