@@ -36,3 +36,4 @@ import BtdbProofs.ConvertingSaver
 import BtdbProofs.NestedRegistration
 import BtdbProofs.InheritedDependencies
 import BtdbProofs.QueryPaging
+import BtdbProofs.RoaringKind

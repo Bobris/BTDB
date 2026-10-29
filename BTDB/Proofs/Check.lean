@@ -128,3 +128,5 @@ open Btdb
 #print axioms InheritedDependencies.previous_misses_base
 #print axioms StringOrdered.high_surrogate_match
 #print axioms QueryPaging.bind_correct
+#print axioms RoaringKind.choose_shortest
+#print axioms RoaringKind.kind_roundtrip
