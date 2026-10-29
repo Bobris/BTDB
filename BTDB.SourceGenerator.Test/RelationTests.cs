@@ -1198,7 +1198,7 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
-    public Task ComplexSkymambaExample()
+    public Task ComplexContinentRelationsExample()
     {
         // language=cs
         return VerifySourceGenerator("""

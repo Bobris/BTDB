@@ -50,7 +50,7 @@ Set `EventPublisherOptions.Cluster` to an `EventCluster(nodeId, replicationPrese
 replay to the selected replication leader through the node's `ReplicationPresence`, withdraw on shutdown and expire
 after a crash. Membership adds no shared-storage requests and no event topic; use the host's node ID.
 
-Layer2 uses two separate topics, following the Skymamba model: metadata is applied in topic order to both serializer
+Layer2 uses two separate topics: metadata is applied in topic order to both serializer
 and deserializer before dependent data is written or consumed. Metadata is retained from offset zero; data replay
 starts at the database cursor. The publisher owns its workers, but the application owns the database, schemas, input
 retention, replication host and external effects. Observe `Completion` and stop the publisher before disposing its

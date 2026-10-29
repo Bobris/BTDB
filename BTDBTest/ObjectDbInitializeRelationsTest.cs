@@ -50,7 +50,7 @@ public class ObjectDbInitializeRelationsTest : ObjectDbTestBase
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public void SkymambaStartupInitializesRelationsInOrdinaryTransaction(bool upgrade, bool readBeforeStartup)
+    public void ApplicationStartupInitializesRelationsInOrdinaryTransaction(bool upgrade, bool readBeforeStartup)
     {
         if (upgrade)
         {

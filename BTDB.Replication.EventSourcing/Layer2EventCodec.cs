@@ -13,7 +13,7 @@ internal sealed class StoredEvent
     public Event Event { get; set; } = null!;
 }
 
-// The caller serializes access. Like Skymamba, both Layer2 instances receive the complete, ordered metadata topic;
+// The caller serializes access. Both Layer2 instances receive the complete, ordered metadata topic;
 // proposed metadata is never applied optimistically before its actual topic position is known.
 internal sealed class Layer2EventCodec(ITypeNameMapper? mapper)
 {

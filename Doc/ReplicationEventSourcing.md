@@ -75,7 +75,7 @@ Use distinct topics, for example `application-events` and `application-metadata`
 application history; never reuse a metadata topic from an unrelated data stream. All instances use the same type-name
 mapping and compatible handlers. `EventPublisherOptions.TypeNameMapper` supports persisted type names and upgrades.
 
-The flow follows Skymamba's streaming Layer2 serializer:
+The flow uses a streaming Layer2 serializer:
 
 1. At startup, read the metadata topic from offset zero and apply records in order to both `EventSerializer` and
    `EventDeserializer`; continue following new metadata.
@@ -153,7 +153,7 @@ still need the application's own ownership/idempotency policy.
 
 ## Actions after a batch
 
-During `Consume`, register work with `Ambient.RegisterPostCommit(Action)`, following the Skymamba context API:
+During `Consume`, register work with `Ambient.RegisterPostCommit(Action)`:
 
 ```csharp
 Ambient.Relation<IEntries>().Upsert(new() { Id = ev.EventId, Amount = ev.Amount });

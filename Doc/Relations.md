@@ -78,7 +78,7 @@ After opening ObjectDB, register the complete list of relation interfaces before
 ```
 
 The `IEnumerable<Type>` argument can be the list collected by an application's relation/IOC registration code
-(such as Skymamba's continent relation list). `InitializeRelations` works with automatic registration disabled and
+(such as a list of continent relations). `InitializeRelations` works with automatic registration disabled and
 does not change that setting. Relation names come from `PersistedNameAttribute` on the interface, or otherwise its
 type name, just like `GetRelation<T>`.
 
