@@ -258,3 +258,5 @@ open Btdb
 #print axioms DependencyMembers.collect_first
 #print axioms UpdateByIdParams.full_check_sound
 #print axioms UpdateByIdParams.cut_misses
+#print axioms UpdateByIdParams.prefix_check_sound
+#print axioms UpdateByIdParams.prefix_cut_misses

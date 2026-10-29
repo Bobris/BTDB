@@ -159,7 +159,7 @@ for storage, private properties of base classes included.
 members of a type and its base classes.
 
 `BtdbProofs/UpdateByIdParams.lean` models how the source generator checks the key parameters of `UpdateById`,
-InKeyValue fields included.
+InKeyValue fields included, and of methods taking a key prefix.
 
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
@@ -372,6 +372,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `PropertyOrder.new_eq_old_without_private_bases`, `PropertyOrder.new_has_private_bases` | Listing every class's declared properties, the most derived first, adds the private properties of base classes the generator stores and leaves the listing of every other type unchanged, field for field and in order, so their stored schemas stay (`ObjectDbMemberShapesTest`). |
 | `DependencyMembers.collect_nodup`, `DependencyMembers.collect_complete`, `DependencyMembers.collect_first` | Walking from the most derived class and taking a member only for a name not met before injects every name once, from its most derived member, so a dependency hidden with `new` or overridden is taken from the derived class, as reflection based and generated factories both do. |
 | `UpdateByIdParams.full_check_sound`, `UpdateByIdParams.cut_misses` | Comparing parameters with every key field, InKeyValue fields included, makes each key field written from a parameter matching it; the old check stopped at the first InKeyValue field and accepted `UpdateById(ulong id, string? name)` for a key `Id, [InKeyValue] Version`, writing `name` in place of `Version`. |
+| `UpdateByIdParams.prefix_check_sound`, `UpdateByIdParams.prefix_cut_misses` | Refusing more parameters than index fields and checking each parameter makes every parameter of a key prefix method match the key field it is written as; the old check stopped at the first InKeyValue field or the declared secondary key fields and accepted `CountById(ulong id, string name)` for a key `Id, [InKeyValue] Version`. |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |

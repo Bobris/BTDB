@@ -78,8 +78,8 @@
     parameter count exactly the keys in the range from key indices, for every pair of propositions; the branchless
     `PackUnpack` length functions match the modelled encodings, readers take each encoding's length from its first
     byte correctly, and unpacking returns every packed 64-bit value.
-  - `BTDB/Proofs/`, `UpdateById`: checking every key parameter, InKeyValue fields included, writes each key field
-    from a parameter matching it.
+  - `BTDB/Proofs/`, `UpdateById` and key prefix methods: checking every key parameter, InKeyValue fields included,
+    and refusing more parameters than index fields writes each key field from a parameter matching it.
   - `BTDB/Proofs/`, property listing: adding private properties of base classes leaves every other schema as it was.
   - `BTDB/Proofs/`, IOC: a type's dependencies are injected once per member name, from its most derived member.
   - `BTDB/Proofs/`, attributes of overriding properties: the generator inherits them as reflection does.
