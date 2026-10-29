@@ -51,6 +51,30 @@ public class IOCReflectionFallbackTest
         Assert.Same(logger, obj.PrivateSetter);
     }
 
+    public class NamedParameters
+    {
+        public NamedParameters([Dependency("special")] ILogger a,
+            [Microsoft.Extensions.DependencyInjection.FromKeyedServices("other")] ILogger b) => (A, B) = (a, b);
+
+        public ILogger A { get; }
+        public ILogger B { get; }
+    }
+
+    // Before the fix constructor parameters were resolved by their names, ignoring the names their attributes give.
+    [Fact]
+    public void ParametersAreResolvedByTheNamesTheirAttributesGive()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterTypeWithFallback(typeof(NamedParameters)).AsSelf();
+        var special = new Logger();
+        var other = new Logger();
+        builder.RegisterInstance<ILogger>(special).Named<ILogger>("special");
+        builder.RegisterInstance<ILogger>(other).Named<ILogger>("other");
+        var obj = (NamedParameters)builder.Build().Resolve(typeof(NamedParameters))!;
+        Assert.Same(special, obj.A);
+        Assert.Same(other, obj.B);
+    }
+
     static object Resolve(Type type)
     {
         var builder = new ContainerBuilder();

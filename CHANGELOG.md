@@ -106,6 +106,9 @@
 
 ### Fixed
 
+- IOC: a type without a generated factory, built by reflection, resolved its constructor parameters by their names,
+  ignoring the names `[Dependency("name")]` and `[FromKeyedServices("name")]` give them, as generated factories
+  use.
 - IOC: a type without a generated factory, built by reflection, did not inject a `[Dependency]` property whose
   private setter is declared in a base class: the inherited property looked read-only. Its setter is now found
   through the base class, as generated factories inject it.

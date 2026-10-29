@@ -98,6 +98,14 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
         return BuildFactory(implementationType, ci);
     }
 
+    /// The key a constructor parameter is resolved by, named like generated factories name it.
+    static object? DependencyKey(ParameterInfo parameter)
+    {
+        return parameter.GetCustomAttribute<DependencyAttribute>()?.Name ??
+               parameter.GetCustomAttribute<Microsoft.Extensions.DependencyInjection.FromKeyedServicesAttribute>()
+                   ?.Key ?? parameter.Name;
+    }
+
     static bool IsNullable(ParameterInfo parameter)
     {
         if (Nullable.GetUnderlyingType(parameter.ParameterType) != null) return true;
@@ -131,7 +139,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
             StructList<(Func<IContainer, IResolvingCtx, object>?, object?)> parameterFactories = new();
             foreach (var parameter in parameters)
             {
-                var factory = container.CreateFactory(ctx, parameter.ParameterType, parameter.Name);
+                var factory = container.CreateFactory(ctx, parameter.ParameterType, DependencyKey(parameter));
                 // Like generated factories: a parameter without a default value is null when nullable, else required.
                 // Its DefaultValue would be DBNull.Value, which the constructor cannot take.
                 var fallback = parameter.HasDefaultValue ? parameter.DefaultValue : null;
