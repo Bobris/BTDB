@@ -54,3 +54,6 @@ open Lsm
 #print axioms LevelLookup.lookup_some
 #print axioms LevelLookup.overlaps_iff
 #print axioms LevelLookup.replace_sorted
+#print axioms BlockKeys.decode_encode
+#print axioms BlockKeys.decode_from_restart
+#print axioms BlockKeys.restart_entry

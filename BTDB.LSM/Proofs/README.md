@@ -27,6 +27,9 @@ its binary search.
 `LsmProofs/BlockSeek.lean` models `RawBlock.LowerBound`: finding the first restart past the key, then scanning the
 entries of the restart before it. The binary search over restarts is modelled by its result.
 
+`LsmProofs/BlockKeys.lean` models the prefix-compressed keys of `DataBlockBuilder.Add` and how
+`RawBlock.DecodeAt` rebuilds them, every restart storing its key whole.
+
 `LsmProofs/MergeMask.lean` models how `MergingIterator` resolves a key over components newest first, by a point entry
 or else a range-tombstone fragment.
 
@@ -123,6 +126,7 @@ Not modelled in `Wal.lean`:
 | `Rank.rank_correct`, `Rank.count_correct` | `RankFrom` over a stack is the number of live keys below `x`, and `CountFrom`, the sum of `DeltaSum − CoveredSum`, is the number of live keys. |
 | `FuzzyCursor.notify_position`, `FuzzyCursor.notify_kind` | After `UpdateKeySuffix` replaces a key by the only key with its prefix, every cursor of the transaction has the position it had, and current cursors stay current and fuzzy ones fuzzy. Before the 2026-10-28 fix a fuzzy cursor kept its erased key, which the renamed key could pass (`LsmRegressionTest.KeySuffixUpdateKeepsFuzzyCursorOnItsSide`), and a cursor whose erased key was created again did not follow it (`CursorOnRecreatedKeyFollowsKeySuffixUpdate`). |
 | `BlockSeek.lower_bound_correct` | Seeking in a data block of sorted entries with a restart every `R` entries, by the first restart past the key and a scan of the restart before it, returns the first entry at or after the key (after it, when the key is excluded), or the entry count. |
+| `BlockKeys.decode_encode`, `BlockKeys.decode_from_restart`, `BlockKeys.restart_entry` | Each key stored as the length of the prefix it shares with the previous key and the rest is rebuilt exactly, so `DecodeAt`'s corruption check never fires on a built block; decoding from any restart, starting from an empty key as `LowerBound` and `Entry` do, gives back the keys from there, and the restart entry holds its whole key, as `RestartKey` reads it. |
 | `MergeMask.decided_ignores_older`, `MergeMask.newest_point_wins` | Once a component decides a key, by a point or a fragment, older components cannot change whether it is live, so `MergingIterator` seeking them past a newer fragment skips no live key; the newest point at a key decides it. |
 | `TombstoneFind.find_some`, `TombstoneFind.find_covered` | `TombstoneSet.Find` returns a fragment exactly when it contains the key, and the fragments its `coveredBefore` sums are exactly those ending at or before the key, the result `Rank.lean` assumes. |
 | `BlockDelta.delta_prefix_correct` | `DeltaPrefix(count)`, the delta stored at the restart of entry `count - 1`, capped at the last restart, plus the deltas of the entries from it to `count`, is the sum of the deltas of the first `count` entries. |

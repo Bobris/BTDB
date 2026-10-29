@@ -36,7 +36,8 @@
     - key ranks and counts computed from point deltas and range-tombstone coverage are exact over any stack of
       components;
     - cursors keep their position when another cursor changes a key suffix;
-    - seeking in a data block through its restarts finds the first entry at or after the key;
+    - seeking in a data block through its restarts finds the first entry at or after the key, and decoding its
+      prefix-compressed keys from any restart gives back the stored keys;
     - a merging iterator seeking older components past a range tombstone of a newer one skips no live key;
     - finding the range tombstone of a key returns the fragment containing it and covers exactly the fragments ending
       at or before it;
