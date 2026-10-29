@@ -190,4 +190,16 @@ public class EventLayerEmitModeTest
         RunWithEmitMode(false,
             () => new EventLayerDynamicReserializeTest().DynamicCollectionsCanBeSerializedAgain(readLayer, writeLayer));
     }
+
+    // Before the fix the emitted saver of a tuple read the items of a DynamicTuple, a tuple loaded without its type,
+    // from generic arguments it has none of.
+    [Theory]
+    [InlineData(EventLayer.Store2, EventLayer.Store2)]
+    [InlineData(EventLayer.Store2, EventLayer.Store1)]
+    [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
+    public void DynamicTuplesSaveWithEmit(EventLayer readLayer, EventLayer writeLayer)
+    {
+        RunWithEmitMode(false,
+            () => new EventLayerDynamicReserializeTest().DynamicTuplesCanBeSerializedAgain(readLayer, writeLayer));
+    }
 }

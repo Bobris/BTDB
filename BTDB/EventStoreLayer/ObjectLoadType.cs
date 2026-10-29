@@ -1,4 +1,5 @@
 using System;
+using BTDB.Serialization;
 
 namespace BTDB.EventStoreLayer;
 
@@ -11,6 +12,8 @@ static class ObjectLoadType
     {
         ListTypeDescriptor when !loadAsType.IsArray && ListTypeDescriptor.FindMetadata(loadAsType) == null => typeof(object),
         DictionaryTypeDescriptor when DictionaryTypeDescriptor.FindMetadata(loadAsType) == null => typeof(object),
+        // A tuple of such collections, like (string, ICollection<int>), loads as a DynamicTuple.
+        TupleTypeDescriptor when ReflectionMetadata.FindByType(loadAsType) == null => typeof(object),
         _ => loadAsType
     };
 }

@@ -21,7 +21,10 @@ sealed class EnumerableItems
         _slotOffset = RawData.MethodTableOf(itemType.MakeArrayType()).BaseSize - (uint)Unsafe.SizeOf<nint>();
     }
 
-    public bool CanEnumerate(Type objType) => objType.IsAssignableTo(_enumerableType);
+    // A list of objects, as a list loaded without its type is saved, takes the items of any enumerable, also of a
+    // List<int>, which is no IEnumerable<object>.
+    public bool CanEnumerate(Type objType) =>
+        objType.IsAssignableTo(_itemType == typeof(object) ? typeof(IEnumerable) : _enumerableType);
 
     public static List<object?> Collect(object obj)
     {

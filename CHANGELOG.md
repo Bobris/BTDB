@@ -90,6 +90,12 @@
 
 ### Fixed
 
+- Event store: a tuple loaded without its type, a `DynamicTuple`, failed to store again; with IL emitted its saver
+  read the items from generic arguments a `DynamicTuple` has none of and failed with `IndexOutOfRangeException`. It
+  now saves the items it read, and values that know their descriptor use the savers that are not emitted. A tuple
+  holding a collection, like `(string, List<int>)`, also failed to load as the root of an event, as its preferred
+  tuple of collection interfaces is not registered; it loads as a `DynamicTuple` now. A list of objects also takes the
+  items of a list of value types, like the `ListWithDescriptor<int>` such a tuple holds.
 - Event store: an enum loaded without its type, a `DynamicEnum`, failed to store again, alone or in a list loaded
   without its type, as the enum descriptor converted it to an integer it is not. It now saves the value it read. With
   IL emitted (`IFieldHandler.UseNoEmitForDescriptors = false`) the enum saver instead converted such an object

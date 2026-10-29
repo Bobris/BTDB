@@ -164,4 +164,35 @@ public class EventLayerDynamicReserializeTest
             Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));
         }
     }
+
+    [BTDB.Generate]
+    public class HoldsTuples
+    {
+        public (int, string) Pair { get; set; }
+        public System.Collections.Generic.List<(long, string)>? Pairs { get; set; }
+        public (int, int?)? Maybe { get; set; }
+        public (string, System.Collections.Generic.List<int>, System.Guid) Mixed { get; set; }
+    }
+
+    /// Before the fix a tuple loaded without its type, a DynamicTuple as the emitted loader gives it, failed to store
+    /// again, and one holding a collection failed to load as the root of an event.
+    [Theory]
+    [InlineData(EventLayer.Store2, EventLayer.Store2)]
+    [InlineData(EventLayer.Store2, EventLayer.Store1)]
+    [InlineData(EventLayer.Mapping, EventLayer.Mapping)]
+    public void DynamicTuplesCanBeSerializedAgain(EventLayer readLayer, EventLayer writeLayer)
+    {
+        var original = new HoldsTuples
+        {
+            Pair = (1, "a"), Pairs = [(2, "b")], Maybe = (3, null), Mixed = ("m", [1, 2], System.Guid.Empty)
+        };
+        var hide = new RenamingTypeMapper().Hide(new BTDB.EventStoreLayer.FullNameTypeMapper().ToName(typeof(HoldsTuples)));
+        foreach (var (name, value) in EventLayerScenarios.Fields(
+                     EventLayerRoundTripHelper.RoundTrip(readLayer, original, readMapper: hide)))
+        {
+            var expected = typeof(HoldsTuples).GetProperty(name)!.GetValue(original);
+            var result = EventLayerRoundTripHelper.RoundTrip(writeLayer, value);
+            Assert.Equal(ObjectGraphDumper.Dump(expected), ObjectGraphDumper.Dump(result));
+        }
+    }
 }

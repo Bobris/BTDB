@@ -282,6 +282,22 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
+        if (targetType == typeof(DynamicTuple))
+        {
+            // A tuple loaded without its type: each item saves the value it read, held as an object.
+            var itemSavers = _itemDescriptors.Select(d => d.GenerateSaveEx(typeof(object), typeConverterFactory))
+                .ToArray();
+            return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+            {
+                var i = 0;
+                foreach (var item in Unsafe.As<byte, DynamicTuple>(ref value))
+                {
+                    var itemValue = item;
+                    itemSavers[i++](ref writer, ctx, ref Unsafe.As<object, byte>(ref itemValue));
+                }
+            };
+        }
+
         // Tuple and ValueTuple with same number of items have same binary representation
         if (GetPreferredType() != targetType && (!IsCompatibleWith(targetType) ||
                                                  targetType.GetGenericArguments().Length != _itemDescriptors.Count))
@@ -349,6 +365,21 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         bool forbidSerializationOfLazyDBObjects)
     {
         if (_itemDescriptors.All(d => d.Sealed)) return null;
+        if (targetType == typeof(DynamicTuple))
+        {
+            var itemNewDescriptors = _itemDescriptors.Select(d =>
+                d.GenerateNewDescriptorEx(typeof(object), typeConverterFactory, forbidSerializationOfLazyDBObjects)).ToArray();
+            return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
+            {
+                var i = 0;
+                foreach (var item in Unsafe.As<byte, DynamicTuple>(ref value))
+                {
+                    var itemValue = item;
+                    itemNewDescriptors[i++]?.Invoke(ctx, ref Unsafe.As<object, byte>(ref itemValue));
+                }
+            };
+        }
+
         var metadata = ReflectionMetadata.FindByType(targetType);
         if (metadata == null)
         {

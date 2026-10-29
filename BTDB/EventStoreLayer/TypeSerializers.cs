@@ -575,7 +575,8 @@ public class TypeSerializers : ITypeSerializers
     {
         var (descriptor, type) = v;
         if (descriptor.AnyOpNeedsCtx()) return null;
-        if (IFieldHandler.UseNoEmitForDescriptors)
+        // A value that knows its descriptor, loaded without its type, has none of the members emitted code reads.
+        if (IFieldHandler.UseNoEmitForDescriptors || typeof(IKnowDescriptor).IsAssignableFrom(type))
 #pragma warning disable CS0162 // Unreachable code detected
         {
             var saver = typeof(object) == type
@@ -611,7 +612,7 @@ public class TypeSerializers : ITypeSerializers
     {
         var (descriptor, type) = v;
 #pragma warning disable CS0162 // Unreachable code detected
-        if (IFieldHandler.UseNoEmitForDescriptors)
+        if (IFieldHandler.UseNoEmitForDescriptors || typeof(IKnowDescriptor).IsAssignableFrom(type))
         {
             var saver = typeof(object) == type
                 ? descriptor.GenerateSave(type, _convertorFactory)

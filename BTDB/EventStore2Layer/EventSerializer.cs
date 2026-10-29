@@ -81,7 +81,8 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type)
     {
-        if (IFieldHandler.UseNoEmitForDescriptors)
+        // A value that knows its descriptor, loaded without its type, has none of the members emitted code reads.
+        if (IFieldHandler.UseNoEmitForDescriptors || typeof(IKnowDescriptor).IsAssignableFrom(type))
 #pragma warning disable CS0162 // Unreachable code detected
         {
             var saver = typeof(object) == type
