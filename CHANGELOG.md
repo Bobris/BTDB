@@ -51,6 +51,7 @@
     - variable-length integers, signed ones too, read back as written, and every one the decoder accepts fits in 64
       bits;
     - a table's Bloom filter passes every key added to it;
+    - evicting from the block cache ends, and stops over capacity only when every block left is pinned;
     - looking up a key in a level reads a table exactly when its span holds the key, a compaction takes exactly the
       tables overlapping its range, and replacing them keeps the level sorted and disjoint.
   - `BTDB/Proofs/`, relation queries: the key range test accepts exactly the keys whose value satisfies the bounds,
@@ -158,6 +159,9 @@
   value with a tenth byte above 1 lost its high bits. Both are reported as a corrupted object now.
 - LSM WAL replay applied an insert of a key its memtable already held, which left the key in the memtable twice. It
   is reported as damage now, like an update of a missing key.
+- `LsmBlockCache`: evicting blocks could stop with a shard still over capacity and an unpinned block left, because
+  passing pinned blocks used up the eviction's fixed step budget. Eviction now stops only after passing every block of
+  the shard pinned in a row.
 - `LsmBlockCache`: a block loaded while the cache was being disposed was added to it anyway, so its native memory was
   never freed. Such a block now serves only the pin that loaded it and is freed when it is released.
 - ObjectDB: a nullable, tuple, list or dictionary of a type without a field handler, like `char?`, failed with

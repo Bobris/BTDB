@@ -238,17 +238,21 @@ sealed unsafe class NativeClockCache : IDisposable
 
     void EvictIfNeeded(Shard shard)
     {
-        var steps = 2 * shard.Ring.Count;
-        while (shard.Size > _shardCapacity && shard.Ring.Count > 0 && steps-- > 0)
+        // Stops once the hand passed every slot pinned in a row, when none can be freed; clearing a reference or freeing
+        // a slot starts the count again. A fixed step budget could stop it over capacity with an unpinned slot left.
+        var pinnedInRow = 0;
+        while (shard.Size > _shardCapacity && pinnedInRow < shard.Ring.Count)
         {
             if (shard.Hand >= shard.Ring.Count) shard.Hand = 0;
             var slot = shard.Ring[shard.Hand];
             if (slot.Pins > 0)
             {
+                pinnedInRow++;
                 shard.Hand++;
                 continue;
             }
 
+            pinnedInRow = 0;
             if (slot.Referenced)
             {
                 slot.Referenced = false;

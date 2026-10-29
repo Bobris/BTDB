@@ -36,6 +36,22 @@ public class NativeClockCacheTest
         Assert.True(cache.SizeBytes <= 64 * 1024 + 1024 * 4, $"{cache.SizeBytes}");
     }
 
+    // Before the fix skips past pinned blocks used up the eviction budget: with blocks 1 and 3 pinned the hand cleared
+    // the references of 0 and 2, evicted 0 and stopped, leaving the shard over capacity with block 2 unpinned.
+    [Fact]
+    public void EvictionPastPinnedBlocksReachesCapacity()
+    {
+        using var cache = new NativeClockCache(2 * 1024, 1);
+        var pin0 = cache.Pin(new(0, 1), 0, () => Block(1, 0, 1024));
+        using var pin1 = cache.Pin(new(0, 1), 1, () => Block(1, 1, 1024));
+        var pin2 = cache.Pin(new(0, 1), 2, () => Block(1, 2, 1024));
+        pin0.Dispose();
+        pin2.Dispose();
+        using var pin3 = cache.Pin(new(0, 1), 3, () => Block(1, 3, 1024));
+        Assert.Equal(2 * 1024, cache.SizeBytes);
+        Assert.False(cache.Contains(new(0, 1), 2));
+    }
+
     // Before the fix a block loaded while the cache was disposed was added to it anyway, so it was never freed.
     [Fact]
     public void BlockLoadedWhileDisposingIsNotKept()

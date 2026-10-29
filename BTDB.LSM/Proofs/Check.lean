@@ -57,3 +57,7 @@ open Lsm
 #print axioms BlockKeys.decode_encode
 #print axioms BlockKeys.decode_from_restart
 #print axioms BlockKeys.restart_entry
+#print axioms ClockEviction.stopped_all_pinned
+#print axioms ClockEviction.inv_step
+#print axioms ClockEviction.step_decreases
+#print axioms ClockEviction.progress
