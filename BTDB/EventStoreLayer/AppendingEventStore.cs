@@ -36,10 +36,12 @@ public class AppendingEventStore : ReadOnlyEventStore, IWriteEventStore
             Mapping.Reset();
             SerializeIntoBuffer(metadata, events, out startOffset, out serializerContext, out blockType,
                 out lenWithoutEndPadding, out block);
-            if ((ulong)lenWithoutEndPadding > File.MaxFileSize)
+            // With the headers of all its blocks, as reading stops at the maximum file size.
+            var spaceNeeded = SpaceNeeded(startOffset, lenWithoutEndPadding);
+            if (spaceNeeded > File.MaxFileSize)
             {
                 throw new ArgumentOutOfRangeException(
-                    $"Size of events are bigger than MaxFileSize {lenWithoutEndPadding}>{File.MaxFileSize}");
+                    $"Size of events are bigger than MaxFileSize {spaceNeeded}>{File.MaxFileSize}");
             }
         }
 

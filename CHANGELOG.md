@@ -193,6 +193,9 @@
   undecrypted buffer as a string anyway, which threw or reported garbage. It reports only the failure now, also for
   ordered encrypted strings whose decryption is no string. `AesGcmSymmetricCipher.OrderedDecrypt` of data that is no
   whole number of blocks returns false instead of throwing `CryptographicException`.
+- `AppendingEventStore` stored events that fit a new file's maximum size only without the headers of their later
+  blocks, writing past that size; reading stops there, so the events were lost. Such events are refused with
+  `ArgumentOutOfRangeException` now, like larger ones.
 - ObjectDB could lose a singleton on reopen: a commit that had stored its table info before another transaction
   first asked for the singleton cleared the need to store the singleton oid that transaction allocated, so the oid was
   never stored, and the singleton later saved under it was not found after reopening. A commit clears it now only when

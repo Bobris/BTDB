@@ -215,6 +215,38 @@ public class EventStoreFileCoverageTest
             appender.Store(null, [new Ev { Text = new string('x', 10000) }]));
     }
 
+    // Before the fix an event fitting the maximum file size only without the headers of its later blocks was written
+    // past it into a new file, and reading stopped there, so the event was lost.
+    [Fact]
+    public void EventFittingMaxFileSizeOnlyWithoutBlockHeadersIsStoredOrRefused()
+    {
+        var stored = 0;
+        var refused = 0;
+        for (var length = 8100; length < 8200; length++)
+        {
+            var manager = new EventStoreManager { CompressionStrategy = new NoCompressionStrategy() };
+            var appender = manager.AppendToStore(new MemoryEventFileStorage(4096, 8192));
+            try
+            {
+                appender.Store(null, [new Ev { Text = new string('x', length), Num = length }]);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                refused++;
+                continue;
+            }
+
+            stored++;
+            var reader = new EventStoreManager().OpenReadOnlyStore(appender.CurrentFileStorage);
+            var observer = new CollectingEventObserver();
+            reader.ReadFromStartToEnd(observer);
+            var events = Assert.Single(observer.Events);
+            Assert.Equal(length, Assert.IsType<Ev>(Assert.Single(events)).Num);
+        }
+
+        Assert.True(stored > 0 && refused > 0, $"{stored} stored, {refused} refused");
+    }
+
     [Fact]
     public void KnownAppendablePositionThrowsWhenNotKnown()
     {
