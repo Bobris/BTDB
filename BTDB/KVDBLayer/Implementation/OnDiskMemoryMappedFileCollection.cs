@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
@@ -296,9 +297,10 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         }
     }
 
+    // Only plain digits, as file names are written: a sign or spaces would let a stray file take a file's ID.
     static uint GetFileId(string fileName)
     {
-        return uint.TryParse(fileName, out var result) ? result : 0;
+        return uint.TryParse(fileName, NumberStyles.None, CultureInfo.InvariantCulture, out var result) ? result : 0;
     }
 
     public IFileCollectionFile AddFile(string? humanHint)

@@ -583,6 +583,9 @@
   later open skips as no file, so the commits of a transaction log created there were lost; an ID above `int.MaxValue`
   listed before a smaller one also lowered the largest ID. The largest ID is a `uint` now, and allocating past it
   throws `InvalidOperationException` instead of wrapping around to 0.
+- `OnDiskFileCollection` and `OnDiskMemoryMappedFileCollection` read a file's ID from its name allowing a sign and
+  spaces, so a stray file such as `+5.bin` beside `00000005.trl` took the same ID and opening failed with
+  `ArgumentException`. Only plain digits count as an ID now, as the replication storages already required.
 - Opening a `BTreeKeyValueDB` whose transaction log header had a damaged predecessor ID pointing at a later log
   hung forever following the cycle. The chain walk now requires every predecessor to have a lower file ID, as
   `OpenAsync` already did, and fails the open with `BTDBException` otherwise. Found by flipping header bits.

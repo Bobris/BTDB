@@ -83,6 +83,23 @@ public class FileCollectionTests : IDisposable
         Assert.Equal(3000000001u, collection.AddFile("trl").Index);
     }
 
+    // Before the fix file names were parsed allowing a sign and spaces, so a stray "+5.bin" beside "00000005.trl" took
+    // the same ID and opening failed with a duplicate key.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StrayFileNamedLikeAnIdWithASignIsIgnored(bool memoryMapped)
+    {
+        File.WriteAllBytes(Path.Combine(_dir, "00000005.trl"), [1]);
+        File.WriteAllBytes(Path.Combine(_dir, "+5.bin"), [1]);
+        File.WriteAllBytes(Path.Combine(_dir, " 6.bin"), [1]);
+        using IFileCollection collection = memoryMapped
+            ? new OnDiskMemoryMappedFileCollection(_dir)
+            : new OnDiskFileCollection(_dir);
+        Assert.Equal(1u, collection.GetCount());
+        Assert.Equal(6u, collection.AddFile("trl").Index);
+    }
+
     public void Dispose()
     {
         Directory.Delete(_dir, true);
