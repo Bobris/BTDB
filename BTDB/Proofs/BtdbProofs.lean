@@ -67,3 +67,4 @@ import BtdbProofs.ReadGrowth
 import BtdbProofs.ChunkIndexLoad
 import BtdbProofs.EquatableHash
 import BtdbProofs.IocSelfWait
+import BtdbProofs.BonItemBound

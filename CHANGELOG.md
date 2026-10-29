@@ -167,6 +167,8 @@
     a standalone file collection's next ID is above every file found on open, in any listing order.
   - `BTDB/Proofs/`, file reads: the file collections' end-of-file test refuses exactly the reads that do not fit,
     though `ulong` arithmetic can wrap.
+  - `BTDB/Proofs/`, Bon: a container holds at most as many items as its buffer has bytes, so the check refuses only
+    damage.
   - `BTDB/Proofs/`, IOC: a service resolving itself while it is created fails instead of waiting for itself forever.
   - `BTDB/Proofs/`, `EquatableArray<T>`: equal arrays, the default one and an empty one included, hash alike.
   - `BTDB/Proofs/`, chunk storage: loading its hash index files gives each chunk key its latest entry across reopens.
