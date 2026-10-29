@@ -77,5 +77,38 @@ static file class StackAllocationRegistrations
                 },
             ]
         });
+        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((int A, global::Kind Kind)), &Allocate5);
+        static void Allocate5(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+        {
+            (int A, global::Kind Kind) value = default;
+            ptr = (nint)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
+            chain(ref ctx);
+            ptr = 0;
+        }
+
+        // Measured on the tuple itself: its automatic layout places struct items after primitive ones.
+        (int A, global::Kind Kind) valueTuple5 = default;
+        BTDB.Serialization.ReflectionMetadata.Register(new()
+        {
+            Type = typeof((int A, global::Kind Kind)),
+            Name = "ValueTuple",
+            Fields =
+            [
+                new()
+                {
+                    Name = "Item1",
+                    Type = typeof(int),
+                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<(int A, global::Kind Kind), byte>(ref valueTuple5),
+                        ref global::System.Runtime.CompilerServices.Unsafe.As<int, byte>(ref valueTuple5.Item1)),
+                },
+                new()
+                {
+                    Name = "Item2",
+                    Type = typeof(global::Kind),
+                    ByteOffset = (uint)global::System.Runtime.CompilerServices.Unsafe.ByteOffset(ref global::System.Runtime.CompilerServices.Unsafe.As<(int A, global::Kind Kind), byte>(ref valueTuple5),
+                        ref global::System.Runtime.CompilerServices.Unsafe.As<global::Kind, byte>(ref valueTuple5.Item2)),
+                },
+            ]
+        });
     }
 }

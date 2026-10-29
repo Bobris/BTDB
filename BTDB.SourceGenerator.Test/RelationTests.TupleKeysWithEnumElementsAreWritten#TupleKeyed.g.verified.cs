@@ -11,8 +11,8 @@ static file class TupleKeyedRegistration
     extern static global::TupleKeyed Creator();
     [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Key>k__BackingField")]
     extern static ref (int Id, global::Kind Kind, global::Flag? Flag) Field1(global::TupleKeyed @this);
-    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<V>k__BackingField")]
-    extern static ref int Field2(global::TupleKeyed @this);
+    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = "<Pair>k__BackingField")]
+    extern static ref (int A, global::Kind Kind) Field2(global::TupleKeyed @this);
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -40,8 +40,8 @@ static file class TupleKeyedRegistration
             },
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "V",
-                Type = typeof(int),
+                Name = "Pair",
+                Type = typeof((int A, global::Kind Kind)),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         ];

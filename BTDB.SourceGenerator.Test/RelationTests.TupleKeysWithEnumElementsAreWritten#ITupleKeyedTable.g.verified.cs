@@ -8,7 +8,7 @@ using BTDB.ODBLayer;
 // Name: ITupleKeyedTable
 // Field: Key (int Id, global::Kind Kind, global::Flag? Flag)
 //           PrimaryIndex: 1
-// Field: V int
+// Field: Pair (int A, global::Kind Kind)
 
 namespace BTDB.GeneratedRelations;
 [global::System.Runtime.CompilerServices.CompilerGenerated]
@@ -38,6 +38,48 @@ file class ITupleKeyedTableRegistration
                 writer.WriteVUInt64((ulong)key.Item3.Value);
             }
             return base.FindByIdOrDefault<global::TupleKeyed>(writer.GetSpan(), false, 0);
+        }
+
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
+        bool global::ITupleKeyedTable.UpdateById((int Id, global::Kind Kind, global::Flag? Flag) key, (int A, global::Kind Kind) pair)
+        {
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationPKPrefix(ref writer);
+            var lenOfPkWoInKeyValues = 0;
+            writer.WriteVInt64(key.Item1);
+            writer.WriteVInt64((long)key.Item2);
+            if (!key.Item3.HasValue)
+            {
+                writer.WriteBool(false);
+            }
+            else
+            {
+                writer.WriteBool(true);
+                writer.WriteVUInt64((ulong)key.Item3.Value);
+            }
+            var keyBytes = writer.GetScopedSpanAndReset();
+            var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
+            var updated = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, false);
+            if (!updated) return false;
+            global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;
+            if (RelationInfo.ClientVersionNeedsCtx)
+            {
+                ctx_reader = new global::BTDB.ODBLayer.DBReaderCtx(Transaction);
+            }
+            unsafe
+            {
+                fixed (byte* _ = oldValueBytes)
+                {
+                    var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
+                    uint memoPos = 0;
+                    reader.SkipVUInt64();
+                    RelationInfo.ClientVersionValueHandlers[0].Skip(ref reader, ctx_reader);
+                    writer.WriteVInt64(pair.Item1);
+                    writer.WriteVInt64((long)pair.Item2);
+                }
+            }
+            base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
+            return true;
         }
     }
     [global::System.Runtime.CompilerServices.ModuleInitializer]

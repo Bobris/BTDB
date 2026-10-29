@@ -5391,7 +5391,7 @@ public class SourceGenerator : IIncrementalGenerator
         string indent = "            ")
     {
         AppendWriteValue(declarations, parameter.Identifier, parameter.Type, parameter.EnumUnderlyingType,
-            indent, parameter.IsReference);
+            indent, parameter.IsReference, ParseNestedEnums(parameter.NestedEnums));
     }
 
     static void AppendWriteValue(StringBuilder declarations, string valueExpression, string valueType,

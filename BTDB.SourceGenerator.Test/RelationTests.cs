@@ -2138,7 +2138,8 @@ public class RelationTests : GeneratorTestsBase
     [Fact]
     public Task TupleKeysWithEnumElementsAreWritten()
     {
-        // Before the fix lookups by tuple keys with enum elements threw NotSupportedException.
+        // Before the fix lookups by tuple keys and updates of tuple values with enum elements threw
+        // NotSupportedException.
         // language=cs
         return VerifySourceGenerator("""
             using BTDB.ODBLayer;
@@ -2149,12 +2150,13 @@ public class RelationTests : GeneratorTestsBase
             public class TupleKeyed
             {
                 [PrimaryKey(1)] public (int Id, Kind Kind, Flag? Flag) Key { get; set; }
-                public int V { get; set; }
+                public (int A, Kind Kind) Pair { get; set; }
             }
 
             public interface ITupleKeyedTable : IRelation<TupleKeyed>
             {
                 TupleKeyed? FindByIdOrDefault((int Id, Kind Kind, Flag? Flag) key);
+                bool UpdateById((int Id, Kind Kind, Flag? Flag) key, (int A, Kind Kind) pair);
             }
             """);
     }

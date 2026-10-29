@@ -137,6 +137,29 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
         Assert.Null(table.FindByIdOrDefault((2, TagKind.Positive)));
     }
 
+    public class TupleValued
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public (int A, TagKind Kind) Pair { get; set; }
+    }
+
+    public interface ITupleValuedTable : IRelation<TupleValued>
+    {
+        TupleValued? FindByIdOrDefault(ulong id);
+        bool UpdateById(ulong id, (int A, TagKind Kind) pair);
+    }
+
+    // Before the fix UpdateById threw NotSupportedException for tuple values with enum elements.
+    [Fact]
+    public void TupleValuesWithEnumElementsCanBeUpdated()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ITupleValuedTable>();
+        table.Upsert(new() { Id = 1, Pair = (1, TagKind.Positive) });
+        Assert.True(table.UpdateById(1, (2, TagKind.Negative)));
+        Assert.Equal((2, TagKind.Negative), table.FindByIdOrDefault(1)!.Pair);
+    }
+
     public interface IRedeclaringPersonTable : IRelation<Person>
     {
         new void RemoveAll();
