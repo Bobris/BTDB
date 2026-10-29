@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using BTDB;
 using BTDB.ODBLayer;
@@ -352,5 +353,47 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         var ex = Assert.Throws<BTDB.KVDBLayer.BTDBException>(() =>
             tr.Store(new Sample3rdPartyLib.PersistedNameClashObject { A = 5 }));
         Assert.Contains("under the name X", ex.Message);
+    }
+
+    public class RenamedRow
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        [BTDB.FieldHandler.PersistedName("StoredName")] public string? Name { get; set; }
+        [SecondaryKey("ByAge")] [BTDB.FieldHandler.PersistedName("StoredAge")] public int Age { get; set; }
+    }
+
+    public interface IRenamedRows : IRelation<RenamedRow>
+    {
+        void Insert(RenamedRow value);
+        RenamedRow FindById(ulong id);
+        bool UpdateById(ulong id, string? name);
+        System.Collections.Generic.IEnumerable<RenamedRow> ListByByAge(AdvancedEnumeratorParam<int> age);
+    }
+
+    // Before the fix in emit mode a partial update parameter had to name the field it is stored under, not the
+    // property as without emit, so UpdateById(id, name) of a renamed property was refused.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PersistedNamePartialUpdateAndSecondaryKey(bool noEmit)
+    {
+        EventLayerRoundTripHelper.RunWithEmitMode(noEmit, () =>
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var rows = tr.GetRelation<IRenamedRows>();
+                rows.Insert(new RenamedRow { Id = 1, Name = "a", Age = 30 });
+                rows.Insert(new RenamedRow { Id = 2, Name = "b", Age = 20 });
+                Assert.True(rows.UpdateById(1, "changed"));
+                tr.Commit();
+            }
+
+            ReopenDb();
+            using var read = _db.StartReadOnlyTransaction();
+            var table = read.GetRelation<IRenamedRows>();
+            Assert.Equal("changed", table.FindById(1).Name);
+            Assert.Equal(30, table.FindById(1).Age);
+            Assert.Equal([2ul, 1ul], table.ListByByAge(new()).Select(r => r.Id));
+        });
     }
 }

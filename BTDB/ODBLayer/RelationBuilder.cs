@@ -1449,6 +1449,13 @@ public class RelationBuilder : IRelationBuilder
                 .Ldloca(readerLocal)
                 .Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
             var valueFields = ClientRelationVersionInfo.Fields.Span;
+            // A parameter names the property, as without emit, or the name it is stored under.
+            var propertyNameOfField = new Dictionary<string, string>();
+            foreach (var pi in ItemType.GetVisibleInstanceProperties())
+            {
+                var storedName = ResolveRelationContractProperty(pi).GetCustomAttribute<PersistedNameAttribute>()?.Name;
+                if (storedName != null) propertyNameOfField.TryAdd(storedName, pi.Name);
+            }
 
             var copyMode = false;
 
@@ -1457,11 +1464,13 @@ public class RelationBuilder : IRelationBuilder
             foreach (var valueField in valueFields)
             {
                 if (valueField.Computed) continue;
+                var propertyName = propertyNameOfField.GetValueOrDefault(valueField.Name, valueField.Name);
 
                 var paramIndex = -1;
                 for (var j = 0; j < updateParams.Length; j++)
                 {
-                    if (!string.Equals(updateParams[j].Name, valueField.Name, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(updateParams[j].Name, valueField.Name, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(updateParams[j].Name, propertyName, StringComparison.OrdinalIgnoreCase))
                         continue;
                     paramIndex = j;
                     break;
