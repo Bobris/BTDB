@@ -402,4 +402,23 @@ public class EventStoreMigrationTest
         Assert.IsType<ItemWithProtectedProperty>(obj);
         Assert.Equal(expectedValue, ((ItemWithProtectedProperty)obj).GetValue());
     }
+
+    [Generate]
+    public class ItemWithPrivateBaseProperty : ItemWithProtectedProperty
+    {
+        public string? Name { get; set; }
+    }
+
+    // Before the fix the private property of the base class was not stored, reflection leaving it out.
+    [Fact]
+    public void CanMigrateValueOfPrivatePropertyOfBaseClass()
+    {
+        var item = new ItemWithPrivateBaseProperty { Name = "n" };
+        item.SetValue(42);
+        var obj = PassThroughEventStorage(item, new FullNameTypeMapper(), serializeNonPublicProperties: true);
+
+        var loaded = Assert.IsType<ItemWithPrivateBaseProperty>(obj);
+        Assert.Equal("n", loaded.Name);
+        Assert.Equal(42, loaded.GetValue());
+    }
 }
