@@ -74,3 +74,4 @@ import BtdbProofs.PowerOfTwo
 import BtdbProofs.SingletonCache
 import BtdbProofs.SingletonOid
 import BtdbProofs.CompactionBatch
+import BtdbProofs.RelationRegistry

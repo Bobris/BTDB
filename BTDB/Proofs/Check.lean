@@ -224,3 +224,5 @@ open Btdb
 #print axioms SingletonOid.old_loses_oid
 #print axioms CompactionBatch.stop_keeps_due
 #print axioms CompactionBatch.old_drops
+#print axioms RelationRegistry.reachable_inv
+#print axioms RelationRegistry.old_drops
