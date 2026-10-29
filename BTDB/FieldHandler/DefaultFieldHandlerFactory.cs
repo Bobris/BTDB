@@ -41,7 +41,8 @@ public class DefaultFieldHandlerFactory : IFieldHandlerFactory
         if (DictionaryFieldHandler.IsCompatibleWith(type))
             return new DictionaryFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
         if (NullableFieldHandler.IsCompatibleWith(type))
-            return new NullableFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
+            return new NullableFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type,
+                options);
         if (TupleFieldHandler.IsCompatibleWith(type))
             return new TupleFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type,
                 options);
@@ -74,7 +75,7 @@ public class DefaultFieldHandlerFactory : IFieldHandlerFactory
                 configuration);
         if (handlerName == NullableFieldHandler.HandlerName)
             return new NullableFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator,
-                configuration);
+                configuration, options);
         if (handlerName == TupleFieldHandler.HandlerName)
             return new TupleFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator,
                 configuration, options);

@@ -94,6 +94,12 @@
 
 ### Fixed
 
+- ObjectDB: a nullable `DateTime` key accepted `Local` and `Unspecified` kinds, which a `DateTime` key refuses, because
+  the value of a nullable key was written like a value outside keys. A local one sorted after every UTC one and missed
+  ranges. It now refuses them the same way, and stores `DateTime.MinValue` and `MaxValue` as UTC, as its constraints
+  already looked them up. Breaking: rows stored before with such a key fail to be written again, and those keyed by an
+  unspecified `MinValue` or `MaxValue` are no longer found by it. The stored format of other nullable keys is
+  unchanged.
 - `Constraint.String.StartsWith` with a value ending with a high surrogate missed keys continuing it with a low
   surrogate, such as `StartsWith("a\uD83D")` for `"a😀"`, because a key stores a surrogate pair as one code point. It
   now matches every key that ordinal `StartsWith` accepts.

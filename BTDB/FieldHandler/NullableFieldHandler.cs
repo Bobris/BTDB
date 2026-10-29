@@ -17,12 +17,14 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
 
     [SkipLocalsInit]
     public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
-        ITypeConvertorGenerator typeConvertorGenerator, Type type)
+        ITypeConvertorGenerator typeConvertorGenerator, Type type,
+        FieldHandlerOptions options = FieldHandlerOptions.None)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertorGenerator = typeConvertorGenerator;
         _type = type;
-        _itemHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
+        _itemHandler = KeyItemHandler(fieldHandlerFactory,
+            _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None), options);
         if (_itemHandler.NeedsCtx())
             throw new NotSupportedException("Nullable complex types are not supported.");
         Span<byte> buf = stackalloc byte[512];
@@ -32,7 +34,8 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
     }
 
     public unsafe NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
-        ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
+        ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration,
+        FieldHandlerOptions options = FieldHandlerOptions.None)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertorGenerator = typeConvertorGenerator;
@@ -40,8 +43,22 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         fixed (void* confPtr = configuration)
         {
             var reader = new MemReader(confPtr, configuration.Length);
-            _itemHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+            _itemHandler = KeyItemHandler(fieldHandlerFactory,
+                _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None), options);
         }
+    }
+
+    // The value is stored with the handler of values, so the stored format stays the same in keys and values. In a key
+    // it is written by the key handler when that stores it the same way, so it checks the value like a key that is not
+    // nullable does; a DateTime key refuses Local and Unspecified kinds.
+    static IFieldHandler KeyItemHandler(IFieldHandlerFactory factory, IFieldHandler item, FieldHandlerOptions options)
+    {
+        if (!options.HasFlag(FieldHandlerOptions.Orderable)) return item;
+        var ordered = factory.CreateFromName(item.Name, item.Configuration, FieldHandlerOptions.Orderable);
+        return ordered != null && ordered.Name == item.Name &&
+               (ordered.Configuration ?? []).AsSpan().SequenceEqual(item.Configuration ?? [])
+            ? ordered
+            : item;
     }
 
     NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator,

@@ -13,7 +13,8 @@
 - `EncryptedString`
 - `DateTime` `Constraint<DateTime>`/`Constraint.DateTime` (a key must be UTC: keys refuse `Local` and `Unspecified`
   kinds, except `DateTime.MinValue` and `MaxValue`, which are stored as UTC)
-- nullable `DateTime` (`DateTime?`) `Constraint<DateTime?>`/`Constraint.NullableDateTime` (`Predicate`, `UpTo`)
+- nullable `DateTime` (`DateTime?`) `Constraint<DateTime?>`/`Constraint.NullableDateTime` (`Predicate`, `UpTo`) (a key
+  value must be UTC, like a `DateTime` key)
 - `DateTimeOffset` (ordering is correct only for identical time offsets, better to use `DateTime` if you need ordering
   because only UTC is allowed)
 - `TimeSpan`
