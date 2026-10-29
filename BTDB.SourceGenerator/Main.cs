@@ -1820,7 +1820,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Where(f =>
                 f.DeclaredAccessibility == Accessibility.Public &&
                 !HasDependencyAttribute(f) &&
-                f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
+                !HasNotStoredAttribute(f)
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f =>
             {
@@ -1842,7 +1842,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
-                    p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
+                    !HasNotStoredAttribute(p) &&
                     p.GetMethod is not null && (p.SetMethod is not null ||
                                                 p.GetAttributes().Any(a =>
                                                     a.AttributeClass?.Name == "SecondaryKeyAttribute")))
@@ -1903,7 +1903,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Where(f =>
                 f.DeclaredAccessibility == Accessibility.Public &&
                 !HasDependencyAttribute(f) &&
-                f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
+                !HasNotStoredAttribute(f)
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f => f.Type)
             .Concat(relationItemMembers
@@ -1912,7 +1912,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
-                    p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
+                    !HasNotStoredAttribute(p) &&
                     p.SetMethod is not null && p.GetMethod is not null)
                 .Select(p => p.Type)).ToList();
 
@@ -2166,6 +2166,20 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
         }
+    }
+
+    // Reflection skips members marked with NotStoredAttribute or any attribute derived from it, like DependencyAttribute.
+    static bool HasNotStoredAttribute(ISymbol member)
+    {
+        return member.GetAttributes().Any(a =>
+        {
+            for (var type = a.AttributeClass; type is not null; type = type.BaseType)
+            {
+                if (type.Name == "NotStoredAttribute") return true;
+            }
+
+            return false;
+        });
     }
 
     static bool HasDependencyAttribute(ISymbol p)

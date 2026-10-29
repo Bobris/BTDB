@@ -31,6 +31,29 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyNotStoredSubclassIsNotStored()
+    {
+        // Before the fix only NotStoredAttribute itself was recognized, so members marked with an attribute derived from
+        // it were stored, unlike with reflection.
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public class TransientAttribute : BTDB.ODBLayer.NotStoredAttribute
+            {
+            }
+
+            [BTDB.Generate]
+            public class WithTransient
+            {
+                public int Stored { get; set; }
+                [Transient] public int TransientProperty { get; set; }
+                [Transient] public int TransientField;
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyIndexerIsNotStored()
     {
         // Before the fix the indexer was stored through accessors without the index, which do not exist.

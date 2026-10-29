@@ -92,6 +92,9 @@
 
 ### Fixed
 
+- Source generator: members marked with an attribute derived from `NotStoredAttribute` were stored, because only
+  `NotStoredAttribute` itself was recognized. Bon serialized them and the generated metadata listed them, unlike
+  reflection, which skips them. They are now left out of the generated metadata.
 - Source generator: `[Dependency]` properties and fields declared in base classes were not injected, so a type
   resolved through its generated factory left them null. They are now injected like those of the type itself,
   including private setters and fields of a base class, members of generic base classes, and protected members of a
