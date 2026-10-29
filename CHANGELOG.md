@@ -114,6 +114,11 @@
 
 ### Fixed
 
+- Bon: `TryGetLong` read an integer above `long.MaxValue` as a wrapped negative long, and a crafted negative one below
+  `long.MinValue` as a positive one. It now returns false for them and leaves the item unread, like an item of another
+  type; untyped deserialization reads such a negative one as a double.
+- Bon serialization: an integer outside of the member's type was truncated on load, for example 300 loaded into a
+  `byte` as 44 and into a byte enum alike. It now leaves the member default, as other values that do not fit do.
 - IOC: a dispatcher handler whose method came from a base class, such as a generic handler base, was not registered,
   so dispatching its messages threw "No handler for message". Public and same-assembly internal methods of base
   classes are now found.

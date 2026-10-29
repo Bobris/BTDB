@@ -285,6 +285,37 @@ public class BonTests
         Assert.Equal("[]", new Bon(buffer).DumpToJson());
     }
 
+    // Before the fix an integer above long.MaxValue, or a crafted one below long.MinValue, was read as a wrapped long.
+    [Fact]
+    public void IntegersOutsideOfLongAreNotReadAsLong()
+    {
+        var builder = new BonBuilder();
+        builder.StartArray();
+        builder.Write(ulong.MaxValue);
+        builder.Write(long.MinValue);
+        builder.Write(long.MinValue);
+        builder.FinishArray();
+        var buffer = builder.FinishAsMemory().ToArray();
+        // The magnitude of long.MinValue and ulong.MaxValue both take 9 bytes, so the last one can become ulong.MaxValue.
+        var last = buffer.AsSpan().LastIndexOf(new byte[] { Helpers.CodeMInteger, 0xFF });
+        buffer.AsSpan(last + 2, 8).Fill(0xFF);
+        Assert.True(new Bon(buffer).TryGetArray(out var items));
+
+        Assert.True(items.TryGet(0, out var above));
+        Assert.False(above.TryGetLong(out _));
+        Assert.True(above.TryGetULong(out var aboveValue));
+        Assert.Equal(ulong.MaxValue, aboveValue);
+
+        Assert.True(items.TryGet(1, out var min));
+        Assert.True(min.TryGetLong(out var minValue));
+        Assert.Equal(long.MinValue, minValue);
+
+        Assert.True(items.TryGet(2, out var below));
+        Assert.False(below.TryGetLong(out _));
+        Assert.True(below.TryGetDouble(out var belowValue));
+        Assert.Equal(-(double)ulong.MaxValue, belowValue);
+    }
+
     [Fact]
     public void CanStoreSomeArray()
     {

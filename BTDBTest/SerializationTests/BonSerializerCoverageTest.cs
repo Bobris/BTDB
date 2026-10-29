@@ -212,6 +212,64 @@ public class BonSerializerCoverageTest
         Assert.Equal(new byte[] { 1 }, res.Obj);
     }
 
+    // Before the fix an integer outside of the member's type was truncated, like 300 loading as 44 into a byte, unlike
+    // other values that do not fit, which leave the member default.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IntegersOutsideOfMemberTypeAreLeftDefault(bool atLimit)
+    {
+        var res = DeserializeCrafted((field, b) =>
+        {
+            switch (field)
+            {
+                case nameof(AllFieldKinds.Int8):
+                    if (atLimit) b.Builder.Write(sbyte.MinValue);
+                    else b.Builder.Write(sbyte.MinValue - 1);
+                    break;
+                case nameof(AllFieldKinds.Int16):
+                    if (atLimit) b.Builder.Write(short.MaxValue);
+                    else b.Builder.Write(short.MaxValue + 1);
+                    break;
+                case nameof(AllFieldKinds.Int32):
+                    if (atLimit) b.Builder.Write(int.MinValue);
+                    else b.Builder.Write(int.MinValue - 1L);
+                    break;
+                case nameof(AllFieldKinds.Int64):
+                    if (atLimit) b.Builder.Write(long.MaxValue);
+                    else b.Builder.Write(long.MaxValue + 1UL);
+                    break;
+                case nameof(AllFieldKinds.UInt8):
+                    b.Builder.Write(atLimit ? byte.MaxValue : byte.MaxValue + 1UL);
+                    break;
+                case nameof(AllFieldKinds.UInt16):
+                    b.Builder.Write(atLimit ? ushort.MaxValue : ushort.MaxValue + 1UL);
+                    break;
+                case nameof(AllFieldKinds.UInt32):
+                    b.Builder.Write(atLimit ? uint.MaxValue : uint.MaxValue + 1UL);
+                    break;
+                case nameof(AllFieldKinds.Enum):
+                    b.Builder.Write(atLimit ? (ulong)SmallEnum.B : 300UL);
+                    break;
+                default:
+                    b.Builder.WriteNull();
+                    break;
+            }
+        });
+        if (atLimit)
+        {
+            Assert.Equal((sbyte.MinValue, short.MaxValue, int.MinValue, long.MaxValue),
+                (res.Int8, res.Int16, res.Int32, res.Int64));
+            Assert.Equal((byte.MaxValue, ushort.MaxValue, uint.MaxValue, SmallEnum.B),
+                (res.UInt8, res.UInt16, res.UInt32, res.Enum));
+        }
+        else
+        {
+            Assert.Equal((0, 0, 0, 0L), ((int)res.Int8, (int)res.Int16, res.Int32, res.Int64));
+            Assert.Equal((0, 0, 0u, (SmallEnum)0), ((int)res.UInt8, (int)res.UInt16, res.UInt32, res.Enum));
+        }
+    }
+
     [Fact]
     public void FieldsWithNullBonAreDefault()
     {

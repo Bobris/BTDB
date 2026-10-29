@@ -885,8 +885,11 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var res2))
                     return res2;
-                AsCtx(ref ctx).Bon.TryGetLong(out var res);
-                return res;
+                if (AsCtx(ref ctx).Bon.TryGetLong(out var res))
+                    return res;
+                // Only crafted data has a negative integer below long.MinValue.
+                AsCtx(ref ctx).Bon.TryGetDouble(out var resDouble);
+                return resDouble;
             }
             case BonType.Object:
             {
@@ -1030,6 +1033,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
+                    if (v > byte.MaxValue) return false;
                     value = (byte)v;
                     return true;
                 }
@@ -1047,6 +1051,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
+                    if (v is < sbyte.MinValue or > sbyte.MaxValue) return false;
                     Unsafe.As<byte, sbyte>(ref value) = (sbyte)v;
                     return true;
                 }
@@ -1065,6 +1070,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
+                    if (v > ushort.MaxValue) return false;
                     Unsafe.As<byte, ushort>(ref value) = (ushort)v;
                     return true;
                 }
@@ -1082,6 +1088,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
+                    if (v is < short.MinValue or > short.MaxValue) return false;
                     Unsafe.As<byte, short>(ref value) = (short)v;
                     return true;
                 }
@@ -1099,6 +1106,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
+                    if (v > uint.MaxValue) return false;
                     Unsafe.As<byte, uint>(ref value) = (uint)v;
                     return true;
                 }
@@ -1116,6 +1124,7 @@ public class BonSerializerFactory : ISerializerFactory
             {
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
+                    if (v is < int.MinValue or > int.MaxValue) return false;
                     Unsafe.As<byte, int>(ref value) = (int)v;
                     return true;
                 }

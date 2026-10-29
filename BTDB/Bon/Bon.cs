@@ -296,16 +296,25 @@ public static class Helpers
                 value = b < CodeM1 ? b - Code0 : CodeM1 - b - 1;
                 return true;
             }
+            // A value outside of long leaves the item unread, like an item of another type.
             case CodeInteger:
             {
-                reader.Skip1Byte();
-                value = (long)reader.ReadVUInt64();
+                var ahead = reader;
+                ahead.Skip1Byte();
+                var magnitude = ahead.ReadVUInt64();
+                if (magnitude > long.MaxValue) break;
+                reader = ahead;
+                value = (long)magnitude;
                 return true;
             }
             case CodeMInteger:
             {
-                reader.Skip1Byte();
-                value = -(long)reader.ReadVUInt64();
+                var ahead = reader;
+                ahead.Skip1Byte();
+                var magnitude = ahead.ReadVUInt64();
+                if (magnitude > 1UL << 63) break;
+                reader = ahead;
+                value = (long)(0 - magnitude);
                 return true;
             }
         }
