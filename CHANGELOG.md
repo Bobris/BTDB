@@ -108,6 +108,8 @@
     32-bit sums, and the result keeps both sums in 16 bits;
   - `BTDB/Proofs/`, IOC disposal: in every interleaving of two threads creating instances and one disposing their
     container, each instance is disposed exactly once;
+  - `BTDB/Proofs/`, IOC registrations: every registration of a type is listed in order, and the default is the last
+    one not preserving existing defaults;
   - `BTDB/Proofs/`, `MemoryPositionLessStream`: after any writes and size changes the bytes beyond the size are zero,
     so a stream grown again reads zeros where it was cut off;
   - `BTDB/Proofs/`, `UseBtdbIoc` disposal: an instance the container owns or the service provider tracks is disposed

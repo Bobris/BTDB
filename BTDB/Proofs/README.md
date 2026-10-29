@@ -177,6 +177,9 @@ gap reaches (`../KVDBLayer/Helpers/PtrLenList.cs`).
 `BtdbProofs/ExportFormat.lean` models the fields `KeyValueDBExportImporter.Export` writes and `Import` reads
 (`../KVDBLayer/Helpers/KeyValueDBExportImporter.cs`).
 
+`BtdbProofs/IocDefaults.lean` models how a container collects the registrations of a type and picks its default
+(`../IOC/ContainerRegistrationContext.cs`, `../IOC/CReg.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -322,6 +325,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `Fletcher.block_fits`, `Fletcher.odd_fits`, `Fletcher.result_fits`, `Fletcher.fold_mod` | Fletcher-32 sums stay below 2^32 through every block of up to 360 words and the last odd byte, folding returns them to the bounds a block starts from without changing them modulo 65535, and the result keeps both sums in 16 bits. |
 | `DisposeRace.fixed_disposes_once` | In every interleaving of two threads tracking new instances and one disposing the container, each instance is disposed exactly once and none stays owned. |
 | `DisposeRace.previous_leaks` | Before the 2026-10-29 fix, reading the dispose flag before adding the instance left some interleaving with an instance never disposed (`IOCDisposeRaceTest`). |
+| `IocDefaults.all_listed`, `IocDefaults.default_last` | Every registration of a type is listed in registration order, which `IEnumerable` resolution and singleton verification walk, and the default is the last registration not preserving existing defaults, or the first one when all later ones did. |
 | `MemoryStreamSize.inv_preserved`, `MemoryStreamSize.grown_reads_zero` | After any writes and size changes every byte of a memory stream from its size on is zero, so a stream shrunk and grown again reads zeros where it was cut off, like a file. |
 | `MemoryStreamSize.previous_reads_old` | Before the 2026-10-29 fix `SetSize` kept the bytes beyond the new size, so growing the stream again read them back (`StreamLayerCoverageTest.MemoryStreamReadsZerosWhereItWasCutOff`). |
 | `ProviderDisposal.fixed_once` | With `UseBtdbIoc`, the container disposing the instances it owns except those the service provider tracks, and the provider disposing those, disposes each instance exactly once. |

@@ -184,3 +184,5 @@ open Btdb
 #print axioms XxHashStream.stream_eq_whole
 #print axioms ExportFormat.import_export
 #print axioms FirstDifference.common_prefix_eq
+#print axioms IocDefaults.all_listed
+#print axioms IocDefaults.default_last

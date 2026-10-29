@@ -59,3 +59,4 @@ import BtdbProofs.PtrLenInclude
 import BtdbProofs.PtrLenFree
 import BtdbProofs.XxHashStream
 import BtdbProofs.ExportFormat
+import BtdbProofs.IocDefaults
