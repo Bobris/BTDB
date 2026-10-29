@@ -183,3 +183,4 @@ open Btdb
 #print axioms XxHashStream.update_eq_go
 #print axioms XxHashStream.stream_eq_whole
 #print axioms ExportFormat.import_export
+#print axioms FirstDifference.common_prefix_eq

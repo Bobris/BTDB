@@ -147,8 +147,8 @@ container (`../IOC/IContainer.cs`).
 `BtdbProofs/BonInteger.lean` models how Bon stores an integer as a sign and a magnitude and reads it as a `long` or a
 narrower member (`../Bon/Bon.cs`, `../Serialization/BonSerializer.cs`).
 
-`BtdbProofs/FirstDifference.lean` models how `TreeNodeUtils.FindFirstDifference` compares keys given in parts
-(`../Buffer/TreeNodeUtils.cs`).
+`BtdbProofs/FirstDifference.lean` models how `TreeNodeUtils.FindFirstDifference` compares keys given in parts and
+how `CalcCommonPrefix` builds on it (`../Buffer/TreeNodeUtils.cs`).
 
 `BtdbProofs/PtrLenExclude.lean` models how `PtrLenList.TryExclude` removes the rest of a range that starts in a gap
 (`../KVDBLayer/Helpers/PtrLenList.cs`).
@@ -311,6 +311,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `BonInteger.read_write`, `BonInteger.read_exact`, `BonInteger.fits_exact` | Every `long` Bon writes reads back as itself; a value `TryGetLong` returns, or a typed deserializer loads into a member, is the stored integer, within the range of `long` and of the member. |
 | `BonInteger.previous_wraps` | Before the 2026-10-29 fix the magnitude was cast to `long`, so `ulong.MaxValue` read as `-1` (`BonTests.IntegersOutsideOfLongAreNotReadAsLong`, `BonSerializerCoverageTest.IntegersOutsideOfMemberTypeAreLeftDefault`). |
 | `FirstDifference.diff3_eq`, `FirstDifference.diff4_eq` | `FindFirstDifference` of a key and a key in two parts, and of two keys in two parts each, returns the common prefix length of the joined keys, without joining them. |
+| `FirstDifference.common_prefix_eq` | `CalcCommonPrefix`, shortening the first key to its common prefix with each other key and stopping at 0, returns the smallest common prefix of the first key with any key, the common prefix of all of them. |
 | `PtrLenExclude.cut_mem`, `PtrLenExclude.cut_sorted` | On sorted, disjoint ranges, the rest of an exclusion that starts in a gap leaves a position included exactly when it was and is not below the end of the exclusion, and keeps the ranges sorted and disjoint. |
 | `PtrLenExclude.previous_adds` | Before the 2026-10-29 fix the first range after the gap was trimmed even when the exclusion ended before it, so excluding `[5, 8)` from `[20, 24)` included position 10 (`PtrLenListDifferentialTest`). |
 | `PtrLenInclude.absorb_mem`, `PtrLenInclude.absorb_sorted` | Once an included range starts in a gap, merging the ranges it reaches leaves a position included exactly when it was or lies in the included range, and keeps the ranges sorted and disjoint. |

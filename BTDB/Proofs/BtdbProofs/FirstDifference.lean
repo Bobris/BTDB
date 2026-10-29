@@ -8,6 +8,8 @@ overloads step by step.
 
 * `diff3_eq`: comparing with a key in two parts finds the common prefix of the joined key.
 * `diff4_eq`: comparing two keys in two parts each finds the common prefix of the joined keys.
+* `common_prefix_eq`: `CalcCommonPrefix`, shortening the first key to its common prefix with each other key and
+  stopping at 0, returns the smallest common prefix of the first key with every key, the common prefix of them all.
 -/
 
 namespace Btdb.FirstDifference
@@ -135,5 +137,51 @@ theorem diff4_eq (a1 a2 b1 b2 : List Nat) : diff4 a1 a2 b1 b2 = cpl (a1 ++ a2) (
         rw [this, cpl_nil_right]
         omega
       · rw [ite_eq_right he, hdrop]
+
+theorem cpl_take (a c : List Nat) (m : Nat) : cpl (a.take m) c = min m (cpl a c) := by
+  induction a generalizing c m with
+  | nil => cases c <;> simp [cpl]
+  | cons x xs ih =>
+    cases m with
+    | zero => cases c <;> simp [cpl]
+    | succ m =>
+      cases c with
+      | nil => simp [cpl]
+      | cons y ys =>
+        simp only [List.take_succ_cons, cpl]
+        by_cases h : x = y
+        · simp only [h, ite_true, ih]; omega
+        · simp [h]
+
+/-- `CalcCommonPrefix` from the prefix kept so far over the other keys. -/
+def commonPrefix (p : List Nat) : List (List Nat) → Nat
+  | [] => p.length
+  | k :: ks => let r := cpl p k; if r = 0 then 0 else commonPrefix (p.take r) ks
+
+/-- The smallest common prefix of `a` with the keys, starting from `m`. -/
+def minCpl (a : List Nat) (m : Nat) : List (List Nat) → Nat
+  | [] => m
+  | k :: ks => minCpl a (min m (cpl a k)) ks
+
+theorem min_cpl_zero (a : List Nat) (ks : List (List Nat)) : minCpl a 0 ks = 0 := by
+  induction ks with
+  | nil => rfl
+  | cons k ks ih => simp [minCpl, ih]
+
+theorem common_prefix_take (a : List Nat) (m : Nat) (hm : m ≤ a.length) (ks : List (List Nat)) :
+    commonPrefix (a.take m) ks = minCpl a m ks := by
+  induction ks generalizing m with
+  | nil => simp [commonPrefix, minCpl]; omega
+  | cons k ks ih =>
+    simp only [commonPrefix, minCpl, cpl_take]
+    split
+    · next h => rw [h, min_cpl_zero]
+    · rw [List.take_take, ih _ (by omega)]
+      rw [show min (min m (cpl a k)) m = min m (cpl a k) by omega]
+
+theorem common_prefix_eq (k0 : List Nat) (ks : List (List Nat)) :
+    commonPrefix k0 ks = minCpl k0 k0.length ks := by
+  have := common_prefix_take k0 k0.length (Nat.le_refl _) ks
+  rwa [List.take_length] at this
 
 end Btdb.FirstDifference

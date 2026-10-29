@@ -94,7 +94,7 @@
   - `BTDB/Proofs/`, Bon integers: every `long` reads back as itself, and a value read or loaded into a member is the
     stored integer, within the member's range;
   - `BTDB/Proofs/`, `TreeNodeUtils.FindFirstDifference`: comparing keys given in parts finds the common prefix of the
-    joined keys;
+    joined keys, and `CalcCommonPrefix` finds the common prefix of a node's keys;
   - `BTDB/Proofs/`, `PtrLenList.TryExclude`: once the excluded range starts in a gap, the rest of it removes exactly the
     positions below its end and keeps the ranges sorted and disjoint;
   - `BTDB/Proofs/`, `PtrLenList.TryInclude`: once the included range starts in a gap, merging the ranges it reaches
