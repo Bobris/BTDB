@@ -127,6 +127,9 @@ yet to the stored ones.
 `BtdbProofs/ObjectRestore.lean` models how `ObjectDBTransaction` tracks a transaction's objects across `Store`,
 `Delete` and `Singleton`.
 
+`BtdbProofs/EventBlocks.lean` models how `AppendingEventStore.Store` splits an event into blocks with headers, and
+which of them `ReadOnlyEventStore.ReadToEnd` reads within the maximum file size.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -326,6 +329,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `TypeNames.reachable_inv`, `TypeNames.old_shares` | No two storable types are registered under one name, so objects stored under a name load as the type stored; before the 2026-10-29 fix two classes of the same name in different namespaces shared it, and one loaded as the other (`ObjectDbTypeNameClashTest`). |
 | `EnumerateDirty.enumerate_complete`, `EnumerateDirty.enumerate_nodup`, `EnumerateDirty.old_misses` | Every stored object and every one created in the transaction is enumerated, none twice; before the 2026-10-29 fix a new object created before one flushed with `StoreAndFlush` was missed (`ObjectDBTransactionCoverageTest`). |
 | `ObjectRestore.reachable_inv`, `ObjectRestore.old_breaks` | An object pending for the commit is dirty under its oid and cached under it, and every dirty object is pending, also when a deleted object is stored again after another was created under its oid; before the 2026-10-29 fix a deleted object stored again stayed out of the cache (`ObjectDBTransactionCoverageTest`). |
+| `EventBlocks.ends_le_space`, `EventBlocks.old_check_loses` | Every block of an event ends within its `SpaceNeeded`, so an event fitting the file with all its block headers is read whole; before the 2026-10-29 fix the store checked the length with one header only and accepted an event whose last block ends past the maximum file size (`EventStoreFileCoverageTest`). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |

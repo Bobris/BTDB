@@ -171,6 +171,8 @@
     though `ulong` arithmetic can wrap.
   - `BTDB/Proofs/`, collections read from data: their capacity is never above the bytes left, and is the stored count
     for valid data.
+  - `BTDB/Proofs/`, event store: an event the store accepts into a new file ends within its maximum size, block
+    headers included.
   - `BTDB/Proofs/`, ObjectDB transactions: what `Get` returns for an oid is what the commit writes, across stores,
     deletions and recreated singletons.
   - `BTDB/Proofs/`, ObjectDB enumeration: every stored object and every new one is enumerated once.

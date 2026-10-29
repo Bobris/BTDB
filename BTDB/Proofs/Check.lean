@@ -233,3 +233,5 @@ open Btdb
 #print axioms EnumerateDirty.old_misses
 #print axioms ObjectRestore.reachable_inv
 #print axioms ObjectRestore.old_breaks
+#print axioms EventBlocks.ends_le_space
+#print axioms EventBlocks.old_check_loses
