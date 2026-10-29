@@ -83,3 +83,4 @@ import BtdbProofs.InlineNumbers
 import BtdbProofs.ReadOnlyDepth
 import BtdbProofs.KeyIndexOrder
 import BtdbProofs.FletcherDetect
+import BtdbProofs.CipherBlocks

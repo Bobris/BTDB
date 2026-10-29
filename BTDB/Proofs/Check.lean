@@ -242,3 +242,5 @@ open Btdb
 #print axioms KeyIndexOrder.unsorted_search_misses
 #print axioms FletcherDetect.sum1_mod
 #print axioms FletcherDetect.flip_detected
+#print axioms CipherBlocks.and15_eq_mod
+#print axioms CipherBlocks.refuses_iff_partial

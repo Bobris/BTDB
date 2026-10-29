@@ -141,6 +141,8 @@ tree from a key index.
 `BtdbProofs/FletcherDetect.lean` builds on the Fletcher-32 model for what the checksum guarding event store blocks
 detects.
 
+`BtdbProofs/CipherBlocks.lean` models the block check of `AesGcmSymmetricCipher.OrderedDecrypt`.
+
 `BtdbProofs/PowerOfTwo.lean` models `HashHelpers.PowerOf2`, which rounds the bucket counts of the hash collections in
 `BTDB/Collections/` up to a power of two.
 
@@ -345,6 +347,7 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `ReadOnlyDepth.descent_bounded`, `ReadOnlyDepth.valid_depth` | A descent through children at strictly decreasing offsets ends within the root offset's steps, and a tree the creator builds over at most 2^32 leaves has at most 33 levels, so the 2026-10-29 fix stops descents through damaged pointers and refuses no valid image (`ReadOnlyKeyValueDBFuzzTest`, seed 3025). |
 | `KeyIndexOrder.check_iff_sorted`, `KeyIndexOrder.unsorted_search_misses` | Comparing each loaded key with the one before accepts exactly strictly increasing keys; before the 2026-10-29 fix keys out of order were loaded, and a binary search, like the tree's lookups, missed a key the tree listed (`KeyIndexFuzzTest`). |
 | `FletcherDetect.sum1_mod`, `FletcherDetect.flip_detected` | The low half of Fletcher-32 is its start plus all words modulo 65535, so flipping any one bit of a block changes the checksum and the event store reader refuses the block (`EventStoreFileCoverageTest.DamagedStoreReadsOnlyPrefixOfStoredEvents`). |
+| `CipherBlocks.and15_eq_mod`, `CipherBlocks.refuses_iff_partial` | The test `(length & 15) != 0` refuses exactly the lengths that are no whole number of 16-byte AES blocks; before the 2026-10-29 fix CBC decryption threw `CryptographicException` for them (`AesGcmSymmetricCipherTest`). |
 | `PowerOfTwo.smear_eq`, `PowerOfTwo.power_of_two_of_and_pred`, `PowerOfTwo.powerOf2_correct` | Or-ing a value with its shifts by 1, 2, 4, 8 and 16 sets every bit below its highest, and `v & (v - 1)` is 0 only for powers of two, so for `v` from 1 to `2^30` the result is the smallest power of two not below `v` and a valid `int` array length. |
 | `TrlChain.walk_descending` | Refusing a predecessor ID that is not below the file's own, the walk always ends and lists strictly descending IDs. |
 | `TrlChain.previous_never_ends`, `TrlChain.fixed_refuses_cycle` | Before the 2026-10-28 fix one damaged predecessor ID closed the chain into a cycle that opening followed forever; the walk now refuses it (`TransactionLogDamageTest.PredecessorLinkCycleFailsTheOpen`). |
