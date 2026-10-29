@@ -1183,6 +1183,16 @@ public struct Bon
         return ofs;
     }
 
+    /// Each item takes at least a byte of the buffer, so a container holds at most as many items as the buffer has bytes:
+    /// a larger count is damage, which would otherwise size the collections it is read into.
+    static uint ReadItemCount(ref MemReader reader, ulong ofs)
+    {
+        var items = reader.ReadVUInt32();
+        if (items > (ulong)(reader.End - reader.Start))
+            throw new InvalidDataException($"Bon container at {ofs} declares {items} items.");
+        return items;
+    }
+
     public bool TryGetArray(out ArrayBon bon)
     {
         var b = _reader.PeekUInt8();
@@ -1200,7 +1210,7 @@ public struct Bon
                 var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false, code);
                 return true;
             }
@@ -1211,7 +1221,7 @@ public struct Bon
                 var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, true, code);
                 return true;
             }
@@ -1233,7 +1243,7 @@ public struct Bon
                 var ofs = ReadContainerOffset(out var code);
                 var reader2 = _reader;
                 reader2.SetCurrentPositionWithoutController(ofs);
-                var items = reader2.ReadVUInt32();
+                var items = ReadItemCount(ref reader2, ofs);
                 bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false, code);
                 return true;
             }

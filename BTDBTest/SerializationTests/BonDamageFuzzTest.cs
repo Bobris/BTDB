@@ -34,7 +34,8 @@ public class BonDamageFuzzTest
         public object? Anything { get; set; }
     }
 
-    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 8));
+    // Seeds 10, 145 and 564 damage an item count past int.MaxValue, which sized a list with a negative capacity.
+    public static TheoryData<int> Seeds() => new(Enumerable.Range(1, 8).Concat([10, 145, 564]));
 
     [Theory]
     [MemberData(nameof(Seeds))]
