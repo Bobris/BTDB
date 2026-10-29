@@ -17,6 +17,15 @@ if (parity != FileIdParity.Any && (next & 1) != (parity == FileIdParity.Odd ? 1u
   never takes the ID of an existing one; transaction logs get odd IDs and other files even ones.
 * `allocate_inv`: observing the allocated ID keeps the remembered maxima above every observed ID, so every later
   allocation is fresh too.
+
+The standalone collections (`OnDiskFileCollection`, `OnDiskMemoryMappedFileCollection`, `InMemoryFileCollection`)
+remember one largest ID, the largest found on open, and `FileIdAllocator.Next` advances it, refusing to go past
+`uint.MaxValue`:
+
+* `load_max_ge`: the largest ID found on open is at least every file's ID, in any listing order.
+* `next_fresh`: the next ID is not 0 and is above every file's ID. Before the 2026-10-29 fix the largest ID was an
+  `int`, so a file named with the largest `uint` made the next ID wrap to 0, which opening skips as no file
+  (`FileCollectionTests.FileAfterTheLargestPossibleIdIsRefused`).
 -/
 
 namespace Btdb.FileIds
@@ -75,5 +84,33 @@ theorem allocate_fresh (s : State) (observed : List Nat) (p : Parity) (h : Inv s
 
 theorem allocate_inv (s : State) (observed : List Nat) (p : Parity) (h : Inv s observed) :
     Inv (observe s (allocate s p)) (allocate s p :: observed) := observe_inv _ _ _ h
+
+/-- The largest ID found on open, as the constructors' `if (id > _maxFileId) _maxFileId = id` computes it. -/
+def loadMax (ids : List Nat) : Nat := ids.foldl max 0
+
+theorem foldl_max_ge (ids : List Nat) (m : Nat) : m ≤ ids.foldl max m ∧ ∀ id ∈ ids, id ≤ ids.foldl max m := by
+  induction ids generalizing m with
+  | nil => simp
+  | cons x ids ih =>
+    obtain ⟨h1, h2⟩ := ih (max m x)
+    refine ⟨Nat.le_trans (Nat.le_max_left _ _) h1, ?_⟩
+    intro id hid
+    rcases List.mem_cons.mp hid with rfl | hid
+    · exact Nat.le_trans (Nat.le_max_right _ _) h1
+    · exact h2 id hid
+
+theorem load_max_ge (ids : List Nat) : ∀ id ∈ ids, id ≤ loadMax ids := (foldl_max_ge ids 0).2
+
+/-- `FileIdAllocator.Next`: none past the largest `uint`. -/
+def next (uintMax m : Nat) : Option Nat := if m < uintMax then some (m + 1) else none
+
+theorem next_fresh (uintMax : Nat) (ids : List Nat) (r : Nat) (h : next uintMax (loadMax ids) = some r) :
+    r ≠ 0 ∧ ∀ id ∈ ids, id < r := by
+  unfold next at h
+  split at h
+  · simp only [Option.some.injEq] at h
+    subst h
+    exact ⟨by omega, fun id hid => Nat.lt_succ_of_le (load_max_ge ids id hid)⟩
+  · simp at h
 
 end Btdb.FileIds

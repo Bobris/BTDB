@@ -157,7 +157,8 @@
   - `BTDB/Proofs/`, preserved history: writing a key index keeps the one preserved history opens from.
   - `BTDB/Proofs/`, key index durability: a durable key index never points past the durable transaction log.
   - `BTDB/Proofs/`, the transaction log chain: walking predecessor IDs back from the newest log always ends.
-  - `BTDB/Proofs/`, file IDs: an allocated file ID is never 0 or one already in use, and has the parity asked for.
+  - `BTDB/Proofs/`, file IDs: an allocated file ID is never 0 or one already in use, and has the parity asked for;
+    a standalone file collection's next ID is above every file found on open, in any listing order.
   - `BTDB/Proofs/`, the in-memory B-tree: erasing one key and splitting nodes on insert keep every branch separator the
     first key of its child.
 

@@ -188,3 +188,5 @@ open Btdb
 #print axioms IocDefaults.default_last
 #print axioms FileIds.allocate_fresh
 #print axioms FileIds.allocate_inv
+#print axioms FileIds.load_max_ge
+#print axioms FileIds.next_fresh
