@@ -212,6 +212,32 @@ public class RelationKeyFieldHandlerTest : FieldHandlerCoverageTestBase
         }
     }
 
+    public class WithSetKey
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        [SecondaryKey("Days")] public HashSet<int> Days { get; set; } = [];
+    }
+
+    public interface IWithSetKeyTable : IRelation<WithSetKey>
+    {
+    }
+
+    // Before the fix saving an empty HashSet key failed with NullReferenceException: it has no entries until its first
+    // item.
+    [Fact]
+    public void EmptyHashSetKeyIsStored()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IWithSetKeyTable>();
+        table.Upsert(new() { Id = 1, Days = [] });
+        table.Upsert(new() { Id = 2, Days = [3, 4] });
+        var removed = new HashSet<int> { 5 };
+        removed.Remove(5);
+        table.Upsert(new() { Id = 3, Days = removed });
+        Assert.Equal(3, table.Count);
+        Assert.Equal(new[] { 0, 2, 0 }, table.Select(r => r.Days.Count));
+    }
+
     [Fact]
     public void FloatsAreForbiddenInOrderableFields()
     {

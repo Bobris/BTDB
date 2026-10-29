@@ -101,6 +101,8 @@
 
 ### Fixed
 
+- ObjectDB: saving an empty `HashSet` as a key failed with `NullReferenceException`, because an empty `HashSet` has no
+  entries until its first item.
 - `StructList.Pop`, `Clear` and a shrinking `SetCount` kept removed items reachable from the backing array, so for
   example the cursor stack of `InMemoryKeyValueDB` kept tree nodes of old versions alive. They now clear the removed
   slots when the items hold references, as `RemoveAt` does.

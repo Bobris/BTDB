@@ -297,20 +297,24 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                     var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
                     var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 8));
                     writer.WriteVUInt32(count - freeCount);
-                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
-                    ref readonly var mt = ref RawData.MethodTableRef(obj);
-                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                    var offsetDelta = mt.ComponentSize;
-                    if (offsetDelta != layout.Size)
-                        throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
-                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    // An empty HashSet allocates no entries until its first item
+                    if (count != 0)
                     {
-                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                        ref readonly var mt = ref RawData.MethodTableRef(obj);
+                        var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                        var offsetDelta = mt.ComponentSize;
+                        if (offsetDelta != layout.Size)
+                            throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
+                        for (var i = 0; i < count; i++, offset += offsetDelta)
                         {
-                            continue;
-                        }
+                            if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                            {
+                                continue;
+                            }
 
-                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                            saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                        }
                     }
                 }
                 else if (objType.IsGenericType && objType.Name == "<>z__ReadOnlyArray`1" &&
