@@ -65,3 +65,4 @@ import BtdbProofs.ReadBounds
 import BtdbProofs.SeqLockRead
 import BtdbProofs.ReadGrowth
 import BtdbProofs.ChunkIndexLoad
+import BtdbProofs.EquatableHash

@@ -198,3 +198,5 @@ open Btdb
 #print axioms ReadGrowth.full_read_ends_at_length
 #print axioms ChunkIndexLoad.load_is_latest
 #print axioms ChunkIndexLoad.newest_only_loses
+#print axioms EquatableHash.hash_respects_equal
+#print axioms EquatableHash.old_hash_breaks
