@@ -143,4 +143,30 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         var loaded = (HidingObject)read.Get(oid)!;
         Assert.Equal("derived", loaded.X);
     }
+
+    public class EventBase
+    {
+        public int X { get; set; }
+    }
+
+    [Generate]
+    public class HidingEvent : EventBase
+    {
+        public new string? X { get; set; }
+        public int Other { get; set; }
+    }
+
+    // Before the fix the event type descriptor had two fields X, and no saver could be built for the event.
+    [Theory]
+    [InlineData(EventLayer.Mapping)]
+    [InlineData(EventLayer.Store1)]
+    [InlineData(EventLayer.Store2)]
+    public void HiddenBasePropertyOfEventIsNotStored(EventLayer layer)
+    {
+        var e = new HidingEvent { X = "derived", Other = 5 };
+        ((EventBase)e).X = 7;
+        var loaded = Assert.IsType<HidingEvent>(EventLayerRoundTripHelper.RoundTrip(layer, e));
+        Assert.Equal("derived", loaded.X);
+        Assert.Equal(5, loaded.Other);
+    }
 }

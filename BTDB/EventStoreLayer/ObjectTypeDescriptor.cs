@@ -72,7 +72,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         BindingFlags propertyBindingFlags = BindingFlags.Instance | BindingFlags.Public)
     {
         var isInterface = type.IsInterface;
-        foreach (var propertyInfo in type.GetProperties(propertyBindingFlags))
+        foreach (var propertyInfo in type.GetVisibleProperties(propertyBindingFlags))
         {
             if (propertyInfo.GetIndexParameters().Length != 0) continue;
             if (ShouldNotBeStored(propertyInfo)) continue;
@@ -108,7 +108,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool FinishBuildFromType(ITypeDescriptorFactory factory)
     {
-        var props = _type!.GetProperties(_propertyBindingFlags);
+        var props = _type!.GetVisibleProperties(_propertyBindingFlags);
         CheckObjectTypeIsGoodDto(_type, _propertyBindingFlags);
         foreach (var propertyInfo in props)
         {
@@ -640,7 +640,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Ldloc(resultLoc)
                 .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
                 .Mark(labelNoCtx);
-            var props = targetType.GetProperties(_propertyBindingFlags);
+            var props = targetType.GetVisibleProperties(_propertyBindingFlags);
             for (var idx = 0; idx < _fields.Count; idx++)
             {
                 try
@@ -861,7 +861,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx,
             Type type)
         {
-            var allProps = _objectTypeDescriptor.GetPreferredType()!.GetProperties(_propertyBindingFlags);
+            var allProps = _objectTypeDescriptor.GetPreferredType()!.GetVisibleProperties(_propertyBindingFlags);
             foreach (var pair in _objectTypeDescriptor._fields)
             {
                 if (pair.Value.Sealed) continue;
@@ -948,7 +948,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Stloc(locValue);
         foreach (var (name, typeDescriptor) in _fields)
         {
-            var methodInfo = _type.GetProperties(_propertyBindingFlags).First(p => GetPersistentName(p) == name)
+            var methodInfo = _type.GetVisibleProperties(_propertyBindingFlags).First(p => GetPersistentName(p) == name)
                 .GetAnyGetMethod();
             typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                 il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);

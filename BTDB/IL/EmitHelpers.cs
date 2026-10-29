@@ -352,9 +352,12 @@ public static class EmitHelpers
 
     /// Instance properties of a type without those hidden by one of the same name in a derived class, which are no
     /// fields of their own, as in the source generator's metadata.
-    public static PropertyInfo[] GetVisibleInstanceProperties(this Type type)
+    public static PropertyInfo[] GetVisibleInstanceProperties(this Type type) =>
+        type.GetVisibleProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+    public static PropertyInfo[] GetVisibleProperties(this Type type, BindingFlags bindingFlags)
     {
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var props = type.GetProperties(bindingFlags);
         return props.Where(p => !props.Any(o => o.Name == p.Name && o.DeclaringType != p.DeclaringType &&
                                                  o.DeclaringType!.IsSubclassOf(p.DeclaringType!))).ToArray();
     }
