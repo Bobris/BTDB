@@ -8,6 +8,8 @@ below the buffer's length.
 * `distinct_offsets_bound`: distinct offsets below `length` number at most `length`, so every valid container passes
   the check, and a count above it can only be damage. Before the 2026-10-29 fix such a count, above `int.MaxValue`,
   became a negative list capacity (`BonDamageFuzzTest.DamagedBonDeserializesOrThrows`, seeds 10, 145 and 564).
+* `pairs_double_fits`, `unbounded_pairs_wrap`: within the bound a dictionary's pairs double into items without
+  wrapping a `uint`; before the fix 2^31 + 1 pairs wrapped to one pair (`BonCoverageTest.DamagedDictionaryCountDoesNotWrap`).
 -/
 
 namespace Btdb.BonItemBound
@@ -37,5 +39,14 @@ theorem distinct_offsets_bound (length : Nat) :
         have := hb x hx
         omega)
       omega
+
+/-- A dictionary's pairs become twice as many items in a `uint`; within the bound the doubling cannot wrap, since a
+buffer holds at most `int.MaxValue` bytes. -/
+theorem pairs_double_fits (pairs length : Nat) (hpairs : pairs ≤ length) (hlength : length ≤ 2 ^ 31 - 1) :
+    pairs * 2 < 2 ^ 32 := by
+  omega
+
+/-- Without the bound, a damaged count of 2^31 + 1 pairs doubled in a `uint` wraps to 2 items, one pair. -/
+theorem unbounded_pairs_wrap : ((2 ^ 31 + 1) * 2) % 2 ^ 32 = 2 := by decide
 
 end Btdb.BonItemBound

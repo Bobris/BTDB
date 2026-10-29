@@ -204,3 +204,5 @@ open Btdb
 #print axioms IocSelfWait.fixed_self_wait_fails
 #print axioms IocSelfWait.other_wait_unchanged
 #print axioms BonItemBound.distinct_offsets_bound
+#print axioms BonItemBound.pairs_double_fits
+#print axioms BonItemBound.unbounded_pairs_wrap
