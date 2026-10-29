@@ -75,6 +75,8 @@
     left;
   - `BTDB/Proofs/`, generated IOC dispatchers: each message type a handler handles is registered once, with a method
     the generated code can call;
+  - `BTDB/Proofs/`, generated IOC dispatchers: each call uses handlers built for the root container it is called with,
+    and the same ones each time;
   - `BTDB/Proofs/`, `DiskChunkCache.Put`: content it caches fits after at most one new value file;
   - `BTDB/Proofs/`, Snappy decompression: valid data decompresses to at most 22 times its length;
   - `BTDB/Proofs/`, list keys: written as their count and items, they are prefix free when the item encoding is;

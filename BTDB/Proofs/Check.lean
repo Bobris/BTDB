@@ -151,3 +151,6 @@ open Btdb
 #print axioms DispatcherOverloads.select_complete
 #print axioms DispatcherOverloads.previous_picks_uncallable
 #print axioms DispatcherOverloads.previous_misses_second
+#print axioms DispatcherContainers.get_built_for_root
+#print axioms DispatcherContainers.get_stable
+#print axioms DispatcherContainers.previous_wrong_root

@@ -141,6 +141,9 @@ does not keep (`../ODBLayer/RelationDBManipulator.cs`).
 `BtdbProofs/DispatcherOverloads.lean` models how the source generator picks the methods a generated dispatcher calls
 on a handler (`../../BTDB.SourceGenerator/Main.cs`).
 
+`BtdbProofs/DispatcherContainers.lean` models how a generated dispatcher keeps the handler factories of each root
+container (`../IOC/IContainer.cs`).
+
 `BtdbProofs/ChunkCachePut.lean` models how `DiskChunkCache.Put` starts new value files until its content fits
 (`../ChunkCache/DiskChunkCache.cs`).
 
@@ -270,6 +273,8 @@ Not modelled: the B-tree itself, whose `Find` is assumed to meet the contract.
 | `RemovePartial.fixed_leaves_only_kept`, `RemovePartial.previous_leaves_removable` | When `RemoveByIdPartial` removes fewer rows than its limit, every row left is one `OnBeforeRemove` keeps; before the 2026-10-29 fix kept rows counted towards the limit and a call could remove nothing while a removable row was left (`ObjectDbBeforeRemovePartialTest`). |
 | `DispatcherOverloads.select_ok`, `DispatcherOverloads.select_nodup`, `DispatcherOverloads.select_complete` | A generated dispatcher registers each message type a handler handles once, with an accessible instance method, and registers every message type for which the handler or a base class has a callable method. |
 | `DispatcherOverloads.previous_picks_uncallable`, `DispatcherOverloads.previous_misses_second` | Before the 2026-10-29 fix the first method with the name and one parameter was used, so a static or private overload broke compilation and a handler of two message types was registered for one (`IOCCoverageTests.DispatcherRegistersEveryAccessibleOverload`, `IocDispatcherTests`). |
+| `DispatcherContainers.get_built_for_root`, `DispatcherContainers.get_stable` | After any sequence of calls, a dispatcher call gets the handler factory built for the root container it is called with, and keeps getting the same one. |
+| `DispatcherContainers.previous_wrong_root` | Before the 2026-10-29 fix one factory per process was kept, so creating a dispatcher for a second container made the first container's calls use the second's handlers (`IocDispatcherTests.DispatcherOfEachContainerCallsItsHandlers`). |
 | `LruCapacity.fixed_within_max`, `LruCapacity.previous_exceeds_max` | An LRU cache holds at most its maximum capacity after any adds, removes, clears and explicit capacity increases; before the 2026-10-29 fix an increase beyond the maximum let adds pass it (`LruCacheDifferentialTest`). |
 | `BonNesting.fixed_depth` | Containers nested in accepted Bon have strictly decreasing code positions, so nesting is at most one deeper than the outermost position and ends within the data. |
 | `BonNesting.previous_unbounded` | Checking only that a pointer points back accepts nesting of every depth within twelve bytes; before the 2026-10-28 fix such damage overflowed the stack (`BonDamageFuzzTest`). |
