@@ -74,3 +74,4 @@ open Lsm
 #print axioms WalSplit.split_flatten
 #print axioms WalSplit.split_first
 #print axioms WalSplit.split_last
+#print axioms WalSplit.split_empty

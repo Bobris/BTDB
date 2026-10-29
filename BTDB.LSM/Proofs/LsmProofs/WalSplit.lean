@@ -10,6 +10,7 @@ far; the model takes it from an arbitrary function of the step.
 * `split_flatten`: the parts' bytes put together are the payload, so replay rebuilds it.
 * `split_first`: only the first part is flagged first.
 * `split_last`: only the final part is flagged last.
+* `split_empty`: an empty payload is one empty part flagged first and last.
 -/
 
 namespace Lsm.WalSplit
@@ -105,5 +106,10 @@ theorem split_last {α : Type} (rooms : Nat → Nat) (p : List α) (i offset : N
       simp only [hlt, ↓reduceIte, List.nil_append]
     · simp only [beq_iff_eq]
       omega
+
+theorem split_empty {α : Type} (rooms : Nat → Nat) (i : Nat) :
+    split rooms i 0 ([] : List α) = [⟨true, true, []⟩] := by
+  rw [split]
+  simp
 
 end Lsm.WalSplit
