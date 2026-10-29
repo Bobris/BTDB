@@ -402,7 +402,9 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (type.IsArray)
         {
-            if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
+            if (!type.IsSZArray)
+                throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() +
+                                                " is not supported: only single dimensional arrays are.");
             var elementType = type.GetElementType()!;
             var elementTypeSerializer = CreateCachedSerializerForType(elementType);
             return (ref SerializerCtx ctx, ref byte value) =>
@@ -1375,7 +1377,9 @@ public class BonSerializerFactory : ISerializerFactory
 
         if (type.IsArray)
         {
-            if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
+            if (!type.IsSZArray)
+                throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() +
+                                                " is not supported: only single dimensional arrays are.");
             var elementType = type.GetElementType()!;
             var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
             ref readonly var mt = ref RawData.MethodTableOf(type);

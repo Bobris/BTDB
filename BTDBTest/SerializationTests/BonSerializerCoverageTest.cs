@@ -418,6 +418,14 @@ public class BonSerializerCoverageTest
         Assert.Throws<NotSupportedException>(() => Serialize(builder, new NotGenerated()));
     }
 
+    // Before the fix a multi-dimensional array failed with InvalidOperationException, unlike other unsupported types.
+    [Fact]
+    public void SerializingMultiDimensionalArrayThrowsNotSupported()
+    {
+        var builder = new BonBuilder();
+        Assert.Throws<NotSupportedException>(() => BonSerializerFactory.Serialize(ref builder, new int[2, 2]));
+    }
+
     // Before the fix a plain object got the serializer of object, which waited for itself to be replaced, forever.
     [Fact]
     public void SerializingPlainObjectThrowsInsteadOfHanging()

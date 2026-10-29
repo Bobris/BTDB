@@ -602,6 +602,8 @@
   and failed with `ArgumentOutOfRangeException` in `OnDiskFileCollection` and `IndexOutOfRangeException` in
   `InMemoryFileCollection` and `InMemoryReplicationFileStorage`. All of them throw `EndOfStreamException` now, as
   `OnDiskReplicationFileStorage` already did.
+- `BonSerializerFactory` refused a multi-dimensional array, to serialize or to deserialize into, with
+  `InvalidOperationException`; it throws the `NotSupportedException` other unsupported types throw.
 - `BonSerializerFactory.Serialize` of a plain `new object()`, also as the value of an `object` member, hung its thread
   in a busy loop: the serializer of object waited for a serializer replacing it, which never came. It throws the
   `NotSupportedException` other types without serialization support throw.
