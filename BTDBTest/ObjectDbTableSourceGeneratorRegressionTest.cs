@@ -122,6 +122,7 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
     public interface ITupleKeyedTable : IRelation<TupleKeyed>
     {
         TupleKeyed? FindByIdOrDefault((int Id, TagKind Kind) key);
+        IEnumerable<TupleKeyed> ListById(AdvancedEnumeratorParam<(int Id, TagKind Kind)> param);
     }
 
     // Before the fix generated lookups threw NotSupportedException for tuple keys with enum elements.
@@ -135,6 +136,8 @@ public class ObjectDbTableSourceGeneratorRegressionTest : ObjectDbTestBase
         Assert.Equal(10, table.FindByIdOrDefault((1, TagKind.Negative))!.V);
         Assert.Equal(20, table.FindByIdOrDefault((1, TagKind.Positive))!.V);
         Assert.Null(table.FindByIdOrDefault((2, TagKind.Positive)));
+        Assert.Equal(new[] { 20 }, table.ListById(new(EnumerationOrder.Ascending, (1, TagKind.Positive),
+            KeyProposition.Included, default, KeyProposition.Ignored)).Select(r => r.V));
     }
 
     public class TupleValued

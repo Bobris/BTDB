@@ -81,6 +81,46 @@ file class ITupleKeyedTableRegistration
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
             return true;
         }
+
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
+        global::System.Collections.Generic.IEnumerable<global::TupleKeyed> global::ITupleKeyedTable.ListById(global::BTDB.ODBLayer.AdvancedEnumeratorParam<(int Id, global::Kind Kind, global::Flag? Flag)> param)
+        {
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationPKPrefix(ref writer);
+            var prefixLen = (int)writer.GetCurrentPosition();
+            if (param.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVInt64(param.Start.Item1);
+                writer.WriteVInt64((long)param.Start.Item2);
+                if (!param.Start.Item3.HasValue)
+                {
+                    writer.WriteBool(false);
+                }
+                else
+                {
+                    writer.WriteBool(true);
+                    writer.WriteVUInt64((ulong)param.Start.Item3.Value);
+                }
+            }
+            var startKeyBytes = writer.GetScopedSpanAndReset();
+            WriteRelationPKPrefix(ref writer);
+            if (param.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVInt64(param.End.Item1);
+                writer.WriteVInt64((long)param.End.Item2);
+                if (!param.End.Item3.HasValue)
+                {
+                    writer.WriteBool(false);
+                }
+                else
+                {
+                    writer.WriteBool(true);
+                    writer.WriteVUInt64((ulong)param.End.Item3.Value);
+                }
+            }
+            var endKeyBytes = writer.GetSpan();
+            return new global::BTDB.ODBLayer.RelationAdvancedEnumerator<global::TupleKeyed>(this, param.Order, param.StartProposition, prefixLen, startKeyBytes, param.EndProposition, endKeyBytes, 0);
+        }
     }
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()

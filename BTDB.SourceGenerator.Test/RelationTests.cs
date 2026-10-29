@@ -2157,6 +2157,7 @@ public class RelationTests : GeneratorTestsBase
             {
                 TupleKeyed? FindByIdOrDefault((int Id, Kind Kind, Flag? Flag) key);
                 bool UpdateById((int Id, Kind Kind, Flag? Flag) key, (int A, Kind Kind) pair);
+                System.Collections.Generic.IEnumerable<TupleKeyed> ListById(AdvancedEnumeratorParam<(int Id, Kind Kind, Flag? Flag)> param);
             }
             """);
     }
