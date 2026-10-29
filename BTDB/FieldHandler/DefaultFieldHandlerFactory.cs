@@ -34,6 +34,11 @@ public class DefaultFieldHandlerFactory : IFieldHandlerFactory
             if (fieldHandler.IsCompatibleWith(type, options)) return fieldHandler;
         }
 
+        // A container of an unsupported item type is unsupported too; its handler would fail to build the item one.
+        if (!(ListFieldHandler.IsCompatibleWith(type) || DictionaryFieldHandler.IsCompatibleWith(type) ||
+              NullableFieldHandler.IsCompatibleWith(type) || TupleFieldHandler.IsCompatibleWith(type)) ||
+            !ItemTypesSupported(type))
+            return null;
         if (options.HasFlag(FieldHandlerOptions.Orderable) && ListFieldOrderedHandler.IsCompatibleWith(type))
             return new ListFieldOrderedHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
         if (ListFieldHandler.IsCompatibleWith(type))
@@ -47,6 +52,16 @@ public class DefaultFieldHandlerFactory : IFieldHandlerFactory
             return new TupleFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type,
                 options);
         return null;
+    }
+
+    bool ItemTypesSupported(Type type)
+    {
+        foreach (var itemType in type.GetGenericArguments())
+        {
+            if (_provider.FieldHandlerFactory.CreateFromType(itemType, FieldHandlerOptions.None) == null) return false;
+        }
+
+        return true;
     }
 
     public virtual IFieldHandler? CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)

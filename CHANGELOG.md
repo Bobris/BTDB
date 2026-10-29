@@ -124,6 +124,9 @@
 
 ### Fixed
 
+- ObjectDB: a nullable, tuple, list or dictionary of a type without a field handler, like `char?`, failed with
+  `NullReferenceException` while building its handler. It is now reported like the type itself: the property is named
+  when the relation is created, or storing the list or dictionary fails with `InvalidOperationException`.
 - Source generator: generated code of a partial class declared the members `Creator` and `Constr` in it, so a member
   of the class with either name, like a `Creator` property, made it fail to compile. They are named `Creator4BTDB`
   and `Constr4BTDB` in partial classes now.
