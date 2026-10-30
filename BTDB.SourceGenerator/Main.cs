@@ -5799,8 +5799,17 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"{indent}else\n");
             declarations.Append($"{indent}{{\n");
             declarations.Append($"{indent}    writer.WriteBool(true);\n");
-            AppendWriteOrderableValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
-                enumUnderlyingType, indent + "    ", false, nestedEnums);
+            if (enumUnderlyingType == null && NestedEnumUnderlyingType(nullableUnderlyingType, nestedEnums) == null &&
+                NormalizeSupportedValueType(nullableUnderlyingType) == "sbyte")
+            {
+                // A nullable sbyte key stores its value raw, unlike sbyte keys, so negative values sort after positive.
+                declarations.Append($"{indent}    writer.WriteInt8({valueExpression}.Value);\n");
+            }
+            else
+            {
+                AppendWriteOrderableValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
+                    enumUnderlyingType, indent + "    ", false, nestedEnums);
+            }
             declarations.Append($"{indent}}}\n");
             return;
         }

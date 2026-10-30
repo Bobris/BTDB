@@ -72,11 +72,41 @@ public class NullableKeyFindByTest : ObjectDbTestBase
         Assert.Empty(table.FindByI32(-8));
     }
 
-    [Fact(Skip = "Generated code encodes an sbyte? key ordered, rows store it raw; the fix is not decided yet.")]
+    [Fact]
     public void FindByNullableSByteKeyFindsValue()
     {
         using var tr = _db.StartTransaction();
         var table = Fill(tr);
         Assert.Equal(1UL, Assert.Single(table.FindByI8(-3)).Id);
+        Assert.Empty(table.FindByI8(3));
+    }
+
+    [Generate]
+    public class SByteKeyed
+    {
+        [PrimaryKey(1)] public sbyte? Key { get; set; }
+        public string? Name { get; set; }
+    }
+
+    [Generate]
+    public interface ISByteKeyedTable : IRelation<SByteKeyed>
+    {
+        void Insert(SByteKeyed row);
+        SByteKeyed? FindByIdOrDefault(sbyte? key);
+    }
+
+    /// A nullable sbyte key stores its value byte raw, so rows sort null, 0 to 127, then -128 to -1.
+    [Fact]
+    public void NullableSBytePrimaryKeyIsFoundAndSortsRaw()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ISByteKeyedTable>();
+        foreach (var key in new sbyte?[] { 1, -1, null, 5, 127, -128, 0 })
+            table.Insert(new() { Key = key, Name = key?.ToString() ?? "null" });
+        Assert.Equal("5", table.FindByIdOrDefault(5)!.Name);
+        Assert.Equal("-1", table.FindByIdOrDefault(-1)!.Name);
+        Assert.Equal("null", table.FindByIdOrDefault(null)!.Name);
+        Assert.Null(table.FindByIdOrDefault(2));
+        Assert.Equal("null 0 1 5 127 -128 -1", string.Join(" ", table.Select(r => r.Name)));
     }
 }

@@ -3,6 +3,8 @@
 ## Simple types
 
 - signed integers (`sbyte`, `short`, `int`, `long`) `Constraint<long>`/`Constraint.Signed`
+- nullable `sbyte` (`sbyte?`) as key stores its value byte raw, so keys sort `null`, 0 to 127, then -128 to -1 (other
+  nullable integers sort by value)
 - unsigned integers (`byte`, `ushort`, `uint`, `ulong`) `Constraint<ulong>`/`Constraint.Unsigned`
 - `bool` `Constraint<bool>`/`Constraint.Bool`
 - `float` (`Single`) (cannot be used as key, nor can `float?`)

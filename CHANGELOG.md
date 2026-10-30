@@ -214,6 +214,10 @@
 
 ### Fixed
 
+- Generated relations did not find rows by a non-null `sbyte?` key, also inside a tuple key: lookups wrote the value
+  in the ordered `sbyte` encoding, while rows store a nullable `sbyte` key raw. `FindByIdOrDefault(5)` on a relation
+  keyed by `sbyte?` returned null. Lookups write the value raw now, so the storage format and existing data are
+  unchanged; such keys keep sorting `null`, 0 to 127, then -128 to -1 (documented in `Doc/SupportedTypes.md`).
 - The source generator did not validate `RemoveByIdPartial` at all, so a wrong key parameter name or type, a parameter
   past the primary key, a bool result or a last parameter that is no `int maxCount` compiled. Emit mode refuses these.
   The generator now reports BTDB0014, BTDB0015 or BTDB0016 for the key parameters, and the new error BTDB0057 for a
