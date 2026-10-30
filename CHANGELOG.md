@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.0.1
+
 ### Added
 
 - ObjectDB: `IObjectDB.RegisterTypeAlias(type, alias)` and `IType2NameRegistry.RegisterAlias` make objects stored

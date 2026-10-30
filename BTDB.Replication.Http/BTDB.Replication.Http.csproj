@@ -5,7 +5,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.Replication.Http</PackageId>
-        <Version>36.0.0</Version>
+        <Version>36.0.1</Version>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
