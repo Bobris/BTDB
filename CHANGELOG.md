@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Added
+
+- ObjectDB: `IObjectDB.RegisterTypeAlias(type, alias)` and `IType2NameRegistry.RegisterAlias` make objects stored
+  under another name, such as an earlier name of the type, load as the type, which is still stored under its own name.
+  A type registered under the alias takes precedence, and two types may not share an alias. Two classes of one name in
+  different namespaces can so get names of their own while the old name keeps loading as the class it loaded as.
+
 ### Changed
 
 - ObjectDB: `DateTime` and `DateTime?` keys and `DateTime` constraints accept `Local` kind again by default, as before
@@ -11,6 +18,12 @@
 
 ### Fixed
 
+- ObjectDB: a generic argument lost the `I` of its interface name, so `Wrapper<IShape>` and `Wrapper<Shape>`, both
+  stored, got the name `Wrapper<Shape>`. 36.0.0 refused registering the second; earlier versions loaded objects of one
+  as the other. A generic argument now keeps the `I`, so `Wrapper<IShape>` is stored under `Wrapper<IShape>`. Its
+  former name stays its alias, so objects stored under it before still load as it, unless a type registered under
+  that name, like `Wrapper<Shape>`, takes them as before. Objects stored under the new name are not read by
+  earlier versions.
 - Source generator: the warning BTDB0059 for an unmarked private property of a base class was also reported for
   services the container builds, which are not stored, and failed builds that treat warnings as errors. A class with a
   `[Dependency]` member, or without a parameterless constructor and with one taking an interface or a delegate, is not

@@ -254,6 +254,8 @@ open Btdb
 #print axioms PropertyOrder.new_has_marked_private_bases
 #print axioms PropertyOrder.new_drops_unmarked_private_bases
 #print axioms TypeNames.lookup_storable
+#print axioms TypeNames.alias_yields
+#print axioms TypeNames.find_storable
 #print axioms DependencyMembers.collect_nodup
 #print axioms DependencyMembers.collect_complete
 #print axioms DependencyMembers.collect_first

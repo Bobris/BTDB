@@ -13,6 +13,10 @@ public class Type2NameRegistry : IType2NameRegistry
     readonly ConcurrentDictionary<Type, string> _type2Name =
         new ConcurrentDictionary<Type, string>(ReferenceEqualityComparer<Type>.Instance);
 
+    // Names objects are loaded by but not stored under, such as names types had before.
+    readonly ConcurrentDictionary<string, Type> _alias2Type =
+        new ConcurrentDictionary<string, Type>(ReferenceEqualityComparer<string>.Instance);
+
     readonly object _lock = new object();
 
     public string RegisterType(Type type, string asName)
@@ -52,14 +56,28 @@ public class Type2NameRegistry : IType2NameRegistry
         return asName;
     }
 
+    public bool RegisterAlias(Type type, string alias)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (!CanBeStored(type))
+            throw new ArgumentException($"Type {type} is never stored, so it needs no alias.", nameof(type));
+        alias = string.Intern(alias);
+        lock (_lock)
+        {
+            return ReferenceEquals(_alias2Type.GetOrAdd(alias, type), type);
+        }
+    }
+
     static bool CanBeStored(Type type) => !type.IsInterface && !type.IsAbstract;
 
     public Type FindTypeByName(string name)
     {
         Debug.Assert(string.IsInterned(name) != null);
-        Type result;
-        if (_name2Type.TryGetValue(name, out result)) return result;
-        return null;
+        // A storable type registered under the name is the one stored under it; an alias stands only for objects
+        // stored before, so it precedes just an interface or abstract class.
+        _name2Type.TryGetValue(name, out var result);
+        if (result != null && CanBeStored(result)) return result;
+        return _alias2Type.TryGetValue(name, out var aliased) ? aliased : result;
     }
 
     public string FindNameByType(Type type)

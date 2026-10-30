@@ -13,6 +13,9 @@ storable type whose name a storable type took.
   when its interface took the name first.
 * `old_shares`: the registry before the fix registered two storable types under one name
   (`ObjectDbTypeNameClashTest`).
+* `alias_yields`, `find_storable`: `RegisterAlias` names a storable type objects stored under a name load as, without
+  storing it there. A storable type registered under the name keeps it, and the type found is storable whenever one
+  was registered under the name or as its alias.
 -/
 
 namespace Btdb.TypeNames
@@ -108,5 +111,31 @@ theorem lookup_storable (storable : Nat → Bool) :
         | inl e => subst e; right; exact ⟨u, by simp [hc, hs], hs⟩
         | inr e => left; exact ⟨u, e, hs⟩
       · simp at hc'; subst hc'; exact absurd hs' hc
+
+/-- `FindTypeByName` with aliases: the type `lookupAfter` gives when it is storable, else the alias, else the type
+`lookupAfter` gives. `RegisterAlias` takes only storable types. -/
+def findWithAlias (storable : Nat → Bool) (registered alias : Option Nat) : Option Nat :=
+  match registered with
+  | some c => if storable c then some c else (alias <|> some c)
+  | none => alias
+
+/-- An alias never takes a name from a storable type registered under it, which is the type stored there. -/
+theorem alias_yields (storable : Nat → Bool) (ts : List Nat) (alias : Option Nat) (h : ∃ t ∈ ts, storable t = true) :
+    findWithAlias storable (lookupAfter storable none ts) alias = lookupAfter storable none ts := by
+  obtain ⟨r, hr, hs⟩ := lookup_storable storable none ts (Or.inl h)
+  simp [findWithAlias, hr, hs]
+
+/-- With a storable type registered under the name or as its alias, loading creates a storable type. -/
+theorem find_storable (storable : Nat → Bool) (registered alias : Option Nat)
+    (h : (∃ c, registered = some c ∧ storable c = true) ∨ ∃ a, alias = some a ∧ storable a = true) :
+    ∃ r, findWithAlias storable registered alias = some r ∧ storable r = true := by
+  rcases h with ⟨c, rfl, hc⟩ | ⟨a, rfl, ha⟩
+  · exact ⟨c, by simp [findWithAlias, hc], hc⟩
+  · cases registered with
+    | none => exact ⟨a, rfl, ha⟩
+    | some c =>
+      by_cases hc : storable c = true
+      · exact ⟨c, by simp [findWithAlias, hc], hc⟩
+      · exact ⟨a, by simp [findWithAlias, hc], ha⟩
 
 end Btdb.TypeNames

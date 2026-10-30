@@ -57,6 +57,11 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 
     string RegisterType(Type type, string withName);
 
+    /// Makes objects stored under <paramref name="alias"/>, such as by an earlier name of the type, load as
+    /// <paramref name="type"/>, which is still stored under its own name. A type registered under the alias takes
+    /// precedence. Returns false when another type has the alias already.
+    bool RegisterTypeAlias(Type type, string alias);
+
     IEnumerable<Type> GetPolymorphicTypes(Type baseType);
 
     Type TypeByName(string name);

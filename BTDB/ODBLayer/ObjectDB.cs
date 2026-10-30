@@ -263,21 +263,33 @@ public class ObjectDB : IObjectDB
         var name = Type2NameRegistry.FindNameByType(type);
         if (name != null) return name;
 
-        static string NiceName(Type type1)
+        // An interface is never stored, so it may share its implementation's name without the leading I. A generic
+        // argument keeps it: Wrapper<IShape> is stored, and differs from Wrapper<Shape>.
+        static string NiceName(Type type1, bool dropInterfacePrefix, bool dropInArguments)
         {
             var niceName = type1.Name;
-            if (type1.IsInterface && niceName.StartsWith('I'))
+            if (dropInterfacePrefix && type1.IsInterface && niceName.StartsWith('I'))
                 niceName = niceName[1..];
 
             if (!type1.IsGenericType) return niceName;
             var genericTypes = type1.GenericTypeArguments;
-            niceName = $"{niceName.Split('`')[0]}<{string.Join(",", genericTypes.Select(NiceName))}>";
+            var arguments = genericTypes.Select(t => NiceName(t, dropInArguments, dropInArguments));
+            niceName = $"{niceName.Split('`')[0]}<{string.Join(",", arguments)}>";
             return niceName;
         }
 
-        name = NiceName(type);
+        name = RegisterType(type, NiceName(type, true, false), manualRegistration);
+        // Earlier versions dropped the I of generic arguments too, so objects stored under that name load as this type,
+        // unless a type registered under that name is stored there.
+        var oldName = NiceName(type, true, true);
+        if (oldName != name && !type.IsInterface && !type.IsAbstract)
+            Type2NameRegistry.RegisterAlias(type, oldName);
+        return name;
+    }
 
-        return RegisterType(type, name, manualRegistration);
+    public bool RegisterTypeAlias(Type type, string alias)
+    {
+        return Type2NameRegistry.RegisterAlias(type, alias);
     }
 
     string RegisterType(Type type, string asName, bool manualRegistration)
