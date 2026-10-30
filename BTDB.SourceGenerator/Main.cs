@@ -81,17 +81,27 @@ public class SourceGenerator : IIncrementalGenerator
                                     constructorParametersExpression.GetLocation());
                             }
 
-                            constructorParameters = aces.Elements
+                            var elementTypes = aces.Elements
                                 .Select(e =>
                                 {
                                     var expressionSyntax = (e as ExpressionElementSyntax)?.Expression;
                                     var typeSyntax = (expressionSyntax as TypeOfExpressionSyntax)?.Type;
                                     if (typeSyntax == null) return null;
                                     var info = ModelExtensions.GetSymbolInfo(semanticModel, typeSyntax);
-                                    return info.Symbol;
+                                    return info.Symbol as INamedTypeSymbol;
                                 })
-                                .OfType<INamedTypeSymbol>()
                                 .ToArray();
+                            constructorParameters = elementTypes.OfType<INamedTypeSymbol>().ToArray();
+                            // Generating nothing would only fail at runtime, when no factory for the type is found.
+                            if (!symb.IsAbstract && (constructorParameters.Length != elementTypes.Length ||
+                                                     !symb.Constructors.Any(c =>
+                                                         !c.IsStatic && IsUsableConstructor(c, symb) &&
+                                                         ConstructorMatches(c, constructorParameters))))
+                            {
+                                return GenerationError("BTDB0055",
+                                    $"ConstructorParameters of GenerateFor({symb.ToDisplayString()}) match no usable constructor",
+                                    constructorParametersExpression.GetLocation());
+                            }
                         }
 
                         if (symb.AllInterfaces.FirstOrDefault(IsICovariantRelation) is { } relation)
@@ -1722,6 +1732,17 @@ public class SourceGenerator : IIncrementalGenerator
             SymbolEqualityComparer.Default.Equals(p.Type, type) ||
             p.Type is IPointerTypeSymbol or IFunctionPointerTypeSymbol || p.Type.IsRefLikeType);
 
+    static bool ConstructorMatches(IMethodSymbol constructor, INamedTypeSymbol[] parameterTypes)
+    {
+        if (constructor.Parameters.Length != parameterTypes.Length) return false;
+        for (var i = 0; i < parameterTypes.Length; i++)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(constructor.Parameters[i].Type, parameterTypes[i])) return false;
+        }
+
+        return true;
+    }
+
     static GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol,
         TypeDeclarationSyntax? classDeclarationSyntax,
         bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model,
@@ -1799,22 +1820,10 @@ public class SourceGenerator : IIncrementalGenerator
                 continue;
             if (constructorParameters != null)
             {
-                if (symbolConstructor.Parameters.Length == constructorParameters.Length)
+                if (ConstructorMatches(symbolConstructor, constructorParameters))
                 {
-                    var allMatch = true;
-                    for (var i = 0; i < symbolConstructor.Parameters.Length; i++)
-                    {
-                        if (SymbolEqualityComparer.Default.Equals(symbolConstructor.Parameters[i].Type,
-                                constructorParameters[i])) continue;
-                        allMatch = false;
-                        break;
-                    }
-
-                    if (allMatch)
-                    {
-                        constructor = symbolConstructor;
-                        break;
-                    }
+                    constructor = symbolConstructor;
+                    break;
                 }
             }
             else

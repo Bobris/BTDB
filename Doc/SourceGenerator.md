@@ -138,6 +138,9 @@ internal class MyService : IMyService
 Note: using this attribute has higher priority over [Generate] attribute on type or its ancestors. It is not checked,
 but type of service should be identical.
 
+`ConstructorParameters` must list the exact parameter types of a usable constructor; when no constructor matches, the
+generator reports error BTDB0055.
+
 Of course type itself does not need to by under your control. So you can use it on assembly level too.
 
 ```csharp

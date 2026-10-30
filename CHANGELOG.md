@@ -214,6 +214,10 @@
 
 ### Fixed
 
+- `[GenerateFor(typeof(T), ConstructorParameters = [...])]` matching no usable constructor of `T` generated nothing, so
+  the failure only showed at runtime when no factory for `T` was found. The source generator now reports the new error
+  BTDB0055 at `ConstructorParameters`, also for an element that is no `typeof` of a named type. **Breaking:** a project
+  with such stale `ConstructorParameters` stops building until they are fixed or removed.
 - Generated relations did not find rows by a non-null `sbyte?` key, also inside a tuple key: lookups wrote the value
   in the ordered `sbyte` encoding, while rows store a nullable `sbyte` key raw. `FindByIdOrDefault(5)` on a relation
   keyed by `sbyte?` returned null. Lookups write the value raw now, so the storage format and existing data are

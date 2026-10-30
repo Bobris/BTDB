@@ -100,9 +100,10 @@ public class IOCCoverageTests : GeneratorTestsBase
     }
 
     [Fact]
-    public void GenerateForWithNotMatchingConstructorParametersGeneratesNothing()
+    public void GenerateForWithNotMatchingConstructorParametersIsReported()
     {
-        var sources = GenerateAndCompile("""
+        // Generating nothing would only fail at runtime, when the container finds no factory for Logger.
+        AssertSingleGeneratorDiagnostic("""
             [assembly: BTDB.GenerateFor(typeof(TestNamespace.Logger), ConstructorParameters = [typeof(string)])]
 
             namespace TestNamespace
@@ -118,8 +119,25 @@ public class IOCCoverageTests : GeneratorTestsBase
                     }
                 }
             }
-            """);
-        Assert.Empty(sources);
+            """, "BTDB0055");
+    }
+
+    [Fact]
+    public void GenerateForWithConstructorParameterOfNoNamedTypeIsReported()
+    {
+        AssertSingleGeneratorDiagnostic("""
+            [assembly: BTDB.GenerateFor(typeof(TestNamespace.Logger), ConstructorParameters = [typeof(int[])])]
+
+            namespace TestNamespace
+            {
+                public class Logger
+                {
+                    public Logger(int[] values)
+                    {
+                    }
+                }
+            }
+            """, "BTDB0055");
     }
 
     [Fact]
