@@ -794,7 +794,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
                 .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
 
-            return TestKviMagicEndMarker(fileId, ref reader, file);
+            return TestKviMagicEndMarker(fileId, ref reader, file, info.HasChecksum);
         }
         catch (Exception)
         {
@@ -848,6 +848,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     _nextRoot.SetUlong(i, info.Ulongs[i]);
                 }
 
+            var checksum = info.HasChecksum ? new KeyIndexChecksum(info) : null;
             var cursor = _nextRoot.CreateCursor();
             // The tree is built as the keys come, so a damaged key out of order would make lookups miss keys.
             var lastKey = ByteBuffer.NewEmpty();
@@ -950,7 +951,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             reader2.ReadBlock(key.Slice((int)prefixLen).AsSyncSpan());
                             CheckOrder(key);
                             prevKey = key;
-                            var vFileId = reader2.ReadVUInt32();
+                            var storedFileId = reader2.ReadVUInt32();
+                            var vFileId = storedFileId;
                             if (vFileId != 0 && replicatedFiles != null)
                                 vFileId = replicatedFiles.GetLocalFileId(vFileId);
                             if (vFileId > 0 && referencedFiles.Add(vFileId)) referenced?.Invoke(vFileId);
@@ -958,6 +960,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             MemoryMarshal.Write(trueValue, vFileId);
                             var valueOfs = reader2.ReadVUInt32();
                             var valueSize = reader2.ReadVInt32();
+                            checksum?.AppendKeyValue(key.AsSyncReadOnlySpan(), default, storedFileId, valueOfs,
+                                valueSize);
                             if (vFileId == 0)
                             {
                                 var len = valueSize >> 24;
@@ -1004,7 +1008,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            return TestKviMagicEndMarker(fileId, ref reader, fileSize);
+            return TestKviMagicEndMarker(fileId, ref reader, fileSize, info.HasChecksum, checksum);
         }
         catch (Exception)
         {
@@ -1012,18 +1016,23 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, IFileCollectionFile file) =>
-        TestKviMagicEndMarker(fileId, ref reader, file.GetSize());
+    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, IFileCollectionFile file, bool hasChecksum) =>
+        TestKviMagicEndMarker(fileId, ref reader, file.GetSize(), hasChecksum, null);
 
-    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, ulong fileSize)
+    /// A file with a checksum must end with the marker and the checksum, which is compared when given.
+    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, ulong fileSize, bool hasChecksum,
+        KeyIndexChecksum? checksum)
     {
-        if (reader.Eof) return true;
-        if ((ulong)reader.GetCurrentPosition() + 4 == fileSize &&
-            reader.ReadInt32BE() == EndOfIndexFileMarker) return true;
+        if (!hasChecksum && reader.Eof) return true;
+        var trailerLength = hasChecksum ? 12u : 4u;
+        if ((ulong)reader.GetCurrentPosition() + trailerLength == fileSize &&
+            reader.ReadInt32BE() == EndOfIndexFileMarker &&
+            (!hasChecksum || reader.ReadUInt64LE() is var stored && (checksum == null || stored == checksum.Digest())))
+            return true;
         if (_lenientOpen)
         {
-            Logger?.LogWarning("End of Kvi " + fileId + " had some garbage at " + (reader.GetCurrentPosition() - 4) +
-                               " ignoring that because of LenientOpen");
+            Logger?.LogWarning("End of Kvi " + fileId + " had some garbage" + (hasChecksum ? " or a wrong checksum" : "") +
+                               " at " + (reader.GetCurrentPosition() - 4) + " ignoring that because of LenientOpen");
             return true;
         }
 
@@ -2575,6 +2584,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var keyIndex = new FileKeyIndex(generation, FileCollection.Guid, root.TrLogFileId,
             root.TrLogOffset, keyCount, root.CommitUlong, compressionType, root.UlongsArray);
         keyIndex.WriteHeader(ref writer);
+        var checksum = new KeyIndexChecksum(keyIndex);
         var compressionWriter = _kviCompressionStrategy.StartCompression(compressionType, writer);
         ulong originalSize;
         var usedFileIds = new HashSet<uint>();
@@ -2661,6 +2671,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
                         writerReference.WriteVUInt32(valueOfs);
                         writerReference.WriteVInt32(valueSize);
+                        checksum.AppendKeyValue(ctx.CurrentPrefix, ctx.CurrentSuffix, destinationId, valueOfs,
+                            valueSize);
                     }
                     else
                     {
@@ -2668,6 +2680,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         var valueSize = MemoryMarshal.Read<int>(memberValue[8..]);
                         writerReference.WriteVUInt32(valueOfs);
                         writerReference.WriteVInt32(valueSize);
+                        checksum.AppendKeyValue(ctx.CurrentPrefix, ctx.CurrentSuffix, destinationId, valueOfs,
+                            valueSize);
                     }
 
                     bytesPerSecondLimiter.Limit((ulong)writerReference.GetCurrentPosition());
@@ -2683,6 +2697,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
         cancellation.ThrowIfCancellationRequested();
         writer.WriteInt32BE(EndOfIndexFileMarker);
+        writer.WriteUInt64LE(checksum.Digest());
         writer.Flush();
         if (!IsReplication && pureValueFileIds == null)
         {

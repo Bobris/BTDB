@@ -4,6 +4,14 @@
 
 ### Added
 
+- `BTreeKeyValueDB` key index (`.kvi`) files end with an XxHash64 of their content: the header fields loading uses,
+  and each key with its value position. Opening checks it and does not use an index that does not match. It falls back
+  to an older index and the transaction logs, as for other damage, so damage that keeps keys in order no longer loads
+  other keys or value positions. With `LenientOpen` a mismatch is logged and the index is used. A flag in the
+  compression byte of the header marks such files, so the file type stays and files without a checksum are still read.
+  **Format change:** versions before this one refuse the new files as of unknown compression, so going back to them
+  opens from an older index and the logs, or fails when those are gone. `IKeyIndex` has a new `HasChecksum` member
+  (false by default).
 - `LsmKeyValueDB` WAL uploads adapt to writers that wait for durability. Before an upload, the uploader waits briefly
   for commits that usually follow the previous upload closely, so concurrent writers awaiting
   `WaitForDurabilityAsync` (or using `DurableTransactions`) share one upload instead of splitting into a small and a

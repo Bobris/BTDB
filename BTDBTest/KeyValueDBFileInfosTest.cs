@@ -168,6 +168,81 @@ public class KeyValueDBFileInfosTest
         Assert.InRange(GC.GetTotalAllocatedBytes(true) - before, 0, 64 << 20);
     }
 
+    /// Rewrites the only key index as given by its content and the position of its compression byte.
+    static IFileCollectionFile RewriteKeyIndex(InMemoryFileCollection files, Func<byte[], int, byte[]> rewrite)
+    {
+        var index = files.Enumerate().Last();
+        var content = new byte[index.GetSize()];
+        index.RandomRead(content, 0, false);
+        var reader = MemReader.CreateFromPinnedSpan(content);
+        FileCollectionWithFileInfos.SkipHeader(ref reader);
+        reader.Skip1Byte(); // type
+        reader.SkipVInt64();
+        reader.SkipVUInt32();
+        reader.SkipVUInt32();
+        reader.SkipVUInt64();
+        reader.SkipVUInt64();
+        var rewritten = files.AddFile("kvi");
+        var writer = new MemWriter(rewritten.GetAppenderWriter());
+        writer.WriteBlock(rewrite(content, (int)reader.GetCurrentPosition()));
+        writer.Flush();
+        index.Remove();
+        return rewritten;
+    }
+
+    // A key index without checksum, as earlier versions wrote it, is still used.
+    [Fact]
+    public void KeyIndexWithoutChecksumIsUsed()
+    {
+        using var files = new InMemoryFileCollection();
+        using (var db = Open(files))
+        {
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+            db.CreateKvi(default);
+        }
+
+        var index = RewriteKeyIndex(files, (content, compressionAt) =>
+        {
+            Assert.Equal(0x80, content[compressionAt] & 0x80);
+            var old = content[..^8];
+            old[compressionAt] &= 0x7f;
+            return old;
+        });
+        using (var db = Open(files))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+
+        Assert.Contains(files.Enumerate(), f => f.Index == index.Index);
+    }
+
+    // A key index whose checksum does not match is not used, and it is removed as damaged.
+    [Fact]
+    public void KeyIndexWithWrongChecksumIsNotUsed()
+    {
+        using var files = new InMemoryFileCollection();
+        using (var db = Open(files))
+        {
+            for (byte i = 0; i < 30; i++) WriteKey(db, i);
+            db.CreateKvi(default);
+        }
+
+        var index = RewriteKeyIndex(files, (content, _) =>
+        {
+            var damaged = (byte[])content.Clone();
+            damaged[^1] ^= 1;
+            return damaged;
+        });
+        using (var db = Open(files))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            Assert.Equal(30, tr.GetKeyValueCount());
+        }
+
+        Assert.DoesNotContain(files.Enumerate(), f => f.Index == index.Index);
+    }
+
     // Before the fix the count of ulongs in a key index header was allocated at once, so a damaged count made opening
     // allocate it, here 512 MB, before the header was found damaged.
     [Fact]

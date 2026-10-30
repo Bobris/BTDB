@@ -15,6 +15,11 @@ public class FileKeyIndex : IKeyIndex
     readonly ulong _commitUlong;
     readonly ulong[]? _ulongs;
     readonly KeyIndexCompression _compressionType;
+    readonly bool _hasChecksum;
+
+    // Set in the compression byte of a file ending with the XxHash64 of its content (KeyIndexChecksum) after the end
+    // marker. Versions before it refuse such a file as of unknown compression.
+    const byte ChecksumFlag = 0x80;
 
     public KVFileType FileType => KVFileType.KeyIndex;
 
@@ -36,6 +41,8 @@ public class FileKeyIndex : IKeyIndex
 
     public KeyIndexCompression Compression => _compressionType;
 
+    public bool HasChecksum => _hasChecksum;
+
     public long[]? UsedFilesInOlderGenerations { get; set; }
 
     public FileKeyIndex(ref MemReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
@@ -46,7 +53,9 @@ public class FileKeyIndex : IKeyIndex
         _trLogOffset = reader.ReadVUInt32();
         _keyValueCount = (long)reader.ReadVUInt64();
         _commitUlong = withCommitUlong ? reader.ReadVUInt64() : 0;
-        _compressionType = modern ? (KeyIndexCompression)reader.ReadUInt8() : KeyIndexCompression.Old;
+        var compression = modern ? reader.ReadUInt8() : (byte)KeyIndexCompression.Old;
+        _hasChecksum = (compression & ChecksumFlag) != 0;
+        _compressionType = (KeyIndexCompression)(compression & ~ChecksumFlag);
         _ulongs = null;
         if (withUlongs)
         {
@@ -70,6 +79,7 @@ public class FileKeyIndex : IKeyIndex
         _commitUlong = commitUlong;
         _compressionType = compression;
         _ulongs = ulongs?.ToArray();
+        _hasChecksum = true;
     }
 
     public static void SkipHeader(ref MemReader reader)
@@ -100,7 +110,7 @@ public class FileKeyIndex : IKeyIndex
         writer.WriteVUInt32(_trLogOffset);
         writer.WriteVUInt64((ulong)_keyValueCount);
         writer.WriteVUInt64(_commitUlong);
-        writer.WriteUInt8((byte)_compressionType);
+        writer.WriteUInt8((byte)((byte)_compressionType | (_hasChecksum ? ChecksumFlag : 0)));
         var ulongCount = (uint)(_ulongs?.Length ?? 0);
         writer.WriteVUInt32(ulongCount);
         if (ulongCount > 0)
