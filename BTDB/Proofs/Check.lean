@@ -250,8 +250,9 @@ open Btdb
 #print axioms InheritedAttributes.own_kept
 #print axioms InheritedAttributes.fromOverridden_fresh
 #print axioms InheritedAttributes.inherited_kept
-#print axioms PropertyOrder.new_eq_old_without_private_bases
-#print axioms PropertyOrder.new_has_private_bases
+#print axioms PropertyOrder.new_eq_old_without_marked_private_bases
+#print axioms PropertyOrder.new_has_marked_private_bases
+#print axioms PropertyOrder.new_drops_unmarked_private_bases
 #print axioms TypeNames.lookup_storable
 #print axioms DependencyMembers.collect_nodup
 #print axioms DependencyMembers.collect_complete

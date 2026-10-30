@@ -1732,6 +1732,14 @@ public class SourceGenerator : IIncrementalGenerator
             SymbolEqualityComparer.Default.Equals(p.Type, type) ||
             p.Type is IPointerTypeSymbol or IFunctionPointerTypeSymbol || p.Type.IsRefLikeType);
 
+    /// A private property of a base class is stored only when a BTDB storage attribute marks it, as reflection lists it.
+    static bool IsUnmarkedPrivateBaseProperty(IPropertySymbol property, INamedTypeSymbol symbol) =>
+        property.DeclaredAccessibility == Accessibility.Private &&
+        property.ContainingType.TypeKind != TypeKind.Interface &&
+        !SymbolEqualityComparer.Default.Equals(property.ContainingType, symbol) &&
+        !property.GetAttributes().Any(a => a.AttributeClass?.Name is "PersistedNameAttribute" or "PrimaryKeyAttribute"
+            or "SecondaryKeyAttribute" or "InKeyValueAttribute");
+
     static bool ConstructorMatches(IMethodSymbol constructor, INamedTypeSymbol[] parameterTypes)
     {
         if (constructor.Parameters.Length != parameterTypes.Length) return false;
@@ -1920,6 +1928,7 @@ public class SourceGenerator : IIncrementalGenerator
                 // referenced assembly, as List<T> has, is not marked as indexer, but has parameters.
                 .Where(p => !p.IsStatic && !p.IsIndexer && p.Parameters.IsEmpty && SerializableType(p.Type))
                 .Where(p => p.Name != "BtdbInternalNextInChain")
+                .Where(p => !IsUnmarkedPrivateBaseProperty(p, symbol))
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
                     !HasNotStoredAttribute(p) &&
@@ -1991,6 +2000,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic && !p.IsIndexer && p.Parameters.IsEmpty)
                 .Where(p => p.Name != "BtdbInternalNextInChain")
+                .Where(p => !IsUnmarkedPrivateBaseProperty(p, symbol))
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
                     !HasNotStoredAttribute(p) &&
@@ -1998,6 +2008,22 @@ public class SourceGenerator : IIncrementalGenerator
                 .Select(p => p.Type)).ToList();
 
         var serializable = fieldTypes.All(SerializableType);
+
+        // Data stored by earlier versions has these properties, which are no longer stored unless marked.
+        var warnings = serializable
+            ? relationItemMembers.OfType<IPropertySymbol>()
+                .Where(p => IsUnmarkedPrivateBaseProperty(p, symbol) && !p.IsStatic && !p.IsIndexer &&
+                            p.Parameters.IsEmpty && p.Locations.Any(l => l.IsInSource) &&
+                            p.GetMethod is not null && p.SetMethod is not null && SerializableType(p.Type) &&
+                            !HasDependencyAttribute(p) && !HasNotStoredAttribute(p))
+                .Select(p => new DiagnosticInfo("BTDB0059",
+                    "Private property " + p.ContainingType.ToDisplayString() + "." + p.Name + " of base class of " +
+                    symbol.ToDisplayString() +
+                    " is not stored; mark it with [PersistedName] to store it, or with [NotStored] to silence this",
+                    p.Locations.FirstOrDefault() ?? symbol.Locations[0]))
+                .ToArray()
+            : [];
+
         if (!serializable)
         {
             fields = [];
@@ -2169,7 +2195,7 @@ public class SourceGenerator : IIncrementalGenerator
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, methods.ToArray(), implements,
             collections.ToArray(), genericParameters,
-            nested.ToArray(), null) { RegistrationNameOverride = RegistrationNameOverride(symbol) };
+            nested.ToArray(), null) { RegistrationNameOverride = RegistrationNameOverride(symbol), Warnings = warnings };
     }
 
     // Generated registrations are file classes in the namespace of the type, which hide a type of the same name in the
@@ -3065,6 +3091,13 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             if (!dedupe.Add(generationInfo.FullName)) continue;
+            foreach (var warning in generationInfo.Warnings)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    new(warning.Code, warning.Message, warning.Message, "BTDB", DiagnosticSeverity.Warning, true),
+                    warning.Location));
+            }
+
             if (generationInfo.GenType == GenerationType.Delegate)
             {
                 GenerateDelegateFactory(context, hintNames, generationInfo);
@@ -6360,6 +6393,9 @@ record GenerationInfo(
     // Set when the usual name of the generated registration class is taken in the namespace.
     public string? RegistrationNameOverride { get; init; }
 
+    // Reported along with the generated code, which they do not prevent.
+    public EquatableArray<DiagnosticInfo> Warnings { get; init; } = [];
+
     public string RegistrationName => RegistrationNameOverride ?? Name + "Registration";
 
     public virtual bool Equals(GenerationInfo? other)
@@ -6370,6 +6406,7 @@ record GenerationInfo(
         // moved error locations) as unchanged and keeps stale generated code.
         return GenType == other.GenType &&
                RegistrationNameOverride == other.RegistrationNameOverride &&
+               Warnings.Equals(other.Warnings) &&
                Namespace == other.Namespace &&
                Name == other.Name &&
                FullName == other.FullName &&
@@ -6396,6 +6433,8 @@ record GenerationInfo(
         return HashCode.Combine(GenType, Namespace, Name, FullName);
     }
 }
+
+record DiagnosticInfo(string Code, string Message, Location? Location);
 
 record CollectionInfo(
     string FullName,

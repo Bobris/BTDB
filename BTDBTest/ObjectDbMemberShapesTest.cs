@@ -220,11 +220,16 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
     public class SecretBase
     {
         [PrimaryKey] public ulong Id { get; set; }
-        int Secret { get; set; }
+        [BTDB.FieldHandler.PersistedName("Secret")] int Secret { get; set; }
+#pragma warning disable BTDB0059 // An unmarked private property of a base class is not stored, as tested.
+        int Unmarked { get; set; }
+#pragma warning restore BTDB0059
         protected int Shared { get; set; }
 
         public int GetSecret() => Secret;
         public void SetSecret(int value) => Secret = value;
+        public int GetUnmarked() => Unmarked;
+        public void SetUnmarked(int value) => Unmarked = value;
         public int GetShared() => Shared;
         public void SetShared(int value) => Shared = value;
     }
@@ -241,8 +246,9 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         WithSecret FindById(ulong id);
     }
 
-    // Before the fix reflection left out private properties of base classes, which the source generator's metadata has:
-    // the relation failed to build as its metadata differed, and in emit mode such a property was not stored.
+    // A private property of a base class is stored only when a storage attribute marks it, by reflection and by the
+    // source generator alike. Before, the generator stored all of them and reflection none: the relation failed to
+    // build as its metadata differed, and in emit mode such a property was not stored.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -254,6 +260,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             {
                 var row = new WithSecret { Id = 1, Name = "n" };
                 row.SetSecret(5);
+                row.SetUnmarked(7);
                 row.SetShared(6);
                 tr.GetRelation<IWithSecrets>().Insert(row);
                 tr.Commit();
@@ -265,6 +272,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal("n", loaded.Name);
             Assert.Equal(6, loaded.GetShared());
             Assert.Equal(5, loaded.GetSecret());
+            Assert.Equal(0, loaded.GetUnmarked());
         });
     }
 
@@ -274,7 +282,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
         public string? Name { get; set; }
     }
 
-    // Before the fix such an object lost the private property of its base class in both modes.
+    // Before the fix such an object lost the marked private property of its base class in both modes.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -288,6 +296,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             {
                 var o = new SecretObject { Id = 1, Name = "n" };
                 o.SetSecret(5);
+                o.SetUnmarked(7);
                 o.SetShared(6);
                 oid = tr.Store(o);
                 tr.Commit();
@@ -300,6 +309,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
             Assert.Equal("n", loaded.Name);
             Assert.Equal(6, loaded.GetShared());
             Assert.Equal(5, loaded.GetSecret());
+            Assert.Equal(0, loaded.GetUnmarked());
         });
     }
 
@@ -547,7 +557,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
     {
         public T? Value { get; set; }
         protected T? Hidden { get; set; }
-        T? Secret { get; set; }
+        [BTDB.FieldHandler.PersistedName("Secret")] T? Secret { get; set; }
 
         public void SetHidden(T value) => Hidden = value;
         public T? GetHidden() => Hidden;

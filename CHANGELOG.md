@@ -80,7 +80,8 @@
     byte correctly, and unpacking returns every packed 64-bit value.
   - `BTDB/Proofs/`, `UpdateById` and key prefix methods: checking every key parameter, InKeyValue fields included,
     and refusing more parameters than index fields writes each key field from a parameter matching it.
-  - `BTDB/Proofs/`, property listing: adding private properties of base classes leaves every other schema as it was.
+  - `BTDB/Proofs/`, property listing: private properties of base classes are listed exactly when a storage attribute
+    marks them, and every type without such marked properties keeps the schema reflection gave it.
   - `BTDB/Proofs/`, IOC: a type's dependencies are injected once per member name, from its most derived member.
   - `BTDB/Proofs/`, attributes of overriding properties: the generator inherits them as reflection does.
   - `BTDB/Proofs/`, stored properties: leaving out hidden properties keeps exactly one per name, the most derived.
@@ -266,10 +267,13 @@
 - The source generator took an explicitly implemented indexer of a referenced base class, as `List<T>` has for
   `IList`, for a field of a class derived from it, generating an accessor of `System.Collections.IList.get_Item`
   without its index parameter. Properties with parameters are left out like other indexers now.
-- ObjectDB reflection left out private properties of base classes, which the source generator's metadata stores: a
+- ObjectDB reflection left out private properties of base classes, which the source generator's metadata stored: a
   relation of such a type failed with "different metadata and reflection version info", and in emit mode such a
-  property was not stored, as in events stored with `SerializeNonPublicProperties`. Reflection takes them now, in the
-  generator's order; a relation, table or event type stored before gets them as new fields on its next version.
+  property was not stored, as in events stored with `SerializeNonPublicProperties`. Both now store a private property
+  of a base class only when a storage attribute (`[PersistedName]`, `[PrimaryKey]`, `[SecondaryKey]` or `[InKeyValue]`)
+  marks it, and the generator reports the new warning BTDB0059 for an unmarked one, which `[NotStored]` silences.
+  This is the generator's first warning. **Breaking:** data written with generated metadata has the unmarked
+  properties, and the next version of such a type no longer stores or reads them; mark them to keep them.
 - An overriding property lost the `[PrimaryKey]`, `[SecondaryKey]` and `[NotStored]` attributes of the virtual
   property it overrides in the source generator, which reported BTDB0020 for a relation keyed by such properties, and
   reflection lost `[SecondaryKey]` and, in the event store, `[NotStored]`. Both inherit them now, as `Inherited`

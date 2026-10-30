@@ -8,6 +8,8 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.FieldHandler;
+using BTDB.ODBLayer;
 
 namespace BTDB.IL;
 
@@ -362,11 +364,19 @@ public static class EmitHelpers
         if ((bindingFlags & (BindingFlags.NonPublic | BindingFlags.Instance)) ==
             (BindingFlags.NonPublic | BindingFlags.Instance))
         {
-            // Reflection leaves out private properties of base classes, which the source generator's metadata has:
-            // every class's own properties are taken, the most derived class first, each in declaration order.
+            // Reflection leaves out private properties of base classes. Those a storage attribute marks are stored, as in
+            // the source generator's metadata: every class's own properties are taken, the most derived class first,
+            // each in declaration order.
             var all = new List<PropertyInfo>();
             for (var current = type; current != null && current != typeof(object); current = current.BaseType)
-                all.AddRange(current.GetProperties(bindingFlags | BindingFlags.DeclaredOnly));
+            {
+                foreach (var property in current.GetProperties(bindingFlags | BindingFlags.DeclaredOnly))
+                {
+                    if (current != type && IsPrivate(property) && !HasStorageAttribute(property)) continue;
+                    all.Add(property);
+                }
+            }
+
             props = all.ToArray();
         }
         else
@@ -377,6 +387,13 @@ public static class EmitHelpers
         return props.Where(p => !props.Any(o => o.Name == p.Name && o.DeclaringType != p.DeclaringType &&
                                                  o.DeclaringType!.IsSubclassOf(p.DeclaringType!))).ToArray();
     }
+
+    static bool IsPrivate(PropertyInfo property) =>
+        property.GetMethod is not { IsPrivate: false } && property.SetMethod is not { IsPrivate: false };
+
+    static bool HasStorageAttribute(PropertyInfo property) =>
+        property.IsDefined(typeof(PersistedNameAttribute), false) || property.IsDefined(typeof(PrimaryKeyAttribute), false) ||
+        property.IsDefined(typeof(SecondaryKeyAttribute), false) || property.IsDefined(typeof(InKeyValueAttribute), false);
 
     public static MethodInfo? GetAnyGetMethod(this PropertyInfo pi)
     {

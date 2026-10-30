@@ -403,22 +403,39 @@ public class EventStoreMigrationTest
         Assert.Equal(expectedValue, ((ItemWithProtectedProperty)obj).GetValue());
     }
 
+    public class PrivatePropertiesBase
+    {
+        [BTDB.FieldHandler.PersistedName("Marked")] int Marked { get; set; }
+#pragma warning disable BTDB0059 // An unmarked private property of a base class is not stored, as tested.
+        int Unmarked { get; set; }
+#pragma warning restore BTDB0059
+
+        public (int Marked, int Unmarked) Get() => (Marked, Unmarked);
+
+        public void Set(int marked, int unmarked)
+        {
+            Marked = marked;
+            Unmarked = unmarked;
+        }
+    }
+
     [Generate]
-    public class ItemWithPrivateBaseProperty : ItemWithProtectedProperty
+    public class ItemWithPrivateBaseProperty : PrivatePropertiesBase
     {
         public string? Name { get; set; }
     }
 
-    // Before the fix the private property of the base class was not stored, reflection leaving it out.
+    // A private property of a base class is stored when a storage attribute marks it. Before, reflection left out
+    // the marked one too.
     [Fact]
-    public void CanMigrateValueOfPrivatePropertyOfBaseClass()
+    public void CanMigrateValueOfMarkedPrivatePropertyOfBaseClass()
     {
         var item = new ItemWithPrivateBaseProperty { Name = "n" };
-        item.SetValue(42);
+        item.Set(42, 7);
         var obj = PassThroughEventStorage(item, new FullNameTypeMapper(), serializeNonPublicProperties: true);
 
         var loaded = Assert.IsType<ItemWithPrivateBaseProperty>(obj);
         Assert.Equal("n", loaded.Name);
-        Assert.Equal(42, loaded.GetValue());
+        Assert.Equal((42, 0), loaded.Get());
     }
 }

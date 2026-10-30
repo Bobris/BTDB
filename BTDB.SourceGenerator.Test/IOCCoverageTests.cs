@@ -1,4 +1,5 @@
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace BTDB.SourceGenerator.Tests;
@@ -674,6 +675,35 @@ public class IOCCoverageTests : GeneratorTestsBase
             }
             """, "BTDB0058");
         Assert.Contains(reported, diagnostic.GetMessage());
+    }
+
+    /// A private property of a base class is stored only when a storage attribute marks it. Data stored before has the
+    /// unmarked ones, so they are reported, but generation goes on.
+    [Fact]
+    public void UnmarkedPrivateBasePropertyIsReportedAsWarning()
+    {
+        var diagnostics = GetGeneratorDiagnostics("""
+            namespace TestNamespace;
+
+            public class Base
+            {
+                int Unmarked { get; set; }
+                [BTDB.FieldHandler.PersistedName("Marked")] int Marked { get; set; }
+                [BTDB.ODBLayer.NotStored] int Silenced { get; set; }
+                protected int Shared { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Derived : Base
+            {
+                public int Own { get; set; }
+            }
+            """);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal("BTDB0059", diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.StartsWith("Private property TestNamespace.Base.Unmarked of base class of TestNamespace.Derived",
+            diagnostic.GetMessage());
     }
 
     [Fact]

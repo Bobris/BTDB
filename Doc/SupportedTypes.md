@@ -36,7 +36,9 @@
 - class with public properties with getter and setter. Annotate with `[NotStored]` to skip property. In Event
   serialization it stores only public properties. In DB it stores all properties, but to support records it silently
   skips compiler generated properties without setter. All public fields must be now annotated with `[NotStored]` because
-  they are currently not supported, but could be in the future. Private fields are never stored.
+  they are currently not supported, but could be in the future. Private fields are never stored. A private property of
+  a base class is stored only when `[PersistedName]`, `[PrimaryKey]`, `[SecondaryKey]` or `[InKeyValue]` marks it; the
+  source generator warns of an unmarked one (BTDB0059).
 - `IIndirect<T>` In Object DB is it not stored inline, and it has its own `Oid`, lazily loaded. In Event serialization
   it
   is skipped by default, but could be configured to store it too (always as inline).
