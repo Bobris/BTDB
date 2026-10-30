@@ -2,7 +2,7 @@
 
 Status recorded on 2026-09-28: M0–M6 are implemented. M7 has recorded adapter, process, clock and performance
 qualification; production-application qualification remains open (B3). All three packages were published as
-`35.11.0-preview`; release automation includes them. Since 2026-10-30 releases have no preview suffix. See [packages and release preparation](../Doc/ReplicationPackages.md).
+`35.11.0-preview`; release automation includes them. From 36.0.0 releases have no preview suffix. See [packages and release preparation](../Doc/ReplicationPackages.md).
 This status summarizes the linked evidence, not a new live qualification run.
 
 ## Implemented

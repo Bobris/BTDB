@@ -1,7 +1,7 @@
 # Replication packages and release preparation
 
 The complete replication family targets .NET 10 and is published on NuGet with the same version as BTDB. Up to
-35.13.0 the packages had a `-preview` suffix (the first was `35.11.0-preview`); later releases have none. They are not
+35.13.0 the packages had a `-preview` suffix (the first was `35.11.0-preview`); from 36.0.0 they have none. They are not
 production-qualified yet, see [qualification status](#qualification-status).
 
 | Package | Included functionality | Dependencies |

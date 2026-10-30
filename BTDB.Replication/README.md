@@ -7,7 +7,7 @@ that was not yet published.
 
 Status: preview. Implemented and tested with deterministic simulation and seeded schedule exploration, loopback HTTP,
 Azurite, and subprocess failover and ObjectDB application tests; the adapter and subprocess suites also pass against
-live Azure, and restore throughput is measured on Azure VMs. Releases after 35.13.0 have no `-preview` suffix, yet open
+live Azure, and restore throughput is measured on Azure VMs. Since 36.0.0 packages have no `-preview` suffix, yet open
 before production use: qualification with the production application (see [Architecture](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/Architecture.md#open-work)).
 
 ## Install

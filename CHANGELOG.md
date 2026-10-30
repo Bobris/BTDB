@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+### Breaking changes
+
+This release is a major version. Each item is described in detail below.
+
+- File formats: `BTreeKeyValueDB` key index (`.kvi`) files carry a checksum and read only databases are written in
+  version 2. Earlier versions do not read either, so going back opens from an older key index and the transaction
+  logs, or fails.
+- ObjectDB keys: `float?`, `double?`, `decimal` and `decimal?` key fields are refused, so relations, `IDictionary` and
+  `IOrderedSet` with them no longer open. `DateTime` and `DateTime?` keys refuse `Local` kind, and `DateTime?` keys
+  also `Unspecified`; rows stored with such keys fail to be written again.
+- Stored properties: a private property of a base class is stored only when a storage attribute marks it (warning
+  BTDB0059 otherwise), so the next version of a type stored with generated metadata drops the unmarked ones.
+- Relation interfaces that compiled but never worked with generated relations are now source generator errors:
+  key parameters past the key, or not matching its fields, InKeyValue fields included (BTDB0014, BTDB0015, BTDB0016);
+  a void or bool `RemoveById` or `ShallowRemoveById` not taking the whole key (BTDB0020); and an invalid
+  `RemoveByIdPartial` (BTDB0057). Emit mode throws for parameters past the key.
+- IOC: `[Dependency]` members of base classes are injected, so resolving fails when they are not registered and not
+  nullable; a hidden base `[Dependency]` member is error BTDB0058; `GenerateFor` `ConstructorParameters` matching no
+  constructor are error BTDB0055.
+- `BTreeKeyValueDB` no longer opens an empty database when its oldest transaction logs are missing and no key index is
+  usable; it throws and keeps the files, which `LenientOpen` can recover.
+- Packages: the replication and LSM packages lose the `-preview` suffix and follow the BTDB version.
+
 ### Changed
 
 - All packages are released with the same version and no prerelease suffix: `BTDB.Replication`,
