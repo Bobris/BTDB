@@ -2009,8 +2009,13 @@ public class SourceGenerator : IIncrementalGenerator
 
         var serializable = fieldTypes.All(SerializableType);
 
+        // A service the container builds, as [Dependency] members or a constructor taking interfaces or delegates without
+        // a parameterless alternative show, is not stored, so the properties it no longer stores lose no data.
+        var isService = relationItemMembers.Any(HasDependencyAttribute) ||
+                        !hasDefaultConstructor && constructor is not null &&
+                        constructor.Parameters.Any(p => p.Type.TypeKind is TypeKind.Interface or TypeKind.Delegate);
         // Data stored by earlier versions has these properties, which are no longer stored unless marked.
-        var warnings = serializable
+        var warnings = serializable && !isService
             ? relationItemMembers.OfType<IPropertySymbol>()
                 .Where(p => IsUnmarkedPrivateBaseProperty(p, symbol) && !p.IsStatic && !p.IsIndexer &&
                             p.Parameters.IsEmpty && p.Locations.Any(l => l.IsInSource) &&

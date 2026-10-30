@@ -706,6 +706,59 @@ public class IOCCoverageTests : GeneratorTestsBase
             diagnostic.GetMessage());
     }
 
+    /// A service the container builds is not stored, so the private base properties it does not store are no news.
+    [Theory]
+    [InlineData("public Derived(ISettings settings) { }")]
+    [InlineData("public Derived(System.Func<ISettings> settings) { }")]
+    [InlineData("[BTDB.IOC.Dependency] public ISettings? Settings { get; set; }")]
+    public void ServiceDoesNotReportUnmarkedPrivateBaseProperty(string derivedMember)
+    {
+        var diagnostics = GetGeneratorDiagnostics($$"""
+            namespace TestNamespace;
+
+            public interface ISettings { }
+
+            public class Base
+            {
+                string? Root { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Derived : Base
+            {
+                {{derivedMember}}
+            }
+            """);
+        Assert.Empty(diagnostics);
+    }
+
+    /// Stored objects are created by the parameterless constructor, or without one, so a constructor taking an interface
+    /// beside a parameterless one, or taking only values, does not make a service.
+    [Theory]
+    [InlineData("public Derived() { } public Derived(ISettings settings) { }")]
+    [InlineData("public Derived(int id) { }")]
+    public void StorableWithConstructorReportsUnmarkedPrivateBaseProperty(string derivedMember)
+    {
+        var diagnostics = GetGeneratorDiagnostics($$"""
+            namespace TestNamespace;
+
+            public interface ISettings { }
+
+            public class Base
+            {
+                string? Root { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Derived : Base
+            {
+                {{derivedMember}}
+            }
+            """);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal("BTDB0059", diagnostic.Id);
+    }
+
     [Fact]
     public void OverriddenDependencyIsNoHiding()
     {

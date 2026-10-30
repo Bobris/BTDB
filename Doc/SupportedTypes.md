@@ -38,7 +38,8 @@
   skips compiler generated properties without setter. All public fields must be now annotated with `[NotStored]` because
   they are currently not supported, but could be in the future. Private fields are never stored. A private property of
   a base class is stored only when `[PersistedName]`, `[PrimaryKey]`, `[SecondaryKey]` or `[InKeyValue]` marks it; the
-  source generator warns of an unmarked one (BTDB0059).
+  source generator warns of an unmarked one (BTDB0059), except in a service the container builds: a class with a
+  `[Dependency]` member, or without a parameterless constructor and with one taking an interface or a delegate.
 - `IIndirect<T>` In Object DB is it not stored inline, and it has its own `Oid`, lazily loaded. In Event serialization
   it
   is skipped by default, but could be configured to store it too (always as inline).

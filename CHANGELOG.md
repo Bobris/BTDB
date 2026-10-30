@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator: the warning BTDB0059 for an unmarked private property of a base class was also reported for
+  services the container builds, which are not stored, and failed builds that treat warnings as errors. A class with a
+  `[Dependency]` member, or without a parameterless constructor and with one taking an interface or a delegate, is not
+  warned of anymore.
+
 ## 36.0.0
 
 ### Breaking changes
