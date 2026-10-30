@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -314,7 +315,18 @@ public class RelationConstraintKeyTypesTest : ObjectDbTestBase
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             Constraint.DateTime.Exact(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)));
         var local = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local);
-        Assert.Throws<ArgumentOutOfRangeException>(() => Constraint.DateTime.ForbidUnspecifiedKind(local));
+        Assert.Equal(local, Constraint.DateTime.ForbidUnspecifiedKind(local));
+        var old = MemWriter.ForbidLocalDateTimeKind;
+        try
+        {
+            MemWriter.ForbidLocalDateTimeKind = true;
+            Assert.Throws<ArgumentOutOfRangeException>(() => Constraint.DateTime.ForbidUnspecifiedKind(local));
+        }
+        finally
+        {
+            MemWriter.ForbidLocalDateTimeKind = old;
+        }
+
         Assert.NotEqual(DateTimeKind.Unspecified, Constraint.DateTime.ForbidUnspecifiedKind(DateTime.MinValue).Kind);
         Assert.NotEqual(DateTimeKind.Unspecified, Constraint.DateTime.ForbidUnspecifiedKind(DateTime.MaxValue).Kind);
     }

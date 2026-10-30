@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Changed
+
+- ObjectDB: `DateTime` and `DateTime?` keys and `DateTime` constraints accept `Local` kind again by default, as before
+  36.0.0, so rows stored with local keys can be written again. Setting the global `MemWriter.ForbidLocalDateTimeKind`
+  to true refuses them with `ArgumentOutOfRangeException`, as 36.0.0 did; a local key sorts after every UTC one and
+  misses UTC ranges. `DateTime?` keys still refuse `Unspecified` kind.
+
 ### Fixed
 
 - Source generator: the warning BTDB0059 for an unmarked private property of a base class was also reported for

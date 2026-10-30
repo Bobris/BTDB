@@ -14,10 +14,11 @@
 - `string` `Constraint<string>`/`Constraint.String` (keys sort by Unicode code point, which differs from
   `string.CompareOrdinal` only between a surrogate and a character from U+E000 to U+FFFF)
 - `EncryptedString`
-- `DateTime` `Constraint<DateTime>`/`Constraint.DateTime` (a key must be UTC: keys refuse `Local` and `Unspecified`
-  kinds, except `DateTime.MinValue` and `MaxValue`, which are stored as UTC)
+- `DateTime` `Constraint<DateTime>`/`Constraint.DateTime` (a key should be UTC: keys refuse `Unspecified` kind, except
+  `DateTime.MinValue` and `MaxValue`, which are stored as UTC; a `Local` key is accepted but sorts after every UTC one
+  and misses UTC ranges, so setting `MemWriter.ForbidLocalDateTimeKind = true` refuses it too, keys and constraints)
 - nullable `DateTime` (`DateTime?`) `Constraint<DateTime?>`/`Constraint.NullableDateTime` (`Predicate`, `UpTo`) (a key
-  value must be UTC, like a `DateTime` key)
+  value should be UTC, like a `DateTime` key)
 - `DateTimeOffset` (ordering is correct only for identical time offsets, better to use `DateTime` if you need ordering
   because only UTC is allowed)
 - `TimeSpan`

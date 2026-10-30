@@ -3,18 +3,34 @@ using System.Collections.Generic;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace BTDBTest;
 
 // A key keeps a DateTime's kind in its highest bits, so before the fix a local DateTime key sorted after every UTC one,
-// missed UTC ranges and could not be found by its UTC equivalent. Keys now refuse local DateTimes like unspecified ones.
+// missed UTC ranges and could not be found by its UTC equivalent. With MemWriter.ForbidLocalDateTimeKind keys refuse
+// local DateTimes like unspecified ones.
 [Collection("IFieldHandler.UseNoEmitForRelations")]
 public class ObjectDbDateTimeKeyKindTest : ObjectDbTestBase
 {
     public ObjectDbDateTimeKeyKindTest(ITestOutputHelper output) : base(output)
     {
+    }
+
+    static void WithForbidLocal(bool forbid, Action action)
+    {
+        var old = MemWriter.ForbidLocalDateTimeKind;
+        try
+        {
+            MemWriter.ForbidLocalDateTimeKind = forbid;
+            action();
+        }
+        finally
+        {
+            MemWriter.ForbidLocalDateTimeKind = old;
+        }
     }
 
     public class Reading
@@ -35,7 +51,31 @@ public class ObjectDbDateTimeKeyKindTest : ObjectDbTestBase
     }
 
     [Fact]
-    public void LocalDateTimeKeysAreRefused()
+    public void LocalDateTimeKeysAreAcceptedByDefault()
+    {
+        Assert.False(MemWriter.ForbidLocalDateTimeKind);
+        var utc = new DateTime(2020, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        var local = utc.ToLocalTime();
+        Assert.Equal(local, Constraint.DateTime.ForbidUnspecifiedKind(local));
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IReadingTable>();
+        table.Upsert(new Reading { At = local, Taken = local });
+        Assert.Equal(local, table.FindByIdOrDefault(local)!.At);
+        Assert.Single(table.ListByTaken(local));
+        var nullableTable = tr.GetRelation<INullableReadingTable>();
+        nullableTable.Upsert(new NullableReading { At = local, Taken = local });
+        Assert.Equal(local, nullableTable.FindByIdOrDefault(local)!.At);
+        Assert.Single(nullableTable.ListByTaken(local));
+        // Unspecified kind stays refused.
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            table.Upsert(new Reading { At = DateTime.SpecifyKind(utc, DateTimeKind.Unspecified), Taken = utc }));
+    }
+
+    [Fact]
+    public void LocalDateTimeKeysAreRefusedWhenForbidden() => WithForbidLocal(true, RefuseLocalDateTimeKeys);
+
+    void RefuseLocalDateTimeKeys()
     {
         var utc = new DateTime(2020, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var local = utc.ToLocalTime();
@@ -81,14 +121,14 @@ public class ObjectDbDateTimeKeyKindTest : ObjectDbTestBase
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void LocalAndUnspecifiedNullableDateTimeKeysAreRefused(bool noEmit)
+    public void LocalAndUnspecifiedNullableDateTimeKeysAreRefusedWhenForbidden(bool noEmit)
     {
         var old = IFieldHandler.UseNoEmitForRelations;
         try
         {
             IFieldHandler.UseNoEmitForRelations = noEmit;
             ObjectDB.ResetAllMetadataCaches();
-            RefuseLocalAndUnspecifiedNullableDateTimeKeys();
+            WithForbidLocal(true, RefuseLocalAndUnspecifiedNullableDateTimeKeys);
         }
         finally
         {

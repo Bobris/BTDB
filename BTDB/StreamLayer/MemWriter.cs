@@ -16,6 +16,13 @@ namespace BTDB.StreamLayer;
 
 public struct MemWriter
 {
+    /// <summary>
+    /// When true, <see cref="WriteDateTimeForbidUnspecifiedKind"/>, which writes DateTime keys, and DateTime constraints
+    /// refuse Local kind. A key keeps the kind in its highest bits, so a local one sorts after every UTC one and misses
+    /// UTC ranges. False by default, which stores local keys as before.
+    /// </summary>
+    public static bool ForbidLocalDateTimeKind;
+
     public nint Current;
     public nint Start;
 
@@ -460,7 +467,7 @@ public struct MemWriter
                 throw new ArgumentOutOfRangeException(nameof(value),
                     "DateTime.Kind cannot be stored as Unspecified");
         }
-        else if (value.Kind == DateTimeKind.Local)
+        else if (value.Kind == DateTimeKind.Local && ForbidLocalDateTimeKind)
         {
             // A key keeps the kind in its highest bits, so a local one sorts after every UTC one and misses ranges.
             throw new ArgumentOutOfRangeException(nameof(value),
