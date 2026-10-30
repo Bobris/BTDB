@@ -31,6 +31,10 @@ using var db3 = new ReadOnlyKeyValueDB(address, length);    // memory owned by t
 
 The data must not change while the database is open. `ObjectDB` and relations work on it unchanged for reading.
 
+Opening reads only the header and footer, so a memory mapped file is read as it is accessed. `verifyChecksum: true`
+(on `OpenFile`, `Create` and the constructor) or `VerifyChecksum()` reads all data first and throws
+`InvalidDataException` when they do not match their checksum, or have none.
+
 ## Behavior
 
 * All cursor operations follow `IKeyValueDBCursor`. `GetKeyIndex`, `FindKeyIndex` and finding a key are O(log n),
@@ -41,11 +45,13 @@ The data must not change while the database is open. `ObjectDB` and relations wo
   `StartWritingTransaction` and `CreateKvi` throw `BTDBException`. `SetCommitUlong` and `SetUlong` are allowed only
   with the stored value. `Compact` does nothing.
 * Truncated data and node or value offsets outside the data throw `InvalidDataException` when the database is opened
-  or the node is read. There is no checksum, so other damage is not detected.
+  or the node is read. Other damage is detected only by checking the checksum; without it a damaged key or value reads
+  as other content.
 
 ## Format
 
 The format is documented in `ReadOnlyFormat` in
 [ReadOnlyKeyValueDB.cs](../BTDB/KVDBLayer/ReadOnly/ReadOnlyKeyValueDB.cs). It is a B+tree written bottom up after
 the values. Leaves and branches store a common key prefix and key suffixes; branches also store the number of keys
-in their children, which makes access by key index O(log n).
+in their children, which makes access by key index O(log n). Since version 2 the data end with the XxHash64 of all
+bytes before it; version 1 data, without it, are still read.

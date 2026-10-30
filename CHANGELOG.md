@@ -4,6 +4,12 @@
 
 ### Added
 
+- `ReadOnlyCreator` writes read only databases in version 2, which ends with an XxHash64 of all data before it.
+  `ReadOnlyKeyValueDB.OpenFile`, `Create` and the constructor take `verifyChecksum` (false by default), and
+  `VerifyChecksum()` and `HasChecksum` are new. Checking reads all data and throws `InvalidDataException` on a mismatch,
+  so damaged keys and values no longer read as other content; without it opening still reads only the header and
+  footer. Version 1 data are still read. **Format change:** earlier versions refuse version 2 data as of an
+  unsupported version.
 - `BTreeKeyValueDB` key index (`.kvi`) files end with an XxHash64 of their content: the header fields loading uses,
   and each key with its value position. Opening checks it and does not use an index that does not match. It falls back
   to an older index and the transaction logs, as for other damage, so damage that keeps keys in order no longer loads

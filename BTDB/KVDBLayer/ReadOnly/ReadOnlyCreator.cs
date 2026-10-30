@@ -45,6 +45,17 @@ public class ReadOnlyCreator
 
     public void Run(ref MemWriter writer)
     {
+        // The data end with the XxHash64 of all bytes before it.
+        var hashing = new HashingMemWriter(writer);
+        var hashed = new MemWriter(hashing);
+        var length = WriteData(ref hashed);
+        if (length > uint.MaxValue - 8) throw new BTDBException("Read only database does not fit into 4GB");
+        writer = hashing.Finish(hashed, out var checksum);
+        writer.WriteUInt64LE(checksum);
+    }
+
+    uint WriteData(ref MemWriter writer)
+    {
         var start = writer.GetCurrentPosition();
         var keyValueCount = _transaction.GetKeyValueCount();
         WriteHeader(ref writer, keyValueCount);
@@ -89,7 +100,7 @@ public class ReadOnlyCreator
         }
 
         writer.WriteUInt32LE(level.Count == 0 ? 0 : level[0].Offset);
-        CurrentOffset(ref writer, start);
+        return CurrentOffset(ref writer, start);
     }
 
     void WriteHeader(ref MemWriter writer, long keyValueCount)

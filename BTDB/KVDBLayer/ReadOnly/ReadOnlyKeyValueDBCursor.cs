@@ -30,7 +30,7 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
         internal static Node Read(ReadOnlyKeyValueDB db, uint offset)
         {
             var begin = db.Begin;
-            var end = (ulong)db.TotalLength - 4;
+            var end = (ulong)db.FooterOffset;
             if (offset >= end) throw Corrupted();
             var first = ReadOnlyFormat.Span(begin + offset, 1)[0];
             var node = new Node
@@ -427,7 +427,7 @@ sealed class ReadOnlyKeyValueDBCursor : IKeyValueDBCursor
         ref var leaf = ref _stack.Last;
         var offset = leaf.Pointer(_db.Begin, leaf.Pos);
         if (offset == 0) return [];
-        var end = (ulong)_db.TotalLength - 4;
+        var end = (ulong)_db.FooterOffset;
         if (offset + 1ul > end) throw Corrupted();
         var length = ReadOnlyFormat.ReadVUInt32(_db.Begin + offset, out var lengthOfLength);
         if ((ulong)offset + lengthOfLength + length > end) throw Corrupted();

@@ -309,6 +309,77 @@ public class ReadOnlyKeyValueDBTest
         Assert.Equal(new byte[] { 1, 2, 3 }, value.ToArray());
     }
 
+    static byte[] CreateImage(int seed, int keyCount = 300)
+    {
+        var random = new Random(seed);
+        using var oracle = NewOracle();
+        Fill(oracle, RandomKeys(random, keyCount, 8), random);
+        using var tr = oracle.StartReadOnlyTransaction();
+        return new ReadOnlyCreator(tr).WriteToArray();
+    }
+
+    // Without the checksum a changed key or value byte reads as other content; checking reads all data first.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void ChecksumFindsEveryChangedByte(int seed)
+    {
+        var image = CreateImage(seed);
+        using (var intact = ReadOnlyKeyValueDB.Create(image, verifyChecksum: true))
+            Assert.True(intact.HasChecksum);
+        var random = new Random(seed);
+        for (var round = 0; round < 200; round++)
+        {
+            var damaged = (byte[])image.Clone();
+            damaged[random.Next(damaged.Length)] ^= (byte)(1 << random.Next(8));
+            Assert.Throws<InvalidDataException>(() =>
+            {
+                using var db = ReadOnlyKeyValueDB.Create(damaged, verifyChecksum: true);
+            });
+        }
+    }
+
+    // Opening without the check reads only the header and footer, so an image is not read whole when mapped.
+    [Fact]
+    public void DamagedValueOpensWithoutCheckAndFailsVerifyChecksum()
+    {
+        var image = CreateImage(4);
+        image[image.Length - 20] ^= 1;
+        using var db = ReadOnlyKeyValueDB.Create(image);
+        Assert.Throws<InvalidDataException>(db.VerifyChecksum);
+    }
+
+    // Images written before version 2 have no checksum; they open as before and cannot be checked.
+    [Fact]
+    public void ImageWithoutChecksumStillOpens()
+    {
+        var random = new Random(5);
+        using var oracle = NewOracle();
+        var keys = RandomKeys(random, 300, 8);
+        Fill(oracle, keys, random);
+        byte[] image;
+        using (var tr = oracle.StartReadOnlyTransaction())
+            image = new ReadOnlyCreator(tr).WriteToArray();
+        var old = image[..^8];
+        Assert.Equal(2, old[6] << 8 | old[7]);
+        old[7] = 1;
+        using var db = ReadOnlyKeyValueDB.Create(old);
+        Assert.False(db.HasChecksum);
+        Assert.Throws<InvalidDataException>(db.VerifyChecksum);
+        using var readTr = db.StartTransaction();
+        using var cursor = readTr.CreateCursor();
+        using var oracleTr = oracle.StartReadOnlyTransaction();
+        using var expected = oracleTr.CreateCursor();
+        Assert.Equal(42ul, readTr.GetCommitUlong());
+        foreach (var key in keys)
+        {
+            Assert.Equal(FindResult.Exact, cursor.Find(key, 0));
+            Assert.Equal(FindResult.Exact, expected.Find(key, 0));
+            CompareCursors("old format", expected, cursor);
+        }
+    }
+
     [Fact]
     public void DatabaseCanBeMemoryMappedFromFile()
     {
@@ -321,7 +392,8 @@ public class ReadOnlyKeyValueDBTest
             Fill(oracle, keys, random);
             using (var tr = oracle.StartReadOnlyTransaction())
                 new ReadOnlyCreator(tr).WriteToFile(fileName);
-            using var db = ReadOnlyKeyValueDB.OpenFile(fileName);
+            using var db = ReadOnlyKeyValueDB.OpenFile(fileName, verifyChecksum: true);
+            Assert.True(db.HasChecksum);
             using var readTr = db.StartTransaction();
             using var cursor = readTr.CreateCursor();
             using var oracleTr = oracle.StartReadOnlyTransaction();

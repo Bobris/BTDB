@@ -20,13 +20,14 @@ namespace BTDB.KVDBLayer.ReadOnly;
 ///         | UInt32LE value offset of each key
 /// Branch: UInt8 128 + child count (1..127) | VUInt32 prefix length | prefix | UInt16LE end of each separator suffix
 ///         | separator suffixes | UInt32LE child offsets | UInt32LE key count in children up to and including this one
-/// Footer: UInt32LE root node offset (0 for an empty database)
+/// Footer: UInt32LE root node offset (0 for an empty database) | UInt64LE XxHash64 of all data before it (version 2)
 /// </code>
 /// Separator i of a branch is the first key of child i + 1, the prefix is common to the first keys of all children.
 static unsafe class ReadOnlyFormat
 {
     internal static ReadOnlySpan<byte> Magic => "roBTDB"u8;
-    internal const short Version = 1;
+    internal const short Version = 2;
+    internal const short VersionWithoutChecksum = 1;
     internal const uint MaxChildren = 127;
     internal const uint DefaultMaxChildren = 31;
     internal const int MaxNodeKeyBytes = ushort.MaxValue;
@@ -56,6 +57,8 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
 {
     internal readonly nuint Begin;
     internal readonly uint TotalLength;
+    // Where the footer starts, the end of the header, values and nodes.
+    internal readonly uint FooterOffset;
     internal readonly uint RootOffset;
     internal readonly long KeyValueCount;
     internal readonly ulong CommitUlong;
@@ -66,7 +69,8 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
     bool _disposed;
 
     /// Opens data at the given address. The memory must stay valid and unchanged until this database is disposed.
-    public unsafe ReadOnlyKeyValueDB(nuint begin, uint totalLength)
+    /// Only the header and footer are read; <paramref name="verifyChecksum"/> reads all data to compare its checksum.
+    public unsafe ReadOnlyKeyValueDB(nuint begin, uint totalLength, bool verifyChecksum = false)
     {
         Begin = begin;
         TotalLength = totalLength;
@@ -74,7 +78,15 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
             throw new InvalidDataException("Data are too short to be read only database");
         var reader = new MemReader((void*)begin, (int)Math.Min(totalLength - 4, int.MaxValue));
         if (!reader.CheckMagic(ReadOnlyFormat.Magic)) throw new InvalidDataException("Wrong header magic");
-        if (reader.ReadInt16BE() != ReadOnlyFormat.Version) throw new InvalidDataException("Unsupported version");
+        var version = reader.ReadInt16BE();
+        if (version is not (ReadOnlyFormat.Version or ReadOnlyFormat.VersionWithoutChecksum))
+            throw new InvalidDataException("Unsupported version");
+        HasChecksum = version == ReadOnlyFormat.Version;
+        var footerLength = HasChecksum ? 12u : 4u;
+        if (totalLength < ReadOnlyFormat.Magic.Length + 2 + footerLength)
+            throw new InvalidDataException("Data are too short to be read only database");
+        FooterOffset = totalLength - footerLength;
+        if (verifyChecksum) VerifyChecksum();
         try
         {
             KeyValueCount = checked((long)reader.ReadVUInt64());
@@ -93,18 +105,41 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
             throw new InvalidDataException("Corrupted read only database header", error);
         }
 
-        RootOffset = ReadOnlyFormat.ReadUInt32LE(begin + totalLength - 4);
-        if (RootOffset >= totalLength - 4 || (RootOffset == 0) != (KeyValueCount == 0))
+        RootOffset = ReadOnlyFormat.ReadUInt32LE(begin + FooterOffset);
+        if (RootOffset >= FooterOffset || (RootOffset == 0) != (KeyValueCount == 0))
             throw new InvalidDataException("Corrupted read only database footer");
     }
 
+    /// The data end with the XxHash64 of their content, as <see cref="ReadOnlyCreator"/> writes them since version 2.
+    public bool HasChecksum { get; }
+
+    /// Reads all data and throws <see cref="InvalidDataException"/> when they do not match their checksum, or have none.
+    /// Without it damaged keys and values read as other content; damaged structure fails when reached.
+    public unsafe void VerifyChecksum()
+    {
+        if (!HasChecksum) throw new InvalidDataException("Read only database has no checksum");
+        var checksumOffset = TotalLength - 8;
+        var stored = BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>((void*)(Begin + checksumOffset), 8));
+        // Spans are limited to 2GB, so longer data are hashed in parts.
+        var hash = new XxHash64();
+        for (var offset = 0u; offset < checksumOffset;)
+        {
+            var length = Math.Min(checksumOffset - offset, 1u << 30);
+            hash.Update(new ReadOnlySpan<byte>((void*)(Begin + offset), (int)length));
+            offset += length;
+        }
+
+        if (hash.Digest() != stored) throw new InvalidDataException("Read only database checksum does not match");
+    }
+
     /// Opens data in memory, the memory is pinned until this database is disposed and must not change.
-    public static unsafe ReadOnlyKeyValueDB Create(ReadOnlyMemory<byte> data)
+    /// <paramref name="verifyChecksum"/> reads all data to compare their checksum first.
+    public static unsafe ReadOnlyKeyValueDB Create(ReadOnlyMemory<byte> data, bool verifyChecksum = false)
     {
         var handle = data.Pin();
         try
         {
-            return new((nuint)handle.Pointer, (uint)data.Length) { _pinnedMemory = handle };
+            return new((nuint)handle.Pointer, (uint)data.Length, verifyChecksum) { _pinnedMemory = handle };
         }
         catch
         {
@@ -113,8 +148,9 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
         }
     }
 
-    /// Memory maps the file written by <see cref="ReadOnlyCreator.WriteToFile"/>.
-    public static unsafe ReadOnlyKeyValueDB OpenFile(string fileName)
+    /// Memory maps the file written by <see cref="ReadOnlyCreator.WriteToFile"/>. <paramref name="verifyChecksum"/>
+    /// reads the whole file to compare its checksum first, otherwise pages are read as accessed.
+    public static unsafe ReadOnlyKeyValueDB OpenFile(string fileName, bool verifyChecksum = false)
     {
         var length = new FileInfo(fileName).Length;
         if (length > uint.MaxValue) throw new InvalidDataException("Read only database cannot be bigger than 4GB");
@@ -129,7 +165,7 @@ public sealed class ReadOnlyKeyValueDB : IKeyValueDB
             view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
             acquired = true;
             var begin = (nuint)(pointer + view.PointerOffset);
-            return new(begin, (uint)length) { _mappedFile = mappedFile, _mappedView = view };
+            return new(begin, (uint)length, verifyChecksum) { _mappedFile = mappedFile, _mappedView = view };
         }
         catch
         {
