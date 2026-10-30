@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.0.0
+
 ### Breaking changes
 
 This release is a major version. Each item is described in detail below.
