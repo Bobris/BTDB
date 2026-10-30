@@ -646,6 +646,62 @@ public class IOCCoverageTests : GeneratorTestsBase
         Assert.Contains("stored under the name X", diagnostic.GetMessage());
     }
 
+    /// Only the most derived member of a name is injected, so a base [Dependency] member hidden by another member would
+    /// stay unset.
+    [Theory]
+    [InlineData("[BTDB.IOC.Dependency] public ILogger? Logger { get; set; }",
+        "[BTDB.IOC.Dependency] public new ILogger? Logger { get; set; }", "Base.Logger is hidden by")]
+    [InlineData("[BTDB.IOC.Dependency] public ILogger? Logger { get; set; }",
+        "public new string? Logger { get; set; }", "Base.Logger is hidden by")]
+    [InlineData("[BTDB.IOC.Dependency] ILogger? _logger;", "[BTDB.IOC.Dependency] ILogger? _logger;",
+        "Base._logger is hidden by")]
+    public void HiddenDependencyIsReported(string baseMember, string derivedMember, string reported)
+    {
+        var diagnostic = AssertSingleGeneratorDiagnostic($$"""
+            namespace TestNamespace;
+
+            public interface ILogger { }
+
+            public class Base
+            {
+                {{baseMember}}
+            }
+
+            [BTDB.Generate]
+            public class Derived : Base
+            {
+                {{derivedMember}}
+            }
+            """, "BTDB0058");
+        Assert.Contains(reported, diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void OverriddenDependencyIsNoHiding()
+    {
+        GenerateAndCompile("""
+            namespace TestNamespace;
+
+            public interface ILogger { }
+
+            public class Base
+            {
+                [BTDB.IOC.Dependency] public virtual ILogger? Logger { get; set; }
+            }
+
+            public class Middle : Base
+            {
+                public override ILogger? Logger { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Derived : Middle
+            {
+                public override ILogger? Logger { get; set; }
+            }
+            """);
+    }
+
     [Fact]
     public void MemberOfPrivateTypeOfPartialClassCompiles()
     {

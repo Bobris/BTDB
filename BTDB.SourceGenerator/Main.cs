@@ -1879,6 +1879,15 @@ public class SourceGenerator : IIncrementalGenerator
 
         var relationItemMembers = GetRelationItemMembersIncludingInheritance(symbol).ToArray();
 
+        if (FindHiddenDependency(symbol) is var (hidden, hiding))
+        {
+            return GenerationError("BTDB0058",
+                "[Dependency] member " + hidden.ContainingType.ToDisplayString() + "." + hidden.Name + " is hidden by " +
+                hiding.ContainingType.ToDisplayString() + "." + hiding.Name +
+                " and would not be injected; rename one of them",
+                hiding.Locations.FirstOrDefault() ?? symbol.Locations[0]);
+        }
+
         var propertyInfos = DependencyMembers(symbol, isPartial, model.Compilation).ToArray();
         // Generated metadata names member types inside a partial type, or else from a file class of the assembly.
         ISymbol metadataWithin = isPartial ? symbol : model.Compilation.Assembly;
@@ -2248,6 +2257,35 @@ public class SourceGenerator : IIncrementalGenerator
         if (typeSymbol.Name == "ValueTask" && typeSymbol.InNamespace("System", "Threading", "Tasks"))
             return false;
         return true;
+    }
+
+    /// A [Dependency] member of a base type that a member of the same name in a more derived type hides instead of
+    /// overriding. Only the most derived member of a name is injected, so the hidden one would stay unset.
+    static (ISymbol Hidden, ISymbol Hiding)? FindHiddenDependency(INamedTypeSymbol symbol)
+    {
+        var mostDerived = new Dictionary<string, ISymbol>();
+        for (var type = symbol; type is not null && type.SpecialType != SpecialType.System_Object; type = type.BaseType)
+        {
+            foreach (var member in type.GetMembers())
+            {
+                if (member is not (IPropertySymbol or IFieldSymbol) || member.IsStatic || member.IsImplicitlyDeclared)
+                    continue;
+                if (!mostDerived.TryGetValue(member.Name, out var hiding))
+                {
+                    mostDerived[member.Name] = member;
+                    continue;
+                }
+
+                if (!HasDependencyAttribute(member)) continue;
+                var overrides = false;
+                for (var o = (hiding as IPropertySymbol)?.OverriddenProperty; o is not null && !overrides;
+                     o = o.OverriddenProperty)
+                    overrides = SymbolEqualityComparer.Default.Equals(o, member);
+                if (!overrides) return (member, hiding);
+            }
+        }
+
+        return null;
     }
 
     // Collects [Dependency] properties and fields, also those declared in base types. A member hidden or overridden in

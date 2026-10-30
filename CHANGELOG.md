@@ -214,6 +214,10 @@
 
 ### Fixed
 
+- A base class `[Dependency]` member hidden by a derived member of the same name, with `new` or as a private member,
+  was not injected and stayed unset without notice: only the most derived member of a name is injected. The source
+  generator now reports the new error BTDB0058 for such a type; an override is no hiding. **Breaking:** such a type
+  stops building until one of the members is renamed.
 - `[GenerateFor(typeof(T), ConstructorParameters = [...])]` matching no usable constructor of `T` generated nothing, so
   the failure only showed at runtime when no factory for `T` was found. The source generator now reports the new error
   BTDB0055 at `ConstructorParameters`, also for an element that is no `typeof` of a named type. **Breaking:** a project
