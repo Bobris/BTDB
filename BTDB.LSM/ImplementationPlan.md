@@ -977,8 +977,8 @@ Implemented:
   Only the documented difference in how a disturbed cursor reports validity remains.
 * **Documentation and packaging:**
   * `Doc/LsmKeyValueDB.md`, a README pointer, and package READMEs;
-  * both projects pack as `-preview` with symbols;
-  * `Releaser` treats them as preview packages.
+  * both projects pack with symbols, as `-preview` until 2026-10-30 and without the suffix since;
+  * `Releaser` releases them with the other packages.
 
 Added after the qualification:
 

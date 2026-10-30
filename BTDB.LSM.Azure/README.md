@@ -1,4 +1,4 @@
-# BTDB.LSM.Azure (preview)
+# BTDB.LSM.Azure
 
 Azure Blob Storage adapter for `BTDB.LSM`. `AzureLsmStorage` stores one database in a Blob container, optionally
 under a prefix. Objects are created with `If-None-Match: *`, large ones as staged blocks; reads are ranged GETs with

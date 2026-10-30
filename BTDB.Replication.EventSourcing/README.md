@@ -1,17 +1,17 @@
 # BTDB.Replication.EventSourcing
 
-A .NET 10 preview package that connects typed application events to BTDB EventLog and an already restored replicated
+A .NET 10 package that connects typed application events to BTDB EventLog and an already restored replicated
 ObjectDB. Its API follows the SkillShare shape: synchronous `Validate`, ordered `Consume`, `PureEvent`,
 `EventWithResult<TResult>`, `PublishAsync`, `PublishAndWaitAsync`, and an ambient query/transaction context.
 
 Prepared for the next release. After publication:
 
 ```sh
-dotnet add package BTDB.Replication.EventSourcing --prerelease
+dotnet add package BTDB.Replication.EventSourcing
 dotnet add package BTDB.SourceGenerator
 ```
 
-Use the same preview version as `BTDB.Replication.Http` and `BTDB.Replication.Azure` when using those adapters.
+Use the same version as `BTDB.Replication.Http` and `BTDB.Replication.Azure` when using those adapters.
 Use SourceGenerator at the matching base version and enable unsafe blocks in the application project. It generates
 metadata for event subclasses and ObjectDB relations used by BTDB's default implementation.
 

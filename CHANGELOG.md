@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Changed
+
+- All packages are released with the same version and no prerelease suffix: `BTDB.Replication`,
+  `BTDB.Replication.Azure`, `BTDB.Replication.Http`, `BTDB.Replication.EventSourcing`, `BTDB.LSM` and `BTDB.LSM.Azure`
+  no longer get `-preview`, so they install without `--prerelease`. Their qualification status is unchanged:
+  replication is not production-qualified yet, and the LSM storage format can still change between versions.
+
 ### Added
 
 - `ReadOnlyCreator` writes read only databases in version 2, which ends with an XxHash64 of all data before it.

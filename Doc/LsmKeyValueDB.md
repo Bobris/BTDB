@@ -1,4 +1,4 @@
-# LsmKeyValueDB (BTDB.LSM, preview)
+# LsmKeyValueDB (BTDB.LSM)
 
 `LsmKeyValueDB` is an `IKeyValueDB` implementation that stores a log-structured merge tree directly in object storage.
 It is inspired by Pebble (CockroachDB). Use it when the database is larger than you want to keep in memory or on a
@@ -9,7 +9,7 @@ local disk, or when other processes need to read the database while one process 
 | `BTDB.LSM` | The engine, `ILsmStorage`, and in-memory storage for tests. Depends only on `BTDB`. |
 | `BTDB.LSM.Azure` | `AzureLsmStorage`, an Azure Blob Storage adapter. |
 
-Both packages are previews: the storage format can still change between versions.
+The storage format can still change between versions.
 
 ## Compared with BTreeKeyValueDB
 

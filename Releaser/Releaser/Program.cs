@@ -249,14 +249,12 @@ static class Program
             System.IO.Compression.CompressionLevel.Optimal, false);
     }
 
-    // Projects released with a -preview package version.
-    static readonly string[] PreviewProjects =
+    // All packages are released with the same version, without a prerelease suffix.
+    static readonly string[] PackageProjects =
     [
-        "BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http", "BTDB.Replication.EventSourcing",
-        "BTDB.LSM", "BTDB.LSM.Azure"
+        "BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", "BTDB.Replication", "BTDB.Replication.Azure",
+        "BTDB.Replication.Http", "BTDB.Replication.EventSourcing", "BTDB.LSM", "BTDB.LSM.Azure"
     ];
-
-    static readonly string[] PackageProjects = ["BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", .. PreviewProjects];
 
     // Projects whose <Version> the release updates and commits.
     static readonly string[] VersionedProjects = [.. PackageProjects, "ODbDump"];
@@ -287,14 +285,13 @@ static class Program
     {
         foreach (var project in PackageProjects)
         {
-            var packageVersion = newVersion + (PreviewProjects.Contains(project) ? "-preview" : "");
             var start = new ProcessStartInfo("dotnet")
             {
                 WorkingDirectory = projDir + "/artifacts/package/release"
             };
             start.ArgumentList.Add("nuget");
             start.ArgumentList.Add("push");
-            start.ArgumentList.Add(project + "." + packageVersion + ".nupkg");
+            start.ArgumentList.Add(project + "." + newVersion + ".nupkg");
             start.ArgumentList.Add("-s");
             start.ArgumentList.Add("https://nuget.org");
             start.ArgumentList.Add("-k");

@@ -1,4 +1,4 @@
-# BTDB.LSM (preview)
+# BTDB.LSM
 
 `LsmKeyValueDB` is an `IKeyValueDB` implementation that stores a log-structured merge tree directly in object storage,
 inspired by Pebble. Memory use is bounded by configuration and does not grow with the database, and there is no local
@@ -14,6 +14,6 @@ using var db = await LsmKeyValueDB.OpenAsync(new LsmKeyValueDBOptions
 });
 ```
 
-The storage format may still change between preview versions.
+The storage format may still change between versions.
 
 Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/LsmKeyValueDB.md]

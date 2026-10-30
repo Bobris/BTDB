@@ -17,10 +17,10 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
 Requires .NET 10:
 
 ```sh
-dotnet add package BTDB.Replication.Azure --version 35.11.0-preview
+dotnet add package BTDB.Replication.Azure
 ```
 
-This preview package includes both database replication and EventLog storage adapters. See the
+This package includes both database replication and EventLog storage adapters. See the
 [package guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationPackages.md) for the complete package family.
 
 ## Usage

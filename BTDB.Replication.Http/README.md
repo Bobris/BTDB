@@ -1,13 +1,13 @@
 # HTTP replication peer adapter
 
-This preview NuGet package connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`, and registers
+This NuGet package connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`, and registers
 a node in an ASP.NET host. The coordinator keeps owning authentication decisions, grants, comparison, schema
 detachment and handoff; the adapter adds no application execution, Blob fallback, retries or canonical state.
 
 Requires .NET 10 and the ASP.NET Core shared framework:
 
 ```sh
-dotnet add package BTDB.Replication.Http --version 35.11.0-preview
+dotnet add package BTDB.Replication.Http
 ```
 
 The package includes `HttpEventLogPeerTransport` and the optional EventLog hosting extensions.

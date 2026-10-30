@@ -2,7 +2,7 @@
 
 Status recorded on 2026-09-28: M0–M6 are implemented. M7 has recorded adapter, process, clock and performance
 qualification; production-application qualification remains open (B3). All three packages were published as
-`35.11.0-preview`; release automation includes them. See [packages and release preparation](../Doc/ReplicationPackages.md).
+`35.11.0-preview`; release automation includes them. Since 2026-10-30 releases have no preview suffix. See [packages and release preparation](../Doc/ReplicationPackages.md).
 This status summarizes the linked evidence, not a new live qualification run.
 
 ## Implemented
@@ -16,13 +16,14 @@ This status summarizes the linked evidence, not a new live qualification run.
 | M4: coordination | Follower-first restore, activation, comparison, takeover and progress watchdogs. | [Authority and activation tests](Testing.md#authority-selection-and-activation) |
 | M5: lifecycle | Generation floor, prepared upgrade handoff, database changes, schema detachment, opaque application data and application work during active leader sessions. | [Coordinator tests](Testing.md#coordinator-simulation), [application leadership work](Testing.md#application-leadership-work) |
 | M6: maintenance | Independent local compaction, leader checkpoints and delayed conditional cleanup. | [Maintenance tests](Testing.md#checkpoints-and-remote-maintenance) |
-| M7: integration | Azure adapter, HTTP hosting, health/metrics, subprocess scenarios and preview package metadata. | [Hosting](../Doc/ReplicationHosting.md), [provider evidence](ObjectStorages.md), [measurements](Measurements.md) |
+| M7: integration | Azure adapter, HTTP hosting, health/metrics, subprocess scenarios and package metadata. | [Hosting](../Doc/ReplicationHosting.md), [provider evidence](ObjectStorages.md), [measurements](Measurements.md) |
 
 ## Remaining work
 
 - **B3: production application.** Qualify the actual application's ordered execution, replay, schema upgrades and
   external-effect policy. The sample ObjectDB process tests are supporting evidence, not completion of B3.
-- **Stable release.** Removing the preview suffix remains a separate release decision after qualification.
+- **Package versions.** The preview suffix was dropped on 2026-10-30 by a release decision, so all BTDB packages are
+  versioned alike; qualification (B3 and the items below) stays open.
 - **Deployment coverage.** Qualify the intended TLS/proxy path and real network partitions. Live Azure tests are
   manual; physical disk faults are not modeled. See [test limits](Testing.md#not-covered-yet).
 - **Event log.** The optional `BTDB.Replication.EventLog` is implemented as a preview (E0 harness, E1–E5). Its

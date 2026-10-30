@@ -1,6 +1,6 @@
 # Hosting BTDB replication
 
-The preview NuGet packages expose public application/storage contracts and ASP.NET hosting extensions. Install
+The NuGet packages expose public application/storage contracts and ASP.NET hosting extensions. Install
 `BTDB.Replication.Http` and, for Azure storage, `BTDB.Replication.Azure` at the same version; see
 [packages and release preparation](ReplicationPackages.md). No `InternalsVisibleTo` access is needed. The
 [subprocess application](../BTDB.Replication.Process.Test/Program.cs) builds and runs using only these public APIs.
@@ -336,8 +336,8 @@ Coordinator transitions, lease selection/activation, peer sessions, comparers an
 internal. The public surface provides application and provider integration, not independent election control.
 
 Still pending: qualification with the production application's ordered execution, replay, schema lifecycle and
-external effects. The sample ObjectDB application tests provide supporting evidence. Preview publication does not
-close the production-application blocker.
+external effects. The sample ObjectDB application tests provide supporting evidence. Publication, with or without the preview suffix,
+does not close the production-application blocker.
 
 ## Readiness and progress
 
