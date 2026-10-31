@@ -75,6 +75,18 @@ public interface IActionInputIndexes : IRelation<ActionInputIndex>
     bool RemoveById(ulong tenantId, string name, string uniqueKey);
 }
 
+/// <summary>The latest occurrence a scheduled action type was started for (or, the first time, recorded at).</summary>
+public class ScheduledActionRun
+{
+    [PrimaryKey(1)] public string Name { get; set; } = "";
+    public DateTime LastRun { get; set; }
+}
+
+public interface IScheduledActionRuns : IRelation<ScheduledActionRun>
+{
+    ScheduledActionRun? FindByIdOrDefault(string name);
+}
+
 /// <summary>Cluster-wide state in one row with Id 0.</summary>
 public class BackendActionsState
 {

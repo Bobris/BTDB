@@ -63,6 +63,17 @@ public class ActionFinished : PureEvent
     public ActionError? Error { get; set; }
 }
 
+/// <summary>Starts a scheduled type for an occurrence, unless another start already moved its last run.</summary>
+public class ScheduledActionStarted : PureEvent
+{
+    public string Name { get; set; } = "";
+    /// <summary>The last run the coordinator read; default when the type never ran.</summary>
+    public DateTime ExpectedLastRun { get; set; }
+    public DateTime NewLastRun { get; set; }
+    /// <summary>False only records NewLastRun, for the first check of a newly scheduled type or a vetoed one.</summary>
+    public bool Start { get; set; }
+}
+
 public class ActionKey
 {
     public ulong TenantId { get; set; }
@@ -78,7 +89,7 @@ public class DelayedActionsDue : PureEvent
 sealed class BackendActionsEventHandler(BackendActions actions) :
     IEventHandler<ActionEnqueued, ActionEnqueuedResult>, IEventHandler<ActionCancelRequested, ActionCancelResult>,
     IEventHandler<CoordinatorActivated>, IEventHandler<ActionsStarted>, IEventHandler<ActionFinished>,
-    IEventHandler<DelayedActionsDue>
+    IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>
 {
     public ActionEnqueuedResult? Validate(ActionEnqueued ev)
     {
@@ -106,4 +117,6 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Consume(ActionFinished ev) => actions.Finish(ev);
     public void Validate(DelayedActionsDue ev) { }
     public void Consume(DelayedActionsDue ev) => actions.QueueDue(ev);
+    public void Validate(ScheduledActionStarted ev) { }
+    public void Consume(ScheduledActionStarted ev) => actions.StartScheduled(ev);
 }

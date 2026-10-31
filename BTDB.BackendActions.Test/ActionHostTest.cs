@@ -104,6 +104,56 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PartialResultsArriveInOrderBeforeTheFinalOne()
+    {
+        StartHost();
+        var id = await Enqueue(new ExportOrder { Parts = 3 });
+        await UntilAsync(() => Outcomes.Length == 4);
+        Assert.Equal([(ActionOutcomeKind.Partial, "part 1"), (ActionOutcomeKind.Partial, "part 2"),
+                (ActionOutcomeKind.Partial, "part 3"), (ActionOutcomeKind.Completed, "all")],
+            Outcomes.Select(o => (o.Kind, o.Result)));
+        Assert.All(Outcomes, o => Assert.Equal((id, 1ul), (o.Id, o.Attempt)));
+        Assert.Empty(_node.Queued);
+    }
+
+    [Fact]
+    public async Task CancelAfterFinishesTheAttemptAsTimedOut()
+    {
+        StartHost();
+        await Enqueue(new ExportOrder { Parts = 1, Timeout = true });
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((ActionOutcomeKind.Cancelled, "Timeout"), (Outcomes[0].Kind, Outcomes[0].Error));
+        Assert.Equal([ActionCancellationReason.Timeout], _node.Recorder.Reasons);
+    }
+
+    [Fact]
+    public async Task ScheduledTypesStartOncePerPassedOccurrence()
+    {
+        var options = Options();
+        options.ScheduleInterval = TimeSpan.FromMilliseconds(20);
+        StartHost(options);
+        static string Name() => typeof(HourlyOrder).FullName!;
+        await UntilAsync(() => _node.Read<IScheduledActionRuns, ScheduledActionRun>().Length == 1);
+        var first = _node.Read<IScheduledActionRuns, ScheduledActionRun>()[0];
+        Assert.Equal((Name(), _time.Now.UtcDateTime), (first.Name, first.LastRun)); // recorded, not started
+        await Task.Delay(100);
+        Assert.Empty(Outcomes);
+
+        _time.Now = _time.Now.AddMinutes(61);
+        await UntilAsync(() => Outcomes.Length == 1);
+        await Task.Delay(100);
+        Assert.Equal(("HourlyOrder", ActionOutcomeKind.Completed), (Outcomes[0].Name, Outcomes[0].Kind));
+        Assert.Single(Outcomes);
+
+        _node.Recorder.AllowScheduled = false; // a vetoed occurrence is skipped, not retried
+        _time.Now = _time.Now.AddHours(1);
+        await UntilAsync(() => _node.Read<IScheduledActionRuns, ScheduledActionRun>()[0].LastRun == _time.Now.UtcDateTime.AddMinutes(-1));
+        _node.Recorder.AllowScheduled = true;
+        await Task.Delay(100);
+        Assert.Single(Outcomes);
+    }
+
+    [Fact]
     public async Task ARestartedNodeRunsItsInterruptedAttemptAgain()
     {
         var first = StartHost(Options(TimeSpan.FromMilliseconds(500)));

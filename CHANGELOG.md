@@ -18,9 +18,11 @@
   `BackendActionsHost` runs them: a worker on every node, and on the replication leader a coordinator that plans by
   priority, tenant fairness, concurrency groups and worker capacity, and reruns attempts whose worker is lost. Workers
   long-poll the coordinator through `ReplicationLeaderChannel`. A new leader adopts attempts its workers still run,
-  and a restarted node's attempts start again at once. `BackendActionsOptions.ExecutedActions` limits which types a
-  node's worker runs. Scheduling, partial results, monitoring and process qualification follow; see
-  `Doc/BackendActionsPlan.md`.
+  and a restarted node's attempts start again at once. A worker of an older `ApplicationGeneration` than the
+  coordinator gets no new actions. `IActionContext` adds `SubmitPartialAsync` for ordered partial results,
+  `AdjustResources`, `CancelAfter` and `CancellationReason`; `ActionPlannerOptions.CpuOverride` replaces a type's
+  cost. `[RepeatedlyScheduled]`, `[DailyScheduled]` and `[MonthlyScheduled]` start an action type once per passed
+  occurrence. Monitoring and process qualification follow; see `Doc/BackendActionsPlan.md`.
 
 ## 36.0.1
 

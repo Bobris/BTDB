@@ -31,19 +31,19 @@ public class ActionFailoverTest : IAsyncLifetime
         foreach (var node in _nodes.Values) await node.DisposeAsync();
     }
 
-    BackendActionsOptions Options(string node, TimeSpan lease, bool worker = true, IReadOnlySet<string>? executes = null) => new()
+    BackendActionsOptions Options(string node, TimeSpan lease, bool worker = true, ulong generation = 1) => new()
     {
-        NodeId = node, WorkerCpu = 1000, RunWorker = worker, ExecutedActions = executes,
+        NodeId = node, WorkerCpu = 1000, RunWorker = worker, ApplicationGeneration = generation,
         PollTimeout = TimeSpan.FromMilliseconds(100), RetryDelay = TimeSpan.FromMilliseconds(20),
         PlanInterval = TimeSpan.FromMilliseconds(20), DelayedInterval = TimeSpan.FromMilliseconds(50), TimeProvider = _time,
         Planner = new() { Lease = lease, WorkerTimeout = TimeSpan.FromSeconds(1) }
     };
 
-    CancellationTokenSource Host(string node, TimeSpan lease, bool worker = true, IReadOnlySet<string>? executes = null)
+    CancellationTokenSource Host(string node, TimeSpan lease, bool worker = true, ulong generation = 1)
     {
         var stop = new CancellationTokenSource();
         var host = new BackendActionsHost(_nodes[node].Actions, _nodes[node].Publisher, _cluster.Node(node),
-            Options(node, lease, worker, executes));
+            Options(node, lease, worker, generation));
         _hosts.Add((stop, host.RunAsync(stop.Token)));
         return stop;
     }
@@ -133,12 +133,12 @@ public class ActionFailoverTest : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AWorkerRunsOnlyTheTypesItExecutes()
+    public async Task AWorkerOfAnOlderGenerationStartsNoNewActions()
     {
         var lease = TimeSpan.FromSeconds(30);
-        Host("a", lease, worker: false);
-        Host("b", lease, executes: new HashSet<string> { typeof(ProcessOrder).FullName! });
-        Host("c", lease);
+        Host("a", lease, worker: false, generation: 2);
+        Host("b", lease, generation: 1); // not upgraded yet
+        Host("c", lease, generation: 2);
         ReleaseAll();
         for (var i = 0; i < 3; i++) await Enqueue(new WaitingOrder { Mode = "fast" });
         await OutcomesAsync(3);

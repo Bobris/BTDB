@@ -14,6 +14,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
     BackendActionsOptions options)
 {
     readonly BackendActions _actions = actions;
+    readonly BackendActionsOptions _options = options;
     readonly EventPublisher _publisher = publisher;
     readonly object _lock = new();
     readonly Dictionary<QualifiedActionId, Execution> _running = new();
@@ -29,7 +30,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             while (!stopping.IsCancellationRequested)
             {
                 using var poll = CancellationTokenSource.CreateLinkedTokenSource(stopping);
-                poll.CancelAfter(options.PollTimeout + options.RetryDelay + TimeSpan.FromSeconds(5));
+                poll.CancelAfter(_options.PollTimeout + _options.RetryDelay + TimeSpan.FromSeconds(5));
                 lock (_lock) _poll = poll;
                 try
                 {
@@ -43,7 +44,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 }
                 catch (Exception error) when (error is IOException or JsonException)
                 {
-                    await Task.Delay(options.RetryDelay, options.TimeProvider, stopping).ConfigureAwait(false);
+                    await Task.Delay(_options.RetryDelay, _options.TimeProvider, stopping).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -68,10 +69,9 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         lock (_lock)
             return new()
             {
-                WorkerSession = Session, NodeId = options.NodeId, Cpu = options.WorkerCpu,
-                Names = _actions.Types.Select(t => t.Name)
-                    .Where(n => options.ExecutedActions?.Contains(n) ?? true).ToList(),
-                Running = _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt)).ToList(),
+                WorkerSession = Session, NodeId = _options.NodeId, Cpu = _options.WorkerCpu,
+                Generation = _options.ApplicationGeneration,
+                Running = _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt, e.CpuDelta)).ToList(),
                 Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList()
             };
     }
@@ -123,24 +123,53 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
     sealed class Execution(ActionWorker worker, QualifiedActionId id, ulong attempt) : IActionContext
     {
         readonly CancellationTokenSource _cancel = new();
-        volatile bool _cancelled, _stopped, _forgotten;
+        int _reason, _cpuDelta;
+        volatile bool _forgotten;
+        ITimer? _timeout;
+        ActionType? _type;
 
         public QualifiedActionId Id => id;
         public ulong Attempt => attempt;
         public CancellationToken Cancellation => _cancel.Token;
+        public ActionCancellationReason CancellationReason => (ActionCancellationReason)Volatile.Read(ref _reason);
+        internal int CpuDelta => Volatile.Read(ref _cpuDelta);
         public Ambient.Scope StartQuery() => worker._publisher.StartQuery();
         internal Task Task { get; set; } = Task.CompletedTask;
 
-        internal void Cancel()
+        public async Task SubmitPartialAsync(object result)
         {
-            _cancelled = true;
-            _cancel.Cancel();
+            ArgumentNullException.ThrowIfNull(result);
+            if (_type is not { } type || !type.ResultType.IsInstanceOfType(result))
+                throw new ArgumentException($"A partial result must be a {_type?.ResultType.FullName}.", nameof(result));
+            _cancel.Token.ThrowIfCancellationRequested();
+            await worker._publisher.PublishAsync(new ActionFinished
+            {
+                TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, Kind = ActionOutcomeKind.Partial,
+                Result = result
+            }, _cancel.Token).ConfigureAwait(false);
         }
+
+        public void AdjustResources(int cpuDelta) => Interlocked.Add(ref _cpuDelta, cpuDelta);
+
+        public void CancelAfter(TimeSpan delay)
+        {
+            var timer = worker._options.TimeProvider.CreateTimer(_ => End(ActionCancellationReason.Timeout), null, delay,
+                Timeout.InfiniteTimeSpan);
+            Interlocked.Exchange(ref _timeout, timer)?.Dispose();
+        }
+
+        internal void Cancel() => End(ActionCancellationReason.Cancelled);
 
         internal void Stop(bool forget)
         {
-            _stopped = true;
             _forgotten |= forget;
+            End(ActionCancellationReason.Stopped);
+        }
+
+        // The first reason decides the outcome.
+        void End(ActionCancellationReason reason)
+        {
+            Interlocked.CompareExchange(ref _reason, (int)reason, 0);
             _cancel.Cancel();
         }
 
@@ -153,25 +182,26 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 while (worker._publisher.LastAppliedEventId < startEventId)
                     await Task.Delay(1, _cancel.Token).ConfigureAwait(false);
                 IActionInput input;
-                ActionType? type;
                 using (StartQuery())
                 {
                     var row = Ambient.Relation<IQueuedActions>().FindByIdOrDefault(id.TenantId, id.ActionId);
                     if (row is not { IsStarted: true } || row.RunAttempts != attempt) return; // superseded meanwhile
                     input = (IActionInput)row.Input!;
-                    type = worker._actions.TypeOf(row.Name);
+                    _type = worker._actions.TypeOf(row.Name);
                 }
-                if (type == null) return;
+                if (_type == null) return;
                 var finished = new ActionFinished { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
                 try
                 {
-                    finished.Result = await type.Execute(input, this).ConfigureAwait(false);
+                    finished.Result = await _type.Execute(input, this).ConfigureAwait(false);
                     finished.Kind = ActionOutcomeKind.Completed;
                 }
                 catch (OperationCanceledException) when (_cancel.IsCancellationRequested)
                 {
-                    if (!_cancelled || _stopped) return;
+                    if (CancellationReason == ActionCancellationReason.Stopped) return;
                     finished.Kind = ActionOutcomeKind.Cancelled;
+                    if (CancellationReason == ActionCancellationReason.Timeout)
+                        finished.Error = new() { Code = "Timeout", Message = "The action timed out." };
                 }
                 catch (BackendActionException error)
                 {
@@ -183,7 +213,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     finished.Kind = ActionOutcomeKind.Failed;
                     finished.Error = new() { Code = "Unexpected", Message = error.Message, Details = error.ToString() };
                 }
-                if (_forgotten || _stopped && !_cancelled) return;
+                if (_forgotten || CancellationReason == ActionCancellationReason.Stopped) return;
                 await worker._publisher.PublishAsync(finished).ConfigureAwait(false);
                 published = true;
             }
@@ -194,6 +224,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             }
             finally
             {
+                Interlocked.Exchange(ref _timeout, null)?.Dispose();
                 worker.Completed(this, published);
             }
         }

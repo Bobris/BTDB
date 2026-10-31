@@ -113,19 +113,29 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   `Cancel` takes it. New IDs come from `Ambient.AllocateId()` and are unique on their own; imported IDs (section 11)
   are unique only together with their tenant, so lookups always use both.
 * The capability interfaces keep their names: `IActionInputUnificator.GetUniqueKey()`,
-  `IActionInputAggregator.TryAggregate(other)`, `IActionInputForceable` (with scheduling, A4), and the optional
+  `IActionInputAggregator.TryAggregate(other)`, and the optional
   `IActionWithBeforeStart.OnBeforeStart(input)`, which runs in the consume of `ActionsStarted`. A before-start
   exception finishes the attempt as `Failed`.
 * The action name is `[BackendAction(Name = ...)]`, by default the input type's full name. Rows and unification keys
-  store it, so set it before renaming an input type. It is used for limits, metrics and handler capability matching.
+  store it, so set it before renaming an input type. It is used for limits, schedules and metrics.
 * Errors are an `ActionError` with Code, Message and Details. `BackendActionException(code, message, details)` sets
   them, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
-* Cancellation: `context.Cancellation` is cancelled when the action is cancelled, its attempt is superseded or the
-  worker stops. An `OperationCanceledException` after cancellation of the action becomes `Cancelled`, not `Failed`;
-  after the other two the attempt publishes nothing. `CancellationReason` and `CancelAfter(delay)` come with A4.
-* Resources: `context.AdjustResources(delta)`, and `IOverrideActionResources` registered in the options.
-* Scheduling attributes: `[DailyScheduled(minuteOfDay)]`, `[MonthlyScheduled(day, minuteOfDay)]` and
-  `[RepeatedlyScheduled(interval)]`, with an optional `IScheduledActionGate.CanStart(...)` veto.
+* Cancellation: `context.Cancellation` is cancelled for every `context.CancellationReason`: `Cancelled` (the action
+  was cancelled), `Timeout` (`context.CancelAfter(delay)` elapsed) and `Stopped` (the attempt was superseded or the
+  worker stops). An `OperationCanceledException` thrown after it finishes the attempt as `Cancelled`, with the error
+  code `Timeout` for a timeout, not as `Failed`; a stopped attempt publishes nothing. The first reason wins. There is
+  no default timeout, as in the reference.
+* Resources: `context.AdjustResources(cpuDelta)` changes the CPU the coordinator accounts to the running attempt,
+  never below 10, with the worker's next exchange; a new attempt starts from the type's cost again.
+  `ActionPlannerOptions.CpuOverride(name, cost)` replaces the reference's `IOverrideActionResources`, for example
+  from configuration; it is evaluated on the leader.
+* Scheduling attributes on the input class: `[RepeatedlyScheduled(minutes)]` (counted from midnight UTC),
+  `[DailyScheduled(minuteOfDay)]` and `[MonthlyScheduled(day, minuteOfDay)]` (the month's last day when it is
+  shorter), all UTC. A handler may implement `IScheduledActionGate.CanStartScheduled(now)` to skip an occurrence. The
+  coordinator checks every `ScheduleInterval` (5 s) and starts each passed occurrence once, with a new input from the
+  type's parameterless constructor; the first check of a type only records its latest occurrence, so deploying a type
+  never starts it at once. Missed occurrences are not caught up: one start covers all of them. The reference's
+  `IActionInputForceable` is dropped: starting a scheduled type by hand is an ordinary `EnqueueAsync`.
 
 Submission:
 
@@ -164,7 +174,7 @@ public void OnFinished(ExportRows input, ActionOutcome<ExportResult> outcome)
 ```
 
 * `SubmitPartialAsync` publishes `ActionFinished(Partial)` and returns after the local consume, so a slow consumer
-  applies back-pressure and partials keep their order. It returns the event ID of the partial.
+  applies back-pressure and partials keep their order. A part must be of the action's result type.
 * A partial larger than `MaximumEventSize` fails the call with `EventTooLargeException` before anything is written;
   the handler can split it further or let the attempt fail.
 * `OnFinished` receives each partial in its own consume transaction. The application owns the accumulated state and
@@ -200,7 +210,7 @@ The application's ObjectDB holds these relations. Only consumes write them.
 | `IQueuedActions` | PK (TenantId, ActionId) | Name, Priority, Order, Input, IsAggregable, IsCancelled, IsStarted, RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
 | `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, QueuedAt |
 | `IActionInputIndexes` | PK (TenantId, Name, UniqueKey) | ActionId of the queued action that has not started |
-| `IScheduledActionRuns` (A4) | PK Name | LastRun |
+| `IScheduledActionRuns` | PK Name | LastRun: the latest occurrence started, skipped or recorded |
 | `IBackendActionsStates`, one row with Id 0 | PK Id | NextOrder, CoordinatorSession; later settings (capacity shares by priority, suspended action names) |
 
 Whether an input unifies or aggregates comes from its type, so rows store no flags for it. Secondary keys for
@@ -216,7 +226,7 @@ Events, all ordinary `BTDB.Replication.EventSourcing` events:
 | `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled, or `Attempt` is not `RunAttempts + 1`; otherwise set `IsStarted`, `RunAttempts = Attempt`, close aggregation, remove the index entry and run `OnBeforeStart`. A higher attempt supersedes a running one. |
 | `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished`. A final outcome deletes the row; `Partial` keeps it. |
 | `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
-| `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun}` | Coordinator scheduler | Enqueue if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator). |
+| `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun, Start}` | Coordinator scheduler | Only if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator): set `LastRun = NewLastRun` and, when `Start`, enqueue a new input. |
 | `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
 
 Aggregation, unification and running actions: the reference closes aggregation with an awaited event published by
@@ -291,9 +301,9 @@ no authenticated inbound endpoint, and the leader needs no worker addresses.
 The exchange is a `ReplicationLeaderChannel` request on the channel `btdb-backend-actions`, a long poll held for up
 to about 10 s, or until there is a command for this worker.
 
-* **Request** (JSON): `WorkerSession` (fresh per process), `NodeId`, CPU capacity, supported action names (for
-  rolling upgrades), Draining, the attempts it runs, and the attempts whose `ActionFinished` it published and applied
-  locally, until acknowledged. Resource adjustments follow in A4.
+* **Request** (JSON): `WorkerSession` (fresh per process), `NodeId`, CPU capacity, application generation,
+  Draining, the attempts it runs with their CPU adjustments, and the attempts whose `ActionFinished` it published and
+  applied locally, until acknowledged.
 * **Response:** `CoordinatorSession`, the acknowledged finished attempts, and commands: `Start{ActionId, Attempt,
   StartEventId}`, `Cancel{Attempt}` and `Forget{Attempt}` (a stale attempt: stop it and drop its result).
 
@@ -334,11 +344,11 @@ The leader is also a worker: the channel calls the leader's own handler directly
 4. Workers reconnect and report their running attempts. The coordinator adopts those, rebuilds resource usage, and
    reassigns the rest after protection ends.
 
-The same path covers a graceful handoff during a rolling upgrade. Each worker lists the types it executes
-(`BackendActionsOptions.ExecutedActions`, all registered types by default) and the coordinator assigns nothing else
-to it. Every node must still register every type, because `OnFinished` runs on every replica; a type therefore
-reaches only nodes that can decode its events, and the option keeps it off nodes that must not execute it yet or at
-all.
+The same path covers a graceful handoff during a rolling upgrade. Each worker reports its application generation
+(`BackendActionsOptions.ApplicationGeneration`, the node's `ReplicationNodeOptions.ApplicationGeneration`), and the
+coordinator starts nothing new on a worker older than its own generation. Attempts an older worker already runs
+finish normally, and after the handoff to an upgraded leader new actions run only on upgraded nodes. Workers list no
+action types: every node registers every type anyway, because `OnFinished` runs on every replica.
 
 ## 6. Prerequisites in existing packages
 
@@ -404,8 +414,8 @@ HTTP: process kill, failover, handoff).
 | A0 | R1 in the existing packages, with tests and docs; R3 needed no change. Done. | Followers and the leader reach the active leader's handler, and a held request ends with its session. |
 | A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. Done. | Consume tests pass, including determinism under replay. |
 | A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. Done. | A single-node app runs actions end to end; the planner suite passes. |
-| A3 | Multi-node failover, attempt fencing, settling, rolling-upgrade capability matching. Done; the exchange needs no HTTP code of its own. | Failover tests pass in process. |
-| A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. | Feature parity with the reference API surface. |
+| A3 | Multi-node failover, attempt fencing, settling, rolling upgrades (by application generation since A4). Done; the exchange needs no HTTP code of its own. | Failover tests pass in process. |
+| A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. Done. | Feature parity with the reference API surface. |
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification and migration notes from the reference implementation. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
 | A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |

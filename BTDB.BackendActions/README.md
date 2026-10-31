@@ -7,5 +7,5 @@ outcome back to the application.
 Status: in development; the design and milestones are in
 [Doc/BackendActionsPlan.md](https://github.com/Bobris/BTDB/blob/master/Doc/BackendActionsPlan.md). This version
 contains the action contracts, their replicated state and `BackendActionsHost`, which runs a worker on every node and
-the coordinator on the replication leader. Failover is tested in process; qualification with real replication
-processes, scheduling, partial results and monitoring are not done yet.
+the coordinator on the replication leader. Failover is tested in process; monitoring and qualification with real
+replication processes are not done yet.

@@ -7,6 +7,7 @@ using BTDB.Replication.EventLog;
 using BTDB.Replication.EventSourcing;
 using BTDB.Replication.Test;
 using BTDB.StreamLayer;
+using Xunit;
 
 namespace BTDB.BackendActions.Test;
 
@@ -220,6 +221,15 @@ public class SlowOrder : ActionInput<OrderResult>
     public string Mode { get; set; } = "";
 }
 
+public class ExportOrder : ActionInput<OrderResult>
+{
+    public int Parts { get; set; }
+    public bool Timeout { get; set; }
+}
+
+[RepeatedlyScheduled(60)]
+public class HourlyOrder : ActionInput<OrderResult>;
+
 /// <summary>A SlowOrder without a concurrency limit.</summary>
 public class WaitingOrder : SlowOrder;
 
@@ -245,7 +255,12 @@ internal sealed class Recorder
         .Register(new Handler<CollectItems>(this, i => string.Join(",", i.Items)))
         .Register(new ValidatingHandler(this))
         .Register(new SlowHandler(this))
-        .Register<WaitingOrder, OrderResult>(new SlowHandler(this));
+        .Register<WaitingOrder, OrderResult>(new SlowHandler(this))
+        .Register(new ExportHandler(this))
+        .Register(new HourlyHandler(this));
+
+    internal volatile bool AllowScheduled = true;
+    internal readonly ConcurrentQueue<ActionCancellationReason> Reasons = new();
 
     // SlowOrder attempts wait for Release, observe cancellation and may fail on request.
     internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -296,6 +311,29 @@ internal sealed class Recorder
             int current;
             while ((current = Volatile.Read(ref target)) < value && Interlocked.CompareExchange(ref target, value, current) != current) { }
         }
+    }
+
+    // Submits its parts, then finishes; a "timeout" export waits for its own CancelAfter.
+    sealed class ExportHandler(Recorder recorder) : Handler<ExportOrder>(recorder, i => i.Parts.ToString())
+    {
+        protected override async Task<OrderResult> Execute(ExportOrder input, IActionContext context)
+        {
+            if (input.Timeout)
+            {
+                context.CancelAfter(TimeSpan.FromMilliseconds(50));
+                try { await Task.Delay(Timeout.Infinite, context.Cancellation); }
+                finally { Owner.Reasons.Enqueue(context.CancellationReason); }
+            }
+            context.AdjustResources(-1000);
+            for (var i = 1; i <= input.Parts; i++) await context.SubmitPartialAsync(new OrderResult { Text = "part " + i });
+            await Assert.ThrowsAsync<ArgumentException>(() => context.SubmitPartialAsync("not a result"));
+            return new() { Text = "all" };
+        }
+    }
+
+    sealed class HourlyHandler(Recorder recorder) : Handler<HourlyOrder>(recorder, _ => "hourly"), IScheduledActionGate
+    {
+        public bool CanStartScheduled(DateTime now) => Owner.AllowScheduled;
     }
 
     sealed class ValidatingHandler(Recorder recorder) : Handler<ValidatedOrder>(recorder, i => i.Reject.ToString()),

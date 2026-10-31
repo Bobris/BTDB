@@ -13,10 +13,10 @@ public sealed class BackendActionsOptions
     public int WorkerCpu { get; set; } = Environment.ProcessorCount * 100;
     /// <summary>False runs no worker on this node; it still coordinates while it leads.</summary>
     public bool RunWorker { get; set; } = true;
-    /// <summary>Names of the action types this node's worker executes; null executes every registered type. Every
-    /// node still registers every type, because outcomes are handled on every replica. Use it to keep a type on
-    /// suitable nodes, or off nodes of a rolling upgrade that must not run it yet.</summary>
-    public IReadOnlySet<string>? ExecutedActions { get; set; }
+    /// <summary>This node's application generation, the value of <c>ReplicationNodeOptions.ApplicationGeneration</c>.
+    /// The coordinator starts nothing new on a worker of an older generation, so during a rolling upgrade new actions
+    /// run only on upgraded nodes; attempts an older worker already runs finish normally.</summary>
+    public ulong ApplicationGeneration { get; set; }
     public ActionPlannerOptions Planner { get; set; } = new();
     /// <summary>How long the coordinator holds a worker's exchange without news; well below the worker timeout.</summary>
     public TimeSpan PollTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -24,6 +24,8 @@ public sealed class BackendActionsOptions
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>How often the coordinator queues delayed actions that became due.</summary>
     public TimeSpan DelayedInterval { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>How often the coordinator checks schedules for passed occurrences.</summary>
+    public TimeSpan ScheduleInterval { get; set; } = TimeSpan.FromSeconds(5);
     /// <summary>The longest the coordinator waits before rechecking leases without any change.</summary>
     public TimeSpan PlanInterval { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>Wall clock for due delayed actions, the same as the publisher's, and monotonic time for leases.</summary>
@@ -39,7 +41,7 @@ public sealed class BackendActionsOptions
 internal sealed class ActionCoordinator(BackendActions actions, EventPublisher publisher, BackendActionsOptions options)
 {
     readonly object _lock = new();
-    readonly ActionPlanner _planner = new(options.Planner);
+    readonly ActionPlanner _planner = new(options.Planner, options.ApplicationGeneration);
     readonly TimeProvider _time = options.TimeProvider;
     readonly long _started = options.TimeProvider.GetTimestamp();
     TaskCompletionSource _workersWake = Signal();
@@ -61,6 +63,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             Load();
             lock (_lock) _ready = true;
             var nextDelayed = TimeSpan.Zero;
+            var nextSchedule = TimeSpan.Zero;
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -97,6 +100,11 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 {
                     nextDelayed = Now + options.DelayedInterval;
                     await QueueDueAsync(cancellation).ConfigureAwait(false);
+                }
+                if (Now >= nextSchedule)
+                {
+                    nextSchedule = Now + options.ScheduleInterval;
+                    await StartSchedulesAsync(cancellation).ConfigureAwait(false);
                 }
                 if (abandoned.Count != 0 || assignments.Count != 0) continue; // their changes arrive promptly
                 await Task.WhenAny(changed, wake, Task.Delay(options.PlanInterval, _time, cancellation)).ConfigureAwait(false);
@@ -149,6 +157,30 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             await publisher.PublishAsync(new DelayedActionsDue { Actions = due }, cancellation).ConfigureAwait(false);
     }
 
+    // Each passed occurrence starts once: the consume accepts only a start from the last run it read.
+    async Task StartSchedulesAsync(CancellationToken cancellation)
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        var starts = new List<ScheduledActionStarted>();
+        using (publisher.StartQuery())
+        {
+            var runs = Ambient.Relation<IScheduledActionRuns>();
+            foreach (var type in actions.Types)
+            {
+                if (type.Schedule is not { } schedule) continue;
+                var latest = schedule.LatestOccurrence(now);
+                var run = runs.FindByIdOrDefault(type.Name);
+                if (run != null && latest <= run.LastRun) continue;
+                starts.Add(new()
+                {
+                    Name = type.Name, ExpectedLastRun = run?.LastRun ?? default, NewLastRun = latest,
+                    Start = run != null && (type.Gate?.CanStartScheduled(now) ?? true)
+                });
+            }
+        }
+        foreach (var start in starts) await publisher.PublishAsync(start, cancellation).ConfigureAwait(false);
+    }
+
     void WakeWorkers()
     {
         TaskCompletionSource wake;
@@ -177,7 +209,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             lock (_lock)
             {
                 if (_closed || !_ready) throw new IOException("The backend action coordinator is not running.");
-                var commands = _planner.Exchange(request.WorkerSession, request.NodeId, request.Cpu, request.Names,
+                var commands = _planner.Exchange(request.WorkerSession, request.NodeId, request.Cpu, request.Generation,
                     !request.Draining, running, finished, Now);
                 finished = [];
                 response.Commands = commands.Select(c => new CommandMessage

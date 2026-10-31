@@ -17,6 +17,9 @@ public sealed class ActionPlannerOptions
     };
     /// <summary>Per second, a tenant's past consumption decays by this factor before its running CPU is added.</summary>
     public double ConsumptionDecay { get; set; } = 0.95;
+    /// <summary>Replaces an action type's CPU cost, given its name and attribute cost, for example from
+    /// configuration; evaluated when the coordinator learns of an action.</summary>
+    public Func<string, int, int>? CpuOverride { get; set; }
 }
 
 /// <summary>One action as the coordinator sees it: its replicated row plus the coordinator's assignment.</summary>
@@ -46,7 +49,11 @@ internal sealed class PlannedAction
     internal bool Finished { get; set; }
     /// <summary>The coordinator published the attempt's ActionFinished itself.</summary>
     internal bool Abandoned { get; set; }
-    internal int Cpu => Type.Cpu;
+    /// <summary>The type's cost, or its override, plus the running attempt's reported adjustment; at least 10.</summary>
+    internal int Cpu { get; set; }
+    internal int BaseCpu { get; set; }
+    /// <summary>The CPU counted on the holding worker.</summary>
+    internal int HeldCpu { get; set; }
     internal string Group => Type.ConcurrencyGroup ?? Type.Name;
     /// <summary>Nothing runs or may run the recorded attempt, and nothing is about to finish it.</summary>
     internal bool Idle => Worker == null && Starting == null && !Protected && !Finished && !Abandoned;
@@ -58,7 +65,8 @@ internal sealed class PlannedWorker
     internal required Guid Session { get; init; }
     internal required string NodeId { get; init; }
     internal int Capacity { get; set; }
-    internal HashSet<string> Names { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>The worker's application generation; an older one than the coordinator's starts nothing new.</summary>
+    internal ulong Generation { get; set; }
     internal bool Ready { get; set; }
     internal TimeSpan ExpiresAt { get; set; }
     internal int Used { get; set; }
@@ -69,7 +77,7 @@ internal readonly record struct Assignment(QualifiedActionId Id, ulong Attempt, 
 
 internal readonly record struct Abandonment(QualifiedActionId Id, ulong Attempt, ActionOutcomeKind Kind, string Reason);
 
-internal readonly record struct ReportedAttempt(QualifiedActionId Id, ulong Attempt);
+internal readonly record struct ReportedAttempt(QualifiedActionId Id, ulong Attempt, int CpuDelta = 0);
 
 internal enum WorkerCommandKind : byte { Start = 1, Cancel = 2, Forget = 3 }
 
@@ -79,10 +87,11 @@ internal readonly record struct WorkerCommand(WorkerCommandKind Kind, QualifiedA
 /// <summary>
 /// Deterministic planning state of one coordinator session; all times come from the caller's monotonic clock. Tenants
 /// are served in ascending order of decayed CPU consumption, one action per tenant per round; within a tenant by
-/// priority, then enqueue order. An action starts on the next ready worker, round robin, that supports its type and
-/// has room for its cost within its priority's capacity share; concurrency groups and single-running tenants limit it.
+/// priority, then enqueue order. An action starts on the next ready worker, round robin, whose application generation
+/// is not older than the coordinator's and that has room for its cost within its priority's capacity share; concurrency
+/// groups and single-running tenants limit it. An older worker keeps the attempts it already runs.
 /// </summary>
-internal sealed class ActionPlanner(ActionPlannerOptions options)
+internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generation = 0)
 {
     static readonly Comparer<PlannedAction> TenantOrder = Comparer<PlannedAction>.Create((a, b) =>
     {
@@ -118,6 +127,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
         if (action == null)
         {
             action = new() { Id = id, Type = type };
+            action.BaseCpu = options.CpuOverride?.Invoke(type.Name, type.Cpu) ?? type.Cpu;
+            action.Cpu = action.BaseCpu;
             _actions.Add(id, action);
         }
         else
@@ -163,7 +174,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
     /// <summary>Registers a worker's exchange and returns the commands it should execute now. Reported running
     /// attempts renew their lease or are adopted after a coordinator change; unknown or superseded ones are forgotten.
     /// Finished attempts stop being started again until their ActionFinished is applied here.</summary>
-    internal List<WorkerCommand> Exchange(Guid session, string nodeId, int capacity, IEnumerable<string> names, bool ready,
+    internal List<WorkerCommand> Exchange(Guid session, string nodeId, int capacity, ulong workerGeneration, bool ready,
         IReadOnlyList<ReportedAttempt> running, IReadOnlyList<ReportedAttempt> finished, TimeSpan now)
     {
         foreach (var other in _workers.Values.Where(w => w.NodeId == nodeId && w.Session != session).ToList())
@@ -179,7 +190,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
             _workerOrder.Add(session);
         }
         worker.Capacity = capacity;
-        worker.Names = new(names, StringComparer.Ordinal);
+        worker.Generation = workerGeneration;
         worker.Ready = ready;
         worker.ExpiresAt = now + options.WorkerTimeout;
         var commands = new List<WorkerCommand>();
@@ -208,6 +219,13 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
                 Acquire(action, worker, now);
             }
             action.LeaseUntil = now + options.Lease;
+            var cpu = attempt.CpuDelta == 0 ? action.BaseCpu : Math.Max(10, action.BaseCpu + attempt.CpuDelta);
+            if (cpu != action.HeldCpu)
+            {
+                worker.Used += cpu - action.HeldCpu;
+                action.HeldCpu = cpu;
+            }
+            action.Cpu = cpu;
             if (action.IsCancelled) commands.Add(new(WorkerCommandKind.Cancel, attempt.Id, attempt.Attempt));
         }
         foreach (var id in worker.Actions.ToList())
@@ -308,9 +326,9 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
         for (var i = 0; i < _workerOrder.Count; i++)
         {
             var worker = _workers[_workerOrder[(_nextWorker + i) % _workerOrder.Count]];
-            if (!worker.Ready || !worker.Names.Contains(action.Type.Name)) continue;
+            if (!worker.Ready || worker.Generation < generation) continue;
             // An idle worker takes any single action; otherwise the cost must fit the priority's share.
-            if (worker.Used != 0 && worker.Used + action.Cpu > Math.Max(100, worker.Capacity * share)) continue;
+            if (worker.Used != 0 && worker.Used + action.BaseCpu > Math.Max(100, worker.Capacity * share)) continue;
             _nextWorker = (_nextWorker + i + 1) % _workerOrder.Count;
             return worker;
         }
@@ -322,7 +340,9 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
         action.Worker = worker.Session;
         action.LeaseUntil = now + options.Lease;
         worker.Actions.Add(action.Id);
-        worker.Used += action.Cpu;
+        action.Cpu = action.BaseCpu; // a new attempt starts without the previous one's adjustment
+        action.HeldCpu = action.Cpu;
+        worker.Used += action.HeldCpu;
         _runningGroups[action.Group] = _runningGroups.GetValueOrDefault(action.Group) + 1;
         var key = (action.Group, action.Id.TenantId);
         _runningTenantGroups[key] = _runningTenantGroups.GetValueOrDefault(key) + 1;
@@ -332,7 +352,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
     {
         if (action.Worker is not { } session) return;
         action.Worker = null;
-        if (_workers.TryGetValue(session, out var worker) && worker.Actions.Remove(action.Id)) worker.Used -= action.Cpu;
+        if (_workers.TryGetValue(session, out var worker) && worker.Actions.Remove(action.Id)) worker.Used -= action.HeldCpu;
         _runningGroups[action.Group]--;
         _runningTenantGroups[(action.Group, action.Id.TenantId)]--;
     }

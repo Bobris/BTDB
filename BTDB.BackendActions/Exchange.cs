@@ -32,10 +32,12 @@ internal sealed class AttemptMessage
     public ulong TenantId { get; set; }
     public ulong ActionId { get; set; }
     public ulong Attempt { get; set; }
+    /// <summary>The running attempt's resource adjustment, in CPU units.</summary>
+    public int CpuDelta { get; set; }
 
-    internal ReportedAttempt ToAttempt() => new(new(TenantId, ActionId), Attempt);
-    internal static AttemptMessage From(QualifiedActionId id, ulong attempt) =>
-        new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
+    internal ReportedAttempt ToAttempt() => new(new(TenantId, ActionId), Attempt, CpuDelta);
+    internal static AttemptMessage From(QualifiedActionId id, ulong attempt, int cpuDelta = 0) =>
+        new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, CpuDelta = cpuDelta };
 }
 
 /// <summary>A worker's long poll: its state, which the coordinator reconciles with its own view.</summary>
@@ -44,7 +46,7 @@ internal sealed class ExchangeRequest
     public Guid WorkerSession { get; set; }
     public string NodeId { get; set; } = "";
     public int Cpu { get; set; }
-    public List<string> Names { get; set; } = new();
+    public ulong Generation { get; set; }
     public bool Draining { get; set; }
     public List<AttemptMessage> Running { get; set; } = new();
     /// <summary>Attempts whose ActionFinished this worker published and applied, until acknowledged.</summary>

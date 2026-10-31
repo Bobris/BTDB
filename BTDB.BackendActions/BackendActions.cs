@@ -16,6 +16,10 @@ internal sealed class ActionType
     internal required Func<IActionInput, IActionContext, Task<object>> Execute { get; init; }
     internal required Action<IActionInput, ActionOutcomeKind, ulong, object?, ActionError?> Finished { get; init; }
     internal required Action<IActionInput>? BeforeStart { get; init; }
+    internal ActionScheduleAttribute? Schedule { get; init; }
+    /// <summary>A new input for a scheduled start.</summary>
+    internal Func<IActionInput>? Create { get; init; }
+    internal IScheduledActionGate? Gate { get; init; }
 }
 
 /// <summary>
@@ -27,7 +31,8 @@ public sealed class BackendActions
 {
     /// <summary>Relations to add to the application's <c>InitializeRelations</c> list.</summary>
     public static IReadOnlyList<Type> RelationTypes { get; } =
-        [typeof(IQueuedActions), typeof(IDelayedActions), typeof(IActionInputIndexes), typeof(IBackendActionsStates)];
+        [typeof(IQueuedActions), typeof(IDelayedActions), typeof(IActionInputIndexes), typeof(IBackendActionsStates),
+            typeof(IScheduledActionRuns)];
 
     internal readonly ActionChanges Changes = new();
     readonly Dictionary<Type, ActionType> _byInput = new();
@@ -44,6 +49,9 @@ public sealed class BackendActions
         if (attribute.Cpu < 0 || attribute.MaxConcurrent < 0)
             throw new ArgumentException($"Invalid limits of action {typeof(TInput).FullName}.");
         var before = handler as IActionWithBeforeStart<TInput>;
+        var schedule = (ActionScheduleAttribute?)Attribute.GetCustomAttribute(typeof(TInput), typeof(ActionScheduleAttribute));
+        if (schedule != null && typeof(TInput).GetConstructor(Type.EmptyTypes) == null)
+            throw new ArgumentException($"Scheduled action {typeof(TInput).FullName} needs a parameterless constructor.");
         var type = new ActionType
         {
             Name = attribute.Name ?? typeof(TInput).FullName!,
@@ -56,7 +64,10 @@ public sealed class BackendActions
             Execute = async (input, context) => await handler.ExecuteAsync((TInput)input, context).ConfigureAwait(false),
             Finished = (input, kind, attempt, result, error) =>
                 handler.OnFinished((TInput)input, new(kind, attempt, (TResult?)result, error)),
-            BeforeStart = before == null ? null : input => before.OnBeforeStart((TInput)input)
+            BeforeStart = before == null ? null : input => before.OnBeforeStart((TInput)input),
+            Schedule = schedule,
+            Create = schedule == null ? null : () => (IActionInput)Activator.CreateInstance(typeof(TInput))!,
+            Gate = handler as IScheduledActionGate
         };
         if (_byName.ContainsKey(type.Name)) throw new ArgumentException($"Action name {type.Name} is already registered.");
         _byInput.Add(typeof(TInput), type);
@@ -75,7 +86,8 @@ public sealed class BackendActions
             .Register<CoordinatorActivated>(handler)
             .Register<ActionsStarted>(handler)
             .Register<ActionFinished>(handler)
-            .Register<DelayedActionsDue>(handler);
+            .Register<DelayedActionsDue>(handler)
+            .Register<ScheduledActionStarted>(handler);
     }
 
     /// <summary>Registers every input type for polymorphic storage in the database's action rows.</summary>
@@ -226,6 +238,20 @@ public sealed class BackendActions
             delayed.RemoveById(row.TenantId, row.ActionId);
             var input = (IActionInput)row.Input!;
             Queue(TypeOf(input), input, row.Priority, ev);
+        }
+    }
+
+    internal void StartScheduled(ScheduledActionStarted ev)
+    {
+        var runs = Ambient.Relation<IScheduledActionRuns>();
+        var run = runs.FindByIdOrDefault(ev.Name);
+        if ((run?.LastRun ?? default) != ev.ExpectedLastRun) return; // another start already moved it
+        runs.Upsert(new() { Name = ev.Name, LastRun = ev.NewLastRun });
+        if (ev.Start && TypeOf(ev.Name) is { Create: { } create } type)
+        {
+            var input = create();
+            input.ActionId = Ambient.AllocateId();
+            Queue(type, input, ActionPriority.Normal, ev);
         }
     }
 

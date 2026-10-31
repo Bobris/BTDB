@@ -8,7 +8,7 @@ public class ActionPlannerTest
     readonly ActionPlannerOptions _options = new() { Lease = 10 * Second, WorkerTimeout = 5 * Second, MaxAttempts = 2 };
     readonly Dictionary<QualifiedActionId, QueuedAction> _rows = new();
     ActionPlanner? _planner;
-    ActionPlanner Planner => _planner ??= new(_options);
+    ActionPlanner Planner => _planner ??= new(_options, generation: 3);
     ulong _order;
 
     static ActionType Type(string name, int cpu = 100, int maxConcurrent = 0, string? group = null,
@@ -55,8 +55,8 @@ public class ActionPlannerTest
     }
 
     List<WorkerCommand> Exchange(Guid worker, TimeSpan now, int capacity = 100, string node = "node",
-        ReportedAttempt[]? running = null, ReportedAttempt[]? finished = null, params string[] names) =>
-        Planner.Exchange(worker, node, capacity, names.Length == 0 ? ["report", "heavy", "other"] : names, true,
+        ReportedAttempt[]? running = null, ReportedAttempt[]? finished = null, ulong generation = 3) =>
+        Planner.Exchange(worker, node, capacity, generation, true,
             running ?? [], finished ?? [], now);
 
     [Fact]
@@ -105,7 +105,7 @@ public class ActionPlannerTest
     [Fact]
     public void ConcurrencyGroupsAndSingleRunningTenantsLimitStarts()
     {
-        Exchange(Guid.NewGuid(), default, capacity: 10_000, names: ["a", "b", "c"]);
+        Exchange(Guid.NewGuid(), default, capacity: 10_000);
         var a = Type("a", maxConcurrent: 2, group: "shared");
         var b = Type("b", group: "shared", maxConcurrent: 2);
         var c = Type("c", singlePerTenant: true);
@@ -117,16 +117,28 @@ public class ActionPlannerTest
     }
 
     [Fact]
-    public void WorkersRotateAndOnlyTakeTypesTheySupport()
+    public void WorkersRotateAndAnOlderGenerationStartsNothingNew()
     {
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
-        Exchange(first, default, capacity: 1000, node: "1", names: ["report"]);
-        Exchange(second, default, capacity: 1000, node: "2", names: ["report", "other"]);
-        var reports = new[] { Add(Report), Add(Report), Add(Report) };
-        var other = Add(Type("other"));
+        var old = Guid.NewGuid();
+        Exchange(first, default, capacity: 1000, node: "1");
+        Exchange(old, default, capacity: 1000, node: "old", generation: 2);
+        Exchange(second, default, capacity: 1000, node: "2", generation: 4); // a newer worker during the upgrade
+        var ids = new[] { Add(Report), Add(Report), Add(Report), Add(Report) };
         PlanAndStart(default);
-        Assert.Equal([first, second, first, second], reports.Append(other).Select(id => _rows[id].WorkerSession));
+        Assert.Equal([first, second, first, second], ids.Select(id => _rows[id].WorkerSession));
+
+        // An attempt the older worker already runs, from before the upgrade, stays with it.
+        var running = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = old;
+            row.WorkerNode = "old";
+        });
+        Assert.Empty(Exchange(old, Second, capacity: 1000, node: "old", generation: 2, running: [new(running, 1)]));
+        Assert.Equal(old, Planner.Actions[running].Worker);
     }
 
     [Fact]
@@ -251,6 +263,23 @@ public class ActionPlannerTest
             row.WorkerNode = "n";
         });
         Assert.False(Planner.Actions[late].Protected); // loaded after the new process already exchanged
+    }
+
+    [Fact]
+    public void ReportedAdjustmentsAndOverridesChangeTheAccountedCpu()
+    {
+        _options.CpuOverride = (name, cpu) => name == "heavy" ? 50 : cpu;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 1000);
+        var heavy = Add(Heavy);
+        var report = Add(Report);
+        PlanAndStart(default);
+        Assert.Equal(150, Planner.Workers[worker].Used);
+        Exchange(worker, Second, capacity: 1000, running: [new(heavy, 1, 200), new(report, 1, -500)]);
+        Assert.Equal((250, 10), (Planner.Actions[heavy].Cpu, Planner.Actions[report].Cpu)); // never below 10
+        Assert.Equal(260, Planner.Workers[worker].Used);
+        Planner.Update(heavy, null, null, Second);
+        Assert.Equal(10, Planner.Workers[worker].Used);
     }
 
     [Fact]
