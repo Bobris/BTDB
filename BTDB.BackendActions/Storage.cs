@@ -52,6 +52,7 @@ public interface IDelayedActions : IRelation<DelayedAction>
     void Insert(DelayedAction item);
     void Update(DelayedAction item);
     DelayedAction? FindByIdOrDefault(ulong tenantId, ulong actionId);
+    IEnumerable<DelayedAction> ListByStartAt(AdvancedEnumeratorParam<DateTime> param);
     bool RemoveById(ulong tenantId, ulong actionId);
 }
 

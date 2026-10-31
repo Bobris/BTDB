@@ -118,11 +118,11 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   exception finishes the attempt as `Failed`.
 * The action name is `[BackendAction(Name = ...)]`, by default the input type's full name. Rows and unification keys
   store it, so set it before renaming an input type. It is used for limits, metrics and handler capability matching.
-* Errors are an `ActionError(Code, Message, Details)` record. `BackendActionException` carries a user-facing and an
-  internal message, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
-* Cancellation: `context.Cancellation`, `context.CancellationReason` (Infrastructure, Timeout, Interrupt, Handler) and
-  `context.CancelAfter(delay)`. An `OperationCanceledException` after infrastructure cancellation maps to `Cancelled`
-  or `Interrupted`, not `Failed`.
+* Errors are an `ActionError` with Code, Message and Details. `BackendActionException(code, message, details)` sets
+  them, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
+* Cancellation: `context.Cancellation` is cancelled when the action is cancelled, its attempt is superseded or the
+  worker stops. An `OperationCanceledException` after cancellation of the action becomes `Cancelled`, not `Failed`;
+  after the other two the attempt publishes nothing. `CancellationReason` and `CancelAfter(delay)` come with A4.
 * Resources: `context.AdjustResources(delta)`, and `IOverrideActionResources` registered in the options.
 * Scheduling attributes: `[DailyScheduled(minuteOfDay)]`, `[MonthlyScheduled(day, minuteOfDay)]` and
   `[RepeatedlyScheduled(interval)]`, with an optional `IScheduledActionGate.CanStart(...)` veto.
@@ -290,17 +290,29 @@ no authenticated inbound endpoint, and the leader needs no worker addresses.
 The exchange is a `ReplicationLeaderChannel` request on the channel `btdb-backend-actions`, a long poll held for up
 to about 10 s, or until there is a command for this worker.
 
-* **Request:** `WorkerSession` (fresh per process), `NodeId`, capacity, supported action names (for rolling upgrades),
-  status (Ready or Draining), running attempts with resource adjustments, attempts finished since the last exchange
-  together with their `ActionFinished` publication state, `LastAppliedEventId`, and the last acknowledged command
-  sequence.
-* **Response:** `CoordinatorSession` and commands with sequence numbers: `Start{ActionId, Attempt, StartEventId}`,
-  `Cancel{Attempt, Reason}` and `Forget{Attempt}` (a stale attempt: stop it and drop its result).
+* **Request** (JSON): `WorkerSession` (fresh per process), `NodeId`, CPU capacity, supported action names (for
+  rolling upgrades), Draining, the attempts it runs, and the attempts whose `ActionFinished` it published and applied
+  locally, until acknowledged. Resource adjustments follow in A4.
+* **Response:** `CoordinatorSession`, the acknowledged finished attempts, and commands: `Start{ActionId, Attempt,
+  StartEventId}`, `Cancel{Attempt}` and `Forget{Attempt}` (a stale attempt: stop it and drop its result).
 
-Commands are idempotent and re-sent until acknowledged, so a lost response costs one round trip. The exchange itself
-is the heartbeat. A worker with no exchange for three intervals plus the request timeout is expired; a worker whose
-node left a non-settling `EventCluster.LiveNodeIds` is expired at once. A new `WorkerSession` from the same `NodeId`
-(a process restart) immediately ends the attempts of the old session, without waiting for their leases.
+Commands carry no sequence numbers. The coordinator derives them from each report: `Start` for an attempt assigned
+to the worker that it does not report, `Cancel` for a reported attempt of a cancelled action, `Forget` for a reported
+attempt that is superseded or unknown. A lost response therefore costs one round trip, and a worker ignores a `Start`
+for an attempt it already runs or finished. A finished report stops the coordinator from starting the attempt again
+until its `ActionFinished` is applied on the leader; if that never happens within a lease, the action runs again. The
+coordinator answers at once when it has commands or acknowledgements, and otherwise holds the request until news for
+this worker or the poll timeout (default 10 s). A worker reports a finished attempt at once by cancelling its current
+long poll.
+
+The exchange itself is the heartbeat. A worker without an exchange for the worker timeout (default 30 s) is expired,
+and its attempts are lost at once. A new `WorkerSession` from the same `NodeId` (a process restart) ends the attempts
+of the old session that this coordinator assigned, without waiting for their leases. Ending a row recorded under an
+earlier coordinator as fast needs the worker's node in the row, which A3 adds if failover tests show the lease wait
+matters. Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is also left to A3.
+
+A stopping worker cancels its attempts and publishes no outcome for them, so they run again elsewhere, as after a
+crash. An `Interrupted` outcome comes only from the coordinator, for exhausted attempts.
 
 Lease expiry (no report of a running attempt) makes the action runnable again. The next `ActionsStarted` supersedes
 the old attempt. After `MaxAttempts` (default 5), the coordinator publishes `ActionFinished(Interrupted, "attempts
@@ -386,7 +398,7 @@ Test projects: `BTDB.BackendActions.Test` (unit, planner, in-process multi-node)
 | --- | --- | --- |
 | A0 | R1 in the existing packages, with tests and docs; R3 needed no change. Done. | Followers and the leader reach the active leader's handler, and a held request ends with its session. |
 | A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. Done. | Consume tests pass, including determinism under replay. |
-| A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. | A single-node app runs actions end to end; the planner suite passes. |
+| A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. Done. | A single-node app runs actions end to end; the planner suite passes. |
 | A3 | HTTP exchange, multi-node, failover, attempt fencing, settling, rolling-upgrade capability matching. | Failover tests pass in process. |
 | A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. | Feature parity with the reference API surface. |
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. | The package packs, and docs cover hosting, and the API. |

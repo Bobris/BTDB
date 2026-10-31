@@ -29,6 +29,7 @@ public sealed class BackendActions
     public static IReadOnlyList<Type> RelationTypes { get; } =
         [typeof(IQueuedActions), typeof(IDelayedActions), typeof(IActionInputIndexes), typeof(IBackendActionsStates)];
 
+    internal readonly ActionChanges Changes = new();
     readonly Dictionary<Type, ActionType> _byInput = new();
     readonly Dictionary<string, ActionType> _byName = new(StringComparer.Ordinal);
     bool _frozen;
@@ -152,6 +153,7 @@ public sealed class BackendActions
             {
                 row.IsCancelled = true;
                 queued.Update(row);
+                Changed(id);
             }
             return true;
         }
@@ -172,6 +174,8 @@ public sealed class BackendActions
         var queued = Ambient.Relation<IQueuedActions>();
         foreach (var started in ev.Actions)
         {
+            // Also a rejected start: the coordinator then releases the attempt's worker.
+            Changed(new(started.TenantId, started.ActionId));
             if (queued.FindByIdOrDefault(started.TenantId, started.ActionId) is not { } row || row.IsCancelled ||
                 started.Attempt != row.RunAttempts + 1)
                 continue;
@@ -205,6 +209,7 @@ public sealed class BackendActions
         if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } row ||
             row.RunAttempts != ev.Attempt)
             return; // a superseded attempt or an action that already finished
+        Changed(new(row.TenantId, row.ActionId));
         if (ev.Kind == ActionOutcomeKind.Partial)
             TypeOf(row.Name)?.Finished((IActionInput)row.Input!, ev.Kind, ev.Attempt, ev.Result, ev.Error);
         else
@@ -238,7 +243,7 @@ public sealed class BackendActions
                 {
                     existing.LatestInputEventId = ev.EventId;
                     queued.Update(existing);
-                    return new(existing.TenantId, existing.ActionId);
+                    return new(existing.TenantId, existing.ActionId); // its scheduling does not change
                 }
                 existing.IsAggregable = false;
                 queued.Update(existing);
@@ -256,6 +261,7 @@ public sealed class BackendActions
             LatestInputEventId = ev.EventId, QueuedAt = ev.When
         });
         Ambient.Relation<IBackendActionsStates>().Update(state);
+        Changed(new(input.TenantId, input.ActionId));
         return new(input.TenantId, input.ActionId);
     }
 
@@ -265,6 +271,13 @@ public sealed class BackendActions
         TypeOf(row.Name)?.Finished((IActionInput)row.Input!, kind, attempt, result, error);
         RemoveIndex(row);
         Ambient.Relation<IQueuedActions>().RemoveById(row.TenantId, row.ActionId);
+        Changed(new(row.TenantId, row.ActionId));
+    }
+
+    // Tells a coordinator running on this node, once the batch is visible; replay registers nothing.
+    void Changed(QualifiedActionId id)
+    {
+        if (Changes.Active) Ambient.RegisterPostCommit(() => Changes.Add(id));
     }
 
     static void RemoveIndex(QueuedAction row)
@@ -286,4 +299,58 @@ public sealed class BackendActions
 
     static Event CurrentConsume() => !Ambient.IsQuery && Ambient.CurrentEvent is { } ev ? ev
         : throw new InvalidOperationException("Enqueue and Cancel run only inside a consume; use EnqueueAsync or CancelAsync elsewhere.");
+}
+
+/// <summary>Actions whose rows changed in committed batches, for the coordinator running on this node.</summary>
+internal sealed class ActionChanges
+{
+    readonly object _lock = new();
+    HashSet<QualifiedActionId> _changed = new();
+    TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    int _subscribers;
+
+    internal bool Active => Volatile.Read(ref _subscribers) != 0;
+
+    internal IDisposable Subscribe()
+    {
+        Interlocked.Increment(ref _subscribers);
+        return new Subscription(this);
+    }
+
+    internal void Add(QualifiedActionId id)
+    {
+        TaskCompletionSource signal;
+        lock (_lock)
+        {
+            _changed.Add(id);
+            signal = _signal;
+        }
+        signal.TrySetResult();
+    }
+
+    /// <summary>A task completing at the next change; take it before draining so no change is missed.</summary>
+    internal Task Next
+    {
+        get { lock (_lock) return _signal.Task; }
+    }
+
+    internal HashSet<QualifiedActionId> Drain()
+    {
+        lock (_lock)
+        {
+            var result = _changed;
+            _changed = new();
+            if (_signal.Task.IsCompleted) _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return result;
+        }
+    }
+
+    sealed class Subscription(ActionChanges owner) : IDisposable
+    {
+        int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) Interlocked.Decrement(ref owner._subscribers);
+        }
+    }
 }

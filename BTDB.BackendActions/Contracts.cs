@@ -83,7 +83,18 @@ public interface IActionContext
 {
     QualifiedActionId Id { get; }
     ulong Attempt { get; }
+    /// <summary>Cancelled when the action is cancelled, its attempt is superseded or the worker stops.</summary>
     CancellationToken Cancellation { get; }
+    /// <summary>A read-only snapshot of the worker's database; it already contains the event that started this attempt.</summary>
+    Replication.EventSourcing.Ambient.Scope StartQuery();
+}
+
+/// <summary>A failure with an application error code; any other exception from an action finishes it with the code
+/// <c>Unexpected</c>.</summary>
+public class BackendActionException(string code, string message, string? details = null) : Exception(message)
+{
+    public string Code { get; } = code;
+    public string? Details { get; } = details;
 }
 
 public interface IActionHandler<in TInput, TResult> where TInput : ActionInput<TResult> where TResult : class

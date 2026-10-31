@@ -214,6 +214,12 @@ public class CollectItems : ActionInput<OrderResult>, IActionInputAggregator
     }
 }
 
+[BackendAction(MaxConcurrent = 1)]
+public class SlowOrder : ActionInput<OrderResult>
+{
+    public string Mode { get; set; } = "";
+}
+
 public class ValidatedOrder : ActionInput<OrderResult>
 {
     public bool Reject { get; set; }
@@ -234,7 +240,13 @@ internal sealed class Recorder
         .Register(new Handler<ProcessOrder>(this, i => i.Amount.ToString()))
         .Register(new Handler<RefreshCache>(this, i => i.Key))
         .Register(new Handler<CollectItems>(this, i => string.Join(",", i.Items)))
-        .Register(new ValidatingHandler(this));
+        .Register(new ValidatingHandler(this))
+        .Register(new SlowHandler(this));
+
+    // SlowOrder attempts wait for Release, observe cancellation and may fail on request.
+    internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal int Running, MaxRunning, Executions;
+    internal readonly ConcurrentQueue<(QualifiedActionId Id, ulong Attempt)> Started = new();
 
     internal void Record<TInput>(TInput input, ActionOutcome<OrderResult> outcome, string text) where TInput : IActionInput =>
         Outcomes.Enqueue(new(typeof(TInput).Name, new(input.TenantId, input.ActionId), outcome.Kind, outcome.Attempt,
@@ -245,11 +257,41 @@ internal sealed class Recorder
     {
         protected Recorder Owner => recorder;
 
-        public Task<OrderResult> ExecuteAsync(TInput input, IActionContext context) =>
+        public Task<OrderResult> ExecuteAsync(TInput input, IActionContext context) => Execute(input, context);
+
+        protected virtual Task<OrderResult> Execute(TInput input, IActionContext context) =>
             Task.FromResult(new OrderResult { Text = describe(input) });
 
         public void OnFinished(TInput input, ActionOutcome<OrderResult> outcome) =>
             recorder.Record(input, outcome, describe(input));
+    }
+
+    sealed class SlowHandler(Recorder recorder) : Handler<SlowOrder>(recorder, i => i.Mode)
+    {
+        protected override async Task<OrderResult> Execute(SlowOrder input, IActionContext context)
+        {
+            Owner.Started.Enqueue((context.Id, context.Attempt));
+            Interlocked.Increment(ref Owner.Executions);
+            var running = Interlocked.Increment(ref Owner.Running);
+            InterlockedMax(ref Owner.MaxRunning, running);
+            try
+            {
+                if (input.Mode != "fast") await Owner.Release.Task.WaitAsync(context.Cancellation);
+                return input.Mode switch
+                {
+                    "fail" => throw new BackendActionException("Rejected", "The order was rejected."),
+                    "crash" => throw new InvalidOperationException("Bug."),
+                    _ => new() { Text = "done " + context.Attempt }
+                };
+            }
+            finally { Interlocked.Decrement(ref Owner.Running); }
+        }
+
+        static void InterlockedMax(ref int target, int value)
+        {
+            int current;
+            while ((current = Volatile.Read(ref target)) < value && Interlocked.CompareExchange(ref target, value, current) != current) { }
+        }
     }
 
     sealed class ValidatingHandler(Recorder recorder) : Handler<ValidatedOrder>(recorder, i => i.Reject.ToString()),
@@ -260,5 +302,83 @@ internal sealed class Recorder
             Owner.BeforeStarts.Enqueue(new(input.TenantId, input.ActionId));
             if (input.Reject) throw new InvalidOperationException("Rejected before start.");
         }
+    }
+}
+
+/// <summary>In-process leader sessions and request channel shared by the nodes of one test; Leader names the node
+/// whose session is active.</summary>
+internal sealed class FakeCluster
+{
+    readonly object _lock = new();
+    readonly Dictionary<string, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>> _handlers = new();
+    string? _leader;
+    CancellationTokenSource _session = new();
+    TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal string? Leader
+    {
+        get { lock (_lock) return _leader; }
+        set
+        {
+            TaskCompletionSource changed;
+            lock (_lock)
+            {
+                _leader = value;
+                _session.Cancel();
+                _session = new();
+                changed = _changed;
+                _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+            changed.TrySetResult();
+        }
+    }
+
+    internal IBackendActionsCluster Node(string name) => new NodeView(this, name);
+
+    sealed class NodeView(FakeCluster cluster, string name) : IBackendActionsCluster
+    {
+        public async Task RunWhileLeaderAsync(Func<CancellationToken, Task> action, CancellationToken cancellation)
+        {
+            while (true)
+            {
+                CancellationToken session;
+                Task changed;
+                bool leads;
+                lock (cluster._lock)
+                {
+                    leads = cluster._leader == name;
+                    session = cluster._session.Token;
+                    changed = cluster._changed.Task;
+                }
+                if (leads)
+                {
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(session, cancellation);
+                    try { await Task.Run(() => action(linked.Token)); }
+                    catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+                }
+                await changed.WaitAsync(cancellation);
+            }
+        }
+
+        public IDisposable Serve(string channel, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>> handler)
+        {
+            lock (cluster._lock) cluster._handlers.Add(name, handler);
+            return new Registration(() => { lock (cluster._lock) cluster._handlers.Remove(name); });
+        }
+
+        public async ValueTask<ReadOnlyMemory<byte>> SendAsync(string channel, ReadOnlyMemory<byte> request,
+            CancellationToken cancellation)
+        {
+            Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>? handler = null;
+            lock (cluster._lock)
+                if (cluster._leader is { } leader) cluster._handlers.TryGetValue(leader, out handler);
+            if (handler == null) throw new IOException("No leader.");
+            return await Task.Run(async () => await handler(request, cancellation), cancellation);
+        }
+    }
+
+    sealed class Registration(Action dispose) : IDisposable
+    {
+        public void Dispose() => dispose();
     }
 }

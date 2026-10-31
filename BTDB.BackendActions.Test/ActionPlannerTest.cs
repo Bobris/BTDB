@@ -1,0 +1,257 @@
+using Xunit;
+
+namespace BTDB.BackendActions.Test;
+
+public class ActionPlannerTest
+{
+    static readonly TimeSpan Second = TimeSpan.FromSeconds(1);
+    readonly ActionPlannerOptions _options = new() { Lease = 10 * Second, WorkerTimeout = 5 * Second, MaxAttempts = 2 };
+    readonly Dictionary<QualifiedActionId, QueuedAction> _rows = new();
+    ActionPlanner? _planner;
+    ActionPlanner Planner => _planner ??= new(_options);
+    ulong _order;
+
+    static ActionType Type(string name, int cpu = 100, int maxConcurrent = 0, string? group = null,
+        bool singlePerTenant = false) => new()
+    {
+        Name = name, InputType = typeof(object), ResultType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
+        ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant,
+        Execute = (_, _) => Task.FromResult(new object()), Finished = (_, _, _, _, _) => { }, BeforeStart = null
+    };
+
+    static readonly ActionType Report = Type("report");
+    static readonly ActionType Heavy = Type("heavy", cpu: 300);
+
+    QualifiedActionId Add(ActionType type, ulong tenant = 0, ActionPriority priority = ActionPriority.Normal,
+        TimeSpan now = default, Action<QueuedAction>? change = null)
+    {
+        var row = new QueuedAction
+        {
+            TenantId = tenant, ActionId = ++_order, Name = type.Name, Priority = priority, Order = _order
+        };
+        change?.Invoke(row);
+        var id = new QualifiedActionId(tenant, row.ActionId);
+        _rows[id] = row;
+        Planner.Update(id, row, type, now);
+        return id;
+    }
+
+    // Applies the planned starts as their consume would and returns the started IDs in assignment order.
+    List<QualifiedActionId> PlanAndStart(TimeSpan now, ActionType? type = null)
+    {
+        var started = new List<QualifiedActionId>();
+        foreach (var assignment in Planner.Plan(now))
+        {
+            var row = _rows[assignment.Id];
+            row.IsStarted = true;
+            row.RunAttempts = assignment.Attempt;
+            row.WorkerSession = assignment.Worker;
+            row.StartEventId = 100 + assignment.Attempt;
+            Planner.Update(assignment.Id, row, type ?? Planner.Actions[assignment.Id].Type, now);
+            started.Add(assignment.Id);
+        }
+        return started;
+    }
+
+    List<WorkerCommand> Exchange(Guid worker, TimeSpan now, int capacity = 100, string node = "node",
+        ReportedAttempt[]? running = null, ReportedAttempt[]? finished = null, params string[] names) =>
+        Planner.Exchange(worker, node, capacity, names.Length == 0 ? ["report", "heavy", "other"] : names, true,
+            running ?? [], finished ?? [], now);
+
+    [Fact]
+    public void PriorityThenOrderWithinATenantAndOneActionPerTenantPerRound()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 1000);
+        var low = Add(Report, 1, ActionPriority.Low);
+        var realTime = Add(Report, 1, ActionPriority.RealTime);
+        var other = Add(Report, 2);
+        var normal = Add(Report, 1);
+        // Rounds alternate tenants; tenant 1 starts in priority order.
+        Assert.Equal([realTime, other, normal, low], PlanAndStart(default));
+    }
+
+    [Fact]
+    public void LessConsumingTenantsGoFirstAndConsumptionDecays()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 100);
+        var first = Add(Report, 1);
+        Assert.Equal([first], PlanAndStart(default));
+        var second = Add(Report, 1);
+        var other = Add(Report, 2);
+        Planner.Update(first, null, null, default); // finished: the worker is free again
+        Exchange(worker, Second);
+        Assert.Equal([other], PlanAndStart(Second)); // tenant 1 consumed more
+        Planner.Update(other, null, null, Second);
+        Assert.Equal([second], PlanAndStart(2 * Second));
+    }
+
+    [Fact]
+    public void CapacitySharesKeepRoomForUrgentWorkAndAnIdleWorkerTakesAnyAction()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 400);
+        var heavy = Add(Heavy, priority: ActionPriority.Idle); // above the 60 % share, but the worker is idle
+        Assert.Equal([heavy], PlanAndStart(default));
+        var idle = Add(Report, priority: ActionPriority.Idle);
+        var realTime = Add(Report, priority: ActionPriority.RealTime);
+        Assert.Equal([realTime], PlanAndStart(default)); // 300 + 100 fit only the real-time share
+        Assert.False(Planner.Actions[idle].Worker.HasValue);
+        Assert.Equal(400, Planner.Workers[worker].Used);
+    }
+
+    [Fact]
+    public void ConcurrencyGroupsAndSingleRunningTenantsLimitStarts()
+    {
+        Exchange(Guid.NewGuid(), default, capacity: 10_000, names: ["a", "b", "c"]);
+        var a = Type("a", maxConcurrent: 2, group: "shared");
+        var b = Type("b", group: "shared", maxConcurrent: 2);
+        var c = Type("c", singlePerTenant: true);
+        var ids = new[] { Add(a), Add(b), Add(a), Add(c, 1), Add(c, 1), Add(c, 2) };
+        Assert.Equal([ids[0], ids[3], ids[5], ids[1]], PlanAndStart(default));
+        Planner.Update(ids[0], null, null, default);
+        Planner.Update(ids[3], null, null, default);
+        Assert.Equal([ids[2], ids[4]], PlanAndStart(default).OrderBy(i => i.ActionId));
+    }
+
+    [Fact]
+    public void WorkersRotateAndOnlyTakeTypesTheySupport()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        Exchange(first, default, capacity: 1000, node: "1", names: ["report"]);
+        Exchange(second, default, capacity: 1000, node: "2", names: ["report", "other"]);
+        var reports = new[] { Add(Report), Add(Report), Add(Report) };
+        var other = Add(Type("other"));
+        PlanAndStart(default);
+        Assert.Equal([first, second, first, second], reports.Append(other).Select(id => _rows[id].WorkerSession));
+    }
+
+    [Fact]
+    public void StartIsDeliveredAfterTheStartEventAndRenewedByReports()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        var assignment = Assert.Single(Planner.Plan(default));
+        Assert.Empty(Exchange(worker, default)); // the start event is not applied yet
+        var row = _rows[id];
+        row.IsStarted = true;
+        row.RunAttempts = assignment.Attempt;
+        row.WorkerSession = worker;
+        row.StartEventId = 42;
+        Planner.Update(id, row, Report, default);
+        Assert.Equal([new WorkerCommand(WorkerCommandKind.Start, id, 1, 42)], Exchange(worker, default));
+        Assert.Empty(Exchange(worker, 9 * Second, running: [new(id, 1)]));
+        Assert.Empty(Planner.Expire(13 * Second)); // the report renewed the lease
+        Assert.Equal(worker, Planner.Actions[id].Worker);
+    }
+
+    [Fact]
+    public void ARejectedStartReleasesTheWorker()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        Assert.Single(Planner.Plan(default));
+        Planner.Update(id, _rows[id], Report, default); // the consume left the row unstarted
+        Assert.Null(Planner.Actions[id].Worker);
+        Assert.Equal(0, Planner.Workers[worker].Used);
+        Assert.Equal([id], PlanAndStart(default));
+    }
+
+    [Fact]
+    public void LostAttemptsRunAgainUntilTheirAttemptsAreExhausted()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        PlanAndStart(default);
+        Assert.Empty(Planner.Expire(10 * Second)); // lease passed: runnable again
+        Exchange(worker, 10 * Second);
+        Assert.Equal([id], PlanAndStart(10 * Second));
+        Assert.Equal(2ul, _rows[id].RunAttempts);
+        Assert.Equal([new Abandonment(id, 2, ActionOutcomeKind.Interrupted, "AttemptsExhausted")],
+            Planner.Expire(30 * Second)); // the worker timed out too
+        Assert.Empty(Planner.Expire(40 * Second)); // abandoned once
+        Assert.Empty(Planner.Plan(40 * Second));
+    }
+
+    [Fact]
+    public void ARestartedNodeLosesItsPreviousProcessAttempts()
+    {
+        var old = Guid.NewGuid();
+        Exchange(old, default, node: "n");
+        var id = Add(Report);
+        PlanAndStart(default);
+        var replacement = Guid.NewGuid();
+        Exchange(replacement, Second, node: "n");
+        Assert.False(Planner.Workers.ContainsKey(old));
+        Assert.Empty(Planner.Expire(Second));
+        Assert.Equal([id], PlanAndStart(Second));
+        Assert.Equal(replacement, _rows[id].WorkerSession);
+    }
+
+    [Fact]
+    public void ANewCoordinatorProtectsStartedRowsUntilTheirWorkerReportsThem()
+    {
+        var worker = Guid.NewGuid();
+        var id = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = worker;
+            row.StartEventId = 7;
+        });
+        var waiting = Add(Report);
+        Exchange(Guid.NewGuid(), default, node: "other");
+        Assert.Equal([waiting], PlanAndStart(default));
+        Assert.Empty(Exchange(worker, Second, capacity: 1000, running: [new(id, 1)])); // adopted
+        Assert.Equal(worker, Planner.Actions[id].Worker);
+
+        var unreported = Add(Report, change: row => { row.IsStarted = true; row.RunAttempts = 1; });
+        Assert.Empty(PlanAndStart(Second));
+        Exchange(worker, 11 * Second, capacity: 1000, running: [new(id, 1)]);
+        Assert.Empty(Planner.Expire(11 * Second)); // the protection passed
+        Planner.Update(waiting, null, null, 11 * Second);
+        Assert.Equal([unreported], PlanAndStart(11 * Second));
+        Assert.Equal(2ul, _rows[unreported].RunAttempts);
+    }
+
+    [Fact]
+    public void StaleAttemptsAreForgottenAndCancelledOnesAreCancelledOrAbandoned()
+    {
+        _options.WorkerTimeout = 30 * Second;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 1000);
+        var running = Add(Report);
+        var lost = Add(Report);
+        PlanAndStart(default);
+        Assert.Equal([new WorkerCommand(WorkerCommandKind.Forget, running, 7), new(WorkerCommandKind.Forget, new(9, 9), 1)],
+            Exchange(worker, default, running: [new(running, 7), new(new(9, 9), 1), new(lost, 1)]));
+
+        _rows[running].IsCancelled = true;
+        Planner.Update(running, _rows[running], Report, Second);
+        Assert.Contains(new WorkerCommand(WorkerCommandKind.Cancel, running, 1),
+            Exchange(worker, Second, running: [new(running, 1)]));
+        _rows[lost].IsCancelled = true;
+        Planner.Update(lost, _rows[lost], Report, Second);
+        Assert.Equal([new Abandonment(lost, 1, ActionOutcomeKind.Cancelled, "WorkerLost")], Planner.Expire(10 * Second));
+    }
+
+    [Fact]
+    public void AFinishedReportStopsRestartsUntilItsEventApplies()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        PlanAndStart(default);
+        Assert.Empty(Exchange(worker, Second, finished: [new(id, 1)]));
+        Assert.Equal(0, Planner.Workers[worker].Used);
+        Assert.Empty(PlanAndStart(Second));
+        Assert.Empty(Exchange(worker, 2 * Second));
+        Planner.Update(id, null, null, 2 * Second);
+        Assert.Empty(Planner.Actions);
+    }
+}

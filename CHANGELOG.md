@@ -14,8 +14,11 @@
   `[BackendAction]`, unificator and aggregator inputs, before-start hooks) and their replicated state. Application
   consumes enqueue and cancel actions in their own transaction with `BackendActions.Enqueue` and `Cancel`; other code
   uses `EnqueueAsync` and `CancelAsync`. Delayed actions queue when due. Start and finish events accept only the
-  current coordinator session and the action's next attempt, so `OnFinished` runs once per outcome. The coordinator
-  and workers that publish those events follow; see `Doc/BackendActionsPlan.md`.
+  current coordinator session and the action's next attempt, so `OnFinished` runs once per outcome.
+  `BackendActionsHost` runs them: a worker on every node, and on the replication leader a coordinator that plans by
+  priority, tenant fairness, concurrency groups and worker capacity, and reruns attempts whose worker is lost. Workers
+  long-poll the coordinator through `ReplicationLeaderChannel`. Multi-node failover qualification, scheduling, partial
+  results and monitoring follow; see `Doc/BackendActionsPlan.md`.
 
 ## 36.0.1
 
