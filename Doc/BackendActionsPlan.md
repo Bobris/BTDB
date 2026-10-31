@@ -1,0 +1,460 @@
+# BTDB.BackendActions — implementation plan
+
+Status: proposal, revised 2026-10-31. Nothing is implemented yet.
+
+Decided in review: a `ulong TenantId` scope, a single package, a recorded start for every action with no opt-out
+(section 5), partial results as the way to return results larger than one event, and migration by draining running
+actions and importing the rest with their IDs (section 11). No open questions remain.
+
+`BTDB.BackendActions` runs long, asynchronous, resource-limited work ("backend actions") on the nodes of a BTDB
+replication cluster. Application events enqueue and cancel actions. The replication leader schedules them, any live
+node executes them, and an ordered result event hands each outcome back to the application. The design follows an
+existing in-house BackendActions implementation that has run in production for years. It keeps that implementation's
+developer API and planning policy, and changes how coordination is carried.
+
+## 1. Goal and the main design change
+
+The reference implementation needs three channels:
+
+1. An event-sourced store for durable action state (queued, delayed and current actions).
+2. A separate broadcast log, the coordination stream, for heartbeats, assignments, cancellations and timeouts. Every
+   node consumes it and keeps a full replica of the coordinator.
+3. A pluggable leader election that picks the node issuing commands.
+
+The coordination stream causes most of the complexity. It is not ordered against the event stream: a cancellation can
+overtake an assignment, and an assignment can reach a worker before the input row it refers to. Workers mitigate this
+with waits and timeouts of up to 60 s and 30 min, repeated cancellations, and self-published removal events. Every new
+coordination message has to be checked against these races by hand.
+
+This library has no coordination log:
+
+* **Durable state and every decision that must survive failover** goes through the application's existing ordered
+  event stream (`BTDB.Replication.EventSourcing`) into the replicated ObjectDB, in the same transactions as business
+  data.
+* **Ephemeral coordination** (heartbeats, assignment delivery, cancellation delivery, resource usage) travels over
+  HTTP between workers and the current leader. It is never persisted. A new leader rebuilds it from the database and
+  from the workers' next exchanges.
+* **Leader election** is `ReplicationLeadership.RunWhileLeaderAsync`: the coordinator runs exactly while this node is
+  the activated replication leader and is cancelled on fencing, lease expiry, handoff or shutdown.
+* **Node liveness** comes from worker exchanges, with `EventCluster` / `ReplicationPresence` as an extra signal.
+
+Each HTTP message names the event IDs it depends on. A receiver acts only once its local database has consumed them,
+so the ordering races of the old design cannot occur. Section 5 explains why this also fences a deposed leader.
+
+Non-goals for v1:
+
+* Cross-cluster or cross-database actions.
+* Sandboxing: actions run in-process, like in the reference implementation.
+* Durable history of finished actions. Finished rows are deleted, and history lives in the event stream, logs and
+  metrics.
+* A generic workflow engine with steps, compensation or DAGs.
+
+## 2. What the reference implementation does (summary)
+
+Only the parts that shape this plan.
+
+| Area | Reference behavior | Kept / changed |
+| --- | --- | --- |
+| Handler | `ExecuteAsync(input, ct)` off-transaction; `Handle/Fail/Interrupt/CancelConsume` inside the result event's transaction; optional before-start consume. | Kept, with one outcome callback (section 3). |
+| Execution attribute | CPU cost, maximum concurrent count per cluster, named concurrency group, at most one running per tenant, awaited partial/final results. | Kept. |
+| Input capabilities | Unification by unique key (also into a running action), aggregation into a queued input, forced start, before-execute initializers. | Kept, except that unification stops once the action starts (section 4). |
+| Submission | From a consume (nested, transactional) or a query (event); priority RealTime/Normal/Low/Idle; delayed start date; cancel by ID. | Kept. A consume writes rows directly instead of publishing a nested event. |
+| Scheduling | Daily, monthly and repeated attributes evaluated every 5 s on the leader; optimistic `LastRun` check in a validator. | Kept. |
+| Action IDs | Pre-allocated 100k ranges in a DB singleton, refilled by events, for determinism in consume. | Replaced by `Ambient.AllocateId()`, which is already deterministic in consume. |
+| Resources | One CPU dimension; overrides through `IOverrideActionResources`; runtime adjustment through heartbeats; 10 CPU floor. | Kept. The worker sends its own capacity, which the reference does not (it assumes identical nodes). |
+| Planning | Tenant fairness by decayed consumption (×0.95 per second); order (Priority, Order, ID); group limits; capacity share per priority (0.6/0.8/1.0); round-robin workers; 2 min lease; 5 attempts, then cancel. | Ported. The admission check also counts the action's own cost. |
+| Failover | Every node mirrors the coordinator from the coordination stream. A new leader publishes "leader elected", waits, reloads rows and protects running actions for one lease. | No mirrors. The new leader reloads from the DB after a barrier event and learns running attempts from worker exchanges. |
+| Worker | Waits for input events, closes aggregation with an awaited event, publishes run-attempt and before-start events, executes, and publishes the finished event with throttling. | Collapsed into one coordinator-published `ActionsStarted` event plus one worker-published `ActionFinished` event. |
+| Duplicates | At-least-once execution. Duplicate finished events are only logged as "no matching action". | Execution stays at-least-once. Result handling becomes exactly-once per attempt (section 5). |
+| Results | Partial results published as events, optionally awaited; one final result. | Kept, and made the documented way to return results larger than one event (section 3). |
+| Monitoring | In-memory coordinator state: overview, queued/running/delayed lists, per-tenant running queries; metrics on the leader. | Mostly DB queries, which work on any node, plus a leader overview over HTTP. |
+| Tests | In-memory stream, fault injection, manipulable timer, deterministic strategies; approval tests of event, DB, input and API surfaces. | Kept, including the approval tests. |
+
+## 3. Developer API (draft)
+
+```csharp
+using BTDB.BackendActions;
+
+[BackendAction(Cpu = 100, MaxConcurrent = 4, ConcurrencyGroup = "reports", SingleRunningPerTenant = true)]
+public class GenerateReport : ActionInput<ReportResult>
+{
+    public ulong ReportId { get; set; }
+}
+
+public class ReportResult
+{
+    public string BlobName { get; set; } = "";
+}
+
+public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult>
+{
+    // Off-transaction, on the assigned worker. Honors context.Cancellation.
+    public async Task<ReportResult> ExecuteAsync(GenerateReport input, IActionContext context)
+    {
+        using (context.StartQuery()) { /* local read-only snapshot, causally after the start */ }
+        await context.SubmitPartialAsync(new ReportResult { BlobName = "partial" }); // optional progress
+        return new ReportResult { BlobName = "report-" + input.ReportId };
+    }
+
+    // Inside the ActionFinished event's consume transaction, on every replica. Deterministic, like any Consume.
+    public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
+    {
+        // outcome.Kind: Completed | Partial | Failed | Cancelled | Interrupted; outcome.Result / outcome.Error
+    }
+}
+```
+
+* `ActionInput<TResult>` derives from `IActionInput`. It carries `ActionId`, an optional `ulong TenantId` and an
+  optional per-input override of the concurrency group. `TenantId` replaces the reference "company" one to one: it
+  scopes fairness, `SingleRunningPerTenant` and the per-tenant queries. 0 means no tenant, and an application without
+  tenants never sets it.
+* An action is identified by `QualifiedActionId(TenantId, ActionId)`, as in the reference. `Enqueue` returns it and
+  `Cancel` takes it. New IDs come from `Ambient.AllocateId()` and are unique on their own; imported IDs (section 11)
+  are unique only together with their tenant, so lookups always use both.
+* The capability interfaces keep their names: `IActionInputUnificator.GetUniqueKey()`,
+  `IActionInputAggregator.TryAggregate(other)`, `IActionInputForceable`, and the optional
+  `IActionWithBeforeStart.OnBeforeStart(input)`, which runs in the consume of `ActionsStarted`. A before-start
+  exception finishes the attempt as `Failed`.
+* The action name is the input's persisted type name (`EventPublisherOptions.TypeNameMapper`). It is used for limits,
+  metrics and handler capability matching.
+* Errors are an `ActionError(Code, Message, Details)` record. `BackendActionException` carries a user-facing and an
+  internal message, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
+* Cancellation: `context.Cancellation`, `context.CancellationReason` (Infrastructure, Timeout, Interrupt, Handler) and
+  `context.CancelAfter(delay)`. An `OperationCanceledException` after infrastructure cancellation maps to `Cancelled`
+  or `Interrupted`, not `Failed`.
+* Resources: `context.AdjustResources(delta)`, and `IOverrideActionResources` registered in the options.
+* Scheduling attributes: `[DailyScheduled(minuteOfDay)]`, `[MonthlyScheduled(day, minuteOfDay)]` and
+  `[RepeatedlyScheduled(interval)]`, with an optional `IScheduledActionGate.CanStart(...)` veto.
+
+Submission:
+
+```csharp
+// Inside any event handler's Consume: transactional with the business change, deterministic ID, no extra event.
+var id = BackendActions.Enqueue(new GenerateReport { ReportId = 7 },
+    new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
+BackendActions.Cancel(id);
+
+// From a query, API endpoint or scheduler: publishes ActionEnqueued / ActionCancelRequested.
+var id2 = await backendActions.EnqueueAsync(new GenerateReport { ReportId = 8 }, cancellation);
+```
+
+`EnqueueAsync` and `CancelAsync` use `PublishAndWaitAsync`, so the returned ID is the one the consume assigned.
+
+### Partial results and large results
+
+A result travels in an `ActionFinished` event and is therefore limited by `EventPublisherOptions.MaximumEventSize`
+(50 MiB by default). There is no blob-reference mechanism in v1. A handler with more data returns it in parts:
+
+```csharp
+public async Task<ExportResult> ExecuteAsync(ExportRows input, IActionContext context)
+{
+    foreach (var chunk in ReadInChunks(input, maximumBytes: 4 * 1024 * 1024))
+        await context.SubmitPartialAsync(new ExportResult { Rows = chunk });
+    return new ExportResult { Rows = [], Completed = true }; // small final result
+}
+
+public void OnFinished(ExportRows input, ActionOutcome<ExportResult> outcome)
+{
+    // Partial: append outcome.Result.Rows to an application relation keyed by input.ActionId.
+    // Completed: mark the export done. Failed/Cancelled/Interrupted: delete the appended rows or keep them.
+}
+```
+
+* `SubmitPartialAsync` publishes `ActionFinished(Partial)` and returns after the local consume, so a slow consumer
+  applies back-pressure and partials keep their order. It returns the event ID of the partial.
+* A partial larger than `MaximumEventSize` fails the call with `EventTooLargeException` before anything is written;
+  the handler can split it further or let the attempt fail.
+* `OnFinished` receives each partial in its own consume transaction. The application owns the accumulated state and
+  decides what a later failure or cancellation means for it.
+* A new attempt starts from the beginning, after the coordinator restarts the action. `ActionOutcome.Attempt` lets
+  `OnFinished` discard the parts of the superseded attempt, or the handler can resume from what the application
+  already stored.
+* The consume rejects parts of a superseded attempt, so parts of two attempts never interleave.
+
+Hosting:
+
+```csharp
+builder.Services.AddBTDBReplication(...);
+builder.Services.AddBTDBBackendActions(o =>
+{
+    o.Register<GenerateReport, ReportResult, GenerateReportHandler>();
+    o.WorkerCapacity = new ActionResources(Cpu: Environment.ProcessorCount * 100);
+});
+// after the EventPublisher is created and its handlers are registered:
+dispatcher.RegisterBackendActions(backendActionsOptions); // the library's own event handlers
+app.MapBTDBReplication();
+app.MapBTDBBackendActions();
+```
+
+The library registers its own events (section 4) with the application's `EventDispatcher`, so they share the data
+topic, the ObjectDB and its batching. Relations are added to the application's `InitializeRelations` list.
+
+## 4. Persistent state and events
+
+The application's ObjectDB holds these relations. Only consumes write them.
+
+| Relation | Key | Fields |
+| --- | --- | --- |
+| `IQueuedActions` | PK (TenantId, ActionId); SK ActionId; SK (Priority, Order) for monitoring | Name, Priority, Order, Input, IsUnificator/IsAggregator, IsCancelled, `Started` (null, or {CoordinatorSession, Attempt, WorkerSession, StartEventId}), RunAttempts, LatestInputEventId, QueuedAt |
+| `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, IsUnificator/IsAggregator |
+| `IActionInputIndex` | PK (TenantId, Name, UniqueKey) | ActionId |
+| `IScheduledActionRuns` | PK Name | LastRun |
+| Singleton `BackendActionsState` | n/a | Order counter, CoordinatorSession (current), settings (capacity shares by priority, suspended action names) |
+
+Events, all ordinary `BTDB.Replication.EventSourcing` events:
+
+| Event | Published by | Consume |
+| --- | --- | --- |
+| `ActionEnqueued{Input, Options}` | `EnqueueAsync` | Same code path as `BackendActions.Enqueue` inside a consume. |
+| `ActionCancelRequested{ActionId}` | `CancelAsync` | Delayed: delete. Not started: call `OnFinished(Cancelled)` and delete in this transaction (the input is at hand, so no deferred removal is needed). Started: set `IsCancelled`, and the coordinator finishes it. |
+| `CoordinatorActivated{Session}` | New leader's coordinator | Store `CoordinatorSession`. This is the barrier and fencing epoch (section 5). |
+| `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled or already started under another attempt; otherwise set `Started`, `RunAttempts++`, close aggregation and run `OnBeforeStart`. |
+| `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless `Started.Attempt == Attempt`. Call `OnFinished`. A final outcome deletes the row and its index entry; `Partial` keeps it. |
+| `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
+| `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun}` | Coordinator scheduler | Enqueue if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator). |
+| `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
+
+Aggregation, unification and running actions: the reference closes aggregation with an awaited event published by
+the worker, but keeps unifying new requests into an action that is already running. Here the `ActionsStarted` consume
+removes the action's index entry in the same transaction that records the attempt. A later input with the same key
+therefore creates a new queued action, which later requests unify into. A request never receives a result computed
+before it was made. This is a deliberate change for unificators: a request that arrives while its twin runs now
+causes one more run.
+
+Every node's consume registers `Ambient.RegisterPostCommit` notifications ("action queued", "action cancelled",
+"action finished"). Only the leader's coordinator subscribes to them; on other nodes they cost nothing. Replay does not
+run post-commit actions, which is fine because the coordinator reloads from the database after activation.
+
+## 5. Coordination without a coordination log
+
+### Coordinator lifetime
+
+```
+RunWhileLeaderAsync(leaderCancellation =>
+  1. subscribe to the post-commit notifications (before loading, the reference's invariant)
+  2. session = new Guid; await PublishAndWaitAsync(CoordinatorActivated(session))
+     -> the local DB now contains every event published before the barrier
+  3. load IQueuedActions / IDelayedActions in one StartQuery() snapshot
+  4. rows with Started != null are "possibly running": protect them for one lease (default 2 min) or until their
+     worker reports
+  5. serve worker exchanges, plan, run the delayed and recurring schedulers, until leaderCancellation)
+```
+
+`CoordinatorActivated` is the reference's "leader elected" event used as a fencing epoch. A deposed leader may still
+publish `ActionsStarted` before it notices its cancellation. Its old session no longer matches the stored one, so the
+consume rejects the event on every replica in the same way. The replication lease already guarantees at most one
+active coordinator; this check also covers effects already in flight.
+
+### Attempts and exactly-once handling
+
+An attempt is (CoordinatorSession, sequence number). The coordinator assigns an action only after the
+`ActionsStarted` event that records the attempt has been consumed locally. The assignment it delivers to the worker
+carries that event ID. The worker waits until its local `LastAppliedEventId` reaches it, which takes milliseconds
+because workers are live consumers, and then reads the input from its own snapshot. Several guarantees follow:
+
+* The worker always sees the input and every business change committed before the start. No 30 min wait is needed.
+* `ActionFinished` from a stale attempt (lag, partition, a reassigned lease) is ignored by the consume. `OnFinished`
+  runs exactly once per final outcome, which closes the reference's duplicate-handling gap.
+* Execution stays at-least-once. `ExecuteAsync` may run twice for one action, and external effects need the
+  application's idempotency, as documented for `RunWhileLeaderAsync`.
+
+### Why every start is recorded
+
+An earlier revision let an action type skip `ActionsStarted` and start without an event round trip. It was dropped
+from v1 after a survey of the reference implementation's 451 action handlers:
+
+* The reference already publishes one event per started action (the run-attempt counter), plus an awaited event when
+  it closes aggregation or runs a before-start hook. One batched `ActionsStarted` per planning round costs less.
+* The saving is one event commit and apply, about 10–30 ms (Standard_GZRS commit p50 8.7 ms, p99 19 ms, EventLog plan
+  section 16). The reference's own start-delay alerts begin at 5 s for real-time priority.
+* 43% of the handlers use partial results, aggregation or before-start, which need a recorded start anyway. Most
+  real-time actions send messages, where a duplicate is worse than a delay.
+* Without it, attempt counts would live only in the leader's memory. An action that crashes the leader's process
+  would reset its count on every failover and retry forever. A new leader would also have to wait for workers to
+  report before starting any such action, which costs more than the steady-state saving. And a request unified into
+  a running action would get a result computed before the request was made.
+
+If A2 measurements show a workload where start latency matters, the opt-out can come back as an additive option.
+
+### HTTP exchange (pull model)
+
+Workers initiate every request; the leader never calls workers. This mirrors replication's follower poll. Workers need
+no authenticated inbound endpoint, and the leader needs no worker addresses.
+
+The exchange is a `ReplicationLeaderChannel` request on the channel `btdb-backend-actions`, a long poll held for up
+to about 10 s, or until there is a command for this worker.
+
+* **Request:** `WorkerSession` (fresh per process), `NodeId`, capacity, supported action names (for rolling upgrades),
+  status (Ready or Draining), running attempts with resource adjustments, attempts finished since the last exchange
+  together with their `ActionFinished` publication state, `LastAppliedEventId`, and the last acknowledged command
+  sequence.
+* **Response:** `CoordinatorSession` and commands with sequence numbers: `Start{ActionId, Attempt, StartEventId}`,
+  `Cancel{Attempt, Reason}` and `Forget{Attempt}` (a stale attempt: stop it and drop its result).
+
+Commands are idempotent and re-sent until acknowledged, so a lost response costs one round trip. The exchange itself
+is the heartbeat. A worker with no exchange for three intervals plus the request timeout is expired; a worker whose
+node left a non-settling `EventCluster.LiveNodeIds` is expired at once. A new `WorkerSession` from the same `NodeId`
+(a process restart) immediately ends the attempts of the old session, without waiting for their leases.
+
+Lease expiry (no report of a running attempt) makes the action runnable again. The next `ActionsStarted` supersedes
+the old attempt. After `MaxAttempts` (default 5), the coordinator publishes `ActionFinished(Interrupted, "attempts
+exhausted")` for the current attempt. Cancellation of an action with a dead worker is finished the same way, as
+`Cancelled`.
+
+The leader is also a worker: the channel calls the leader's own handler directly, with the same messages.
+
+### Failover walk-through
+
+1. The leader dies or hands off. The old coordinator is cancelled; workers keep executing.
+2. Workers' exchanges fail and they re-resolve the leader. Finished results are published to the event stream, which
+   needs no coordinator, so work completed during the gap is not lost.
+3. The new leader activates, publishes `CoordinatorActivated` and reloads. Rows that are started but unreported are
+   protected for one lease.
+4. Workers reconnect and report their running attempts. The coordinator adopts those, rebuilds resource usage, and
+   reassigns the rest after protection ends.
+
+The same path covers a graceful handoff during a rolling upgrade. The coordinator does not assign an action to a
+worker that does not list its name, so a new action type waits for upgraded workers.
+
+## 6. Prerequisites in existing packages
+
+* **R1, an application channel to the leader.** Done as `ReplicationLeaderChannel` in `BTDB.Replication`, carried
+  by `BTDB.Replication.Http`; see [hosting](ReplicationHosting.md#requests-to-the-leader). Every node registers named
+  handlers. They run only during the active leader session that runs `RunWhileLeaderAsync` callbacks, with a token
+  cancelled when it ends. Followers send over their existing authenticated peer session, so no new credential, route
+  or leader discovery exists, and the leader calls its own handler directly. Presence could not carry this: it is one
+  polled value of at most 4 KiB per node, with no request and response.
+* **R2, presence sharing (optional).** `ReplicationPresence` holds one value per node, and `EventCluster` claims it.
+  BackendActions only reads `EventCluster.Current` and needs no slot. If a later feature needs its own announcement,
+  extend presence to named slots then, not now.
+* **R3, a publisher hook for library handlers.** No change needed: `EventDispatcher.Register` is public, so the
+  library registers its handlers on the application's dispatcher before the publisher is constructed, and the
+  publisher's `TypeNameMapper` maps the library's event and input types like the application's.
+
+## 7. Packages and code layout
+
+One package, `BTDB.BackendActions`, depends on `BTDB.Replication.EventSourcing` and `BTDB.Replication.Http` (and
+so on the ASP.NET Core shared framework). It contains contracts, attributes, relations, events and consumes, the
+coordinator and planner, the worker and executor, the scheduler, the exchange and monitoring endpoints, the HTTP
+worker client, the DI extensions, monitoring queries and metrics. It is versioned and released with the rest of the
+family (Releaser project list).
+
+The coordinator and worker exchange messages only through `ReplicationLeaderChannel`, which needs no HTTP code of its
+own. Planner and failover tests use the replication suite's in-process peer transport, without Kestrel.
+
+Test projects: `BTDB.BackendActions.Test` (unit, planner, in-process multi-node) and
+`BTDB.BackendActions.Process.Test` (subprocess cluster: process kill, failover, handoff).
+
+## 8. Monitoring and operations
+
+* **Any node, from the local DB:** queued, delayed and started actions with paging; actions by tenant; "does a tenant
+  have running actions"; lookup by unique key. These are reads in `StartQuery()` snapshots and need no leader.
+* **Leader overview** (an `overview` request on the same channel, from any node): workers with capacity,
+  usage, sessions and last exchange; running attempts with lease age; queue counts by priority; settling state.
+* **Metrics** (meter `BTDB.BackendActions`): queued/running/delayed counts, start delay, execution duration and
+  errors, attempts superseded, workers, exchange failures, and coordinator sessions. The leader reports
+  cluster-level gauges; every node reports its worker's.
+* **Admin events:** capacity shares by priority, suspended action names (stop starting them; inputs keep queueing) and
+  runtime tracing.
+
+## 9. Testing strategy
+
+* **Planner unit tests:** port the reference coordinator test scenarios (priority, fairness, groups, single running
+  per tenant, resources and adjustments, leases, attempt exhaustion) to a pure `ActionPlanner` with a fake
+  `TimeProvider` and a deterministic worker strategy.
+* **Consume tests:** enqueue, unify, aggregate, delayed, cancel in each state, stale attempt or session rejection,
+  partial results (ordering, oversized part, superseded attempt's parts), before-start failure. Verify that replay and different batch sizes give identical TRL bytes.
+* **In-process cluster:** the existing replication and EventSourcing test infrastructure with 1–3 nodes and an
+  in-memory EventLog. Cover leader failover mid-run, worker kill, a lost exchange response, a deposed leader's late
+  `ActionsStarted`, handoff, and an upgrade where the new action type is unsupported by old workers. Add a fault
+  injecting transport.
+* **Process tests:** kill -9 the worker or the leader under load. Assert that every action finishes exactly once in
+  `OnFinished`, and that no action is lost (the reference's failover verification scenario).
+* **Approval tests:** public API, event list and relation schemas (Assent), as in the reference.
+* **Application test helpers:** `ActionHandlerTestBase` with `ExecuteAsync`, `ExpectBackendActionExceptionAsync` and
+  `Finish(outcome)` against an in-memory ObjectDB.
+
+## 10. Milestones
+
+| ID | Content | Done when |
+| --- | --- | --- |
+| A0 | R1 in the existing packages, with tests and docs; R3 needed no change. Done. | Followers and the leader reach the active leader's handler, and a held request ends with its session. |
+| A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. | Consume tests pass, including determinism under replay. |
+| A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. | A single-node app runs actions end to end; the planner suite passes. |
+| A3 | HTTP exchange, multi-node, failover, attempt fencing, settling, rolling-upgrade capability matching. | Failover tests pass in process. |
+| A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. | Feature parity with the reference API surface. |
+| A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. | The package packs, and docs cover hosting, and the API. |
+| A6 | Process qualification and migration notes from the reference implementation. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
+| A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
+
+## 11. Migration from the reference implementation
+
+Decided: drain running actions, then import the rest with their IDs. The switch happens at the same quiesced barrier
+as the application's event-store cutover ([EventLog plan, section 13](../BTDB.Replication/EventLogImplementationPlan.md#13-migrating-an-existing-kafka-deployment)).
+The old coordination topic is not migrated. There is nothing in it to keep: all durable action state is in the old
+action tables.
+
+### Cutover steps
+
+1. **Stop starting actions.** In the old system, suspend every action type so its coordinator assigns nothing new.
+   Inputs keep queueing until the event-store barrier stops publishers.
+2. **Drain running actions** for a bounded budget chosen per deployment, at least the longest common action. Their
+   finished events land in the old history and remove their rows as usual.
+3. **Stop the rest without a result.** Actions still running when the budget ends are stopped by shutting down the old
+   workers. They publish nothing, so their rows stay in the old tables with their run attempts. This is the same
+   situation as a crashed worker in the old system, and the action runs again after import. Handlers that already
+   needed to tolerate a crash need nothing new.
+4. **Quiesce publishers** and capture the barrier (EventLog plan, step 1). Export from a read-only snapshot of the old
+   action tables at that barrier.
+5. **Import** before the new cluster starts the coordinator (below).
+6. **Verify** queued and delayed counts per action name and tenant, the scheduled last runs, and that the ID allocator
+   is above every imported ID. Then switch producers and consumers together.
+7. **Leave the old tables in place** for the validation window. Rollback follows the EventLog plan: a reverse copy or
+   forward recovery, never simply switching back. Drop the old tables in a later release.
+
+### Import API
+
+`BackendActions.Import(IEnumerable<ImportedAction>)` can be called from any consume. The `ActionsImported` event uses
+the same code, so an application can choose either way in:
+
+* **The old tables are in the same ObjectDB:** publish one application-defined migration event. Its consume reads the
+  old relations and calls `BackendActions.Import`. There is no payload, and the import is deterministic on every
+  replica.
+* **The old tables are elsewhere**, for example in a separate action database: an export tool reads them at the barrier
+  and publishes `ActionsImported` events batched below `MaximumEventSize`. The tool appends these events to the new
+  data topic right after the imported history, before any node starts.
+
+Either way, the import events come before the new coordinator's `CoordinatorActivated` barrier. The coordinator
+therefore loads imported rows like any others, and no import gate is needed.
+
+`ImportedAction` contains:
+
+* `TenantId` and `ActionId`, both kept as they are.
+* The input, already converted to the new input type. Usually this is the same class, mapped through
+  `TypeNameMapper`.
+* `Priority`, the old `Order` (only to keep the relative order), `QueuedAt` and `RunAttempts`.
+* `StartAt` for delayed actions.
+* `IsCancelled`.
+
+The consume does the following:
+
+* It assigns new `Order` values in the old relative order. Imported actions therefore queue before any new ones.
+* It recomputes the unification and aggregation index from the inputs, and keeps aggregation open as in the old row.
+* An imported row with `IsCancelled` was not running after the drain, so the consume finishes it at once with
+  `OnFinished(Cancelled)`.
+* It raises ObjectDB user Ulong slot 2 (the slot `Ambient.AllocateId` uses) above the largest imported `ActionId`,
+  and never lowers it.
+
+`ImportScheduledRuns(name → LastRun)` and `ImportSettings` (capacity shares by priority, suspended names, per-worker
+capacity override) carry the remaining state, so scheduled actions neither fire twice nor skip a run.
+
+An imported action with `RunAttempts > 0` keeps that count, so attempt exhaustion still applies. Its first new
+attempt is the first attempt of the new coordinator session, and `ActionOutcome.Attempt` shows that. A partial-result
+handler that already received parts before the cutover sees a restart, exactly as after a crash in the old system.
+
+### Tests
+
+* Import consume determinism, order preservation, index recomputation, allocator raise, cancelled rows, and delayed
+  and scheduled state. Run each with both ways in.
+* A cluster test that imports, restarts all nodes and replays the import, then runs every imported action exactly
+  once.
