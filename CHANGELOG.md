@@ -10,6 +10,12 @@
   session ends. `SendAsync` calls the local handler on the leader and otherwise the connected leader, and throws
   `IOException` when no active leader handled the request. Payloads are opaque bytes up to 1 MiB, so authenticated
   peer requests may now be that large.
+- BackendActions (new project, not yet packaged): action contracts (`ActionInput<TResult>`, `IActionHandler`,
+  `[BackendAction]`, unificator and aggregator inputs, before-start hooks) and their replicated state. Application
+  consumes enqueue and cancel actions in their own transaction with `BackendActions.Enqueue` and `Cancel`; other code
+  uses `EnqueueAsync` and `CancelAsync`. Delayed actions queue when due. Start and finish events accept only the
+  current coordinator session and the action's next attempt, so `OnFinished` runs once per outcome. The coordinator
+  and workers that publish those events follow; see `Doc/BackendActionsPlan.md`.
 
 ## 36.0.1
 

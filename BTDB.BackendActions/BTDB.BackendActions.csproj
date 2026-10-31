@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <IsPackable>true</IsPackable>
+        <PackageId>BTDB.BackendActions</PackageId>
+        <Version>36.0.1</Version>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>https://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Description>Leader-scheduled, resource-limited background actions over BTDB replication and typed event sourcing.</Description>
+        <PackageTags>BTDB replication event sourcing background jobs scheduler</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../BTDB.Replication.EventSourcing/BTDB.Replication.EventSourcing.csproj" />
+        <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <None Include="README.md" Pack="true" PackagePath="/" />
+        <InternalsVisibleTo Include="BTDB.BackendActions.Test" />
+    </ItemGroup>
+</Project>

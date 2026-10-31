@@ -81,6 +81,7 @@ public class GenerateReport : ActionInput<ReportResult>
     public ulong ReportId { get; set; }
 }
 
+[Generate] // results travel in events, so the source generator must know them
 public class ReportResult
 {
     public string BlobName { get; set; } = "";
@@ -112,11 +113,11 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   `Cancel` takes it. New IDs come from `Ambient.AllocateId()` and are unique on their own; imported IDs (section 11)
   are unique only together with their tenant, so lookups always use both.
 * The capability interfaces keep their names: `IActionInputUnificator.GetUniqueKey()`,
-  `IActionInputAggregator.TryAggregate(other)`, `IActionInputForceable`, and the optional
+  `IActionInputAggregator.TryAggregate(other)`, `IActionInputForceable` (with scheduling, A4), and the optional
   `IActionWithBeforeStart.OnBeforeStart(input)`, which runs in the consume of `ActionsStarted`. A before-start
   exception finishes the attempt as `Failed`.
-* The action name is the input's persisted type name (`EventPublisherOptions.TypeNameMapper`). It is used for limits,
-  metrics and handler capability matching.
+* The action name is `[BackendAction(Name = ...)]`, by default the input type's full name. Rows and unification keys
+  store it, so set it before renaming an input type. It is used for limits, metrics and handler capability matching.
 * Errors are an `ActionError(Code, Message, Details)` record. `BackendActionException` carries a user-facing and an
   internal message, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
 * Cancellation: `context.Cancellation`, `context.CancellationReason` (Infrastructure, Timeout, Interrupt, Handler) and
@@ -129,16 +130,18 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 Submission:
 
 ```csharp
+// actions is the application's BackendActions instance (no process-global state).
 // Inside any event handler's Consume: transactional with the business change, deterministic ID, no extra event.
-var id = BackendActions.Enqueue(new GenerateReport { ReportId = 7 },
+var id = actions.Enqueue(new GenerateReport { ReportId = 7 },
     new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
-BackendActions.Cancel(id);
+actions.Cancel(id);
 
 // From a query, API endpoint or scheduler: publishes ActionEnqueued / ActionCancelRequested.
-var id2 = await backendActions.EnqueueAsync(new GenerateReport { ReportId = 8 }, cancellation);
+var id2 = await actions.EnqueueAsync(publisher, new GenerateReport { ReportId = 8 }, cancellation: cancellation);
 ```
 
 `EnqueueAsync` and `CancelAsync` use `PublishAndWaitAsync`, so the returned ID is the one the consume assigned.
+An input that unifies or aggregates returns the ID of the action it merged into.
 
 ### Partial results and large results
 
@@ -174,16 +177,14 @@ public void OnFinished(ExportRows input, ActionOutcome<ExportResult> outcome)
 Hosting:
 
 ```csharp
+var actions = new BackendActions().Register(new GenerateReportHandler());
+actions.RegisterTypes(objectDb);                        // input types stored polymorphically in action rows
+await objectDb.InitializeRelations([.. applicationRelations, .. BackendActions.RelationTypes]);
+actions.RegisterEvents(dispatcher);                     // the library's own event handlers, before the publisher
 builder.Services.AddBTDBReplication(...);
-builder.Services.AddBTDBBackendActions(o =>
-{
-    o.Register<GenerateReport, ReportResult, GenerateReportHandler>();
-    o.WorkerCapacity = new ActionResources(Cpu: Environment.ProcessorCount * 100);
-});
-// after the EventPublisher is created and its handlers are registered:
-dispatcher.RegisterBackendActions(backendActionsOptions); // the library's own event handlers
+builder.Services.AddBTDBBackendActions(actions, o =>   // coordinator and worker hosting (A2, A3)
+    o.WorkerCapacity = new ActionResources(Cpu: Environment.ProcessorCount * 100));
 app.MapBTDBReplication();
-app.MapBTDBBackendActions();
 ```
 
 The library registers its own events (section 4) with the application's `EventDispatcher`, so they share the data
@@ -195,11 +196,14 @@ The application's ObjectDB holds these relations. Only consumes write them.
 
 | Relation | Key | Fields |
 | --- | --- | --- |
-| `IQueuedActions` | PK (TenantId, ActionId); SK ActionId; SK (Priority, Order) for monitoring | Name, Priority, Order, Input, IsUnificator/IsAggregator, IsCancelled, `Started` (null, or {CoordinatorSession, Attempt, WorkerSession, StartEventId}), RunAttempts, LatestInputEventId, QueuedAt |
-| `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, IsUnificator/IsAggregator |
-| `IActionInputIndex` | PK (TenantId, Name, UniqueKey) | ActionId |
-| `IScheduledActionRuns` | PK Name | LastRun |
-| Singleton `BackendActionsState` | n/a | Order counter, CoordinatorSession (current), settings (capacity shares by priority, suspended action names) |
+| `IQueuedActions` | PK (TenantId, ActionId) | Name, Priority, Order, Input, IsAggregable, IsCancelled, IsStarted, RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
+| `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, QueuedAt |
+| `IActionInputIndexes` | PK (TenantId, Name, UniqueKey) | ActionId of the queued action that has not started |
+| `IScheduledActionRuns` (A4) | PK Name | LastRun |
+| `IBackendActionsStates`, one row with Id 0 | PK Id | NextOrder, CoordinatorSession; later settings (capacity shares by priority, suspended action names) |
+
+Whether an input unifies or aggregates comes from its type, so rows store no flags for it. Secondary keys for
+monitoring are added with monitoring (A5) when its queries need them.
 
 Events, all ordinary `BTDB.Replication.EventSourcing` events:
 
@@ -208,8 +212,8 @@ Events, all ordinary `BTDB.Replication.EventSourcing` events:
 | `ActionEnqueued{Input, Options}` | `EnqueueAsync` | Same code path as `BackendActions.Enqueue` inside a consume. |
 | `ActionCancelRequested{ActionId}` | `CancelAsync` | Delayed: delete. Not started: call `OnFinished(Cancelled)` and delete in this transaction (the input is at hand, so no deferred removal is needed). Started: set `IsCancelled`, and the coordinator finishes it. |
 | `CoordinatorActivated{Session}` | New leader's coordinator | Store `CoordinatorSession`. This is the barrier and fencing epoch (section 5). |
-| `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled or already started under another attempt; otherwise set `Started`, `RunAttempts++`, close aggregation and run `OnBeforeStart`. |
-| `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless `Started.Attempt == Attempt`. Call `OnFinished`. A final outcome deletes the row and its index entry; `Partial` keeps it. |
+| `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled, or `Attempt` is not `RunAttempts + 1`; otherwise set `IsStarted`, `RunAttempts = Attempt`, close aggregation, remove the index entry and run `OnBeforeStart`. A higher attempt supersedes a running one. |
+| `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished`. A final outcome deletes the row; `Partial` keeps it. |
 | `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
 | `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun}` | Coordinator scheduler | Enqueue if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator). |
 | `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
@@ -247,7 +251,9 @@ active coordinator; this check also covers effects already in flight.
 
 ### Attempts and exactly-once handling
 
-An attempt is (CoordinatorSession, sequence number). The coordinator assigns an action only after the
+An attempt is the action's start count: `ActionsStarted` names `RunAttempts + 1`, its consume records it, and
+`ActionFinished` must name the recorded value. The count is durable, so a superseded attempt stays rejected across
+coordinator sessions and the attempt limit survives failover. The coordinator assigns an action only after the
 `ActionsStarted` event that records the attempt has been consumed locally. The assignment it delivers to the worker
 carries that event ID. The worker waits until its local `LastAppliedEventId` reaches it, which takes milliseconds
 because workers are live consumers, and then reads the input from its own snapshot. Several guarantees follow:
@@ -379,7 +385,7 @@ Test projects: `BTDB.BackendActions.Test` (unit, planner, in-process multi-node)
 | ID | Content | Done when |
 | --- | --- | --- |
 | A0 | R1 in the existing packages, with tests and docs; R3 needed no change. Done. | Followers and the leader reach the active leader's handler, and a held request ends with its session. |
-| A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. | Consume tests pass, including determinism under replay. |
+| A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. Done. | Consume tests pass, including determinism under replay. |
 | A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. | A single-node app runs actions end to end; the planner suite passes. |
 | A3 | HTTP exchange, multi-node, failover, attempt fencing, settling, rolling-upgrade capability matching. | Failover tests pass in process. |
 | A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. | Feature parity with the reference API surface. |
@@ -449,7 +455,7 @@ The consume does the following:
 capacity override) carry the remaining state, so scheduled actions neither fire twice nor skip a run.
 
 An imported action with `RunAttempts > 0` keeps that count, so attempt exhaustion still applies. Its first new
-attempt is the first attempt of the new coordinator session, and `ActionOutcome.Attempt` shows that. A partial-result
+attempt is `RunAttempts + 1`, which `ActionOutcome.Attempt` shows. A partial-result
 handler that already received parts before the cutover sees a restart, exactly as after a crash in the old system.
 
 ### Tests
