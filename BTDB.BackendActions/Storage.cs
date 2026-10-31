@@ -20,6 +20,8 @@ public class QueuedAction
     /// <summary>Number of recorded starts; the current attempt when started.</summary>
     public ulong RunAttempts { get; set; }
     public Guid WorkerSession { get; set; }
+    /// <summary>Node of the current attempt's worker; a new worker session on that node ends the attempt.</summary>
+    public string WorkerNode { get; set; } = "";
     /// <summary>Event that recorded the current attempt; a worker reads the input after consuming it.</summary>
     public ulong StartEventId { get; set; }
     /// <summary>Event that queued the action or last merged an input into it.</summary>

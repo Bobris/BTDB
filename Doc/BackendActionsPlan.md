@@ -182,9 +182,10 @@ actions.RegisterTypes(objectDb);                        // input types stored po
 await objectDb.InitializeRelations([.. applicationRelations, .. BackendActions.RelationTypes]);
 actions.RegisterEvents(dispatcher);                     // the library's own event handlers, before the publisher
 builder.Services.AddBTDBReplication(...);
-builder.Services.AddBTDBBackendActions(actions, o =>   // coordinator and worker hosting (A2, A3)
-    o.WorkerCapacity = new ActionResources(Cpu: Environment.ProcessorCount * 100));
-app.MapBTDBReplication();
+// after the publisher started; join RunAsync before disposing the publisher
+var host = new BackendActionsHost(actions, publisher, app.Services.GetRequiredService<ReplicationLeadership>(),
+    app.Services.GetRequiredService<ReplicationLeaderChannel>(), new BackendActionsOptions { NodeId = nodeId });
+var running = host.RunAsync(stopping);
 ```
 
 The library registers its own events (section 4) with the application's `EventDispatcher`, so they share the data
@@ -307,9 +308,11 @@ long poll.
 
 The exchange itself is the heartbeat. A worker without an exchange for the worker timeout (default 30 s) is expired,
 and its attempts are lost at once. A new `WorkerSession` from the same `NodeId` (a process restart) ends the attempts
-of the old session that this coordinator assigned, without waiting for their leases. Ending a row recorded under an
-earlier coordinator as fast needs the worker's node in the row, which A3 adds if failover tests show the lease wait
-matters. Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is also left to A3.
+of the old session without waiting for their leases. `ActionsStarted` records the worker's node in the row, so this
+holds also for attempts a previous coordinator started. The failover test of a restarted node shows the difference:
+without the node, the new coordinator waits a whole lease (2 min by default) before starting the attempt again.
+Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is not implemented: the worker timeout
+already bounds the wait, and no test showed a need for a second signal.
 
 A stopping worker cancels its attempts and publishes no outcome for them, so they run again elsewhere, as after a
 crash. An `Interrupted` outcome comes only from the coordinator, for exhausted attempts.
@@ -331,8 +334,11 @@ The leader is also a worker: the channel calls the leader's own handler directly
 4. Workers reconnect and report their running attempts. The coordinator adopts those, rebuilds resource usage, and
    reassigns the rest after protection ends.
 
-The same path covers a graceful handoff during a rolling upgrade. The coordinator does not assign an action to a
-worker that does not list its name, so a new action type waits for upgraded workers.
+The same path covers a graceful handoff during a rolling upgrade. Each worker lists the types it executes
+(`BackendActionsOptions.ExecutedActions`, all registered types by default) and the coordinator assigns nothing else
+to it. Every node must still register every type, because `OnFinished` runs on every replica; a type therefore
+reaches only nodes that can decode its events, and the option keeps it off nodes that must not execute it yet or at
+all.
 
 ## 6. Prerequisites in existing packages
 
@@ -351,17 +357,16 @@ worker that does not list its name, so a new action type waits for upgraded work
 
 ## 7. Packages and code layout
 
-One package, `BTDB.BackendActions`, depends on `BTDB.Replication.EventSourcing` and `BTDB.Replication.Http` (and
-so on the ASP.NET Core shared framework). It contains contracts, attributes, relations, events and consumes, the
-coordinator and planner, the worker and executor, the scheduler, the exchange and monitoring endpoints, the HTTP
-worker client, the DI extensions, monitoring queries and metrics. It is versioned and released with the rest of the
-family (Releaser project list).
+One package, `BTDB.BackendActions`, depends only on `BTDB.Replication.EventSourcing`. It contains contracts,
+attributes, relations, events and consumes, the coordinator and planner, the worker and executor, the scheduler,
+monitoring queries and metrics. It needs no ASP.NET or HTTP code: the coordinator and worker exchange messages only
+through `ReplicationLeaderChannel`, which `AddBTDBReplication` registers and the replication peer endpoint carries.
+The application constructs `BackendActionsHost` from that channel and `ReplicationLeadership`, so there are no DI
+extensions either. It is versioned and released with the rest of the family (Releaser project list).
 
-The coordinator and worker exchange messages only through `ReplicationLeaderChannel`, which needs no HTTP code of its
-own. Planner and failover tests use the replication suite's in-process peer transport, without Kestrel.
-
-Test projects: `BTDB.BackendActions.Test` (unit, planner, in-process multi-node) and
-`BTDB.BackendActions.Process.Test` (subprocess cluster: process kill, failover, handoff).
+Test projects: `BTDB.BackendActions.Test` (unit, planner, and multi-node failover over an in-process fake of the
+leader sessions and channel) and `BTDB.BackendActions.Process.Test` (A6: subprocess cluster with real replication and
+HTTP: process kill, failover, handoff).
 
 ## 8. Monitoring and operations
 
@@ -399,7 +404,7 @@ Test projects: `BTDB.BackendActions.Test` (unit, planner, in-process multi-node)
 | A0 | R1 in the existing packages, with tests and docs; R3 needed no change. Done. | Followers and the leader reach the active leader's handler, and a held request ends with its session. |
 | A1 | Contracts, relations, events and consumes; enqueue, unify, aggregate, delayed, cancel; `TenantId`. Done. | Consume tests pass, including determinism under replay. |
 | A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. Done. | A single-node app runs actions end to end; the planner suite passes. |
-| A3 | HTTP exchange, multi-node, failover, attempt fencing, settling, rolling-upgrade capability matching. | Failover tests pass in process. |
+| A3 | Multi-node failover, attempt fencing, settling, rolling-upgrade capability matching. Done; the exchange needs no HTTP code of its own. | Failover tests pass in process. |
 | A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. | Feature parity with the reference API surface. |
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification and migration notes from the reference implementation. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |

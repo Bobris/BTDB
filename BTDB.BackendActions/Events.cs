@@ -42,6 +42,7 @@ public class StartedAction
     /// <summary>The attempt being started: the action's recorded attempts plus one.</summary>
     public ulong Attempt { get; set; }
     public Guid WorkerSession { get; set; }
+    public string WorkerNode { get; set; } = "";
 }
 
 /// <summary>Records the attempts one planning round starts.</summary>

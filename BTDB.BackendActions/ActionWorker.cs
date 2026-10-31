@@ -69,7 +69,8 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             return new()
             {
                 WorkerSession = Session, NodeId = options.NodeId, Cpu = options.WorkerCpu,
-                Names = _actions.Types.Select(t => t.Name).ToList(),
+                Names = _actions.Types.Select(t => t.Name)
+                    .Where(n => options.ExecutedActions?.Contains(n) ?? true).ToList(),
                 Running = _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt)).ToList(),
                 Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList()
             };

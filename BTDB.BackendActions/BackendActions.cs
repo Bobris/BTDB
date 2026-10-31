@@ -184,6 +184,7 @@ public sealed class BackendActions
             row.IsAggregable = false;
             row.RunAttempts = started.Attempt;
             row.WorkerSession = started.WorkerSession;
+            row.WorkerNode = started.WorkerNode;
             row.StartEventId = ev.EventId;
             if (TypeOf(row.Name)?.BeforeStart is { } before)
             {

@@ -13,6 +13,10 @@ public sealed class BackendActionsOptions
     public int WorkerCpu { get; set; } = Environment.ProcessorCount * 100;
     /// <summary>False runs no worker on this node; it still coordinates while it leads.</summary>
     public bool RunWorker { get; set; } = true;
+    /// <summary>Names of the action types this node's worker executes; null executes every registered type. Every
+    /// node still registers every type, because outcomes are handled on every replica. Use it to keep a type on
+    /// suitable nodes, or off nodes of a rolling upgrade that must not run it yet.</summary>
+    public IReadOnlySet<string>? ExecutedActions { get; set; }
     public ActionPlannerOptions Planner { get; set; } = new();
     /// <summary>How long the coordinator holds a worker's exchange without news; well below the worker timeout.</summary>
     public TimeSpan PollTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -85,7 +89,8 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                         Session = Session,
                         Actions = assignments.Select(a => new StartedAction
                         {
-                            TenantId = a.Id.TenantId, ActionId = a.Id.ActionId, Attempt = a.Attempt, WorkerSession = a.Worker
+                            TenantId = a.Id.TenantId, ActionId = a.Id.ActionId, Attempt = a.Attempt,
+                            WorkerSession = a.Worker, WorkerNode = a.Node
                         }).ToList()
                     }, cancellation).ConfigureAwait(false);
                 if (Now >= nextDelayed)

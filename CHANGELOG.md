@@ -17,8 +17,10 @@
   current coordinator session and the action's next attempt, so `OnFinished` runs once per outcome.
   `BackendActionsHost` runs them: a worker on every node, and on the replication leader a coordinator that plans by
   priority, tenant fairness, concurrency groups and worker capacity, and reruns attempts whose worker is lost. Workers
-  long-poll the coordinator through `ReplicationLeaderChannel`. Multi-node failover qualification, scheduling, partial
-  results and monitoring follow; see `Doc/BackendActionsPlan.md`.
+  long-poll the coordinator through `ReplicationLeaderChannel`. A new leader adopts attempts its workers still run,
+  and a restarted node's attempts start again at once. `BackendActionsOptions.ExecutedActions` limits which types a
+  node's worker runs. Scheduling, partial results, monitoring and process qualification follow; see
+  `Doc/BackendActionsPlan.md`.
 
 ## 36.0.1
 

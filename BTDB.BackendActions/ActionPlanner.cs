@@ -30,6 +30,9 @@ internal sealed class PlannedAction
     internal bool IsCancelled { get; set; }
     internal bool IsStarted { get; set; }
     internal ulong StartEventId { get; set; }
+    /// <summary>The recorded attempt's worker.</summary>
+    internal Guid RecordedSession { get; set; }
+    internal string RecordedNode { get; set; } = "";
     /// <summary>Worker session holding the action's resources, while starting or running.</summary>
     internal Guid? Worker { get; set; }
     /// <summary>The attempt whose ActionsStarted event is published but not yet applied.</summary>
@@ -62,7 +65,7 @@ internal sealed class PlannedWorker
     internal readonly HashSet<QualifiedActionId> Actions = new();
 }
 
-internal readonly record struct Assignment(QualifiedActionId Id, ulong Attempt, Guid Worker);
+internal readonly record struct Assignment(QualifiedActionId Id, ulong Attempt, Guid Worker, string Node);
 
 internal readonly record struct Abandonment(QualifiedActionId Id, ulong Attempt, ActionOutcomeKind Kind, string Reason);
 
@@ -146,7 +149,11 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
         action.IsCancelled = row.IsCancelled;
         action.IsStarted = row.IsStarted;
         action.StartEventId = row.StartEventId;
+        action.RecordedSession = row.WorkerSession;
+        action.RecordedNode = row.WorkerNode;
         action.RunAttempts = row.RunAttempts;
+        if (action.Protected && _workers.Values.Any(w => w.NodeId == action.RecordedNode && w.Session != action.RecordedSession))
+            action.Protected = false; // its node already runs a newer process
         if (!_tenants.TryGetValue(id.TenantId, out var tenant))
             _tenants.Add(id.TenantId, tenant = new(TenantOrder));
         tenant.Add(action);
@@ -161,6 +168,10 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
     {
         foreach (var other in _workers.Values.Where(w => w.NodeId == nodeId && w.Session != session).ToList())
             Expire(other); // the node restarted: its previous process's attempts are gone
+        foreach (var action in _actions.Values)
+            if (action.Protected && action.RecordedNode == nodeId && action.RecordedSession != session &&
+                !running.Any(r => r.Id == action.Id))
+                action.Protected = false; // recorded by an earlier coordinator for that previous process
         if (!_workers.TryGetValue(session, out var worker))
         {
             worker = new() { Session = session, NodeId = nodeId };
@@ -257,7 +268,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options)
                     Acquire(action, worker, now);
                     action.Starting = attempt;
                     _consumption[tenant] += action.Cpu;
-                    assignments.Add(new(action.Id, attempt, worker.Session));
+                    assignments.Add(new(action.Id, attempt, worker.Session, worker.NodeId));
                     progress = true;
                     break;
                 }

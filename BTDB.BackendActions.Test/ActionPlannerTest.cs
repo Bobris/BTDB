@@ -46,6 +46,7 @@ public class ActionPlannerTest
             row.IsStarted = true;
             row.RunAttempts = assignment.Attempt;
             row.WorkerSession = assignment.Worker;
+            row.WorkerNode = assignment.Node;
             row.StartEventId = 100 + assignment.Attempt;
             Planner.Update(assignment.Id, row, type ?? Planner.Actions[assignment.Id].Type, now);
             started.Add(assignment.Id);
@@ -217,6 +218,39 @@ public class ActionPlannerTest
         Planner.Update(waiting, null, null, 11 * Second);
         Assert.Equal([unreported], PlanAndStart(11 * Second));
         Assert.Equal(2ul, _rows[unreported].RunAttempts);
+    }
+
+    [Fact]
+    public void ANewProcessOnTheRecordedNodeEndsTheProtectionAtOnce()
+    {
+        var old = Guid.NewGuid();
+        var recorded = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = old;
+            row.WorkerNode = "n";
+        });
+        var elsewhere = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = Guid.NewGuid();
+            row.WorkerNode = "m";
+        });
+        var replacement = Guid.NewGuid();
+        Exchange(replacement, Second, capacity: 1000, node: "n");
+        Assert.Equal([recorded], PlanAndStart(Second)); // the other node's attempt may still run
+        Assert.Equal((2ul, replacement), (_rows[recorded].RunAttempts, _rows[recorded].WorkerSession));
+        Assert.True(Planner.Actions[elsewhere].Protected);
+        var late = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 3;
+            row.WorkerSession = old;
+            row.WorkerNode = "n";
+        });
+        Assert.False(Planner.Actions[late].Protected); // loaded after the new process already exchanged
     }
 
     [Fact]

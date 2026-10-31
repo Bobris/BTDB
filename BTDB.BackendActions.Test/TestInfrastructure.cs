@@ -220,6 +220,9 @@ public class SlowOrder : ActionInput<OrderResult>
     public string Mode { get; set; } = "";
 }
 
+/// <summary>A SlowOrder without a concurrency limit.</summary>
+public class WaitingOrder : SlowOrder;
+
 public class ValidatedOrder : ActionInput<OrderResult>
 {
     public bool Reject { get; set; }
@@ -241,7 +244,8 @@ internal sealed class Recorder
         .Register(new Handler<RefreshCache>(this, i => i.Key))
         .Register(new Handler<CollectItems>(this, i => string.Join(",", i.Items)))
         .Register(new ValidatingHandler(this))
-        .Register(new SlowHandler(this));
+        .Register(new SlowHandler(this))
+        .Register<WaitingOrder, OrderResult>(new SlowHandler(this));
 
     // SlowOrder attempts wait for Release, observe cancellation and may fail on request.
     internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -311,6 +315,15 @@ internal sealed class FakeCluster
 {
     readonly object _lock = new();
     readonly Dictionary<string, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>> _handlers = new();
+    // Nodes that reach no leader and that no node reaches as the leader.
+    readonly HashSet<string> _isolated = new();
+
+    internal void Isolate(string node, bool isolated)
+    {
+        lock (_lock)
+            if (isolated) _isolated.Add(node);
+            else _isolated.Remove(node);
+    }
     string? _leader;
     CancellationTokenSource _session = new();
     TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -371,7 +384,8 @@ internal sealed class FakeCluster
         {
             Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>? handler = null;
             lock (cluster._lock)
-                if (cluster._leader is { } leader) cluster._handlers.TryGetValue(leader, out handler);
+                if (cluster._leader is { } leader && !cluster._isolated.Contains(name) && !cluster._isolated.Contains(leader))
+                    cluster._handlers.TryGetValue(leader, out handler);
             if (handler == null) throw new IOException("No leader.");
             return await Task.Run(async () => await handler(request, cancellation), cancellation);
         }
