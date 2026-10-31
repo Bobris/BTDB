@@ -79,7 +79,7 @@ public interface IReplicationNodeHost
 internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options, IReplicationNodeHost host,
     IReplicationLeaderStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
     IReplicationScheduler scheduler, ReplicationStatus? status = null, ReplicationLeadership? applicationLeadership = null,
-    ReplicationPresence? presence = null)
+    ReplicationPresence? presence = null, ReplicationLeaderChannel? leaderChannel = null)
 {
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
@@ -138,6 +138,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     public async Task RunAsync(CancellationToken cancellation)
     {
         options.Validate();
+        // The channel serves exactly the application sessions of this coordinator.
+        if (leaderChannel != null && !ReferenceEquals(leaderChannel.Leadership, applicationLeadership))
+            throw new ArgumentException("The leader channel must use this node's ReplicationLeadership.");
         presence?.Bind(scheduler, options.PresenceTimeout);
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
         using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); });
@@ -322,7 +325,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 if (!authority.IsValid) { DropLeadership(); return; }
                 var serving = new ServingLeader(identity, authority, databases, publishers, host, scheduler,
-                    options.ApplicationGeneration, applicationLeadership, presence, _candidate.NodeId);
+                    options.ApplicationGeneration, applicationLeadership, presence, _candidate.NodeId, leaderChannel);
                 Volatile.Write(ref _serving, serving);
                 status?.LeaderSessionStarted();
                 serving.StartApplicationLeadership(nodeCancellation);
@@ -404,6 +407,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             _peer = await transport.ConnectAsync(identity, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             presence?.Connected(LeaderJson.OptionalString(json, "nodeId"));
+            leaderChannel?.Connected(_peer);
             if (_comparedLeader != (identity.Term, identity.SessionId))
             {
                 _comparedLeader = (identity.Term, identity.SessionId);
@@ -648,6 +652,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             _resumeComparison[name] = following.Follower.ResumePosition;
         }
         _followers.Clear();
+        if (_peer != null) leaderChannel?.Disconnected(_peer);
         _peer?.Dispose();
         _peer = null;
     }

@@ -86,6 +86,9 @@ internal interface IReplicationPeerSession : IDisposable
     // Separate from the poll: a leader without presence support fails only this call.
     ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
         CancellationToken cancellation);
+    // A ReplicationLeaderChannel request; a leader without the channel fails only this call.
+    ValueTask<ReadOnlyMemory<byte>> SendApplicationAsync(string channel, ReadOnlyMemory<byte> request,
+        CancellationToken cancellation);
 }
 
 internal interface IReplicationPeerTransport

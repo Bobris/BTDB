@@ -162,6 +162,34 @@ timeout also reports `Settling`. A presence failure, including a leader running 
 during a rolling upgrade, only leaves the view settling; it never disturbs replication. Presence is sampled discovery,
 not fencing: under a partition each side sees only the nodes reaching its leader.
 
+### Requests to the leader
+
+`AddBTDBReplication` also registers a singleton `ReplicationLeaderChannel`. It carries opaque request/response bytes
+from any node to the active leader over the follower's existing authenticated peer session, for application
+coordination that must reach exactly one node, such as worker heartbeats to a leader-run scheduler. Every node
+registers the same named handlers; only the leader's run:
+
+```csharp
+var channel = app.Services.GetRequiredService<ReplicationLeaderChannel>();
+using var serving = channel.Serve("jobs", async (request, cancellation) =>
+{
+    return await scheduler.HandleAsync(request, cancellation); // runs only on the active leader
+});
+ReadOnlyMemory<byte> reply = await channel.SendAsync("jobs", payload, stopping);
+```
+
+A handler runs only while this node's leader session is active, the same session that runs
+[`RunWhileLeaderAsync`](#application-work-during-leadership) callbacks, so never while activating, draining for a
+handoff, after fencing or after shutdown. Its token is cancelled when that session ends or the caller disconnects,
+and a result produced after the session ended is discarded. On the leader `SendAsync` calls its own handler directly,
+without the caller's ambient context; on a follower it uses the connected leader. It throws `IOException` when no
+leader is connected, the leader has no handler for the channel, its session ended or the handler failed. In each case
+the request may already have taken effect, so retries must be safe; there is no retry, ordering or persistence.
+Requests and responses are limited to `ReplicationLeaderChannel.MaximumMessageBytes` (1 MiB); a request may be held
+open, for example as a long poll, and it uses one of the peer endpoint's concurrent requests while it is. A leader of
+an older version without the channel fails only these requests. Like presence, the channel is not fencing for external
+effects: carry the application's own session or epoch in payloads when a stale leader's answer matters.
+
 ### Application work during leadership
 
 `AddBTDBReplication` registers a singleton `ReplicationLeadership` for this node. Inject it into a scheduler or

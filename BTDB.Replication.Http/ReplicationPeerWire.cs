@@ -7,13 +7,13 @@ using BTDB.StreamLayer;
 
 namespace BTDB.Replication.Http;
 
-internal enum PeerOperation : byte { Connect = 1, Poll = 2, Read = 3, Handoff = 4, Presence = 5 }
+internal enum PeerOperation : byte { Connect = 1, Poll = 2, Read = 3, Handoff = 4, Presence = 5, Application = 6 }
 
 /// <summary>Database addresses a range read; Databases lists every database of one poll (empty for a heartbeat).</summary>
 internal sealed record PeerRequest(string ClusterId, ulong Term, string SessionId, string Endpoint, PeerOperation Operation,
     string? Database = null, long Challenge = 0, long DurationTicks = 0, uint FileId = 0, ulong Offset = 0,
     int Count = 0, PreparedHandoff? Handoff = null, ReplicationPeerPollRequest[]? Databases = null, int InlineBudget = 0,
-    ReplicationPresenceRequest? Presence = null);
+    ReplicationPresenceRequest? Presence = null, string? Channel = null, ReadOnlyMemory<byte> Payload = default);
 
 /// <summary>
 /// Compact binary peer messages: a version byte, then fixed fields in VUInt/string encoding. Requests carry the
@@ -70,11 +70,17 @@ internal static class ReplicationPeerWire
                 writer.WriteString(request.Presence.Value);
                 writer.WriteVUInt64(request.Presence.KnownVersion);
                 break;
+            case PeerOperation.Application:
+                writer.WriteString(request.Channel);
+                writer.WriteVUInt32((uint)request.Payload.Length);
+                writer.WriteBlock(request.Payload.Span);
+                break;
         }
         return writer.GetSpan().ToArray();
     }
 
-    public static PeerRequest DecodeRequest(ReadOnlyMemory<byte> bytes) => Decode(bytes, static (ref MemReader reader) =>
+    /// <summary>An application payload is a slice of bytes, not a copy.</summary>
+    public static PeerRequest DecodeRequest(ReadOnlyMemory<byte> bytes) => Decode(bytes, (ref MemReader reader) =>
     {
         var operation = (PeerOperation)reader.ReadUInt8();
         var request = new PeerRequest(RequiredString(ref reader), reader.ReadVUInt64(), RequiredString(ref reader),
@@ -109,6 +115,15 @@ internal static class ReplicationPeerWire
                 if (value is { Length: > ReplicationPresence.MaximumValueLength })
                     throw new InvalidDataException("Presence value exceeds its limit.");
                 return request with { Presence = new(endpoint, value, reader.ReadVUInt64()) };
+            case PeerOperation.Application:
+                var channel = RequiredString(ref reader);
+                var size = reader.ReadVUInt32();
+                var start = reader.GetCurrentPosition();
+                if (channel.Length is 0 or > ReplicationLeaderChannel.MaximumNameLength ||
+                    size > ReplicationLeaderChannel.MaximumMessageBytes || size > (ulong)bytes.Length - (ulong)start)
+                    throw new InvalidDataException("Invalid application request.");
+                reader.SkipBlock(size);
+                return request with { Channel = channel, Payload = bytes.Slice((int)start, (int)size) };
             default:
                 throw new InvalidDataException("Unknown peer operation.");
         }

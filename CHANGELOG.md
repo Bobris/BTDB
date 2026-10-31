@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+- Replication: `ReplicationLeaderChannel`, registered by `AddBTDBReplication`, sends application requests to the
+  active leader over the existing authenticated peer session. Every node registers named handlers with `Serve`. They
+  run only during the leader session that runs `RunWhileLeaderAsync` callbacks, and their token is cancelled when that
+  session ends. `SendAsync` calls the local handler on the leader and otherwise the connected leader, and throws
+  `IOException` when no active leader handled the request. Payloads are opaque bytes up to 1 MiB, so authenticated
+  peer requests may now be that large.
+
 ## 36.0.1
 
 ### Added

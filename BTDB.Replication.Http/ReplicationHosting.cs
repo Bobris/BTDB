@@ -35,6 +35,7 @@ public static class ReplicationHosting
         services.AddSingleton<ReplicationStatus>();
         services.AddSingleton<ReplicationLeadership>();
         services.AddSingleton<ReplicationPresence>();
+        services.AddSingleton<ReplicationLeaderChannel>();
         services.AddMetrics();
         services.AddSingleton<ReplicationMetrics>();
         services.AddHealthChecks().AddCheck<ReplicationReadinessCheck>("btdb-replication", tags: new[] { "ready" });
@@ -45,7 +46,7 @@ public static class ReplicationHosting
             sp.GetRequiredService<IReplicationLeaderStorage>(), sp.GetRequiredService<LeaseSessionController>(),
             sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
             sp.GetRequiredService<ReplicationStatus>(), sp.GetRequiredService<ReplicationLeadership>(),
-            sp.GetRequiredService<ReplicationPresence>()));
+            sp.GetRequiredService<ReplicationPresence>(), sp.GetRequiredService<ReplicationLeaderChannel>()));
         services.AddSingleton(sp => new ReplicationApplicationData(sp.GetRequiredService<IReplicationLeaderStorage>(),
             options.ClusterId, sp.GetRequiredService<LeaseSessionController>(),
             () => sp.GetRequiredService<ReplicationNodeCoordinator>().ApplicationDataLeadership()));

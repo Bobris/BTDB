@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,9 +45,10 @@ public partial class ReplicationNodeCoordinatorTest
             return cluster;
         }
 
-        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0, bool smallLogs = false)
+        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0, bool smallLogs = false, bool leaderChannel = false)
         {
             var host = new Host(this, name);
+            host.ServesLeaderChannel = leaderChannel;
             host.Generation = generation;
             host.InputEnd = inputEnd;
             host.CompactionTicks = compactionTicks;
@@ -236,6 +238,9 @@ public partial class ReplicationNodeCoordinatorTest
         public ReplicationFileSet? Collection;
         public readonly ReplicationStatus Status = new();
         public readonly ReplicationPresence Presence = new();
+        public ReplicationLeadership? Leadership;
+        public ReplicationLeaderChannel? Channel;
+        public bool ServesLeaderChannel;
         public ReplicationNodeCoordinator Coordinator = null!;
         public Task Run = null!;
         public int Restarts, Applied, Initializations, Compactions, LocalKvis;
@@ -265,11 +270,17 @@ public partial class ReplicationNodeCoordinatorTest
         }
         public void Start()
         {
+            if (ServesLeaderChannel)
+            {
+                Leadership ??= new(_scope);
+                Channel ??= new(Leadership);
+            }
             var leases = Leases = new LeaseSessionController(Storage, _scope, 0, TimeSpan.Zero);
             Coordinator = new(new("cluster", _name, TimeSpan.FromTicks(10), TimeSpan.FromTicks(20),
                 TimeSpan.FromTicks(15), TimeSpan.FromTicks(10), Generation, CompactionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null,
                 ProgressTimeoutTicks is { } timeout ? new(TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(RestartDelayTicks), TimeSpan.FromTicks(timeout)) : null,
-                PresenceInterval: TimeSpan.FromTicks(10)), this, Storage, leases, Peers, _scope, Status, presence: Presence);
+                PresenceInterval: TimeSpan.FromTicks(10)), this, Storage, leases, Peers, _scope, Status, Leadership,
+                Presence, Channel);
             Run = Coordinator.RunAsync(Cancellation.Token);
         }
         public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
@@ -416,6 +427,14 @@ public partial class ReplicationNodeCoordinatorTest
             public ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
                 CancellationToken cancellation)
             { owner.Check(endpoint, cancellation); return inner.ExchangePresenceAsync(request, cancellation); }
+            public async ValueTask<ReadOnlyMemory<byte>> SendApplicationAsync(string channel, ReadOnlyMemory<byte> request,
+                CancellationToken cancellation)
+            {
+                owner.Check(endpoint, cancellation);
+                var response = await inner.SendApplicationAsync(channel, request, cancellation).ConfigureAwait(false);
+                owner.Check(endpoint, cancellation);
+                return response;
+            }
             public ILeaderTrlReader Reader(string database) => new ReaderProxy(owner, endpoint, inner.Reader(database));
         }
         sealed class ReaderProxy(PeerTransport owner, string endpoint, ILeaderTrlReader inner) : ILeaderTrlReader
@@ -582,6 +601,45 @@ public partial class ReplicationNodeCoordinatorTest
         Assert.Equal(new Dictionary<string, string> { [leader == b ? "b" : "c"] = leader == b ? "B" : "C" },
             leader.Presence.Current.Members);
         Assert.True(follower.Presence.Current.Settling);
+    }
+
+    [Fact]
+    public async Task LeaderChannelServesOnlyTheActiveLeaderSession()
+    {
+        await using var cluster = await Cluster.Create();
+        var a = cluster.Start("a", leaderChannel: true);
+        var b = cluster.Start("b", leaderChannel: true);
+        cluster.Advance(20);
+        Assert.Equal(ReplicationNodeRole.Leader, a.Coordinator.Role);
+        foreach (var (node, name) in new[] { (a, "a"), (b, "b") })
+            node.Channel!.Serve("who", (request, _) => ValueTask.FromResult<ReadOnlyMemory<byte>>(
+                Encoding.UTF8.GetBytes(name + ":" + Encoding.UTF8.GetString(request.Span))));
+        async Task<string> Send(Host from, string text) => Encoding.UTF8.GetString(
+            (await from.Channel!.SendAsync("who", Encoding.UTF8.GetBytes(text))).Span);
+        Assert.Equal("a:b", await Send(b, "b"));
+        Assert.Equal("a:a", await Send(a, "a")); // the leader serves itself without the peer transport
+        await Assert.ThrowsAsync<IOException>(() => b.Channel!.SendAsync("unknown", new byte[] { 1 }).AsTask());
+        a.Channel!.Serve("fails", (_, _) => throw new InvalidOperationException("handler bug"));
+        Assert.IsType<InvalidOperationException>(
+            (await Assert.ThrowsAsync<IOException>(() => a.Channel.SendAsync("fails", new byte[] { 1 }).AsTask())).InnerException);
+
+        // A request held by the leader ends with the leader session, never with a late result.
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        a.Channel.Serve("hold", async (_, cancellation) =>
+        {
+            entered.SetResult();
+            await Task.Delay(Timeout.Infinite, cancellation);
+            return new byte[] { 1 };
+        });
+        var held = b.Channel!.SendAsync("hold", new byte[] { 1 }).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        cluster.WithoutContext(a.Cancellation.Cancel);
+        await Assert.ThrowsAsync<IOException>(() => held.WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => a.Run);
+
+        for (var i = 0; i < 40 && b.Coordinator.Role != ReplicationNodeRole.Leader; i++) cluster.Advance(5);
+        Assert.Equal(ReplicationNodeRole.Leader, b.Coordinator.Role);
+        Assert.Equal("b:b", await Send(b, "b"));
     }
 
     [Fact]

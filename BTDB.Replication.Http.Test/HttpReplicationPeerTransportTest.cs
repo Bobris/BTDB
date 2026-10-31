@@ -80,6 +80,7 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         public bool Block, IgnoreCancellation;
         public PreparedHandoff? Offer;
         public ReplicationPresenceRequest? Presence;
+        public (string Channel, byte[] Request)? Application;
         public int Reads;
         public ILeaderTrlReader? NativeReader;
         // When set, polls advertise progress to its end and return inline chunks of it (measurements).
@@ -125,6 +126,14 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
             backend.Presence = request;
             return ValueTask.FromResult(new ReplicationPresenceView(7, true, request.KnownVersion == 7 ? null
                 : new Dictionary<string, string> { ["https://leader"] = "L", [request.Endpoint] = request.Value ?? "" }));
+        }
+        public ValueTask<ReadOnlyMemory<byte>> SendApplicationAsync(string channel, ReadOnlyMemory<byte> request,
+            CancellationToken cancellation)
+        {
+            backend.Application = (channel, request.ToArray());
+            if (channel == "missing") throw new IOException("Unknown channel.");
+            // Echo the request reversed, so the response proves it crossed in both directions.
+            return ValueTask.FromResult<ReadOnlyMemory<byte>>(request.ToArray().Reverse().ToArray());
         }
         public ValueTask<int> ReadAsync(uint fileId, ulong offset, Memory<byte> destination, CancellationToken cancellation)
         {
@@ -178,6 +187,27 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         Assert.Equal(new Dictionary<string, string> { ["https://follower"] = "F", ["https://leader"] = "L" }, view.Members);
         Assert.Null((await session.ExchangePresenceAsync(new("https://follower", null, 7), default)).Members);
         Assert.Null(server.Backend.Presence!.Value);
+    }
+
+    [Fact]
+    public async Task ApplicationRequestsCrossRealHttpUpToTheMessageLimit()
+    {
+        await using var server = await Server.Start();
+        using var session = await server.Client.ConnectAsync(server.Identity, default);
+        Assert.Equal(new byte[] { 3, 2, 1 }, (await session.SendApplicationAsync("actions", new byte[] { 1, 2, 3 }, default)).ToArray());
+        Assert.Equal("actions", server.Backend.Application!.Value.Channel);
+        var largest = Enumerable.Range(0, ReplicationLeaderChannel.MaximumMessageBytes).Select(i => (byte)i).ToArray();
+        Assert.Equal(largest.Reverse(), (await session.SendApplicationAsync("actions", largest, default)).ToArray());
+        Assert.Empty((await session.SendApplicationAsync("actions", ReadOnlyMemory<byte>.Empty, default)).ToArray());
+        // The leader's rejection reaches the caller as an ordinary peer failure.
+        await Assert.ThrowsAsync<IOException>(() => session.SendApplicationAsync("missing", new byte[] { 1 }, default).AsTask());
+        server.Override = context => context.Response.Body.WriteAsync(new byte[ReplicationLeaderChannel.MaximumMessageBytes + 1]).AsTask();
+        await Assert.ThrowsAsync<IOException>(() => session.SendApplicationAsync("actions", new byte[] { 1 }, default).AsTask());
+        server.Override = null;
+        server.Identity = server.Identity with { Term = 8, SessionId = "replacement", ApiKey = "rotated" };
+        server.Backend.Application = null;
+        await Assert.ThrowsAsync<IOException>(() => session.SendApplicationAsync("actions", new byte[] { 1 }, default).AsTask());
+        Assert.Null(server.Backend.Application);
     }
 
     [Fact]
@@ -274,7 +304,7 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
             Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
         }
         Assert.Equal(0, server.Backend.Reads);
-        using var content = new StringContent(new string('x', HttpReplicationPeerTransport.MaximumControlBytes + 1));
+        using var content = new StringContent(new string('x', HttpReplicationPeerTransport.MaximumRequestBytes + 1));
         using var oversized = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path, content);
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
     }

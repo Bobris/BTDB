@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Xunit;
@@ -62,6 +63,27 @@ public class ReplicationPeerWireTest
             Presence = new("https://follower", new string('x', ReplicationPresence.MaximumValueLength + 1), 0)
         };
         Assert.Throws<InvalidDataException>(() => ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(oversized)));
+    }
+
+    [Fact]
+    public void ApplicationRequestRoundTripsAndRejectsInvalidChannelsAndSizes()
+    {
+        var request = Base(PeerOperation.Application) with { Channel = "actions", Payload = new byte[] { 1, 2, 3 } };
+        var decoded = ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(request));
+        Assert.Equal("actions", decoded.Channel);
+        Assert.Equal(new byte[] { 1, 2, 3 }, decoded.Payload.ToArray());
+        Assert.Equal(request with { Payload = default }, decoded with { Payload = default });
+        Assert.True(ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(request with { Payload = default }))
+            .Payload.IsEmpty);
+        foreach (var invalid in new[]
+                 {
+                     request with { Channel = "" },
+                     request with { Channel = new string('c', ReplicationLeaderChannel.MaximumNameLength + 1) },
+                     request with { Payload = new byte[ReplicationLeaderChannel.MaximumMessageBytes + 1] }
+                 })
+            Assert.Throws<InvalidDataException>(() => ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(invalid)));
+        var truncated = ReplicationPeerWire.EncodeRequest(request);
+        Assert.Throws<InvalidDataException>(() => ReplicationPeerWire.DecodeRequest(truncated.AsMemory(0, truncated.Length - 1)));
     }
 
     [Fact]

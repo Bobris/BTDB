@@ -16,12 +16,13 @@ namespace BTDB.Replication;
 internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAuthority authority,
     IReadOnlyList<ActivationDatabase> databases, IReadOnlyList<CanonicalTrlPublisher> publishers,
     IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation, ReplicationLeadership? leadership = null,
-    ReplicationPresence? presence = null, string? nodeId = null)
+    ReplicationPresence? presence = null, string? nodeId = null, ReplicationLeaderChannel? channel = null)
 {
     readonly ReplicationPresence.Board? _presence = presence?.StartLeading(identity.Endpoint, nodeId);
     readonly object _lock = new();
     readonly IReplicationNodeHost _host = host;
     readonly ReplicationLeadership? _leadership = leadership;
+    readonly ReplicationLeaderChannel? _channel = channel;
     readonly ulong _generation = generation;
     readonly byte[] _apiKey = Encoding.UTF8.GetBytes(identity.ApiKey);
     readonly ConfirmationGrants _grants = new(scheduler, authority);
@@ -140,6 +141,17 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
             lock (leader._lock) Check();
             if (leader._presence is not { } board) throw new IOException("This leader does not serve presence.");
             return ValueTask.FromResult(board.Exchange(request));
+        }
+        public async ValueTask<ReadOnlyMemory<byte>> SendApplicationAsync(string name, ReadOnlyMemory<byte> request,
+            CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            lock (leader._lock) Check();
+            if (leader._channel is not { } served) throw new IOException("This leader does not serve application channels.");
+            // The channel also requires the active application session, so a draining leader rejects requests.
+            var response = await served.ServeAsync(name, request, cancellation).ConfigureAwait(false);
+            lock (leader._lock) Check();
+            return response;
         }
         public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
         {

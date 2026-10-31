@@ -21,6 +21,8 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
     internal const string Path = "/_btdb/replication";
     internal const int MaximumRange = 256 * 1024;
     internal const int MaximumControlBytes = 16 * 1024;
+    // Requests are read only after authentication; application payloads raise the bound above control messages.
+    internal const int MaximumRequestBytes = MaximumControlBytes + ReplicationLeaderChannel.MaximumMessageBytes;
     readonly HttpClient _client;
     readonly SemaphoreSlim _requests;
     Registration? _listener;
@@ -90,9 +92,9 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
             var apiKey = authorization[7..];
             if (!listener.Authenticate(apiKey))
             { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
-            if (context.Request.ContentLength > MaximumControlBytes)
+            if (context.Request.ContentLength > MaximumRequestBytes)
             { context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge; return; }
-            var bytes = await ReadBoundedAsync(context.Request.Body, context.Request.ContentLength, MaximumControlBytes, context.RequestAborted).ConfigureAwait(false);
+            var bytes = await ReadBoundedAsync(context.Request.Body, context.Request.ContentLength, MaximumRequestBytes, context.RequestAborted).ConfigureAwait(false);
             PeerRequest request;
             try { request = ReplicationPeerWire.DecodeRequest(bytes); }
             catch (InvalidDataException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
@@ -152,6 +154,14 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                         context.Response.ContentType = "application/octet-stream";
                         context.Response.ContentLength = view.Length;
                         await context.Response.Body.WriteAsync(view, cancellation).ConfigureAwait(false);
+                        break;
+                    case PeerOperation.Application:
+                        var reply = await session.SendApplicationAsync(request.Channel!, request.Payload, cancellation)
+                            .ConfigureAwait(false);
+                        CheckListener(listener, identity, cancellation);
+                        context.Response.ContentType = "application/octet-stream";
+                        context.Response.ContentLength = reply.Length;
+                        await context.Response.Body.WriteAsync(reply, cancellation).ConfigureAwait(false);
                         break;
                     case PeerOperation.Handoff:
                         if (request.Handoff == null || !Guid.TryParse(request.Handoff.TransferId, out _))
@@ -276,6 +286,17 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                 response.Content.Headers.ContentLength, ReplicationPeerWire.MaximumPresenceBytes, linked.Token).ConfigureAwait(false);
             try { return ReplicationPeerWire.DecodePresence(bytes); }
             catch (InvalidDataException error) { throw new IOException("Invalid presence view.", error); }
+        }
+
+        public async ValueTask<ReadOnlyMemory<byte>> SendApplicationAsync(string channel, ReadOnlyMemory<byte> request,
+            CancellationToken cancellation)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closed.Token);
+            using var response = await SendAsync(Message(PeerOperation.Application) with { Channel = channel, Payload = request },
+                linked.Token).ConfigureAwait(false);
+            RequireStatus(response, HttpStatusCode.OK);
+            return await ReadBoundedAsync(await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false),
+                response.Content.Headers.ContentLength, ReplicationLeaderChannel.MaximumMessageBytes, linked.Token).ConfigureAwait(false);
         }
 
         async ValueTask<HttpResponseMessage> SendAsync(PeerRequest message, CancellationToken cancellation)

@@ -60,6 +60,16 @@ public sealed class ReplicationLeadership(IReplicationScheduler scheduler)
         }
     }
 
+    /// <summary>The token of the active session, cancelled exactly when a <see cref="RunWhileLeaderAsync"/> callback's
+    /// is; null on followers, while activating, draining for handoff, after fencing or shutdown.</summary>
+    internal CancellationToken? ActiveToken
+    {
+        get
+        {
+            lock (_lock) return _current is { IsActive: true } session ? session.Token : null;
+        }
+    }
+
     internal void Activate(LeaseAuthority authority, CancellationToken shutdown)
     {
         lock (_lock)
