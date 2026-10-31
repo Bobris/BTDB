@@ -125,8 +125,11 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         using var query = publisher.StartQuery();
         var now = Now;
         lock (_lock)
+        {
+            _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
             foreach (var row in Ambient.Relation<IQueuedActions>())
                 _planner.Update(new(row.TenantId, row.ActionId), row, actions.TypeOf(row.Name), now);
+        }
     }
 
     void Apply(HashSet<QualifiedActionId> changed)
@@ -139,6 +142,11 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             lock (_lock)
                 foreach (var id in changed)
                 {
+                    if (id == ActionChanges.Settings)
+                    {
+                        _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
+                        continue;
+                    }
                     var row = queued.FindByIdOrDefault(id.TenantId, id.ActionId);
                     _planner.Update(id, row, row == null ? null : actions.TypeOf(row.Name), now);
                 }
@@ -179,6 +187,22 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             }
         }
         foreach (var start in starts) await publisher.PublishAsync(start, cancellation).ConfigureAwait(false);
+    }
+
+    internal ActionsOverview Overview()
+    {
+        lock (_lock)
+        {
+            var now = Now;
+            var actionsByPriority = _planner.Actions.Values.GroupBy(a => a.Priority).OrderBy(g => g.Key);
+            return new(Session,
+                _planner.Workers.Values.OrderBy(w => w.NodeId, StringComparer.Ordinal).Select(w => new WorkerOverview(
+                    w.Session, w.NodeId, w.Generation, w.Capacity, w.Used, w.Ready, now - w.LastExchange,
+                    w.Actions.Count)).ToList(),
+                actionsByPriority.Select(g => new PriorityOverview(g.Key, g.Count(a => a.Runnable),
+                    g.Count(a => a.Worker != null), g.Count(a => a.Protected))).ToList(),
+                _planner.Suspended.Order(StringComparer.Ordinal).ToList());
+        }
     }
 
     void WakeWorkers()

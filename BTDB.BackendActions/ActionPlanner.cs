@@ -69,6 +69,7 @@ internal sealed class PlannedWorker
     internal ulong Generation { get; set; }
     internal bool Ready { get; set; }
     internal TimeSpan ExpiresAt { get; set; }
+    internal TimeSpan LastExchange { get; set; }
     internal int Used { get; set; }
     internal readonly HashSet<QualifiedActionId> Actions = new();
 }
@@ -112,6 +113,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
 
     internal IReadOnlyDictionary<QualifiedActionId, PlannedAction> Actions => _actions;
     internal IReadOnlyDictionary<Guid, PlannedWorker> Workers => _workers;
+    /// <summary>Action types that start no new attempts.</summary>
+    internal IReadOnlySet<string> Suspended { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>Applies an action's committed row, or its removal when row is null. A started attempt this session did
     /// not start is protected for one lease, so a new coordinator does not start it twice while it may still run.</summary>
@@ -193,6 +196,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         worker.Generation = workerGeneration;
         worker.Ready = ready;
         worker.ExpiresAt = now + options.WorkerTimeout;
+        worker.LastExchange = now;
         var commands = new List<WorkerCommand>();
         var reported = new HashSet<QualifiedActionId>();
         foreach (var attempt in finished)
@@ -279,7 +283,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
                 if (!_tenants.TryGetValue(tenant, out var actions)) continue;
                 foreach (var action in actions)
                 {
-                    if (!action.Runnable || !GroupAdmits(action)) continue;
+                    if (!action.Runnable || Suspended.Contains(action.Type.Name) || !GroupAdmits(action)) continue;
                     var worker = PickWorker(action);
                     if (worker == null) continue;
                     var attempt = action.RunAttempts + 1;

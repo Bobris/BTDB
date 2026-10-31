@@ -10,7 +10,7 @@
   session ends. `SendAsync` calls the local handler on the leader and otherwise the connected leader, and throws
   `IOException` when no active leader handled the request. Payloads are opaque bytes up to 1 MiB, so authenticated
   peer requests may now be that large.
-- BackendActions (new project, not yet packaged): action contracts (`ActionInput<TResult>`, `IActionHandler`,
+- BackendActions (new package): action contracts (`ActionInput<TResult>`, `IActionHandler`,
   `[BackendAction]`, unificator and aggregator inputs, before-start hooks) and their replicated state. Application
   consumes enqueue and cancel actions in their own transaction with `BackendActions.Enqueue` and `Cancel`; other code
   uses `EnqueueAsync` and `CancelAsync`. Delayed actions queue when due. Start and finish events accept only the
@@ -22,7 +22,10 @@
   coordinator gets no new actions. `IActionContext` adds `SubmitPartialAsync` for ordered partial results,
   `AdjustResources`, `CancelAfter` and `CancellationReason`; `ActionPlannerOptions.CpuOverride` replaces a type's
   cost. `[RepeatedlyScheduled]`, `[DailyScheduled]` and `[MonthlyScheduled]` start an action type once per passed
-  occurrence. Monitoring and process qualification follow; see `Doc/BackendActionsPlan.md`.
+  occurrence. Monitoring: `ListActions`, `FindAction`, `HasStartedActions` and `FindByUniqueKey` read any node's
+  snapshot, `BackendActionsHost.GetOverviewAsync` returns the coordinator's workers and queue, `SuspendAsync` stops
+  starting chosen types, and meter `BTDB.BackendActions` counts attempts. `Testing.TestActionContext` helps unit test
+  handlers. The package is released with the others from now on, as a preview; usage is in `Doc/BackendActions.md`.
 
 ## 36.0.1
 

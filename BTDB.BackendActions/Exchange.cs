@@ -71,9 +71,17 @@ internal sealed class ExchangeResponse
 
 [JsonSerializable(typeof(ExchangeRequest))]
 [JsonSerializable(typeof(ExchangeResponse))]
+[JsonSerializable(typeof(ActionsOverview))]
 internal sealed partial class ExchangeJson : JsonSerializerContext
 {
     internal const string Channel = "btdb-backend-actions";
+    internal const string OverviewChannel = "btdb-backend-actions-overview";
+
+    internal static byte[] Encode(ActionsOverview overview) =>
+        JsonSerializer.SerializeToUtf8Bytes(overview, Default.ActionsOverview);
+
+    internal static ActionsOverview DecodeOverview(ReadOnlyMemory<byte> bytes) =>
+        JsonSerializer.Deserialize(bytes.Span, Default.ActionsOverview) ?? throw new JsonException("Empty overview.");
 
     internal static byte[] Encode(ExchangeRequest request) =>
         JsonSerializer.SerializeToUtf8Bytes(request, Default.ExchangeRequest);

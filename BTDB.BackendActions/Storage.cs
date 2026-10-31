@@ -34,6 +34,7 @@ public interface IQueuedActions : IRelation<QueuedAction>
     void Insert(QueuedAction item);
     void Update(QueuedAction item);
     QueuedAction? FindByIdOrDefault(ulong tenantId, ulong actionId);
+    IEnumerable<QueuedAction> FindById(ulong tenantId);
     bool RemoveById(ulong tenantId, ulong actionId);
 }
 
@@ -54,6 +55,7 @@ public interface IDelayedActions : IRelation<DelayedAction>
     void Insert(DelayedAction item);
     void Update(DelayedAction item);
     DelayedAction? FindByIdOrDefault(ulong tenantId, ulong actionId);
+    IEnumerable<DelayedAction> FindById(ulong tenantId);
     IEnumerable<DelayedAction> ListByStartAt(AdvancedEnumeratorParam<DateTime> param);
     bool RemoveById(ulong tenantId, ulong actionId);
 }
@@ -94,6 +96,8 @@ public class BackendActionsState
     public ulong NextOrder { get; set; }
     /// <summary>The coordinator session whose start events are accepted.</summary>
     public Guid CoordinatorSession { get; set; }
+    /// <summary>Action types that start no new attempts; their inputs keep queueing.</summary>
+    public List<string> Suspended { get; set; } = new();
 }
 
 public interface IBackendActionsStates : IRelation<BackendActionsState>

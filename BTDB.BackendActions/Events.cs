@@ -74,6 +74,13 @@ public class ScheduledActionStarted : PureEvent
     public bool Start { get; set; }
 }
 
+/// <summary>Stops or resumes starting the named action types; see <see cref="BackendActions.SuspendAsync"/>.</summary>
+public class ActionsSuspended : PureEvent
+{
+    public List<string> Names { get; set; } = new();
+    public bool Suspended { get; set; }
+}
+
 public class ActionKey
 {
     public ulong TenantId { get; set; }
@@ -89,7 +96,7 @@ public class DelayedActionsDue : PureEvent
 sealed class BackendActionsEventHandler(BackendActions actions) :
     IEventHandler<ActionEnqueued, ActionEnqueuedResult>, IEventHandler<ActionCancelRequested, ActionCancelResult>,
     IEventHandler<CoordinatorActivated>, IEventHandler<ActionsStarted>, IEventHandler<ActionFinished>,
-    IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>
+    IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>, IEventHandler<ActionsSuspended>
 {
     public ActionEnqueuedResult? Validate(ActionEnqueued ev)
     {
@@ -119,4 +126,6 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Consume(DelayedActionsDue ev) => actions.QueueDue(ev);
     public void Validate(ScheduledActionStarted ev) { }
     public void Consume(ScheduledActionStarted ev) => actions.StartScheduled(ev);
+    public void Validate(ActionsSuspended ev) { }
+    public void Consume(ActionsSuspended ev) => actions.Suspend(ev.Names, ev.Suspended);
 }

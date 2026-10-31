@@ -253,7 +253,7 @@ static class Program
     static readonly string[] PackageProjects =
     [
         "BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", "BTDB.Replication", "BTDB.Replication.Azure",
-        "BTDB.Replication.Http", "BTDB.Replication.EventSourcing", "BTDB.LSM", "BTDB.LSM.Azure"
+        "BTDB.Replication.Http", "BTDB.Replication.EventSourcing", "BTDB.BackendActions", "BTDB.LSM", "BTDB.LSM.Azure"
     ];
 
     // Projects whose <Version> the release updates and commits.

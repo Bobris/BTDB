@@ -331,6 +331,14 @@ internal sealed class Recorder
         }
     }
 
+    // The export handler on its own, for the test context; it records nothing.
+    internal sealed class ExportProbe() : IActionHandler<ExportOrder, OrderResult>
+    {
+        readonly ExportHandler _inner = new(new Recorder());
+        public Task<OrderResult> ExecuteAsync(ExportOrder input, IActionContext context) => _inner.ExecuteAsync(input, context);
+        public void OnFinished(ExportOrder input, ActionOutcome<OrderResult> outcome) { }
+    }
+
     sealed class HourlyHandler(Recorder recorder) : Handler<HourlyOrder>(recorder, _ => "hourly"), IScheduledActionGate
     {
         public bool CanStartScheduled(DateTime now) => Owner.AllowScheduled;
@@ -352,7 +360,7 @@ internal sealed class Recorder
 internal sealed class FakeCluster
 {
     readonly object _lock = new();
-    readonly Dictionary<string, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>> _handlers = new();
+    readonly Dictionary<(string Node, string Channel), Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>> _handlers = new();
     // Nodes that reach no leader and that no node reaches as the leader.
     readonly HashSet<string> _isolated = new();
 
@@ -413,8 +421,8 @@ internal sealed class FakeCluster
 
         public IDisposable Serve(string channel, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>> handler)
         {
-            lock (cluster._lock) cluster._handlers.Add(name, handler);
-            return new Registration(() => { lock (cluster._lock) cluster._handlers.Remove(name); });
+            lock (cluster._lock) cluster._handlers.Add((name, channel), handler);
+            return new Registration(() => { lock (cluster._lock) cluster._handlers.Remove((name, channel)); });
         }
 
         public async ValueTask<ReadOnlyMemory<byte>> SendAsync(string channel, ReadOnlyMemory<byte> request,
@@ -423,7 +431,7 @@ internal sealed class FakeCluster
             Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>? handler = null;
             lock (cluster._lock)
                 if (cluster._leader is { } leader && !cluster._isolated.Contains(name) && !cluster._isolated.Contains(leader))
-                    cluster._handlers.TryGetValue(leader, out handler);
+                    cluster._handlers.TryGetValue((leader, channel), out handler);
             if (handler == null) throw new IOException("No leader.");
             return await Task.Run(async () => await handler(request, cancellation), cancellation);
         }

@@ -33,8 +33,12 @@ public sealed class BackendActionsHost
         ArgumentOutOfRangeException.ThrowIfNegative(options.WorkerCpu);
         if (options.PollTimeout <= TimeSpan.Zero || options.PollTimeout >= options.Planner.WorkerTimeout)
             throw new ArgumentException("The poll timeout must be positive and below the worker timeout.");
-        Worker = new(actions, publisher, cluster, options);
+        _metrics = new(() => Coordinator?.Overview());
+        Worker = new(actions, publisher, cluster, options, _metrics);
     }
+
+    readonly BackendActionsMetrics _metrics;
+    internal BackendActionsMetrics Metrics => _metrics;
 
     internal ActionWorker Worker { get; }
     internal ActionCoordinator? Coordinator => Volatile.Read(ref _coordinator);
@@ -43,9 +47,14 @@ public sealed class BackendActionsHost
     /// <paramref name="stopping"/> is cancelled.</summary>
     public async Task RunAsync(CancellationToken stopping)
     {
+        using var metrics = _metrics;
         using var serving = _cluster.Serve(ExchangeJson.Channel, (request, cancellation) =>
             Coordinator is { } coordinator ? coordinator.ExchangeAsync(request, cancellation)
                 : throw new IOException("This node does not coordinate backend actions."));
+        using var overview = _cluster.Serve(ExchangeJson.OverviewChannel, (_, _) =>
+            ValueTask.FromResult<ReadOnlyMemory<byte>>(Coordinator is { } coordinator
+                ? ExchangeJson.Encode(coordinator.Overview())
+                : throw new IOException("This node does not coordinate backend actions.")));
         var worker = _options.RunWorker ? Worker.RunAsync(stopping) : Task.CompletedTask;
         try
         {
@@ -68,6 +77,16 @@ public sealed class BackendActionsHost
             try { await worker.ConfigureAwait(false); }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
         }
+    }
+
+    /// <summary>The active coordinator's workers and queue, from any node; IOException while no coordinator runs or
+    /// the leader is unreachable.</summary>
+    public async Task<ActionsOverview> GetOverviewAsync(CancellationToken cancellation = default)
+    {
+        var reply = await _cluster.SendAsync(ExchangeJson.OverviewChannel, ReadOnlyMemory<byte>.Empty, cancellation)
+            .ConfigureAwait(false);
+        try { return ExchangeJson.DecodeOverview(reply); }
+        catch (System.Text.Json.JsonException error) { throw new IOException("Invalid backend action overview.", error); }
     }
 
     async Task CoordinateAsync(CancellationToken leader)

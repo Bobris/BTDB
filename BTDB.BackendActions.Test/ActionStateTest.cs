@@ -229,6 +229,33 @@ public class ActionStateTest
     }
 
     [Fact]
+    public async Task MonitoringQueriesReadTheLocalSnapshot()
+    {
+        await using var node = await Start();
+        var session = await Activate(node);
+        await Place(node, new ProcessOrder { TenantId = 1, Amount = 1 });
+        await Place(node, new RefreshCache { TenantId = 2, Key = "k" });
+        await Place(node, new ProcessOrder { TenantId = 1 }, ActionPriority.Low, _time.Now.UtcDateTime.AddHours(1));
+        await Started(node, session, new(1, 1), 1);
+        await node.Actions.SuspendAsync(node.Publisher, ["refresh", "other"]);
+        await node.Actions.SuspendAsync(node.Publisher, ["other"], suspended: false);
+        using var query = node.Publisher.StartQuery();
+        Assert.Equal([(new QualifiedActionId(1, 3), ActionState.Delayed), (new(1, 1), ActionState.Started),
+                (new(2, 2), ActionState.Queued)],
+            node.Actions.ListActions().Select(a => (a.Id, a.State)));
+        Assert.Equal([3ul, 1ul], node.Actions.ListActions(1).Select(a => a.Id.ActionId));
+        var started = node.Actions.FindAction(new(1, 1))!;
+        Assert.Equal((1ul, "", 1), (started.RunAttempts, started.WorkerNode, Assert.IsType<ProcessOrder>(started.Input).Amount));
+        Assert.Equal(_time.Now.UtcDateTime.AddHours(1), node.Actions.FindAction(new(1, 3))!.StartAt);
+        Assert.Null(node.Actions.FindAction(new(1, 2)));
+        Assert.True(node.Actions.HasStartedActions(1));
+        Assert.False(node.Actions.HasStartedActions(2));
+        Assert.Equal(new QualifiedActionId(2, 2), node.Actions.FindByUniqueKey(2, "refresh", "k"));
+        Assert.Null(node.Actions.FindByUniqueKey(1, "refresh", "k"));
+        Assert.Equal(["refresh"], node.Actions.SuspendedActions);
+    }
+
+    [Fact]
     public async Task ReplicasWithDifferentBatchSizesWriteIdenticalTransactionLogs()
     {
         var first = await Start(batch: 1);

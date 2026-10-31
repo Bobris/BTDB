@@ -27,7 +27,7 @@ internal sealed class ActionType
 /// then <see cref="RegisterEvents"/> on the application's dispatcher before the publisher is constructed, include
 /// <see cref="RelationTypes"/> in the database's relation initialization and call <see cref="RegisterTypes"/> on it.
 /// </summary>
-public sealed class BackendActions
+public sealed partial class BackendActions
 {
     /// <summary>Relations to add to the application's <c>InitializeRelations</c> list.</summary>
     public static IReadOnlyList<Type> RelationTypes { get; } =
@@ -87,7 +87,8 @@ public sealed class BackendActions
             .Register<ActionsStarted>(handler)
             .Register<ActionFinished>(handler)
             .Register<DelayedActionsDue>(handler)
-            .Register<ScheduledActionStarted>(handler);
+            .Register<ScheduledActionStarted>(handler)
+            .Register<ActionsSuspended>(handler);
     }
 
     /// <summary>Registers every input type for polymorphic storage in the database's action rows.</summary>
@@ -171,6 +172,33 @@ public sealed class BackendActions
         }
         Complete(row, ActionOutcomeKind.Cancelled, row.RunAttempts, null, null);
         return true;
+    }
+
+    /// <summary>Publishes <see cref="ActionsSuspended"/>: suspended types start no new attempts, running ones go on,
+    /// and their inputs keep queueing. Resume them with <paramref name="suspended"/> false.</summary>
+    public async Task SuspendAsync(IEventPublisher publisher, IEnumerable<string> names, bool suspended = true,
+        CancellationToken cancellation = default)
+    {
+        ArgumentNullException.ThrowIfNull(publisher);
+        ArgumentNullException.ThrowIfNull(names);
+        await publisher.PublishAsync(new ActionsSuspended { Names = names.ToList(), Suspended = suspended }, cancellation)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>The suspended action types, from the ambient query or consume snapshot.</summary>
+    public IReadOnlyList<string> SuspendedActions =>
+        Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0)?.Suspended ?? [];
+
+    internal void Suspend(List<string> names, bool suspended)
+    {
+        var state = State();
+        var set = new SortedSet<string>(state.Suspended, StringComparer.Ordinal);
+        foreach (var name in names)
+            if (suspended) set.Add(name);
+            else set.Remove(name);
+        state.Suspended = set.ToList();
+        Ambient.Relation<IBackendActionsStates>().Update(state);
+        Changed(ActionChanges.Settings);
     }
 
     internal void ActivateCoordinator(Guid session)
@@ -331,6 +359,9 @@ public sealed class BackendActions
 /// <summary>Actions whose rows changed in committed batches, for the coordinator running on this node.</summary>
 internal sealed class ActionChanges
 {
+    /// <summary>Stands for a change of the cluster-wide state rather than of an action.</summary>
+    internal static readonly QualifiedActionId Settings = new(ulong.MaxValue, ulong.MaxValue);
+
     readonly object _lock = new();
     HashSet<QualifiedActionId> _changed = new();
     TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);

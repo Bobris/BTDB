@@ -11,10 +11,11 @@ namespace BTDB.BackendActions;
 /// without an outcome, so another node runs them again.
 /// </summary>
 internal sealed class ActionWorker(BackendActions actions, EventPublisher publisher, IBackendActionsCluster cluster,
-    BackendActionsOptions options)
+    BackendActionsOptions options, BackendActionsMetrics? metrics = null)
 {
     readonly BackendActions _actions = actions;
     readonly BackendActionsOptions _options = options;
+    readonly BackendActionsMetrics? _metrics = metrics;
     readonly EventPublisher _publisher = publisher;
     readonly object _lock = new();
     readonly Dictionary<QualifiedActionId, Execution> _running = new();
@@ -44,6 +45,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 }
                 catch (Exception error) when (error is IOException or JsonException)
                 {
+                    _metrics?.ExchangeFailed();
                     await Task.Delay(_options.RetryDelay, _options.TimeProvider, stopping).ConfigureAwait(false);
                 }
                 finally
@@ -182,14 +184,18 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 while (worker._publisher.LastAppliedEventId < startEventId)
                     await Task.Delay(1, _cancel.Token).ConfigureAwait(false);
                 IActionInput input;
+                DateTime queuedAt;
                 using (StartQuery())
                 {
                     var row = Ambient.Relation<IQueuedActions>().FindByIdOrDefault(id.TenantId, id.ActionId);
                     if (row is not { IsStarted: true } || row.RunAttempts != attempt) return; // superseded meanwhile
                     input = (IActionInput)row.Input!;
+                    queuedAt = row.QueuedAt;
                     _type = worker._actions.TypeOf(row.Name);
                 }
                 if (_type == null) return;
+                var started = worker._options.TimeProvider.GetTimestamp();
+                worker._metrics?.Started(attempt, worker._options.TimeProvider.GetUtcNow().UtcDateTime - queuedAt);
                 var finished = new ActionFinished { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
                 try
                 {
@@ -216,6 +222,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 if (_forgotten || CancellationReason == ActionCancellationReason.Stopped) return;
                 await worker._publisher.PublishAsync(finished).ConfigureAwait(false);
                 published = true;
+                worker._metrics?.Finished(finished.Kind, worker._options.TimeProvider.GetElapsedTime(started));
             }
             catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
             catch (Exception)

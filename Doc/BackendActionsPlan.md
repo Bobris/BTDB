@@ -380,15 +380,21 @@ HTTP: process kill, failover, handoff).
 
 ## 8. Monitoring and operations
 
-* **Any node, from the local DB:** queued, delayed and started actions with paging; actions by tenant; "does a tenant
-  have running actions"; lookup by unique key. These are reads in `StartQuery()` snapshots and need no leader.
-* **Leader overview** (an `overview` request on the same channel, from any node): workers with capacity,
-  usage, sessions and last exchange; running attempts with lease age; queue counts by priority; settling state.
-* **Metrics** (meter `BTDB.BackendActions`): queued/running/delayed counts, start delay, execution duration and
-  errors, attempts superseded, workers, exchange failures, and coordinator sessions. The leader reports
-  cluster-level gauges; every node reports its worker's.
-* **Admin events:** capacity shares by priority, suspended action names (stop starting them; inputs keep queueing) and
-  runtime tracing.
+Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring).
+
+* **Any node, from the local DB:** `ListActions(tenantId?)` (delayed, queued and started), `FindAction`,
+  `HasStartedActions(tenantId)`, `FindByUniqueKey` and `SuspendedActions`, in the caller's query or consume scope.
+  They need no leader and no secondary keys: tenant lists use the primary key prefix, and callers page with LINQ.
+* **Leader overview:** `BackendActionsHost.GetOverviewAsync` asks the active coordinator over the channel
+  `btdb-backend-actions-overview`: workers with session, node, generation, capacity, CPU in use, readiness, time since
+  their exchange and attempts; per priority the waiting, running and protected actions; the suspended types.
+* **Metrics** (meter `BTDB.BackendActions`, one per host, no node or action labels): attempts started and finished
+  (by `kind`), start delay and attempt duration, failed exchanges; the gauges waiting, running and workers come only
+  from the node whose coordinator runs.
+* **Suspension:** `SuspendAsync(publisher, names, suspended)` publishes `ActionsSuspended`. Suspended types start no
+  new attempts; running ones go on and inputs keep queueing.
+* **Dropped:** capacity shares as an admin event (they stay leader configuration in `ActionPlannerOptions`, like the
+  CPU override) and runtime tracing (the library has no logging dependency; the overview and metrics cover it).
 
 ## 9. Testing strategy
 
@@ -404,8 +410,9 @@ HTTP: process kill, failover, handoff).
 * **Process tests:** kill -9 the worker or the leader under load. Assert that every action finishes exactly once in
   `OnFinished`, and that no action is lost (the reference's failover verification scenario).
 * **Approval tests:** public API, event list and relation schemas (Assent), as in the reference.
-* **Application test helpers:** `ActionHandlerTestBase` with `ExecuteAsync`, `ExpectBackendActionExceptionAsync` and
-  `Finish(outcome)` against an in-memory ObjectDB.
+* **Application test helpers:** `Testing.TestActionContext` runs `ExecuteAsync` without a cluster and records parts,
+  adjustments and timeouts. `OnFinished` is a consume and is tested through an `EventPublisher`, so no handler base
+  class is needed.
 
 ## 10. Milestones
 
@@ -416,7 +423,7 @@ HTTP: process kill, failover, handoff).
 | A2 | `ActionPlanner` port, coordinator lifetime, channel messages, worker and executor on one node. Done. | A single-node app runs actions end to end; the planner suite passes. |
 | A3 | Multi-node failover, attempt fencing, settling, rolling upgrades (by application generation since A4). Done; the exchange needs no HTTP code of its own. | Failover tests pass in process. |
 | A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. Done. | Feature parity with the reference API surface. |
-| A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. | The package packs, and docs cover hosting, and the API. |
+| A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. Done. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification and migration notes from the reference implementation. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
 | A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
 

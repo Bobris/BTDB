@@ -31,16 +31,19 @@ public class ActionHostTest : IAsyncLifetime
         Planner = new() { Lease = lease ?? TimeSpan.FromSeconds(30), WorkerTimeout = TimeSpan.FromSeconds(2) }
     };
 
+    BackendActionsHost? _host;
+
     CancellationTokenSource StartHost(BackendActionsOptions? options = null)
     {
         var stop = new CancellationTokenSource();
-        var host = new BackendActionsHost(_node.Actions, _node.Publisher, _cluster.Node("a"), options ?? Options());
-        _hosts.Add((stop, host.RunAsync(stop.Token)));
+        _host = new BackendActionsHost(_node.Actions, _node.Publisher, _cluster.Node("a"), options ?? Options());
+        _hosts.Add((stop, _host.RunAsync(stop.Token)));
         return stop;
     }
 
-    Task<QualifiedActionId> Enqueue(IActionInput input, DateTime? startAt = null) =>
-        _node.Actions.EnqueueAsync(_node.Publisher, input, new() { StartAt = startAt });
+    Task<QualifiedActionId> Enqueue(IActionInput input, DateTime? startAt = null,
+        ActionPriority priority = ActionPriority.Normal) =>
+        _node.Actions.EnqueueAsync(_node.Publisher, input, new() { StartAt = startAt, Priority = priority });
 
     static async Task UntilAsync(Func<bool> predicate)
     {
@@ -151,6 +154,72 @@ public class ActionHostTest : IAsyncLifetime
         _node.Recorder.AllowScheduled = true;
         await Task.Delay(100);
         Assert.Single(Outcomes);
+    }
+
+    [Fact]
+    public async Task SuspendedTypesStartNothingNewUntilResumed()
+    {
+        StartHost();
+        var name = typeof(ProcessOrder).FullName!;
+        await _node.Actions.SuspendAsync(_node.Publisher, [name]);
+        await Enqueue(new ProcessOrder { Amount = 1 });
+        await Enqueue(new RefreshCache { Key = "other types run" });
+        await UntilAsync(() => Outcomes.Length == 1);
+        await Task.Delay(200);
+        Assert.Equal("RefreshCache", Assert.Single(Outcomes).Name);
+        await _node.Actions.SuspendAsync(_node.Publisher, [name], suspended: false);
+        await UntilAsync(() => Outcomes.Length == 2);
+    }
+
+    [Fact]
+    public async Task TheOverviewAndMetricsShowTheCoordinatorsView()
+    {
+        StartHost();
+        var host = _host!;
+        var finished = 0L;
+        var waiting = new List<int>();
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (ReferenceEquals(instrument.Meter, host.Metrics.Meter)) l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, _, _) =>
+        {
+            if (instrument.Name == "btdb.backend_actions.attempts.finished") Interlocked.Add(ref finished, value);
+        });
+        listener.SetMeasurementEventCallback<int>((instrument, value, _, _) =>
+        {
+            if (instrument.Name == "btdb.backend_actions.waiting") lock (waiting) waiting.Add(value);
+        });
+        listener.Start();
+
+        await Enqueue(new SlowOrder { Mode = "wait" });
+        await Enqueue(new SlowOrder { Mode = "wait" }, priority: ActionPriority.Low); // waits for the limit of 1
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        await UntilAsync(() => host.Coordinator?.Overview().Priorities.Sum(p => p.Waiting) == 1);
+        var overview = await host.GetOverviewAsync();
+        var worker = Assert.Single(overview.Workers);
+        Assert.Equal(("a", 1000, 100, 1, true), (worker.NodeId, worker.Capacity, worker.Used, worker.Attempts, worker.Ready));
+        Assert.Equal([(ActionPriority.Normal, 0, 1), (ActionPriority.Low, 1, 0)],
+            overview.Priorities.Select(p => (p.Priority, p.Waiting, p.Running)));
+        listener.RecordObservableInstruments();
+        lock (waiting) Assert.Equal([1], waiting);
+
+        _node.Recorder.Release.SetResult();
+        await UntilAsync(() => Interlocked.Read(ref finished) == 2);
+    }
+
+    [Fact]
+    public async Task TheTestContextRecordsWhatAHandlerAsks()
+    {
+        var context = new Testing.TestActionContext(new(1, 2), resultType: typeof(OrderResult));
+        var handler = new Recorder.ExportProbe();
+        Assert.Equal("all", (await handler.ExecuteAsync(new ExportOrder { Parts = 2 }, context)).Text);
+        Assert.Equal(["part 1", "part 2"], context.Partials.Cast<OrderResult>().Select(p => p.Text));
+        Assert.Equal(-1000, context.CpuDelta);
+        context.Cancel(ActionCancellationReason.Timeout);
+        Assert.Equal(ActionCancellationReason.Timeout, context.CancellationReason);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => context.SubmitPartialAsync(new OrderResult()));
     }
 
     [Fact]

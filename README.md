@@ -16,6 +16,8 @@ Currently this project these parts:
   [BTDB.Replication](BTDB.Replication/README.md), [NuGet packages](Doc/ReplicationPackages.md)),
   including an optional ordered EventLog with HTTP and Azure adapters and
   [typed event dispatch and replay](BTDB.Replication.EventSourcing/README.md)
+- Leader-scheduled, resource-limited background actions over replication and typed events (preview,
+  [BackendActions](Doc/BackendActions.md))
 - LSM key value database stored directly in object storage with bounded memory and readers in other processes
   (preview, [LsmKeyValueDB](Doc/LsmKeyValueDB.md))
 - Immutable memory mapped key value database for shipping database snapshots
