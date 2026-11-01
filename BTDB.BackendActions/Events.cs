@@ -74,10 +74,12 @@ public class ScheduledActionStarted : PureEvent
     public bool Start { get; set; }
 }
 
-/// <summary>Stops or resumes starting the named action types; see <see cref="BackendActions.SuspendAsync"/>.</summary>
+/// <summary>Stops or resumes starting the named action types and the actions of the tenants; see
+/// <see cref="BackendActions.SuspendAsync"/> and <see cref="BackendActions.SuspendTenantsAsync"/>.</summary>
 public class ActionsSuspended : PureEvent
 {
     public List<string> Names { get; set; } = new();
+    public List<ulong> TenantIds { get; set; } = new();
     public bool Suspended { get; set; }
 }
 
@@ -128,7 +130,7 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Validate(ScheduledActionStarted ev) { }
     public void Consume(ScheduledActionStarted ev) => actions.StartScheduled(ev);
     public void Validate(ActionsSuspended ev) { }
-    public void Consume(ActionsSuspended ev) => actions.Suspend(ev.Names, ev.Suspended);
+    public void Consume(ActionsSuspended ev) => actions.Suspend(ev.Names, ev.TenantIds, ev.Suspended);
     public void Validate(ActionsImported ev) { }
     public void Consume(ActionsImported ev) => actions.Import(ev);
 }

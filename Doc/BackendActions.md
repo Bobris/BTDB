@@ -158,10 +158,17 @@ using (publisher.StartQuery())
     var busy = actions.HasStartedActions(tenantId);
     var merged = actions.FindByUniqueKey(tenantId, name, key);
     var suspended = actions.SuspendedActions;
+    var paused = actions.IsTenantSuspended(tenantId); // or actions.SuspendedTenants
 }
 var overview = await host.GetOverviewAsync(stopping); // from the leader: workers, waiting and running per priority
 await actions.SuspendAsync(publisher, [name]);         // start no new attempts of these types
+await actions.SuspendTenantsAsync(publisher, [tenantId]); // nor of these tenants' actions
 ```
+
+Suspension stops new attempts only: running attempts go on, and inputs keep queueing, merging and becoming due.
+Resume with `suspended: false`. Inside a consume, for example of an application event that deactivates a tenant,
+`actions.SuspendTenants([tenantId])` suspends in that event's transaction. Tenant 0 holds the actions without a
+tenant, scheduled ones included. Suspended tenants are few by design: they are stored in one row.
 
 Meter `BTDB.BackendActions` counts each worker's started and finished attempts (`btdb.backend_actions.attempts.*`,
 finished by `kind`), records the start delay and attempt duration in seconds, and counts failed exchanges. The node
@@ -177,8 +184,10 @@ any new coordinator starts:
 2. Quiesce the publishers and read the old action tables from a snapshot at the barrier.
 3. Import, in one of two ways:
    * The old tables are in the application's ObjectDB: publish one application event whose consume reads them and
-     calls `actions.Import(rows)` and `actions.ImportScheduledRuns(lastRuns)`. Every replica imports the same rows.
-   * The old tables are elsewhere: an export tool calls `actions.ImportAsync(publisher, rows, lastRuns, suspended)`,
+     calls `actions.Import(rows)`, `actions.ImportScheduledRuns(lastRuns)` and, for suspended tenants,
+     `actions.SuspendTenants(ids)`. Every replica imports the same rows.
+   * The old tables are elsewhere: an export tool calls `actions.ImportAsync(publisher, rows, lastRuns, suspended,
+     suspendedTenants)`,
      in batches below the publisher's `MaximumEventSize`, in ascending old order.
 4. Verify queued and delayed counts per action name and tenant and the scheduled last runs (`ListActions`), then start
    the cluster, so the coordinator loads the imported rows. Keep the old tables until the validation window ends.

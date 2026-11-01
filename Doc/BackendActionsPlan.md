@@ -241,7 +241,7 @@ The application's ObjectDB holds these relations. Only consumes write them.
 | `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, QueuedAt |
 | `IActionInputIndexes` | PK (TenantId, Name, UniqueKey) | ActionId of the queued action that has not started |
 | `IScheduledActionRuns` | PK Name | LastRun: the latest occurrence started, skipped or recorded |
-| `IBackendActionsStates`, one row with Id 0 | PK Id | CoordinatorSession; later settings (capacity shares by priority, suspended action names) |
+| `IBackendActionsStates`, one row with Id 0 | PK Id | CoordinatorSession, suspended action names, suspended tenants (few, so a list in the row) |
 
 Whether an input unifies or aggregates comes from its type, so rows store no flags for it. Secondary keys for
 monitoring are added with monitoring (A5) when its queries need them.
@@ -413,16 +413,20 @@ HTTP: process kill, failover, handoff).
 Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring).
 
 * **Any node, from the local DB:** `ListActions(tenantId?)` (delayed, queued and started), `FindAction`,
-  `HasStartedActions(tenantId)`, `FindByUniqueKey` and `SuspendedActions`, in the caller's query or consume scope.
+  `HasStartedActions(tenantId)`, `FindByUniqueKey`, `SuspendedActions`, `SuspendedTenants` and
+  `IsTenantSuspended`, in the caller's query or consume scope.
   They need no leader and no secondary keys: tenant lists use the primary key prefix, and callers page with LINQ.
 * **Leader overview:** `BackendActionsHost.GetOverviewAsync` asks the active coordinator over the channel
   `btdb-backend-actions-overview`: workers with session, node, generation, capacity, CPU in use, readiness, time since
-  their exchange and attempts; per priority the waiting, running and protected actions; the suspended types.
+  their exchange and attempts; per priority the waiting, running and protected actions; the suspended types and
+  tenants.
 * **Metrics** (meter `BTDB.BackendActions`, one per host, no node or action labels): attempts started and finished
   (by `kind`), start delay and attempt duration, failed exchanges; the gauges waiting, running and workers come only
   from the node whose coordinator runs.
-* **Suspension:** `SuspendAsync(publisher, names, suspended)` publishes `ActionsSuspended`. Suspended types start no
-  new attempts; running ones go on and inputs keep queueing.
+* **Suspension:** `SuspendAsync(publisher, names, suspended)` and `SuspendTenantsAsync(publisher, tenantIds,
+  suspended)` publish `ActionsSuspended`; `SuspendTenants` does it inside a consume. Suspended types and the actions of
+  suspended tenants start no new attempts; running ones go on and inputs keep queueing. The planner skips a suspended
+  tenant as a whole in its fairness loop.
 * **Dropped:** capacity shares as an admin event (they stay leader configuration in `ActionPlannerOptions`, like the
   CPU override) and runtime tracing (the library has no logging dependency; the overview and metrics cover it).
 
@@ -520,7 +524,7 @@ The consume does the following:
 * It raises ObjectDB user Ulong slot 2 (the slot `Ambient.AllocateId` uses) above the largest imported `ActionId`,
   and never lowers it.
 
-`ImportScheduledRuns(name → LastRun)` and the event's suspended names carry the remaining replicated state, so
+`ImportScheduledRuns(name → LastRun)` and the event's suspended names and tenants carry the remaining replicated state, so
 scheduled actions neither fire twice nor skip a run. Capacity shares and per-worker capacity are leader and worker
 configuration (`ActionPlannerOptions`, `BackendActionsOptions.WorkerCpu`), not replicated state, so they move with the
 deployment's configuration instead of an import. `ImportedAction.IsAggregable` carries whether the old action still

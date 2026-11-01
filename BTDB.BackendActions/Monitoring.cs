@@ -51,7 +51,7 @@ public sealed partial class BackendActions
 
 /// <summary>The active coordinator's view; see <see cref="BackendActionsHost.GetOverviewAsync"/>.</summary>
 public sealed record ActionsOverview(Guid CoordinatorSession, IReadOnlyList<WorkerOverview> Workers,
-    IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended);
+    IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended, IReadOnlyList<ulong> SuspendedTenants);
 
 /// <summary>A worker the coordinator heard from: CPU in use and capacity, and its attempts.</summary>
 public sealed record WorkerOverview(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready,

@@ -240,6 +240,9 @@ public class ActionStateTest
         await Started(node, session, new(1, 1), 1);
         await node.Actions.SuspendAsync(node.Publisher, ["refresh", "other"]);
         await node.Actions.SuspendAsync(node.Publisher, ["other"], suspended: false);
+        await node.Actions.SuspendTenantsAsync(node.Publisher, [9, 4]);
+        await node.Actions.SuspendTenantsAsync(node.Publisher, [9], suspended: false);
+        await node.Publisher.PublishAsync(new PlaceOrder { SuspendTenants = [3] }); // in an application consume
         using var query = node.Publisher.StartQuery();
         Assert.Equal([(new QualifiedActionId(1, 3), ActionState.Delayed), (new(1, 1), ActionState.Started),
                 (new(2, 2), ActionState.Queued)],
@@ -254,6 +257,9 @@ public class ActionStateTest
         Assert.Equal(new QualifiedActionId(2, 2), node.Actions.FindByUniqueKey(2, "refresh", "k"u8.ToArray()));
         Assert.Null(node.Actions.FindByUniqueKey(1, "refresh", "k"u8.ToArray()));
         Assert.Equal(["refresh"], node.Actions.SuspendedActions);
+        Assert.Equal([3ul, 4ul], node.Actions.SuspendedTenants);
+        Assert.True(node.Actions.IsTenantSuspended(4));
+        Assert.False(node.Actions.IsTenantSuspended(9));
     }
 
     [Fact]

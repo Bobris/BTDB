@@ -172,6 +172,21 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SuspendedTenantsStartNothingNewUntilResumed()
+    {
+        StartHost();
+        await _node.Actions.SuspendTenantsAsync(_node.Publisher, [5]);
+        await Enqueue(new ProcessOrder { TenantId = 5, Amount = 1 });
+        await Enqueue(new ProcessOrder { TenantId = 6, Amount = 2 });
+        await UntilAsync(() => Outcomes.Length == 1);
+        await Task.Delay(200);
+        Assert.Equal(6ul, Assert.Single(Outcomes).Id.TenantId);
+        Assert.Equal([5ul], (await _host!.GetOverviewAsync()).SuspendedTenants);
+        await _node.Actions.SuspendTenantsAsync(_node.Publisher, [5], suspended: false);
+        await UntilAsync(() => Outcomes.Length == 2);
+    }
+
+    [Fact]
     public async Task TheOverviewAndMetricsShowTheCoordinatorsView()
     {
         StartHost();

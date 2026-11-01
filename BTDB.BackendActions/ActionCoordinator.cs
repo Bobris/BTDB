@@ -126,10 +126,17 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         var now = Now;
         lock (_lock)
         {
-            _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
+            LoadSuspended();
             foreach (var row in Ambient.Relation<IQueuedActions>())
                 _planner.Update(new(row.TenantId, row.ActionId), row, actions.TypeOf(row.Name), now);
         }
+    }
+
+    // Inside a query, under the lock.
+    void LoadSuspended()
+    {
+        _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
+        _planner.SuspendedTenants = new HashSet<ulong>(actions.SuspendedTenants);
     }
 
     void Apply(HashSet<QualifiedActionId> changed)
@@ -144,7 +151,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 {
                     if (id == ActionChanges.Settings)
                     {
-                        _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
+                        LoadSuspended();
                         continue;
                     }
                     var row = queued.FindByIdOrDefault(id.TenantId, id.ActionId);
@@ -201,7 +208,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                     w.Actions.Count)).ToList(),
                 actionsByPriority.Select(g => new PriorityOverview(g.Key, g.Count(a => a.Runnable),
                     g.Count(a => a.Worker != null), g.Count(a => a.Protected))).ToList(),
-                _planner.Suspended.Order(StringComparer.Ordinal).ToList());
+                _planner.Suspended.Order(StringComparer.Ordinal).ToList(), _planner.SuspendedTenants.Order().ToList());
         }
     }
 

@@ -73,6 +73,18 @@ public class ActionPlannerTest
     }
 
     [Fact]
+    public void SuspendedTenantsStartNothingWhileOtherTenantsRunOn()
+    {
+        Exchange(Guid.NewGuid(), default, capacity: 1000);
+        var suspended = Add(Report, 1);
+        var other = Add(Report, 2);
+        Planner.SuspendedTenants = new HashSet<ulong> { 1 };
+        Assert.Equal([other], PlanAndStart(default));
+        Planner.SuspendedTenants = new HashSet<ulong>();
+        Assert.Equal([suspended], PlanAndStart(default));
+    }
+
+    [Fact]
     public void LessConsumingTenantsGoFirstAndConsumptionDecays()
     {
         var worker = Guid.NewGuid();

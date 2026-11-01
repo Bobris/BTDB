@@ -43,11 +43,15 @@ public class ActionImportTest
     {
         await using var node = await Node.StartAsync(_data, _metadata, _time);
         await node.Actions.ImportAsync(node.Publisher, OldRows(),
-            new Dictionary<string, DateTime> { [typeof(HourlyOrder).FullName!] = Queued }, ["refresh"]);
+            new Dictionary<string, DateTime> { [typeof(HourlyOrder).FullName!] = Queued }, ["refresh"], [2]);
         AssertImported(node);
         var hourly = node.Read<IScheduledActionRuns, ScheduledActionRun>().Single();
         Assert.Equal((typeof(HourlyOrder).FullName, Queued), (hourly.Name, hourly.LastRun));
-        using (node.Publisher.StartQuery()) Assert.Equal(["refresh"], node.Actions.SuspendedActions);
+        using (node.Publisher.StartQuery())
+        {
+            Assert.Equal(["refresh"], node.Actions.SuspendedActions);
+            Assert.Equal([2ul], node.Actions.SuspendedTenants);
+        }
 
         // New actions get IDs above every imported one, merge into imported keys and queue after them.
         var fresh = await node.Actions.EnqueueAsync(node.Publisher, new ProcessOrder { TenantId = 1 });

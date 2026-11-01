@@ -80,8 +80,13 @@ internal sealed partial class ExchangeJson : JsonSerializerContext
     internal static byte[] Encode(ActionsOverview overview) =>
         JsonSerializer.SerializeToUtf8Bytes(overview, Default.ActionsOverview);
 
-    internal static ActionsOverview DecodeOverview(ReadOnlyMemory<byte> bytes) =>
-        JsonSerializer.Deserialize(bytes.Span, Default.ActionsOverview) ?? throw new JsonException("Empty overview.");
+    internal static ActionsOverview DecodeOverview(ReadOnlyMemory<byte> bytes)
+    {
+        var overview = JsonSerializer.Deserialize(bytes.Span, Default.ActionsOverview) ??
+                       throw new JsonException("Empty overview.");
+        // A leader older than tenant suspension sends no SuspendedTenants.
+        return overview.SuspendedTenants == null ? overview with { SuspendedTenants = [] } : overview;
+    }
 
     internal static byte[] Encode(ExchangeRequest request) =>
         JsonSerializer.SerializeToUtf8Bytes(request, Default.ExchangeRequest);

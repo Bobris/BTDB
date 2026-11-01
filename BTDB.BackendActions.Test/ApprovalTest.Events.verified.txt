@@ -16,12 +16,14 @@ event BTDB.BackendActions.ActionsImported
   Actions: List<ImportedAction>
   ScheduledRuns: Dictionary<string, DateTime>
   Suspended: List<string>
+  SuspendedTenants: List<ulong>
 event BTDB.BackendActions.ActionsStarted
   Actions: List<StartedAction>
   Session: Guid
 event BTDB.BackendActions.ActionsSuspended
   Names: List<string>
   Suspended: bool
+  TenantIds: List<ulong>
 event BTDB.BackendActions.CoordinatorActivated
   Session: Guid
 event BTDB.BackendActions.DelayedActionsDue

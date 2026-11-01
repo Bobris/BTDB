@@ -202,20 +202,55 @@ public sealed partial class BackendActions
             .ConfigureAwait(false);
     }
 
+    /// <summary>Publishes <see cref="ActionsSuspended"/> for tenants: their actions start no new attempts, running
+    /// ones go on, and their inputs keep queueing. Tenant 0 holds the actions without a tenant, scheduled ones
+    /// included. Resume them with <paramref name="suspended"/> false.</summary>
+    public async Task SuspendTenantsAsync(IEventPublisher publisher, IEnumerable<ulong> tenantIds, bool suspended = true,
+        CancellationToken cancellation = default)
+    {
+        ArgumentNullException.ThrowIfNull(publisher);
+        ArgumentNullException.ThrowIfNull(tenantIds);
+        await publisher.PublishAsync(new ActionsSuspended { TenantIds = tenantIds.ToList(), Suspended = suspended },
+            cancellation).ConfigureAwait(false);
+    }
+
+    /// <summary>Suspends or resumes tenants in the current consume, as <see cref="SuspendTenantsAsync"/> does, for
+    /// example when an application event deactivates a tenant.</summary>
+    public void SuspendTenants(IEnumerable<ulong> tenantIds, bool suspended = true)
+    {
+        ArgumentNullException.ThrowIfNull(tenantIds);
+        CurrentConsume();
+        Suspend([], tenantIds.ToList(), suspended);
+    }
+
     /// <summary>The suspended action types, from the ambient query or consume snapshot.</summary>
     public IReadOnlyList<string> SuspendedActions =>
         Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0)?.Suspended ?? [];
 
-    internal void Suspend(List<string> names, bool suspended)
+    /// <summary>The suspended tenants in ascending order, from the ambient query or consume snapshot.</summary>
+    public IReadOnlyList<ulong> SuspendedTenants =>
+        Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0)?.SuspendedTenants ?? [];
+
+    public bool IsTenantSuspended(ulong tenantId) => SuspendedTenants.Contains(tenantId);
+
+    internal void Suspend(List<string> names, List<ulong> tenantIds, bool suspended)
     {
+        if (names.Count == 0 && tenantIds.Count == 0) return;
         var state = State();
-        var set = new SortedSet<string>(state.Suspended, StringComparer.Ordinal);
-        foreach (var name in names)
-            if (suspended) set.Add(name);
-            else set.Remove(name);
-        state.Suspended = set.ToList();
+        state.Suspended = Toggle(state.Suspended, names, suspended, StringComparer.Ordinal);
+        state.SuspendedTenants = Toggle(state.SuspendedTenants, tenantIds, suspended, Comparer<ulong>.Default);
         Ambient.Relation<IBackendActionsStates>().Update(state);
         Changed(ActionChanges.Settings);
+    }
+
+    static List<T> Toggle<T>(List<T> current, List<T> changes, bool add, IComparer<T> comparer)
+    {
+        if (changes.Count == 0) return current;
+        var set = new SortedSet<T>(current, comparer);
+        foreach (var item in changes)
+            if (add) set.Add(item);
+            else set.Remove(item);
+        return set.ToList();
     }
 
     internal void ActivateCoordinator(Guid session)

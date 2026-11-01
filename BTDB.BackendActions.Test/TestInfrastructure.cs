@@ -168,6 +168,7 @@ public class PlaceOrder : PureEvent
     public ulong CancelActionId { get; set; }
     /// <summary>Imports <see cref="ActionImportTest.OldRows"/>, as an application reading its old tables would.</summary>
     public bool Migrate { get; set; }
+    public List<ulong> SuspendTenants { get; set; } = new();
 }
 
 internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>
@@ -181,6 +182,7 @@ internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>
                 new() { Priority = ev.Priority, StartAt = ev.StartAt }));
         if (ev.CancelActionId != 0)
             node.Recorder.Cancelled.Enqueue(node.Actions.Cancel(new(ev.CancelTenantId, ev.CancelActionId)));
+        if (ev.SuspendTenants.Count != 0) node.Actions.SuspendTenants(ev.SuspendTenants);
         if (ev.Migrate)
         {
             node.Actions.Import(ActionImportTest.OldRows());

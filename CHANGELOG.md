@@ -54,6 +54,11 @@
   formatting.
 - BackendActions: `QueuedAction` stores its aggregable, cancelled and started states in one `QueuedActionFlags` byte;
   `IsAggregable`, `IsCancelled` and `IsStarted` remain as unstored views of it.
+- BackendActions: whole tenants can be suspended. `SuspendTenantsAsync(publisher, tenantIds, suspended)`, or
+  `SuspendTenants` inside a consume, stops new attempts of the tenants' actions while running ones go on and inputs
+  keep queueing. `SuspendedTenants` and `IsTenantSuspended` read them on any node, the leader overview lists them, and
+  `ImportAsync` carries them over. They are stored next to the suspended types in the state row, and
+  `ActionsSuspended` gained `TenantIds`.
 
 ### Fixed
 

@@ -109,15 +109,17 @@ public class BTDB.BackendActions.ActionsImported : PureEvent
   property List<ImportedAction> Actions { get; set; }
   property Dictionary<string, DateTime> ScheduledRuns { get; set; }
   property List<string> Suspended { get; set; }
+  property List<ulong> SuspendedTenants { get; set; }
 public sealed class BTDB.BackendActions.ActionsOverview : IEquatable<ActionsOverview>
-  ctor(Guid CoordinatorSession, IReadOnlyList<WorkerOverview> Workers, IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended)
+  ctor(Guid CoordinatorSession, IReadOnlyList<WorkerOverview> Workers, IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended, IReadOnlyList<ulong> SuspendedTenants)
   property Guid CoordinatorSession { get; init; }
-  method void Deconstruct(out Guid CoordinatorSession, out IReadOnlyList<WorkerOverview> Workers, out IReadOnlyList<PriorityOverview> Priorities, out IReadOnlyList<string> Suspended)
+  method void Deconstruct(out Guid CoordinatorSession, out IReadOnlyList<WorkerOverview> Workers, out IReadOnlyList<PriorityOverview> Priorities, out IReadOnlyList<string> Suspended, out IReadOnlyList<ulong> SuspendedTenants)
   method bool Equals(ActionsOverview? other)
   override method bool Equals(object? obj)
   override method int GetHashCode()
   property IReadOnlyList<PriorityOverview> Priorities { get; init; }
   property IReadOnlyList<string> Suspended { get; init; }
+  property IReadOnlyList<ulong> SuspendedTenants { get; init; }
   override method string ToString()
   property IReadOnlyList<WorkerOverview> Workers { get; init; }
 public class BTDB.BackendActions.ActionsStarted : PureEvent
@@ -128,6 +130,7 @@ public class BTDB.BackendActions.ActionsSuspended : PureEvent
   ctor()
   property List<string> Names { get; set; }
   property bool Suspended { get; set; }
+  property List<ulong> TenantIds { get; set; }
 public sealed class BTDB.BackendActions.BackendActionAttribute : Attribute
   ctor()
   property string? ConcurrencyGroup { get; set; }
@@ -149,8 +152,9 @@ public sealed class BTDB.BackendActions.BackendActions
   method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, byte[] uniqueKey)
   method bool HasStartedActions(ulong tenantId)
   method void Import(IEnumerable<ImportedAction> actions)
-  method Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, CancellationToken cancellation = default)
+  method Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, IReadOnlyList<ulong>? suspendedTenants = null, CancellationToken cancellation = default)
   method void ImportScheduledRuns(IReadOnlyDictionary<string, DateTime> runs)
+  method bool IsTenantSuspended(ulong tenantId)
   method IEnumerable<ActionInfo> ListActions(ulong? tenantId = null)
   method BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
   method void RegisterEvents(EventDispatcher dispatcher)
@@ -158,7 +162,10 @@ public sealed class BTDB.BackendActions.BackendActions
   method void RegisterTypes(IObjectDB database)
   static property IReadOnlyList<Type> RelationTypes { get; }
   method Task SuspendAsync(IEventPublisher publisher, IEnumerable<string> names, bool suspended = true, CancellationToken cancellation = default)
+  method void SuspendTenants(IEnumerable<ulong> tenantIds, bool suspended = true)
+  method Task SuspendTenantsAsync(IEventPublisher publisher, IEnumerable<ulong> tenantIds, bool suspended = true, CancellationToken cancellation = default)
   property IReadOnlyList<string> SuspendedActions { get; }
+  property IReadOnlyList<ulong> SuspendedTenants { get; }
 public sealed class BTDB.BackendActions.BackendActionsHost
   ctor(BackendActions actions, EventPublisher publisher, ReplicationLeadership leadership, ReplicationLeaderChannel channel, BackendActionsOptions options)
   method Task<ActionsOverview> GetOverviewAsync(CancellationToken cancellation = default)
@@ -181,6 +188,7 @@ public class BTDB.BackendActions.BackendActionsState
   property Guid CoordinatorSession { get; set; }
   property ulong Id { get; set; }
   property List<string> Suspended { get; set; }
+  property List<ulong> SuspendedTenants { get; set; }
 public class BTDB.BackendActions.CoordinatorActivated : PureEvent
   ctor()
   property Guid Session { get; set; }

@@ -7,6 +7,7 @@ relation IBackendActionsStates of BTDB.BackendActions.BackendActionsState
   CoordinatorSession: Guid
   Id: ulong [PrimaryKey(1, false)]
   Suspended: List<string>
+  SuspendedTenants: List<ulong>
 relation IDelayedActions of BTDB.BackendActions.DelayedAction
   ActionId: ulong [PrimaryKey(2, false)]
   Input: object

@@ -23,13 +23,14 @@ public class ImportedAction
     public bool IsAggregable { get; set; } = true;
 }
 
-/// <summary>Imports actions, the last runs of scheduled types and suspended types; see
+/// <summary>Imports actions, the last runs of scheduled types, and suspended types and tenants; see
 /// <see cref="BackendActions.ImportAsync"/>.</summary>
 public class ActionsImported : PureEvent
 {
     public List<ImportedAction> Actions { get; set; } = new();
     public Dictionary<string, DateTime> ScheduledRuns { get; set; } = new();
     public List<string> Suspended { get; set; } = new();
+    public List<ulong> SuspendedTenants { get; set; } = new();
 }
 
 public sealed partial class BackendActions
@@ -38,7 +39,7 @@ public sealed partial class BackendActions
     /// publisher's MaximumEventSize, before any coordinator starts.</summary>
     public async Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions,
         IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null,
-        CancellationToken cancellation = default)
+        IReadOnlyList<ulong>? suspendedTenants = null, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(actions);
@@ -46,7 +47,8 @@ public sealed partial class BackendActions
         {
             Actions = actions.ToList(),
             ScheduledRuns = scheduledRuns?.ToDictionary(r => r.Key, r => r.Value, StringComparer.Ordinal) ?? new(),
-            Suspended = suspended?.ToList() ?? new()
+            Suspended = suspended?.ToList() ?? new(),
+            SuspendedTenants = suspendedTenants?.ToList() ?? new()
         }, cancellation).ConfigureAwait(false);
     }
 
@@ -118,6 +120,6 @@ public sealed partial class BackendActions
     {
         Import(ev.Actions);
         ImportScheduledRuns(ev.ScheduledRuns);
-        if (ev.Suspended.Count != 0) Suspend(ev.Suspended, true);
+        Suspend(ev.Suspended, ev.SuspendedTenants, true);
     }
 }

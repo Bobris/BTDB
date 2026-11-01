@@ -132,6 +132,8 @@ public class BackendActionsState
     public Guid CoordinatorSession { get; set; }
     /// <summary>Action types that start no new attempts; their inputs keep queueing.</summary>
     public List<string> Suspended { get; set; } = new();
+    /// <summary>Tenants whose actions start no new attempts; few, so they live in this row.</summary>
+    public List<ulong> SuspendedTenants { get; set; } = new();
 }
 
 public interface IBackendActionsStates : IRelation<BackendActionsState>

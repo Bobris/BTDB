@@ -115,6 +115,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     internal IReadOnlyDictionary<Guid, PlannedWorker> Workers => _workers;
     /// <summary>Action types that start no new attempts.</summary>
     internal IReadOnlySet<string> Suspended { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+    internal IReadOnlySet<ulong> SuspendedTenants { get; set; } = new HashSet<ulong>();
 
     /// <summary>Applies an action's committed row, or its removal when row is null. A started attempt this session did
     /// not start is protected for one lease, so a new coordinator does not start it twice while it may still run.</summary>
@@ -280,7 +281,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             progress = false;
             foreach (var tenant in _consumption.OrderBy(c => c.Value).ThenBy(c => c.Key).Select(c => c.Key).ToList())
             {
-                if (!_tenants.TryGetValue(tenant, out var actions)) continue;
+                if (SuspendedTenants.Contains(tenant) || !_tenants.TryGetValue(tenant, out var actions)) continue;
                 foreach (var action in actions)
                 {
                     if (!action.Runnable || Suspended.Contains(action.Type.Name) || !GroupAdmits(action)) continue;
