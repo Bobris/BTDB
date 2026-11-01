@@ -328,10 +328,11 @@ public sealed partial class BackendActions
         }
     }
 
-    // Rejects an unknown outcome at publication; the consume checks again for events in the log already.
+    // Rejects an unknown or non-final outcome at publication; the consume checks again for events in the log already.
     internal static void CheckKind(ActionFinished ev)
     {
-        if (!Enum.IsDefined(ev.Kind)) throw new ArgumentException("Unknown action outcome.");
+        if (!Enum.IsDefined(ev.Kind) || ev.Kind == ActionOutcomeKind.Progress)
+            throw new ArgumentException("Unknown action outcome.");
     }
 
     internal void Finish(ActionFinished ev)
@@ -350,6 +351,15 @@ public sealed partial class BackendActions
         if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } row ||
             row.RunAttempts != ev.Attempt)
             return; // a superseded attempt, a repeated report or an action that already finished
+        if (ev.Progress != null)
+        {
+            OnFinished(row, ActionOutcomeKind.Progress, ev.Attempt, ev.Progress, null);
+            if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } current ||
+                current.RunAttempts != ev.Attempt)
+                return; // OnFinished finished the action itself
+            row = current;
+        }
+        if (ev.CountsAsAttempt) return; // the worker reports the attempt lost
         if (row.IsCancelled)
         {
             Complete(row, ActionOutcomeKind.Cancelled, row.RunAttempts, null, null);

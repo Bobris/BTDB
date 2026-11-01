@@ -43,7 +43,7 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
     public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
     {
         // Inside the consume of the finishing event, on every replica, once per outcome. Deterministic, like any
-        // consume. outcome.Kind is Completed, Failed, Cancelled or Interrupted.
+        // consume. outcome.Kind is Completed, Failed, Cancelled or Interrupted, or the non-final Progress.
     }
 }
 ```
@@ -158,6 +158,11 @@ still counts.
   `Cancelled`, or `Interrupted`, which runs it again as a lost attempt that counts toward `MaxAttempts`. A result
   completes the attempt whatever the reason; a failure while interrupted publishes nothing, since the interruption may have caused
   it. A synchronous handler returns `Task.FromResult<ActionResult<TResult>>(result)`.
+* `ActionResult.InterruptedWith(progress)`: an interruption that also commits progress, a `TResult`, in the same
+  `ActionInterrupted` event. `OnFinished` receives it as a non-final `Progress` outcome in that event's transaction,
+  only while the attempt is current, so the application stores it, the next attempt resumes from it instead of
+  running the work again, and progress of a superseded attempt never applies. The action then runs again; a final
+  outcome follows later.
 * `SubmitPartialAsync(ev)`: publishes an event of the application and returns after this node consumed it, so parts
   keep their order and a slow consumer slows the action down. It does nothing else: the application's own event
   handler consumes the part. It is often used to commit partial progress: each consumed part is durable on every

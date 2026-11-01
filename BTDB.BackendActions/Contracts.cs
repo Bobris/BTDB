@@ -63,6 +63,9 @@ public sealed class BackendActionAttribute : Attribute
 public enum ActionOutcomeKind : byte
 {
     Completed = 1,
+    /// <summary>Not final: an interrupted attempt's progress, from <see cref="ActionResult.InterruptedWith{TResult}"/>;
+    /// the action runs again.</summary>
+    Progress = 2,
     Failed = 3,
     Cancelled = 4,
     Interrupted = 5
@@ -191,16 +194,18 @@ public class BackendActionException(string code, string message, string? details
 
 /// <summary>How <c>ExecuteAsync</c> ends without an exception: <see cref="ActionResultKind.Completed"/> with a
 /// result, which converts implicitly so <c>return result;</c> works, or <see cref="ActionResult.Cancelled"/> or
-/// <see cref="ActionResult.Interrupted"/>, which acknowledge the attempt's cancellation reason.</summary>
+/// <see cref="ActionResult.Interrupted"/>, which acknowledge the attempt's cancellation reason, or
+/// <see cref="ActionResult.InterruptedWith{TResult}"/>, which also commits progress.</summary>
 public readonly struct ActionResult<TResult> where TResult : class
 {
-    ActionResult(ActionResultKind kind, TResult? result)
+    internal ActionResult(ActionResultKind kind, TResult? result)
     {
         Kind = kind;
         Result = result;
     }
 
     public ActionResultKind Kind { get; }
+    /// <summary>The result when completed; the progress, if any, when interrupted.</summary>
     public TResult? Result { get; }
 
     public static implicit operator ActionResult<TResult>(TResult? result) => new(ActionResultKind.Completed, result);
@@ -231,6 +236,15 @@ public static class ActionResult
     public static ActionEnd Cancelled => new(ActionResultKind.Cancelled);
     /// <summary><c>return ActionResult.Interrupted;</c> instead of throwing OperationCanceledException.</summary>
     public static ActionEnd Interrupted => new(ActionResultKind.Interrupted);
+
+    /// <summary>Interrupted, and commits <paramref name="progress"/> in the same event as the interruption:
+    /// <c>OnFinished</c> receives it as a <see cref="ActionOutcomeKind.Progress"/> outcome, only while the attempt is
+    /// current, so the application stores it and the next attempt resumes from it.</summary>
+    public static ActionResult<TResult> InterruptedWith<TResult>(TResult progress) where TResult : class
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        return new(ActionResultKind.Interrupted, progress);
+    }
 }
 
 public interface IActionHandler<in TInput, TResult> where TInput : ActionInput<TResult> where TResult : class
@@ -240,8 +254,8 @@ public interface IActionHandler<in TInput, TResult> where TInput : ActionInput<T
     /// <see cref="ActionResult.Interrupted"/>, or by throwing OperationCanceledException.</summary>
     Task<ActionResult<TResult>> ExecuteAsync(TInput input, IActionContext context);
 
-    /// <summary>Runs inside the consume of the event that finishes the attempt, on every replica, exactly once per
-    /// outcome. Like any consume it must be deterministic.</summary>
+    /// <summary>Runs inside the consume of the event that finishes the attempt, or that interrupts it with progress, on
+    /// every replica, exactly once per outcome. Like any consume it must be deterministic.</summary>
     void OnFinished(TInput input, ActionOutcome<TResult> outcome);
 }
 

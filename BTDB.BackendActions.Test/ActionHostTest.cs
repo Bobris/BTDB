@@ -186,6 +186,22 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AnInterruptionCommitsItsProgressInTheSameEvent()
+    {
+        var stop = StartHost();
+        var id = await Enqueue(new WaitingOrder { Mode = "progress" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        var before = _node.Publisher.LastAppliedEventId;
+        stop.Cancel();
+        await _hosts[^1].Run.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal([(id, ActionOutcomeKind.Progress, 1ul, "progress 1")],
+            Outcomes.Select(o => (o.Id, o.Kind, o.Attempt, o.Result)));
+        var row = Assert.Single(_node.Queued);
+        Assert.Equal((false, 1ul), (row.IsStarted, row.InterruptedAttempts));
+        Assert.Equal(before + 1, _node.Publisher.LastAppliedEventId); // one event: the interruption with its progress
+    }
+
+    [Fact]
     public async Task AnInterruptionTheHandlerChoseItselfCountsAsAnAttempt()
     {
         var options = Options();

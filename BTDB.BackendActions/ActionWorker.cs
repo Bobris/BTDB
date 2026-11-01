@@ -227,6 +227,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 var started = worker._options.TimeProvider.GetTimestamp();
                 worker._metrics?.Started(attempt, worker._options.TimeProvider.GetUtcNow().UtcDateTime - queuedAt);
                 var finished = new ActionFinished { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
+                object? progress = null;
                 try
                 {
                     _cancel.Token.ThrowIfCancellationRequested();
@@ -236,7 +237,11 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                         finished.Result = result;
                         finished.Kind = ActionOutcomeKind.Completed;
                     }
-                    else Acknowledge(finished, kind == ActionResultKind.Interrupted);
+                    else
+                    {
+                        if (kind == ActionResultKind.Interrupted) progress = result;
+                        Acknowledge(finished, kind == ActionResultKind.Interrupted);
+                    }
                 }
                 // Only the handler's OperationCanceledException or returned acknowledgement ends the attempt as
                 // cancelled or interrupted; a result it returns anyway is published.
@@ -259,17 +264,16 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 {
                     // Interrupted, or failed while interrupted, which the interruption may have caused: no outcome, so
                     // the action runs again. A stopping worker records it, so it does not count as an attempt; an
-                    // interruption the handler chose itself is lost and counts.
-                    if (_forgotten) return;
-                    if (CancellationReason != ActionCancellationReason.Interrupted)
-                    {
-                        lost = true;
-                        return;
-                    }
-                    await worker._publisher.PublishAsync(new ActionInterrupted
-                    {
-                        TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt
-                    }).ConfigureAwait(false);
+                    // interruption the handler chose itself is lost and counts. Progress travels in the same event.
+                    if (_forgotten) return; // superseded: its progress would be stale
+                    var counts = CancellationReason != ActionCancellationReason.Interrupted;
+                    if (!counts || progress != null)
+                        await worker._publisher.PublishAsync(new ActionInterrupted
+                        {
+                            TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, Progress = progress,
+                            CountsAsAttempt = counts
+                        }).ConfigureAwait(false);
+                    lost = counts;
                     return;
                 }
                 try

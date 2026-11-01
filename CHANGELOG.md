@@ -143,6 +143,9 @@
   implicitly from `TResult`), `ActionResult.Cancelled` and `ActionResult.Interrupted`, so a handler acknowledges a
   cancellation or interruption without throwing; `OperationCanceledException` still works. `Interrupted` returned
   without an interruption runs the action again as a lost attempt that counts toward `MaxAttempts`.
+  `ActionResult.InterruptedWith(progress)` commits a `TResult` atomically with the interruption, in
+  `ActionInterrupted.Progress`; `OnFinished` receives it as the new non-final `ActionOutcomeKind.Progress` only while
+  the attempt is current, so the next attempt resumes from it. `ActionFinished` rejects `Progress`.
 - EventSourcing: after `Ambient.PublishEventAsync` or `PublishAndWaitEventAsync` returns, later reads of the query
   scope open a new snapshot that contains the consumed event, instead of the snapshot opened before publishing.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and

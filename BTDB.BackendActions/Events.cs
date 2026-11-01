@@ -64,12 +64,17 @@ public class ActionFinished : PureEvent
 }
 
 /// <summary>A stopping worker's attempt ended without an outcome: the action queues again, and the attempt does not
-/// count toward MaxAttempts.</summary>
+/// count toward MaxAttempts. Its progress, of the action's result type, reaches OnFinished as a Progress outcome while
+/// the attempt is current.</summary>
 public class ActionInterrupted : PureEvent
 {
     public ulong TenantId { get; set; }
     public ulong ActionId { get; set; }
     public ulong Attempt { get; set; }
+    public object? Progress { get; set; }
+    /// <summary>The handler interrupted itself: only the progress is delivered, and the worker reports the attempt
+    /// lost, so it counts toward MaxAttempts.</summary>
+    public bool CountsAsAttempt { get; set; }
 }
 
 /// <summary>Starts a scheduled type for an occurrence, unless another start already moved its last run.</summary>

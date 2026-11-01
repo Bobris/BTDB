@@ -16,7 +16,7 @@ public class ActionPlannerTest
     {
         Name = name, InputType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
         ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant,
-        Execute = (_, _) => Task.FromResult<(ActionResultKind, object?)>((ActionResultKind.Completed, null)), Finished = (_, _, _, _, _) => { }, BeforeStart = null
+        Execute = (_, _) => Task.FromResult<(ActionResultKind, object?)>(default), Finished = (_, _, _, _, _) => { }, BeforeStart = null
     };
 
     static readonly ActionType Report = Type("report");

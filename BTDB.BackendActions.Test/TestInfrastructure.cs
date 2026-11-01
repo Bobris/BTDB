@@ -378,6 +378,15 @@ internal sealed class Recorder
                             ? ActionResult.Interrupted : ActionResult.Cancelled;
                     }
                 }
+                else if (input.Mode == "progress")
+                {
+                    // Commits its progress together with the interruption.
+                    try { await Owner.Release.Task.WaitAsync(context.Cancellation); }
+                    catch (OperationCanceledException)
+                    {
+                        return ActionResult.InterruptedWith(new OrderResult { Text = "progress " + context.Attempt });
+                    }
+                }
                 else if (input.Mode == "self-cancel") return ActionResult.Cancelled;
                 else if (input.Mode == "self-interrupt") return ActionResult.Interrupted;
                 else if (input.Mode != "fast") await Owner.Release.Task.WaitAsync(context.Cancellation);

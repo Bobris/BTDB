@@ -33,9 +33,12 @@ public class ActionStateTest
             Actions = [new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, WorkerSession = session }]
         }).AsTask();
 
-    static Task Interrupted(Node node, QualifiedActionId id, ulong attempt) =>
-        node.Publisher.PublishAsync(new ActionInterrupted { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt })
-            .AsTask();
+    static Task Interrupted(Node node, QualifiedActionId id, ulong attempt, string? progress = null, bool counts = false) =>
+        node.Publisher.PublishAsync(new ActionInterrupted
+        {
+            TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, CountsAsAttempt = counts,
+            Progress = progress == null ? null : new OrderResult { Text = progress }
+        }).AsTask();
 
     static Task Finished(Node node, QualifiedActionId id, ulong attempt, ActionOutcomeKind kind, string? text = null) =>
         node.Publisher.PublishAsync(new ActionFinished
@@ -284,6 +287,26 @@ public class ActionStateTest
     }
 
     [Fact]
+    public async Task AnInterruptionCommitsItsProgressOnlyForTheCurrentAttempt()
+    {
+        await using var node = await Start();
+        var session = await Activate(node);
+        await Place(node, new ProcessOrder());
+        var id = new QualifiedActionId(0, 1);
+        await Started(node, session, id, 1);
+        await Interrupted(node, id, 1, "kept", counts: true); // the handler interrupted itself
+        Assert.Equal((true, 0ul), (node.Queued[0].IsStarted, node.Queued[0].InterruptedAttempts));
+        await Interrupted(node, id, 1, "first");
+        await Interrupted(node, id, 1, "repeated");
+        Assert.Equal((false, 1ul), (node.Queued[0].IsStarted, node.Queued[0].InterruptedAttempts));
+        await Started(node, session, id, 2);
+        await Interrupted(node, id, 1, "stale");
+        Assert.Equal([(ActionOutcomeKind.Progress, 1ul, "kept"), (ActionOutcomeKind.Progress, 1ul, "first")],
+            node.Recorder.Outcomes.Select(o => (o.Kind, o.Attempt, o.Result)));
+        await Assert.ThrowsAsync<ArgumentException>(() => Finished(node, id, 2, ActionOutcomeKind.Progress, "x"));
+    }
+
+    [Fact]
     public async Task AFailingOnFinishedStillFinishesTheAction()
     {
         await using var node = await Start();
@@ -332,7 +355,7 @@ public class ActionStateTest
     {
         await using var node = await Start();
         var end = node.Publisher.LastAppliedEventId;
-        await Assert.ThrowsAsync<ArgumentException>(() => Finished(node, new(0, 1), 1, (ActionOutcomeKind)2)); // the former Partial
+        await Assert.ThrowsAsync<ArgumentException>(() => Finished(node, new(0, 1), 1, (ActionOutcomeKind)42));
         Assert.Equal(end, node.Publisher.LastAppliedEventId);
     }
 

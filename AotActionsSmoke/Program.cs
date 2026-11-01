@@ -179,6 +179,12 @@ static class Program
                 await actions.EnqueueAsync(new Failing(), cancellation: stopping.Token);
                 await actions.EnqueueAsync(new Echo { Payload = Shapes.Sample() }, cancellation: stopping.Token);
                 await Ambient.PublishEventAsync(new AddToSum { Values = [1, 2, 3] }, stopping.Token);
+                // An interruption's progress is a result nested in a library event; no such attempt, so only its
+                // serialization runs.
+                await Ambient.PublishEventAsync(new ActionInterrupted
+                {
+                    ActionId = 999_999, Attempt = 1, Progress = new Number { Value = 7 }
+                }, stopping.Token);
                 var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
                 var byHand = await actions.EnqueueAsync(new ByHand(), later, stopping.Token);
                 Check("hand registration reads the attributes", "smoke-by-hand", actions.FindAction(byHand)?.Name);

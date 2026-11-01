@@ -103,7 +103,7 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
     // Inside the ActionFinished event's consume transaction, on every replica. Deterministic, like any Consume.
     public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
     {
-        // outcome.Kind: Completed | Failed | Cancelled | Interrupted; outcome.Result / outcome.Error
+        // outcome.Kind: Completed | Failed | Cancelled | Interrupted, or the non-final Progress; outcome.Result / Error
     }
 }
 ```
@@ -165,6 +165,10 @@ assigned. Called inside a consume, they apply in its transaction instead.
 An input that unifies or aggregates returns the ID of the action it merged into.
 
 ### Partial results, progress and large results
+
+An interrupted handler commits its last progress atomically with the interruption by returning
+`ActionResult.InterruptedWith(progress)`: one `ActionInterrupted` event carries the progress, a `TResult`, which
+`OnFinished` receives as a non-final `Progress` outcome only while the attempt is current.
 
 `SubmitPartialAsync` is often used to commit partial progress: a long action publishes what it has done so far, each
 part is durable once consumed, and a later attempt resumes from the last committed part instead of starting over. The
@@ -271,7 +275,7 @@ Events, all ordinary `BTDB.Replication.EventSourcing` events:
 | `CoordinatorActivated{Session}` | New leader's coordinator | Store `CoordinatorSession`. This is the barrier and fencing epoch (section 5). |
 | `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled, or `Attempt` is not `RunAttempts + 1`; otherwise set `IsStarted`, `RunAttempts = Attempt`, close aggregation, remove the index entry and run `OnBeforeStart`. A higher attempt supersedes a running one. |
 | `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished` and delete the row. |
-| `ActionInterrupted{ActionId, Attempt}` | A stopping worker, for an attempt it ended without an outcome | Same check. A cancelled action finishes as `Cancelled`; otherwise clear `IsStarted` and increment `InterruptedAttempts`. |
+| `ActionInterrupted{ActionId, Attempt, Progress, CountsAsAttempt}` | A stopping worker, for an attempt it ended without an outcome, or a handler that interrupted itself with progress | Same check. Call `OnFinished(Progress)` with `Progress`, a `TResult`. With `CountsAsAttempt` stop there; the worker reports the attempt lost. Otherwise a cancelled action finishes as `Cancelled`, and any other clears `IsStarted` and increments `InterruptedAttempts`. |
 | `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
 | `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun, Start}` | Coordinator scheduler | Only if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator): set `LastRun = NewLastRun` and, when `Start`, enqueue a new input. |
 | `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
