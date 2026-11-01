@@ -126,6 +126,8 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
         Assert.True(exclusive.Eof);
         Assert.Equal(expected.AsSpan(0, 70_000).ToArray(), copy.AsSpan(0, 70_000).ToArray());
         Assert.Equal(expected.AsSpan(1_070_000).ToArray(), copy.AsSpan(1_070_000).ToArray());
+        // The appender's current block may hold written but unflushed bytes; a sealed file ends at its length.
+        file.HardFlushTruncateSwitchToReadOnlyMode();
         Assert.Throws<EndOfStreamException>(() => file.RandomRead(new byte[2], (ulong)expected.Length - 1, false));
     }
 
@@ -285,6 +287,45 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
         Assert.False(File.Exists(Path.Combine(_directory, "00000004.pvl")));
         Assert.Throws<FileNotFoundException>(() => file.RandomRead(new byte[1], 0, false));
         Assert.Equal(4u, files.ImportFile(4, "pvl").Index); // Replication may reimport a discarded cache identity.
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BytesTheAppenderWroteBeforeItsFlushAreReadable(bool disk)
+    {
+        using IReplicationFileStorage files = disk ? new OnDiskReplicationFileStorage(_directory) : new InMemoryReplicationFileStorage();
+        var file = files.ImportFile(1, "trl");
+        Append(file, Pattern(1000, 1));
+        var writer = new MemWriter(file.GetAppenderWriter());
+        var unflushed = Pattern(40, 2);
+        writer.WriteBlock(unflushed); // stays in the writer, like a value of a transaction that has not committed yet
+        var read = new byte[unflushed.Length];
+        file.RandomRead(read, 1000, false);
+        Assert.Equal(unflushed, read);
+        Assert.Equal(1000ul, file.GetSize());
+        writer.Flush();
+        Assert.Equal(1040ul, file.GetSize());
+        file.HardFlushTruncateSwitchToReadOnlyMode();
+        if (disk) Assert.Throws<EndOfStreamException>(() => file.RandomRead(new byte[1], 1040, false));
+    }
+
+    [Fact]
+    public async Task ATransactionReadsAValueItWroteBeforeCommitting()
+    {
+        using var files = new OnDiskReplicationFileStorage(_directory);
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = new(),
+            Compression = new NoCompressionStrategy(), CompactorScheduler = null
+        });
+        using var transaction = await db.StartWritingTransaction(1);
+        using var cursor = transaction.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([1], Pattern(40, 3)); // too long to be kept inline in the index
+        Assert.True(cursor.FindExactKey([1]));
+        var buffer = Span<byte>.Empty;
+        Assert.Equal(Pattern(40, 3), cursor.GetValueSpan(ref buffer, true).ToArray());
+        transaction.Commit();
     }
 
     [Fact]

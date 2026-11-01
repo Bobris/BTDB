@@ -193,6 +193,9 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
         Content _content = Content.Empty;
         long _length;
         long _persisted;
+        // End of the block the appender writes into; its bytes past _length are written but not yet published, like a
+        // writer buffer, and a transaction reads its own values from them before it flushes. Zero once read-only.
+        long _appendEnd;
         volatile bool _removed;
         bool _readOnly;
 
@@ -355,7 +358,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
         public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
         {
             ThrowIfRemoved();
-            var length = (ulong)Volatile.Read(ref _length);
+            var length = (ulong)Math.Max(Volatile.Read(ref _length), Volatile.Read(ref _appendEnd));
             if (position > length || (ulong)data.Length > length - position) throw new EndOfStreamException();
             while (!data.IsEmpty)
             {
@@ -415,6 +418,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
             {
                 if (_removed) return;
                 _readOnly = true;
+                Volatile.Write(ref _appendEnd, 0);
                 PersistAndTruncate();
                 if (_content.Blocks.Length == 0 && _content.Mapped == 0) return; // Mapped on first read.
                 Publish(_length == 0 ? Content.Empty : new(_content.Mapped == _length ? _content.Mapping : new Mapping(_stream, _length), _length, []));
@@ -519,6 +523,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
                     _base = file._length;
                     var block = file.EnsureBlock(_base);
                     var start = (int)(_base % BlockSize);
+                    Volatile.Write(ref file._appendEnd, _base - start + BlockSize);
                     memWriter.Start = (nint)Unsafe.AsPointer(ref block[start]);
                     memWriter.Current = memWriter.Start;
                     memWriter.End = memWriter.Start + (BlockSize - start);

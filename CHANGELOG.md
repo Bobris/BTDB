@@ -27,6 +27,14 @@
   starting chosen types, and meter `BTDB.BackendActions` counts attempts. `Testing.TestActionContext` helps unit test
   handlers. The package is released with the others from now on, as a preview; usage is in `Doc/BackendActions.md`.
 
+### Fixed
+
+- Replication: on `OnDiskReplicationFileStorage` a transaction could not read a value it had written itself before
+  committing: the read threw `EndOfStreamException`, because the file's appender publishes its length only when it
+  flushes. ObjectDB hits this when it updates or reads a row it inserted in the same transaction. The storage now
+  reads the appender's current block past the published length, as `OnDiskFileCollection` reads its writer's buffer; a
+  sealed file still ends at its length. `InMemoryReplicationFileStorage` was not affected.
+
 ## 36.0.1
 
 ### Added
