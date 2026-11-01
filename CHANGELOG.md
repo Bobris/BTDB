@@ -32,6 +32,10 @@
   registered in a module initializer with its input's `[BackendAction]` and schedule values and typed factories, and
   `BackendActions.RegisterGenerated(handlerFactory, include)` registers them all without reflection. `Register(handler)`
   uses the generated values too and reads the attributes only for inputs the generator did not see.
+- BackendActions: `Import` and `ImportScheduledRuns` in a consume, or `ImportAsync` publishing `ActionsImported`,
+  carry actions over from another system at cutover with their IDs, relative order, run attempts, delayed start
+  times and cancellation, and the last runs of scheduled types and suspended types. The ID allocator rises above every
+  imported ID. The cutover runbook is in `Doc/BackendActions.md`.
 
 ### Fixed
 

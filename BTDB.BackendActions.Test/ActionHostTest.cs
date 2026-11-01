@@ -223,6 +223,19 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ImportedActionsRunOnceWithTheirNextAttempt()
+    {
+        await _node.Actions.ImportAsync(_node.Publisher, ActionImportTest.OldRows());
+        StartHost();
+        await UntilAsync(() => Outcomes.Length == 5); // the cancelled one at import, then the four queued
+        Assert.Equal([(500ul, ActionOutcomeKind.Completed, 3ul)],
+            Outcomes.Where(o => o.Id.ActionId == 500).Select(o => (o.Id.ActionId, o.Kind, o.Attempt)));
+        Assert.Equal(4, Outcomes.Count(o => o.Kind == ActionOutcomeKind.Completed));
+        Assert.Single(_node.Delayed); // still waiting for its start time
+        Assert.Empty(_node.Queued);
+    }
+
+    [Fact]
     public async Task ARestartedNodeRunsItsInterruptedAttemptAgain()
     {
         var first = StartHost(Options(TimeSpan.FromMilliseconds(500)));

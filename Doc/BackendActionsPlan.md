@@ -441,7 +441,7 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
 | A4 | Recurring scheduling, partial results with back-pressure and the large-result guidance, resource adjustment, before-start, cancellation reasons, timeouts. Done. | Feature parity with the reference API surface. |
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. Done. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification. Done: healthy, killed-worker and killed-leader runs in `BTDB.BackendActions.Process.Test`; it found and fixed an `OnDiskReplicationFileStorage` bug (a transaction could not read its own unflushed values). Partitions, restarts on the same directory and upgrades are not covered yet. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
-| A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
+| A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). Done, except the rehearsal, which needs the old system's tables and its export tool, outside this repository. | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
 | A8 | Source-generated registration (section 3.1). Done, except the AOT smoke run. | Applications register every action without reflection; SourceGenerator snapshot tests and an AOT smoke run pass. |
 
 ## 11. Migration from the reference implementation
@@ -471,7 +471,10 @@ action tables.
 
 ### Import API
 
-`BackendActions.Import(IEnumerable<ImportedAction>)` can be called from any consume. The `ActionsImported` event uses
+Implemented in A7; the runbook is in [BackendActions.md](BackendActions.md#migrating-from-another-action-system).
+
+`BackendActions.Import(IEnumerable<ImportedAction>)` can be called from any consume; `ImportAsync(publisher, ...)`
+publishes the event. The `ActionsImported` event uses
 the same code, so an application can choose either way in:
 
 * **The old tables are in the same ObjectDB:** publish one application-defined migration event. Its consume reads the
@@ -502,8 +505,12 @@ The consume does the following:
 * It raises ObjectDB user Ulong slot 2 (the slot `Ambient.AllocateId` uses) above the largest imported `ActionId`,
   and never lowers it.
 
-`ImportScheduledRuns(name → LastRun)` and `ImportSettings` (capacity shares by priority, suspended names, per-worker
-capacity override) carry the remaining state, so scheduled actions neither fire twice nor skip a run.
+`ImportScheduledRuns(name → LastRun)` and the event's suspended names carry the remaining replicated state, so
+scheduled actions neither fire twice nor skip a run. Capacity shares and per-worker capacity are leader and worker
+configuration (`ActionPlannerOptions`, `BackendActionsOptions.WorkerCpu`), not replicated state, so they move with the
+deployment's configuration instead of an import. `ImportedAction.IsAggregable` carries whether the old action still
+accepted aggregated inputs; the index points at the latest aggregable action of each key. An existing ID fails the
+whole import event.
 
 An imported action with `RunAttempts > 0` keeps that count, so attempt exhaustion still applies. Its first new
 attempt is `RunAttempts + 1`, which `ActionOutcome.Attempt` shows. A partial-result

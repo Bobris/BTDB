@@ -101,7 +101,8 @@ public sealed partial class BackendActions
             .Register<ActionFinished>(handler)
             .Register<DelayedActionsDue>(handler)
             .Register<ScheduledActionStarted>(handler)
-            .Register<ActionsSuspended>(handler);
+            .Register<ActionsSuspended>(handler)
+            .Register<ActionsImported>(handler);
     }
 
     /// <summary>Registers every input type for polymorphic storage in the database's action rows.</summary>

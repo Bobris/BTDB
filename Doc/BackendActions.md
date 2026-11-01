@@ -160,6 +160,29 @@ Meter `BTDB.BackendActions` counts each worker's started and finished attempts (
 finished by `kind`), records the start delay and attempt duration in seconds, and counts failed exchanges. The node
 whose coordinator runs also reports the gauges `btdb.backend_actions.waiting`, `running` and `workers`.
 
+## Migrating from another action system
+
+Import the old system's actions once, at the same quiesced barrier as the application's event-store cutover, before
+any new coordinator starts:
+
+1. In the old system, stop starting actions, let running ones drain for a bounded time, then stop the old workers.
+   Actions still running are left without a result and run again after the import, as after a crash.
+2. Quiesce the publishers and read the old action tables from a snapshot at the barrier.
+3. Import, in one of two ways:
+   * The old tables are in the application's ObjectDB: publish one application event whose consume reads them and
+     calls `actions.Import(rows)` and `actions.ImportScheduledRuns(lastRuns)`. Every replica imports the same rows.
+   * The old tables are elsewhere: an export tool calls `actions.ImportAsync(publisher, rows, lastRuns, suspended)`,
+     in batches below the publisher's `MaximumEventSize`, in ascending old order.
+4. Verify queued and delayed counts per action name and tenant and the scheduled last runs (`ListActions`), then start
+   the cluster, so the coordinator loads the imported rows. Keep the old tables until the validation window ends.
+
+An `ImportedAction` keeps its `TenantId` and `ActionId` and carries the input (a registered type), priority, old
+order, queue time, run attempts, `StartAt` for a delayed action, `IsCancelled` and `IsAggregable`. The import queues
+the actions in their old relative order after any already queued, keeps delayed ones delayed, finishes cancelled ones
+at once as `Cancelled` through their handler, points each unification key at its latest aggregable action, and raises
+the ID allocator above every imported ID. An ID that already exists fails the whole event. An imported action's next
+attempt is its run attempts plus one.
+
 ## Testing handlers
 
 `BTDB.BackendActions.Testing.TestActionContext` runs `ExecuteAsync` without a cluster. It records partial results,

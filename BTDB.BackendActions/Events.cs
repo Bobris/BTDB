@@ -96,7 +96,8 @@ public class DelayedActionsDue : PureEvent
 sealed class BackendActionsEventHandler(BackendActions actions) :
     IEventHandler<ActionEnqueued, ActionEnqueuedResult>, IEventHandler<ActionCancelRequested, ActionCancelResult>,
     IEventHandler<CoordinatorActivated>, IEventHandler<ActionsStarted>, IEventHandler<ActionFinished>,
-    IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>, IEventHandler<ActionsSuspended>
+    IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>, IEventHandler<ActionsSuspended>,
+    IEventHandler<ActionsImported>
 {
     public ActionEnqueuedResult? Validate(ActionEnqueued ev)
     {
@@ -128,4 +129,6 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Consume(ScheduledActionStarted ev) => actions.StartScheduled(ev);
     public void Validate(ActionsSuspended ev) { }
     public void Consume(ActionsSuspended ev) => actions.Suspend(ev.Names, ev.Suspended);
+    public void Validate(ActionsImported ev) { }
+    public void Consume(ActionsImported ev) => actions.Import(ev);
 }

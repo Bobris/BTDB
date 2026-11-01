@@ -165,6 +165,8 @@ public class PlaceOrder : PureEvent
     public DateTime? StartAt { get; set; }
     public ulong CancelTenantId { get; set; }
     public ulong CancelActionId { get; set; }
+    /// <summary>Imports <see cref="ActionImportTest.OldRows"/>, as an application reading its old tables would.</summary>
+    public bool Migrate { get; set; }
 }
 
 internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>
@@ -178,6 +180,11 @@ internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>
                 new() { Priority = ev.Priority, StartAt = ev.StartAt }));
         if (ev.CancelActionId != 0)
             node.Recorder.Cancelled.Enqueue(node.Actions.Cancel(new(ev.CancelTenantId, ev.CancelActionId)));
+        if (ev.Migrate)
+        {
+            node.Actions.Import(ActionImportTest.OldRows());
+            node.Actions.ImportScheduledRuns(new Dictionary<string, DateTime> { [typeof(HourlyOrder).FullName!] = ev.When });
+        }
     }
 }
 
