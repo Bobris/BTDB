@@ -123,7 +123,7 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Consume(CoordinatorActivated ev) => actions.ActivateCoordinator(ev.Session);
     public void Validate(ActionsStarted ev) { }
     public void Consume(ActionsStarted ev) => actions.Start(ev);
-    public void Validate(ActionFinished ev) { }
+    public void Validate(ActionFinished ev) => BackendActions.CheckKind(ev);
     public void Consume(ActionFinished ev) => actions.Finish(ev);
     public void Validate(DelayedActionsDue ev) { }
     public void Consume(DelayedActionsDue ev) => actions.QueueDue(ev);

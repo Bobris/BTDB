@@ -57,6 +57,15 @@ public static class Ambient
         return id;
     }
 
+    /// <summary>Makes later <see cref="AllocateId"/> calls return IDs above <paramref name="id"/>, for example after
+    /// importing IDs from another system; it never lowers the allocator.</summary>
+    public static void ReserveIdsUpTo(ulong id)
+    {
+        if (IsQuery) throw new InvalidOperationException("Cannot reserve IDs in a query.");
+        var transaction = Transaction.KeyValueDBTransaction;
+        if (transaction.GetUlong(2) < id) transaction.SetUlong(2, id);
+    }
+
     public static void TemporaryCloseTransaction()
     {
         var context = GetContext();

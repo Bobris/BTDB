@@ -101,8 +101,7 @@ public sealed partial class BackendActions
                 indexes.Upsert(new() { TenantId = action.TenantId, Name = type.Name, UniqueKey = key, ActionId = action.ActionId });
             Changed(new(action.TenantId, action.ActionId));
         }
-        var transaction = Ambient.Transaction.KeyValueDBTransaction;
-        if (transaction.GetUlong(2) < highest) transaction.SetUlong(2, highest); // the slot Ambient.AllocateId uses
+        Ambient.ReserveIdsUpTo(highest);
     }
 
     /// <summary>Sets the last run of scheduled types in the current consume, so the first check after the cutover

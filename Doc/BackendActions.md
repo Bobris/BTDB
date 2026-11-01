@@ -113,7 +113,7 @@ var found = await actions.CancelAsync(publisher, other);
 ```
 
 `QualifiedActionId(TenantId, ActionId)` identifies an action. An input that merges returns the ID of the action it
-merged into. Priorities are `RealTime`, `Normal`, `Low` and `Idle`. A start time later than the enqueuing event's
+merged into and allocates no ID of its own. Priorities are `RealTime`, `Normal`, `Low` and `Idle`. A start time later than the enqueuing event's
 time keeps the action delayed. Cancelling removes a delayed action without an outcome, finishes a queued one as
 `Cancelled` at once, and marks a started one; its worker or the coordinator then finishes it as `Cancelled`.
 

@@ -211,6 +211,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     input = (IActionInput)row.Input!;
                     queuedAt = row.QueuedAt;
                     _type = worker._actions.TypeOf(row.Name);
+                    if (row.IsCancelled) Cancel(); // cancelled before it ran: finish as Cancelled without the handler
                 }
                 if (_type == null) return;
                 var started = worker._options.TimeProvider.GetTimestamp();
@@ -218,6 +219,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 var finished = new ActionFinished { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
                 try
                 {
+                    _cancel.Token.ThrowIfCancellationRequested();
                     finished.Result = await _type.Execute(input, this).ConfigureAwait(false);
                     finished.Kind = ActionOutcomeKind.Completed;
                 }

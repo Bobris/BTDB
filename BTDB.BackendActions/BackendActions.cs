@@ -161,9 +161,9 @@ public sealed partial class BackendActions
         var ev = CurrentConsume();
         var type = TypeOf(input);
         options ??= new();
-        if (input.ActionId == 0) input.ActionId = Ambient.AllocateId();
         if (options.StartAt is { } startAt && startAt > ev.When)
         {
+            if (input.ActionId == 0) input.ActionId = Ambient.AllocateId();
             Ambient.Relation<IDelayedActions>().Insert(new()
             {
                 TenantId = input.TenantId, ActionId = input.ActionId, StartAt = startAt, Name = type.Name,
@@ -237,7 +237,8 @@ public sealed partial class BackendActions
     public IReadOnlyList<ulong> SuspendedTenants =>
         Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0)?.SuspendedTenants ?? [];
 
-    public bool IsTenantSuspended(ulong tenantId) => SuspendedTenants.Contains(tenantId);
+    public bool IsTenantSuspended(ulong tenantId) =>
+        Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0)?.SuspendedTenants.BinarySearch(tenantId) >= 0;
 
     internal void Suspend(List<string> names, List<ulong> tenantIds, bool suspended)
     {
@@ -302,18 +303,26 @@ public sealed partial class BackendActions
         }
     }
 
-    internal void Finish(ActionFinished ev)
+    // Rejects an unknown outcome at publication; the consume checks again for events in the log already.
+    internal static void CheckKind(ActionFinished ev)
     {
         if (!Enum.IsDefined(ev.Kind)) throw new ArgumentException("Unknown action outcome.");
+    }
+
+    internal void Finish(ActionFinished ev)
+    {
+        CheckKind(ev);
         var queued = Ambient.Relation<IQueuedActions>();
         if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } row ||
             row.RunAttempts != ev.Attempt)
             return; // a superseded attempt or an action that already finished
-        Changed(new(row.TenantId, row.ActionId));
-        if (ev.Kind == ActionOutcomeKind.Partial)
-            OnFinished(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
-        else
+        if (ev.Kind != ActionOutcomeKind.Partial)
+        {
             Complete(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
+            return;
+        }
+        OnFinished(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
+        Changed(new(row.TenantId, row.ActionId)); // the report renews the attempt on the coordinator
     }
 
     internal void QueueDue(DelayedActionsDue ev)
@@ -337,11 +346,12 @@ public sealed partial class BackendActions
         if (ev.Start && TypeOf(ev.Name) is { Create: { } create } type)
         {
             var input = create();
-            input.ActionId = Ambient.AllocateId();
             Queue(type.Name, input.TenantId, input.ActionId, input, ActionPriority.Normal, ev);
         }
     }
 
+    /// <summary>Queues an input, or merges it into the queued action with its key. An actionId of zero allocates one
+    /// only when a new action is queued, and stores it in the input.</summary>
     QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev)
     {
         var queued = Ambient.Relation<IQueuedActions>();
@@ -357,16 +367,21 @@ public sealed partial class BackendActions
                 {
                     existing.LatestInputEventId = ev.EventId;
                     queued.Update(existing);
+                    if (actionId == 0) unificator.ActionId = existing.ActionId;
                     return new(existing.TenantId, existing.ActionId); // its scheduling does not change
                 }
                 existing.IsAggregable = false;
                 queued.Update(existing);
-                index.ActionId = actionId;
+                index.ActionId = actionId = Allocate(actionId, input);
                 indexes.Update(index);
             }
             else
-                indexes.Insert(new() { TenantId = tenantId, Name = name, UniqueKey = key, ActionId = actionId });
+                indexes.Insert(new()
+                {
+                    TenantId = tenantId, Name = name, UniqueKey = key, ActionId = actionId = Allocate(actionId, input)
+                });
         }
+        actionId = Allocate(actionId, input);
         queued.Insert(new()
         {
             TenantId = tenantId, ActionId = actionId, Name = name, Priority = priority,
@@ -384,6 +399,14 @@ public sealed partial class BackendActions
         RemoveIndex(row);
         Ambient.Relation<IQueuedActions>().RemoveById(row.TenantId, row.ActionId);
         Changed(new(row.TenantId, row.ActionId));
+    }
+
+    static ulong Allocate(ulong actionId, object? input)
+    {
+        if (actionId != 0) return actionId;
+        actionId = Ambient.AllocateId();
+        ((IActionInput)input!).ActionId = actionId;
+        return actionId;
     }
 
     void OnFinished(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error)

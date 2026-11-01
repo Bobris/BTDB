@@ -143,7 +143,8 @@ isolated even in one process.
 
 During consumption the wrapper installs the event's writer, `CurrentEvent`, `EventId`, `IsQuery = false` and
 `IsReplay`. `Ambient.Transaction` is borrowed: never commit or dispose it. `AllocateId` increments ObjectDB user Ulong
-slot 2 inside the transaction; reserve that slot for this allocator. The context closes at the end of the handler.
+slot 2 inside the transaction; reserve that slot for this allocator. `ReserveIdsUpTo(id)` raises it, never lowers
+it, so later IDs stay above IDs imported from elsewhere. The context closes at the end of the handler.
 Publishing from a consume context is rejected because every replica would otherwise emit the same follow-up event.
 
 Use the serialized event's fields and deterministic database state to calculate writes. `IsReplay` can inform

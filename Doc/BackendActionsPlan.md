@@ -524,8 +524,8 @@ The consume does the following:
 * It recomputes the unification and aggregation index from the inputs, and keeps aggregation open as in the old row.
 * An imported row with `IsCancelled` was not running after the drain, so the consume finishes it at once with
   `OnFinished(Cancelled)`.
-* It raises ObjectDB user Ulong slot 2 (the slot `Ambient.AllocateId` uses) above the largest imported `ActionId`,
-  and never lowers it.
+* It raises the `Ambient.AllocateId` allocator above the largest imported `ActionId` with `Ambient.ReserveIdsUpTo`,
+  which never lowers it.
 
 `ImportScheduledRuns(name → LastRun)` and the event's suspended names and tenants carry the remaining replicated state, so
 scheduled actions neither fire twice nor skip a run. Capacity shares and per-worker capacity are leader and worker

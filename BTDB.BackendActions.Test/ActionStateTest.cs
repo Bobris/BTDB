@@ -83,18 +83,19 @@ public class ActionStateTest
         await Place(node, new RefreshCache { Key = "a" });
         await Place(node, new RefreshCache { Key = "a" });
         await Place(node, new RefreshCache { Key = "b" });
-        Assert.Equal([new(0, 1), new(0, 1), new QualifiedActionId(0, 3)], node.Recorder.Enqueued);
-        Assert.Equal([1ul, 3ul], node.Queued.Select(q => q.ActionId));
+        // A merged input allocates no ID.
+        Assert.Equal([new(0, 1), new(0, 1), new QualifiedActionId(0, 2)], node.Recorder.Enqueued);
+        Assert.Equal([1ul, 2ul], node.Queued.Select(q => q.ActionId));
         Assert.Equal(3ul, node.Queued[0].LatestInputEventId); // the merged request's event
         Assert.Equal("refresh", node.Queued[0].Name);
 
         await Started(node, session, new(0, 1), 1);
         Assert.Equal(["b"], node.Indexes.Select(i => Encoding.UTF8.GetString(i.UniqueKey)));
         await Place(node, new RefreshCache { Key = "a" }); // the running action computes before this request
-        Assert.Equal(new QualifiedActionId(0, 4), node.Recorder.Enqueued.Last());
+        Assert.Equal(new QualifiedActionId(0, 3), node.Recorder.Enqueued.Last());
         await Place(node, new RefreshCache { Key = "a" });
-        Assert.Equal(new QualifiedActionId(0, 4), node.Recorder.Enqueued.Last());
-        Assert.Equal([1ul, 3ul, 4ul], node.Queued.Select(q => q.ActionId));
+        Assert.Equal(new QualifiedActionId(0, 3), node.Recorder.Enqueued.Last());
+        Assert.Equal([1ul, 2ul, 3ul], node.Queued.Select(q => q.ActionId));
     }
 
     [Fact]
@@ -107,13 +108,13 @@ public class ActionStateTest
         Assert.Equal("1,2,3", string.Join(",", Assert.IsType<CollectItems>(Assert.Single(node.Queued).Input).Items));
         await Place(node, new CollectItems { Key = "k", Items = [4] }); // refused: the first stops aggregating
         var queued = node.Queued;
-        Assert.Equal([(1ul, false), (3ul, true)], queued.Select(q => (q.ActionId, q.IsAggregable)));
-        Assert.Equal(3ul, Assert.Single(node.Indexes).ActionId);
-        await Started(node, session, new(0, 3), 1);
+        Assert.Equal([(1ul, false), (2ul, true)], queued.Select(q => (q.ActionId, q.IsAggregable)));
+        Assert.Equal(2ul, Assert.Single(node.Indexes).ActionId);
+        await Started(node, session, new(0, 2), 1);
         Assert.Empty(node.Indexes);
         Assert.False(node.Queued[1].IsAggregable);
         await Place(node, new CollectItems { Key = "k", Items = [5] });
-        Assert.Equal([1ul, 3ul, 4ul], node.Queued.Select(q => q.ActionId));
+        Assert.Equal([1ul, 2ul, 3ul], node.Queued.Select(q => q.ActionId));
     }
 
     [Fact]
@@ -253,6 +254,15 @@ public class ActionStateTest
         Assert.Empty(node.Delayed);
         Assert.Equal([("removed", 1ul), (typeof(ProcessOrder).FullName!, 2ul)],
             node.Queued.Select(q => (q.Name, q.ActionId)));
+    }
+
+    [Fact]
+    public async Task AnUnknownOutcomeIsRejectedBeforePublication()
+    {
+        await using var node = await Start();
+        var end = node.Publisher.LastAppliedEventId;
+        await Assert.ThrowsAsync<ArgumentException>(() => Finished(node, new(0, 1), 1, (ActionOutcomeKind)42));
+        Assert.Equal(end, node.Publisher.LastAppliedEventId);
     }
 
     [Fact]

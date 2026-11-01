@@ -114,6 +114,12 @@
 - BackendActions: the coordinator no longer scans every action on each worker exchange or replans when nothing changed
   since a plan found nothing to start. Tenant consumption decays in one step instead of one pass per elapsed second,
   and the poll and plan timers no longer pile up when workers are woken often.
+- BackendActions: an input that merges into a queued action no longer allocates an action ID, so new IDs have no
+  gaps from merges; the consume's input gets the ID it merged into. An `ActionFinished` with an unknown outcome kind
+  is rejected when published instead of failing its consume. A worker finishes an attempt cancelled before it ran as
+  `Cancelled` without calling the handler.
+- EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and
+  never lowers it; `BackendActions.Import` uses it instead of writing the allocator's slot itself.
 
 ## 36.0.1
 

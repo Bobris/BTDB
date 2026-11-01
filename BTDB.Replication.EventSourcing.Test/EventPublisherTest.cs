@@ -247,6 +247,25 @@ public class EventPublisherTest
     }
 
     [Fact]
+    public async Task ReservedIdsAreSkippedByLaterAllocations()
+    {
+        using var db = await TestDatabase.OpenAsync();
+        var handler = new Handler();
+        await using var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), handler);
+        await publisher.StartAsync();
+        handler.Consuming = _ =>
+        {
+            Ambient.ReserveIdsUpTo(10);
+            Ambient.ReserveIdsUpTo(5); // never lowers the allocator
+        };
+        await publisher.PublishAsync(new AddPure { Amount = 1 });
+        handler.Consuming = null;
+        await publisher.PublishAsync(new AddPure { Amount = 2 });
+        Assert.Equal(new[] { 1ul, 11ul }, db.Read().Select(e => e.AllocatedId));
+        using (publisher.StartQuery()) Assert.Throws<InvalidOperationException>(() => Ambient.ReserveIdsUpTo(20));
+    }
+
+    [Fact]
     public async Task AmbientQueriesStayIsolatedAndConsumptionCannotPublish()
     {
         using var a = await TestDatabase.OpenAsync();
