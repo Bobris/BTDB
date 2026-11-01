@@ -125,11 +125,9 @@ public class ActionHostTest : IAsyncLifetime
     {
         StartHost();
         var id = await Enqueue(new ExportOrder { Parts = 3 });
-        await UntilAsync(() => Outcomes.Length == 4);
-        Assert.Equal([(ActionOutcomeKind.Partial, "part 1"), (ActionOutcomeKind.Partial, "part 2"),
-                (ActionOutcomeKind.Partial, "part 3"), (ActionOutcomeKind.Completed, "all")],
-            Outcomes.Select(o => (o.Kind, o.Result)));
-        Assert.All(Outcomes, o => Assert.Equal((id, 1ul), (o.Id, o.Attempt)));
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((ActionOutcomeKind.Completed, "all", 1ul), (Outcomes[0].Kind, Outcomes[0].Result, Outcomes[0].Attempt));
+        Assert.Equal([(id, 1ul, "part 1", 0), (id, 1ul, "part 2", 0), (id, 1ul, "part 3", 0)], _node.Recorder.Parts);
         Assert.Empty(_node.Queued);
     }
 
@@ -241,14 +239,15 @@ public class ActionHostTest : IAsyncLifetime
     [Fact]
     public async Task TheTestContextRecordsWhatAHandlerAsks()
     {
-        var context = new Testing.TestActionContext(new(1, 2), resultType: typeof(OrderResult));
+        var context = new Testing.TestActionContext(new(1, 2), attempt: 3);
         var handler = new Recorder.ExportProbe();
         Assert.Equal("all", (await handler.ExecuteAsync(new ExportOrder { Parts = 2 }, context)).Text);
-        Assert.Equal(["part 1", "part 2"], context.Partials.Cast<OrderResult>().Select(p => p.Text));
+        Assert.Equal([(1ul, 2ul, 3ul, "part 1"), (1ul, 2ul, 3ul, "part 2")],
+            context.Partials.Cast<ExportPart>().Select(p => (p.TenantId, p.ActionId, p.Attempt, p.Text)));
         Assert.Equal(-1000, context.CpuDelta);
         context.Cancel(ActionCancellationReason.Timeout);
         Assert.Equal(ActionCancellationReason.Timeout, context.CancellationReason);
-        await Assert.ThrowsAsync<OperationCanceledException>(() => context.SubmitPartialAsync(new OrderResult()));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => context.SubmitPartialAsync(new ExportPart()).AsTask());
     }
 
     [Fact]

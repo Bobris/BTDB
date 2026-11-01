@@ -98,7 +98,9 @@ internal sealed class Node : IAsyncDisposable
         node.Actions.RegisterTypes(node.Objects);
         await node.Objects.InitializeRelations([.. BackendActions.RelationTypes]);
         var dispatcher = new EventDispatcher();
-        dispatcher.Register<PlaceOrder>(new AppHandler(node));
+        var app = new AppHandler(node);
+        dispatcher.Register<PlaceOrder>(app);
+        dispatcher.Register<ExportPart>(app);
         node.Actions.RegisterEvents(dispatcher);
         node.Publisher = new(node.Objects, data, metadata, dispatcher,
             new() { TimeProvider = time, MaximumBatchSize = batch }, capture);
@@ -172,9 +174,22 @@ public class PlaceOrder : PureEvent
     public List<ulong> SuspendTenants { get; set; } = new();
 }
 
-internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>
+/// <summary>A part an export submits before its final result.</summary>
+public class ExportPart : PureEvent
+{
+    public ulong TenantId { get; set; }
+    public ulong ActionId { get; set; }
+    public ulong Attempt { get; set; }
+    public string Text { get; set; } = "";
+}
+
+internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>, IEventHandler<ExportPart>
 {
     public void Validate(PlaceOrder ev) { }
+    public void Validate(ExportPart ev) { }
+
+    public void Consume(ExportPart ev) =>
+        node.Recorder.Parts.Enqueue((new(ev.TenantId, ev.ActionId), ev.Attempt, ev.Text, node.Recorder.Outcomes.Count));
 
     public void Consume(PlaceOrder ev)
     {
@@ -263,6 +278,8 @@ internal sealed class Recorder
     internal readonly ConcurrentQueue<Outcome> Outcomes = new();
     internal readonly ConcurrentQueue<QualifiedActionId> BeforeStarts = new();
     internal readonly ConcurrentQueue<(QualifiedActionId Id, ActionOutcomeKind Kind)> FinishFailures = new();
+    /// <summary>Consumed export parts, with the number of outcomes recorded before each.</summary>
+    internal readonly ConcurrentQueue<(QualifiedActionId Id, ulong Attempt, string Text, int Outcomes)> Parts = new();
 
     internal void Register(BackendActions actions) => actions
         .Register(new Handler<ProcessOrder>(this, i => i.Amount.ToString()))
@@ -341,8 +358,12 @@ internal sealed class Recorder
                 finally { Owner.Reasons.Enqueue(context.CancellationReason); }
             }
             context.AdjustResources(-1000);
-            for (var i = 1; i <= input.Parts; i++) await context.SubmitPartialAsync(new OrderResult { Text = "part " + i });
-            await Assert.ThrowsAsync<ArgumentException>(() => context.SubmitPartialAsync("not a result"));
+            for (var i = 1; i <= input.Parts; i++)
+                await context.SubmitPartialAsync(new ExportPart
+                {
+                    TenantId = context.Id.TenantId, ActionId = context.Id.ActionId, Attempt = context.Attempt,
+                    Text = "part " + i
+                });
             return new() { Text = "all" };
         }
     }

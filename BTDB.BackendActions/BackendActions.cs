@@ -9,7 +9,6 @@ internal sealed class ActionType
 {
     internal required string Name { get; init; }
     internal required Type InputType { get; init; }
-    internal required Type ResultType { get; init; }
     internal required int Cpu { get; init; }
     internal required int MaxConcurrent { get; init; }
     internal required string? ConcurrencyGroup { get; init; }
@@ -78,7 +77,6 @@ public sealed partial class BackendActions
         {
             Name = metadata.Name ?? typeof(TInput).FullName!,
             InputType = typeof(TInput),
-            ResultType = typeof(TResult),
             Cpu = metadata.Cpu,
             MaxConcurrent = metadata.MaxConcurrent,
             ConcurrencyGroup = metadata.ConcurrencyGroup,
@@ -316,13 +314,7 @@ public sealed partial class BackendActions
         if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } row ||
             row.RunAttempts != ev.Attempt)
             return; // a superseded attempt or an action that already finished
-        if (ev.Kind != ActionOutcomeKind.Partial)
-        {
-            Complete(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
-            return;
-        }
-        OnFinished(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
-        Changed(new(row.TenantId, row.ActionId)); // the report renews the attempt on the coordinator
+        Complete(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
     }
 
     internal void QueueDue(DelayedActionsDue ev)

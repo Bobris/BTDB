@@ -96,14 +96,14 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
     public async Task<ReportResult> ExecuteAsync(GenerateReport input, IActionContext context)
     {
         using (context.StartQuery()) { /* local read-only snapshot, causally after the start */ }
-        await context.SubmitPartialAsync(new ReportResult { BlobName = "partial" }); // optional progress
+        await context.SubmitPartialAsync(new ReportProgress { ReportId = input.ReportId }); // an application event
         return new ReportResult { BlobName = "report-" + input.ReportId };
     }
 
     // Inside the ActionFinished event's consume transaction, on every replica. Deterministic, like any Consume.
     public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
     {
-        // outcome.Kind: Completed | Partial | Failed | Cancelled | Interrupted; outcome.Result / outcome.Error
+        // outcome.Kind: Completed | Failed | Cancelled | Interrupted; outcome.Result / outcome.Error
     }
 }
 ```
@@ -159,33 +159,37 @@ An input that unifies or aggregates returns the ID of the action it merged into.
 ### Partial results and large results
 
 A result travels in an `ActionFinished` event and is therefore limited by `EventPublisherOptions.MaximumEventSize`
-(50 MiB by default). There is no blob-reference mechanism in v1. A handler with more data returns it in parts:
+(50 MiB by default). There is no blob-reference mechanism in v1. A handler with more data publishes it in parts, as
+events of the application:
 
 ```csharp
 public async Task<ExportResult> ExecuteAsync(ExportRows input, IActionContext context)
 {
     foreach (var chunk in ReadInChunks(input, maximumBytes: 4 * 1024 * 1024))
-        await context.SubmitPartialAsync(new ExportResult { Rows = chunk });
-    return new ExportResult { Rows = [], Completed = true }; // small final result
+        await context.SubmitPartialAsync(new ExportRowsPart
+        {
+            TenantId = context.Id.TenantId, ActionId = context.Id.ActionId, Attempt = context.Attempt, Rows = chunk
+        });
+    return new ExportResult { Completed = true }; // small final result
 }
 
+// The application's IEventHandler<ExportRowsPart>.Consume appends ev.Rows to its relation keyed by the action.
 public void OnFinished(ExportRows input, ActionOutcome<ExportResult> outcome)
 {
-    // Partial: append outcome.Result.Rows to an application relation keyed by input.ActionId.
     // Completed: mark the export done. Failed/Cancelled/Interrupted: delete the appended rows or keep them.
 }
 ```
 
-* `SubmitPartialAsync` publishes `ActionFinished(Partial)` and returns after the local consume, so a slow consumer
-  applies back-pressure and partials keep their order. A part must be of the action's result type.
-* A partial larger than `MaximumEventSize` fails the call with `EventTooLargeException` before anything is written;
+* `SubmitPartialAsync(ev)` is a thin wrapper of `EventPublisher.PublishAsync` with the attempt's cancellation: it
+  returns after the local consume, so a slow consumer applies back-pressure and parts keep their order. BackendActions
+  neither inspects nor consumes the event.
+* A part larger than `MaximumEventSize` fails the call with `EventTooLargeException` before anything is written;
   the handler can split it further or let the attempt fail.
-* `OnFinished` receives each partial in its own consume transaction. The application owns the accumulated state and
-  decides what a later failure or cancellation means for it.
-* A new attempt starts from the beginning, after the coordinator restarts the action. `ActionOutcome.Attempt` lets
-  `OnFinished` discard the parts of the superseded attempt, or the handler can resume from what the application
-  already stored.
-* The consume rejects parts of a superseded attempt, so parts of two attempts never interleave.
+* The application's handler consumes each part in its own consume transaction. The application owns the accumulated
+  state and decides what a later failure or cancellation means for it.
+* A new attempt starts from the beginning, after the coordinator restarts the action, or resumes from what the
+  application already stored. A superseded attempt's parts may still arrive after the new attempt started, so the
+  consume skips a part unless `FindAction(id)` is `Started` with `RunAttempts` equal to the part's attempt.
 
 Hosting:
 
@@ -254,7 +258,7 @@ Events, all ordinary `BTDB.Replication.EventSourcing` events:
 | `ActionCancelRequested{ActionId}` | `CancelAsync` | Delayed: delete. Not started: call `OnFinished(Cancelled)` and delete in this transaction (the input is at hand, so no deferred removal is needed). Started: set `IsCancelled`, and the coordinator finishes it. |
 | `CoordinatorActivated{Session}` | New leader's coordinator | Store `CoordinatorSession`. This is the barrier and fencing epoch (section 5). |
 | `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled, or `Attempt` is not `RunAttempts + 1`; otherwise set `IsStarted`, `RunAttempts = Attempt`, close aggregation, remove the index entry and run `OnBeforeStart`. A higher attempt supersedes a running one. |
-| `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished`. A final outcome deletes the row; `Partial` keeps it. |
+| `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished` and delete the row. |
 | `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
 | `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun, Start}` | Coordinator scheduler | Only if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator): set `LastRun = NewLastRun` and, when `Start`, enqueue a new input. |
 | `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
@@ -439,7 +443,7 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
   per tenant, resources and adjustments, leases, attempt exhaustion) to a pure `ActionPlanner` with a fake
   `TimeProvider` and a deterministic worker strategy.
 * **Consume tests:** enqueue, unify, aggregate, delayed, cancel in each state, stale attempt or session rejection,
-  partial results (ordering, oversized part, superseded attempt's parts), before-start failure. Verify that replay and different batch sizes give identical TRL bytes.
+  before-start failure; partial results' ordering through the host. Verify that replay and different batch sizes give identical TRL bytes.
 * **In-process cluster:** the existing replication and EventSourcing test infrastructure with 1–3 nodes and an
   in-memory EventLog. Cover leader failover mid-run, worker kill, a lost exchange response, a deposed leader's late
   `ActionsStarted`, handoff, and an upgrade where the new action type is unsupported by old workers. Add a fault

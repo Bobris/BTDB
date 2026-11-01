@@ -69,7 +69,6 @@ public class BTDB.BackendActions.ActionKey
   property ulong TenantId { get; set; }
 public enum BTDB.BackendActions.ActionOutcomeKind
   Completed = 1
-  Partial = 2
   Failed = 3
   Cancelled = 4
   Interrupted = 5
@@ -225,7 +224,7 @@ public interface BTDB.BackendActions.IActionContext
   property ActionCancellationReason CancellationReason { get; }
   property QualifiedActionId Id { get; }
   method Ambient.Scope StartQuery()
-  method Task SubmitPartialAsync(object result)
+  method ValueTask SubmitPartialAsync(PureEvent ev)
 public interface BTDB.BackendActions.IActionHandler<TInput, TResult>
   method Task<TResult> ExecuteAsync(TInput input, IActionContext context)
   method void OnFinished(TInput input, ActionOutcome<TResult> outcome)
@@ -347,7 +346,7 @@ public class BTDB.BackendActions.StartedAction
   property string WorkerNode { get; set; }
   property Guid WorkerSession { get; set; }
 public sealed class BTDB.BackendActions.Testing.TestActionContext : IActionContext
-  ctor(QualifiedActionId id = default, ulong attempt = 1, EventPublisher? publisher = null, Type? resultType = null)
+  ctor(QualifiedActionId id = default, ulong attempt = 1, EventPublisher? publisher = null)
   method void AdjustResources(int cpuDelta)
   property ulong Attempt { get; }
   method void Cancel(ActionCancellationReason reason = Cancelled)
@@ -356,9 +355,9 @@ public sealed class BTDB.BackendActions.Testing.TestActionContext : IActionConte
   property ActionCancellationReason CancellationReason { get; }
   property int CpuDelta { get; }
   property QualifiedActionId Id { get; }
-  property IReadOnlyList<object> Partials { get; }
+  property IReadOnlyList<PureEvent> Partials { get; }
   method Ambient.Scope StartQuery()
-  method Task SubmitPartialAsync(object result)
+  method ValueTask SubmitPartialAsync(PureEvent ev)
   property TimeSpan? Timeout { get; }
 public sealed class BTDB.BackendActions.WorkerOverview : IEquatable<WorkerOverview>
   ctor(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready, TimeSpan SinceExchange, int Attempts)

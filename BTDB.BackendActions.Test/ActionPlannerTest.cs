@@ -14,7 +14,7 @@ public class ActionPlannerTest
     static ActionType Type(string name, int cpu = 100, int maxConcurrent = 0, string? group = null,
         bool singlePerTenant = false) => new()
     {
-        Name = name, InputType = typeof(object), ResultType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
+        Name = name, InputType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
         ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant,
         Execute = (_, _) => Task.FromResult(new object()), Finished = (_, _, _, _, _) => { }, BeforeStart = null
     };

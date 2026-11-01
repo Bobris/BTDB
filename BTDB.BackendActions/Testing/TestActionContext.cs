@@ -3,23 +3,22 @@ using BTDB.Replication.EventSourcing;
 namespace BTDB.BackendActions.Testing;
 
 /// <summary>
-/// An <see cref="IActionContext"/> for unit tests of <c>ExecuteAsync</c>, without a cluster. It records partial
-/// results, resource adjustments and the requested timeout; <see cref="Cancel"/> cancels with a chosen reason. With
-/// <paramref name="resultType"/> it rejects partial results of another type, as a worker does. Test <c>OnFinished</c>
-/// through an EventPublisher, like any consume.
+/// An <see cref="IActionContext"/> for unit tests of <c>ExecuteAsync</c>, without a cluster. It records the events
+/// submitted as partial results, resource adjustments and the requested timeout; <see cref="Cancel"/> cancels with a
+/// chosen reason. Test <c>OnFinished</c> and the partial results' handlers through an EventPublisher, like any consume.
 /// </summary>
-public sealed class TestActionContext(QualifiedActionId id = default, ulong attempt = 1, EventPublisher? publisher = null,
-    Type? resultType = null) : IActionContext
+public sealed class TestActionContext(QualifiedActionId id = default, ulong attempt = 1, EventPublisher? publisher = null)
+    : IActionContext
 {
     readonly CancellationTokenSource _cancel = new();
-    readonly List<object> _partials = new();
+    readonly List<PureEvent> _partials = new();
     ActionCancellationReason _reason;
 
     public QualifiedActionId Id => id;
     public ulong Attempt => attempt;
     public CancellationToken Cancellation => _cancel.Token;
     public ActionCancellationReason CancellationReason => _reason;
-    public IReadOnlyList<object> Partials => _partials;
+    public IReadOnlyList<PureEvent> Partials => _partials;
     public int CpuDelta { get; private set; }
     public TimeSpan? Timeout { get; private set; }
 
@@ -27,14 +26,12 @@ public sealed class TestActionContext(QualifiedActionId id = default, ulong atte
     public Ambient.Scope StartQuery() => (publisher ?? throw new InvalidOperationException(
         "Pass a publisher to the TestActionContext to open queries.")).StartQuery();
 
-    public Task SubmitPartialAsync(object result)
+    public ValueTask SubmitPartialAsync(PureEvent ev)
     {
-        ArgumentNullException.ThrowIfNull(result);
-        if (resultType != null && !resultType.IsInstanceOfType(result))
-            throw new ArgumentException($"A partial result must be a {resultType.FullName}.", nameof(result));
+        ArgumentNullException.ThrowIfNull(ev);
         _cancel.Token.ThrowIfCancellationRequested();
-        _partials.Add(result);
-        return Task.CompletedTask;
+        _partials.Add(ev);
+        return ValueTask.CompletedTask;
     }
 
     public void AdjustResources(int cpuDelta) => CpuDelta += cpuDelta;

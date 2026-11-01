@@ -37,11 +37,25 @@ public class Chunked : ActionInput<Number>
     public int Parts { get; set; }
 }
 
+/// <summary>A part a Chunked action submits.</summary>
+public class ChunkedPart : PureEvent
+{
+    public ulong Attempt { get; set; }
+    public long Value { get; set; }
+}
+
+sealed class ChunkedPartHandler : IEventHandler<ChunkedPart>
+{
+    public void Validate(ChunkedPart ev) { }
+    public void Consume(ChunkedPart ev) => Program.Outcomes.Enqueue($"chunked part {ev.Attempt} {ev.Value}");
+}
+
 public class ChunkedHandler : IActionHandler<Chunked, Number>
 {
     public async Task<Number> ExecuteAsync(Chunked input, IActionContext context)
     {
-        for (var part = 1; part <= input.Parts; part++) await context.SubmitPartialAsync(new Number { Value = part });
+        for (var part = 1; part <= input.Parts; part++)
+            await context.SubmitPartialAsync(new ChunkedPart { Attempt = context.Attempt, Value = part });
         return new() { Value = 0 };
     }
 
@@ -132,6 +146,7 @@ static class Program
         await objects.InitializeRelations([.. BackendActions.RelationTypes]);
         var dispatcher = new EventDispatcher();
         dispatcher.Register<AddToSum>(new AddToSumHandler(actions));
+        dispatcher.Register<ChunkedPart>(new ChunkedPartHandler());
         actions.RegisterEvents(dispatcher);
         await using var publisher = new EventPublisher(objects, new MemoryTopic("data"), new MemoryTopic("metadata"),
             dispatcher);
@@ -168,7 +183,7 @@ static class Program
 
             string[] expected =
             [
-                "chunked Completed 0", "chunked Partial 1", "chunked Partial 2", "echo Completed same", "failing Failed Smoke",
+                "chunked Completed 0", "chunked part 1 1", "chunked part 1 2", "echo Completed same", "failing Failed Smoke",
                 $"square 1000 9 Completed 3 81", $"square {square.ActionId} 3 Completed 1 9", "sum Completed 6"
             ];
             var watch = Stopwatch.StartNew();

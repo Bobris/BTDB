@@ -118,6 +118,10 @@
   gaps from merges; the consume's input gets the ID it merged into. An `ActionFinished` with an unknown outcome kind
   is rejected when published instead of failing its consume. A worker finishes an attempt cancelled before it ran as
   `Cancelled` without calling the handler.
+- BackendActions: `IActionContext.SubmitPartialAsync(PureEvent ev)` only publishes the application's own event and
+  waits for its local consume; the application's event handler consumes the part. It replaces partial results carried
+  in `ActionFinished`: `ActionOutcomeKind.Partial` is removed, `OnFinished` sees final outcomes only, and
+  `TestActionContext` records the submitted events and no longer takes a result type.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and
   never lowers it; `BackendActions.Import` uses it instead of writing the allocator's slot itself.
 

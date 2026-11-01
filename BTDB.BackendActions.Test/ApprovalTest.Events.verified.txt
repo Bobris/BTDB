@@ -44,7 +44,6 @@ class BTDB.BackendActions.ActionError
   Message: string
 enum BTDB.BackendActions.ActionOutcomeKind : byte
   Completed = 1
-  Partial = 2
   Failed = 3
   Cancelled = 4
   Interrupted = 5

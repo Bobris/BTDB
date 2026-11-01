@@ -40,7 +40,7 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
     public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
     {
         // Inside the consume of the finishing event, on every replica, once per outcome. Deterministic, like any
-        // consume. outcome.Kind is Completed, Partial, Failed, Cancelled or Interrupted.
+        // consume. outcome.Kind is Completed, Failed, Cancelled or Interrupted.
     }
 }
 ```
@@ -134,10 +134,12 @@ coordinator in a last exchange, so they run again elsewhere at once.
 
 * `Cancellation` and `CancellationReason`: `Cancelled`, `Timeout` (after `CancelAfter(delay)`, finishing as
   `Cancelled` with code `Timeout`) or `Stopped` (superseded or the worker stops; nothing is published).
-* `SubmitPartialAsync(result)`: a `Partial` outcome, applied before the call returns, so parts keep their order. Use it
-  for results larger than one event (`EventPublisherOptions.MaximumEventSize`, 50 MiB by default): return the data in
-  parts and a small final result, and accumulate the parts in `OnFinished`. `outcome.Attempt` tells which attempt a
-  part belongs to; a new attempt starts again from its first part.
+* `SubmitPartialAsync(ev)`: publishes an event of the application and returns after this node consumed it, so parts
+  keep their order and a slow consumer slows the action down. It does nothing else: the application's own event
+  handler consumes the part. Use it for results larger than one event (`EventPublisherOptions.MaximumEventSize`, 50 MiB
+  by default): publish the data in parts and return a small final result. Put `context.Id` and `context.Attempt` in
+  the event; a new attempt starts again from its first part, and a superseded attempt's parts can still arrive, so the
+  consume can skip a part unless `FindAction(id)` is `Started` with `RunAttempts` equal to its attempt.
 * `AdjustResources(cpuDelta)`: changes the CPU the coordinator accounts to this attempt, never below 10.
 * `StartQuery()`: a snapshot of the worker's database.
 
@@ -204,6 +206,6 @@ attempt is its run attempts plus one.
 
 ## Testing handlers
 
-`BTDB.BackendActions.Testing.TestActionContext` runs `ExecuteAsync` without a cluster. It records partial results,
-resource adjustments and the requested timeout, and `Cancel(reason)` cancels it. Test `OnFinished` through an
+`BTDB.BackendActions.Testing.TestActionContext` runs `ExecuteAsync` without a cluster. It records the events submitted
+as partial results, resource adjustments and the requested timeout, and `Cancel(reason)` cancels it. Test `OnFinished` through an
 `EventPublisher`, like any other consume.

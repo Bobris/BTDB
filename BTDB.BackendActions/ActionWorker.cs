@@ -147,7 +147,6 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         int _reason, _cpuDelta;
         volatile bool _forgotten;
         ITimer? _timeout;
-        ActionType? _type;
 
         public QualifiedActionId Id => id;
         public ulong Attempt => attempt;
@@ -157,18 +156,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         public Ambient.Scope StartQuery() => worker._publisher.StartQuery();
         internal Task Task { get; set; } = Task.CompletedTask;
 
-        public async Task SubmitPartialAsync(object result)
-        {
-            ArgumentNullException.ThrowIfNull(result);
-            if (_type is not { } type || !type.ResultType.IsInstanceOfType(result))
-                throw new ArgumentException($"A partial result must be a {_type?.ResultType.FullName}.", nameof(result));
-            _cancel.Token.ThrowIfCancellationRequested();
-            await worker._publisher.PublishAsync(new ActionFinished
-            {
-                TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, Kind = ActionOutcomeKind.Partial,
-                Result = result
-            }, _cancel.Token).ConfigureAwait(false);
-        }
+        public ValueTask SubmitPartialAsync(PureEvent ev) => worker._publisher.PublishAsync(ev, _cancel.Token);
 
         public void AdjustResources(int cpuDelta) => Interlocked.Add(ref _cpuDelta, cpuDelta);
 
@@ -204,23 +192,24 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     await Task.Delay(1, _cancel.Token).ConfigureAwait(false);
                 IActionInput input;
                 DateTime queuedAt;
+                ActionType? type;
                 using (StartQuery())
                 {
                     var row = Ambient.Relation<IQueuedActions>().FindByIdOrDefault(id.TenantId, id.ActionId);
                     if (row is not { IsStarted: true } || row.RunAttempts != attempt) return; // superseded meanwhile
                     input = (IActionInput)row.Input!;
                     queuedAt = row.QueuedAt;
-                    _type = worker._actions.TypeOf(row.Name);
+                    type = worker._actions.TypeOf(row.Name);
                     if (row.IsCancelled) Cancel(); // cancelled before it ran: finish as Cancelled without the handler
                 }
-                if (_type == null) return;
+                if (type == null) return;
                 var started = worker._options.TimeProvider.GetTimestamp();
                 worker._metrics?.Started(attempt, worker._options.TimeProvider.GetUtcNow().UtcDateTime - queuedAt);
                 var finished = new ActionFinished { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt };
                 try
                 {
                     _cancel.Token.ThrowIfCancellationRequested();
-                    finished.Result = await _type.Execute(input, this).ConfigureAwait(false);
+                    finished.Result = await type.Execute(input, this).ConfigureAwait(false);
                     finished.Kind = ActionOutcomeKind.Completed;
                 }
                 catch (OperationCanceledException) when (_cancel.IsCancellationRequested)

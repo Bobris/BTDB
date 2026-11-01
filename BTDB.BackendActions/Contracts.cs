@@ -62,7 +62,6 @@ public sealed class BackendActionAttribute : Attribute
 public enum ActionOutcomeKind : byte
 {
     Completed = 1,
-    Partial = 2,
     Failed = 3,
     Cancelled = 4,
     Interrupted = 5
@@ -103,10 +102,11 @@ public interface IActionContext
     ActionCancellationReason CancellationReason { get; }
     /// <summary>A read-only snapshot of the worker's database; it already contains the event that started this attempt.</summary>
     Replication.EventSourcing.Ambient.Scope StartQuery();
-    /// <summary>Publishes a <see cref="ActionOutcomeKind.Partial"/> outcome and returns after this node consumed it,
-    /// so parts keep their order and a slow consumer slows the action down. Each part is limited by the publisher's
-    /// MaximumEventSize; a larger one throws EventTooLargeException before anything is written.</summary>
-    Task SubmitPartialAsync(object result);
+    /// <summary>Publishes the application's own event and returns after this node consumed it, so parts keep their
+    /// order and a slow consumer slows the action down. The application's handler consumes it; nothing else happens,
+    /// so put <see cref="Id"/> and <see cref="Attempt"/> in the event to tell parts of a superseded attempt apart.
+    /// Cancellation of the attempt cancels the wait.</summary>
+    ValueTask SubmitPartialAsync(Replication.EventSourcing.PureEvent ev);
     /// <summary>Changes the CPU the coordinator accounts to this attempt by <paramref name="cpuDelta"/>, from its type's
     /// cost and never below 10; it applies with the worker's next exchange.</summary>
     void AdjustResources(int cpuDelta);
