@@ -207,9 +207,11 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
 
     /// <summary>Registers a worker's exchange and returns the commands it should execute now. Reported running
     /// attempts renew their lease or are adopted after a coordinator change; unknown or superseded ones are forgotten.
-    /// Finished attempts stop being started again until their ActionFinished is applied here.</summary>
+    /// Finished attempts stop being started again until their ActionFinished is applied here. Lost attempts free their
+    /// worker, so the action gets a new attempt or, after its last one, finishes as Interrupted.</summary>
     internal List<WorkerCommand> Exchange(Guid session, string nodeId, int capacity, ulong workerGeneration, bool ready,
-        IReadOnlyList<ReportedAttempt> running, IReadOnlyList<ReportedAttempt> finished, TimeSpan now)
+        IReadOnlyList<ReportedAttempt> running, IReadOnlyList<ReportedAttempt> finished, TimeSpan now,
+        IReadOnlyList<ReportedAttempt>? lost = null)
     {
         foreach (var other in _workers.Values.Where(w => w.NodeId == nodeId && w.Session != session).ToList())
             Expire(other); // the node restarted: its previous process's attempts are gone
@@ -245,6 +247,12 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             if (action.Worker == session) Release(action);
             action.Finished = true;
             action.LeaseUntil = now + options.Lease; // reruns if its ActionFinished never applies
+        }
+        foreach (var attempt in lost ?? [])
+        {
+            if (_actions.TryGetValue(attempt.Id, out var action) && action.RunAttempts == attempt.Attempt &&
+                action.Worker == session && action.Starting == null)
+                Release(action);
         }
         if (!ready)
         {

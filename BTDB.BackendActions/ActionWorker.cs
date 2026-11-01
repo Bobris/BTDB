@@ -7,8 +7,9 @@ namespace BTDB.BackendActions;
 /// This node's executor. It long-polls the active leader's coordinator with the attempts it runs and has finished, and
 /// carries out the returned commands. An attempt starts only after this node consumed the event that recorded it, so
 /// the input and every change before the start are visible. Its outcome is published as <see cref="ActionFinished"/>
-/// and reported as finished until the coordinator acknowledges it. Stopping the worker interrupts running attempts
-/// without an outcome, so another node runs them again.
+/// and reported as finished until the coordinator acknowledges it. An attempt whose outcome cannot be published is
+/// reported as lost and never runs again here, so the coordinator records a new attempt. Stopping the worker
+/// interrupts running attempts without an outcome, so another node runs them again.
 /// </summary>
 internal sealed class ActionWorker(BackendActions actions, EventPublisher publisher, IBackendActionsCluster cluster,
     BackendActionsOptions options, BackendActionsMetrics? metrics = null)
@@ -20,6 +21,8 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
     readonly object _lock = new();
     readonly Dictionary<QualifiedActionId, Execution> _running = new();
     readonly Dictionary<QualifiedActionId, ulong> _finished = new();
+    /// <summary>Attempts that ended without a published outcome, until acknowledged; their Start is ignored.</summary>
+    readonly Dictionary<QualifiedActionId, ulong> _lost = new();
     /// <summary>Superseded executions still ending; the worker waits for them when it stops.</summary>
     readonly HashSet<Execution> _forgotten = new();
     CancellationTokenSource? _poll;
@@ -91,7 +94,8 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 Generation = _options.ApplicationGeneration, Draining = draining,
                 Running = draining ? [] : _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt, e.CpuDelta,
                     e.CancellationReason != ActionCancellationReason.None)).ToList(),
-                Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList()
+                Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList(),
+                Lost = _lost.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList()
             };
     }
 
@@ -100,9 +104,11 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         lock (_lock)
         {
             foreach (var acknowledged in response.Acknowledged)
-                if (_finished.TryGetValue(new(acknowledged.TenantId, acknowledged.ActionId), out var attempt) &&
-                    attempt == acknowledged.Attempt)
-                    _finished.Remove(new(acknowledged.TenantId, acknowledged.ActionId));
+            {
+                var id = new QualifiedActionId(acknowledged.TenantId, acknowledged.ActionId);
+                if (_finished.TryGetValue(id, out var attempt) && attempt == acknowledged.Attempt) _finished.Remove(id);
+                if (_lost.TryGetValue(id, out attempt) && attempt == acknowledged.Attempt) _lost.Remove(id);
+            }
             foreach (var command in response.Commands)
             {
                 var id = new QualifiedActionId(command.TenantId, command.ActionId);
@@ -111,6 +117,11 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 {
                     case WorkerCommandKind.Start:
                         if (execution != null || _finished.TryGetValue(id, out var done) && done == command.Attempt) break;
+                        if (_lost.TryGetValue(id, out var lost))
+                        {
+                            if (lost == command.Attempt) break; // running it again would repeat the attempt
+                            _lost.Remove(id); // a coordinator that ignores lost reports recorded a new attempt
+                        }
                         execution = new(this, id, command.Attempt);
                         _running.Add(id, execution);
                         execution.Task = execution.RunAsync(command.StartEventId);
@@ -129,7 +140,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         }
     }
 
-    void Completed(Execution execution, bool published)
+    void Completed(Execution execution, bool published, bool lost)
     {
         lock (_lock)
         {
@@ -137,6 +148,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             if (!_running.TryGetValue(execution.Id, out var current) || current != execution) return;
             _running.Remove(execution.Id);
             if (published) _finished[execution.Id] = execution.Attempt;
+            if (lost) _lost[execution.Id] = execution.Attempt;
             _poll?.Cancel(); // report now instead of after the long poll
         }
     }
@@ -185,7 +197,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         internal async Task RunAsync(ulong startEventId)
         {
             await Task.Yield(); // never run the handler under the worker's lock
-            var published = false;
+            bool published = false, lost = false;
             try
             {
                 while (worker._publisher.LastAppliedEventId < startEventId)
@@ -230,19 +242,30 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     finished.Error = new() { Code = "Unexpected", Message = error.Message, Details = error.ToString() };
                 }
                 if (_forgotten || CancellationReason == ActionCancellationReason.Stopped) return;
-                await worker._publisher.PublishAsync(finished).ConfigureAwait(false);
+                try
+                {
+                    await worker._publisher.PublishAsync(finished).ConfigureAwait(false);
+                }
+                catch (EventTooLargeException error)
+                {
+                    // Running it again would give as large an outcome, so the attempt fails with a small one.
+                    finished.Kind = ActionOutcomeKind.Failed;
+                    finished.Result = null;
+                    finished.Error = new() { Code = "OutcomeTooLarge", Message = error.Message };
+                    await worker._publisher.PublishAsync(finished).ConfigureAwait(false);
+                }
                 published = true;
                 worker._metrics?.Finished(finished.Kind, worker._options.TimeProvider.GetElapsedTime(started));
             }
             catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { }
             catch (Exception)
             {
-                // Publication failed: the attempt's lease runs out and the coordinator starts it again.
+                lost = true; // the coordinator records a new attempt instead of starting this one again
             }
             finally
             {
                 Interlocked.Exchange(ref _timeout, null)?.Dispose();
-                worker.Completed(this, published);
+                worker.Completed(this, published, lost);
             }
         }
     }

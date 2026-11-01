@@ -132,6 +132,21 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AnOutcomeTooLargeToPublishFailsTheAttemptWithoutRunningItAgain()
+    {
+        await _node.DisposeAsync();
+        _node = await Node.StartAsync(_data, _metadata, _time, maximumEventSize: 64 * 1024);
+        StartHost();
+        var id = await Enqueue(new ExportOrder { Parts = 1, ResultSize = 100_000 });
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((id, ActionOutcomeKind.Failed, 1ul, "OutcomeTooLarge"),
+            (Outcomes[0].Id, Outcomes[0].Kind, Outcomes[0].Attempt, Outcomes[0].Error));
+        await Task.Delay(200);
+        Assert.Single(_node.Recorder.Parts); // executed once
+        Assert.Empty(_node.Queued);
+    }
+
+    [Fact]
     public async Task CancelAfterFinishesTheAttemptAsTimedOut()
     {
         StartHost();

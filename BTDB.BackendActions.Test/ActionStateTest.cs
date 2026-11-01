@@ -209,6 +209,23 @@ public class ActionStateTest
     }
 
     [Fact]
+    public async Task AnInputEnqueuedWhenItsKeyIsCancelledQueuesAsANewAction()
+    {
+        await using var node = await Start();
+        await Place(node, new RefreshCache { Key = "a" });
+        var enqueued = false;
+        node.Recorder.AfterFinished = (input, kind) =>
+        {
+            if (input is not RefreshCache || kind != ActionOutcomeKind.Cancelled || enqueued) return;
+            enqueued = true;
+            node.Actions.Enqueue(new RefreshCache { Key = "a" });
+        };
+        await Place(node, cancel: new(0, 1));
+        Assert.Equal([2ul], node.Queued.Select(q => q.ActionId));
+        Assert.Equal([2ul], node.Indexes.Select(i => i.ActionId));
+    }
+
+    [Fact]
     public async Task AFailingOnFinishedStillFinishesTheAction()
     {
         await using var node = await Start();

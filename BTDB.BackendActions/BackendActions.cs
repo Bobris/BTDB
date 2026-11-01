@@ -385,10 +385,12 @@ public sealed partial class BackendActions
     }
 
     // Removes the row after its handler's final outcome; an unregistered type finishes without a callback.
+    // The index goes before the callback, so an input it enqueues does not merge into the finishing action; the row
+    // goes after it, so the callback still reads the input's lazy collections.
     void Complete(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error)
     {
-        OnFinished(row, kind, attempt, result, error);
         RemoveIndex(row);
+        OnFinished(row, kind, attempt, result, error);
         Ambient.Relation<IQueuedActions>().RemoveById(row.TenantId, row.ActionId);
         Changed(new(row.TenantId, row.ActionId));
     }

@@ -63,8 +63,10 @@ public sealed partial class BackendActions
         var queued = Ambient.Relation<IQueuedActions>();
         var delayed = Ambient.Relation<IDelayedActions>();
         var indexes = Ambient.Relation<IActionInputIndexes>();
-        var highest = 0ul;
-        foreach (var action in actions.OrderBy(a => a.Order))
+        var ordered = actions.OrderBy(a => a.Order).ToList();
+        // Before any cancellation callback, so IDs it allocates never collide with a later imported row.
+        Ambient.ReserveIdsUpTo(ordered.Count == 0 ? 0 : ordered.Max(a => a.ActionId));
+        foreach (var action in ordered)
         {
             if (action.Input is not IActionInput input) throw new ArgumentException("An imported action has no input.");
             var type = TypeOf(input);
@@ -74,7 +76,6 @@ public sealed partial class BackendActions
                 throw new InvalidOperationException($"Action {action.TenantId}/{action.ActionId} already exists.");
             input.TenantId = action.TenantId;
             input.ActionId = action.ActionId;
-            highest = Math.Max(highest, action.ActionId);
             if (action.IsCancelled)
             {
                 type.Finished(input, ActionOutcomeKind.Cancelled, action.RunAttempts, null, null);
@@ -101,7 +102,6 @@ public sealed partial class BackendActions
                 indexes.Upsert(new() { TenantId = action.TenantId, Name = type.Name, UniqueKey = key, ActionId = action.ActionId });
             Changed(new(action.TenantId, action.ActionId));
         }
-        Ambient.ReserveIdsUpTo(highest);
     }
 
     /// <summary>Sets the last run of scheduled types in the current consume, so the first check after the cutover

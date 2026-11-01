@@ -346,7 +346,10 @@ to the worker that it does not report, `Cancel` for a reported attempt of a canc
 already end, `Forget` for a reported
 attempt that is superseded or unknown. A lost response therefore costs one round trip, and a worker ignores a `Start`
 for an attempt it already runs or finished. A finished report stops the coordinator from starting the attempt again
-until its `ActionFinished` is applied on the leader; if that never happens within a lease, the action runs again. The
+until its `ActionFinished` is applied on the leader; if that never happens within a lease, the action runs again. A
+worker whose outcome publication fails reports the attempt in `Lost` until acknowledged and ignores its `Start`; the
+coordinator frees the worker, so the next plan records a new attempt, or the action finishes as `Interrupted` after
+its last one. An outcome over `MaximumEventSize` is published instead as `Failed` with code `OutcomeTooLarge`. The
 coordinator answers at once when it has commands or acknowledgements, and otherwise holds the request until news for
 this worker or the poll timeout (default 10 s). A worker reports a finished attempt at once by cancelling its current
 long poll.
@@ -529,7 +532,8 @@ The consume does the following:
 * An imported row with `IsCancelled` was not running after the drain, so the consume finishes it at once with
   `OnFinished(Cancelled)`.
 * It raises the `Ambient.AllocateId` allocator above the largest imported `ActionId` with `Ambient.ReserveIdsUpTo`,
-  which never lowers it.
+  which never lowers it, before any row, so an ID that a cancelled row's `OnFinished` allocates never collides with a
+  later imported row.
 
 `ImportScheduledRuns(name → LastRun)` and the event's suspended names and tenants carry the remaining replicated state, so
 scheduled actions neither fire twice nor skip a run. Capacity shares and per-worker capacity are leader and worker

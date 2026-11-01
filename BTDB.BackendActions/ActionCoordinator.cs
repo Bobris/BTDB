@@ -241,8 +241,12 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         catch (JsonException error) { throw new IOException("Invalid backend action exchange.", error); }
         var running = request.Running.Select(a => a.ToAttempt()).ToList();
         var finished = request.Finished.Select(a => a.ToAttempt()).ToList();
+        var lost = request.Lost.Select(a => a.ToAttempt()).ToList();
         var deadline = Now + options.PollTimeout;
-        var response = new ExchangeResponse { CoordinatorSession = Session, Acknowledged = request.Finished };
+        var response = new ExchangeResponse
+        {
+            CoordinatorSession = Session, Acknowledged = [.. request.Finished, .. request.Lost]
+        };
         using var poll = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         Task? timeout = null; // one timer per poll, however often the workers are woken
         try
@@ -254,8 +258,9 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 {
                     if (_closed || !_ready) throw new IOException("The backend action coordinator is not running.");
                     var commands = _planner.Exchange(request.WorkerSession, request.NodeId, request.Cpu,
-                        request.Generation, !request.Draining, running, finished, Now);
+                        request.Generation, !request.Draining, running, finished, Now, lost);
                     finished = [];
+                    lost = [];
                     response.Commands = commands.Select(c => new CommandMessage
                     {
                         Kind = c.Kind, TenantId = c.Id.TenantId, ActionId = c.Id.ActionId, Attempt = c.Attempt,

@@ -57,6 +57,9 @@ internal sealed class ExchangeRequest
     public List<AttemptMessage> Running { get; set; } = new();
     /// <summary>Attempts whose ActionFinished this worker published and applied, until acknowledged.</summary>
     public List<AttemptMessage> Finished { get; set; } = new();
+    /// <summary>Attempts that ended without a published outcome and never run again on this worker, until
+    /// acknowledged.</summary>
+    public List<AttemptMessage> Lost { get; set; } = new();
 }
 
 internal sealed class CommandMessage

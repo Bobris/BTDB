@@ -82,7 +82,7 @@ internal sealed class Node : IAsyncDisposable
     }
 
     internal static async Task<Node> StartAsync(MemoryTopic data, MemoryTopic metadata, TimeProvider time,
-        int batch = 32, InMemoryReplicationFileStorage? files = null)
+        int batch = 32, InMemoryReplicationFileStorage? files = null, int? maximumEventSize = null)
     {
         files ??= new();
         var capture = new TransactionLogCapture();
@@ -103,7 +103,11 @@ internal sealed class Node : IAsyncDisposable
         dispatcher.Register<ExportPart>(app);
         node.Actions.RegisterEvents(dispatcher);
         node.Publisher = new(node.Objects, data, metadata, dispatcher,
-            new() { TimeProvider = time, MaximumBatchSize = batch }, capture);
+            new()
+            {
+                TimeProvider = time, MaximumBatchSize = batch,
+                MaximumEventSize = maximumEventSize ?? new EventPublisherOptions().MaximumEventSize
+            }, capture);
         await node.Publisher.StartAsync();
         return node;
     }
@@ -251,6 +255,8 @@ public class ExportOrder : ActionInput<OrderResult>
 {
     public int Parts { get; set; }
     public bool Timeout { get; set; }
+    /// <summary>A final result of this many characters instead of "all".</summary>
+    public int ResultSize { get; set; }
 }
 
 [RepeatedlyScheduled(60)]
@@ -280,6 +286,8 @@ internal sealed class Recorder
     internal readonly ConcurrentQueue<(QualifiedActionId Id, ActionOutcomeKind Kind)> FinishFailures = new();
     /// <summary>Consumed export parts, with the number of outcomes recorded before each.</summary>
     internal readonly ConcurrentQueue<(QualifiedActionId Id, ulong Attempt, string Text, int Outcomes)> Parts = new();
+    /// <summary>Runs in OnFinished after recording, inside the finishing consume.</summary>
+    internal Action<IActionInput, ActionOutcomeKind>? AfterFinished;
 
     internal void Register(BackendActions actions) => actions
         .Register(new Handler<ProcessOrder>(this, i => i.Amount.ToString()))
@@ -314,8 +322,11 @@ internal sealed class Recorder
         protected virtual Task<OrderResult> Execute(TInput input, IActionContext context) =>
             Task.FromResult(new OrderResult { Text = describe(input) });
 
-        public void OnFinished(TInput input, ActionOutcome<OrderResult> outcome) =>
+        public void OnFinished(TInput input, ActionOutcome<OrderResult> outcome)
+        {
             recorder.Record(input, outcome, describe(input));
+            recorder.AfterFinished?.Invoke(input, outcome.Kind);
+        }
     }
 
     sealed class SlowHandler(Recorder recorder) : Handler<SlowOrder>(recorder, i => i.Mode)
@@ -364,7 +375,7 @@ internal sealed class Recorder
                     TenantId = context.Id.TenantId, ActionId = context.Id.ActionId, Attempt = context.Attempt,
                     Text = "part " + i
                 });
-            return new() { Text = "all" };
+            return new() { Text = input.ResultSize > 0 ? new string('x', input.ResultSize) : "all" };
         }
     }
 

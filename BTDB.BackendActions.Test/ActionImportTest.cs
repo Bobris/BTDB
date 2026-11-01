@@ -83,6 +83,23 @@ public class ActionImportTest
     }
 
     [Fact]
+    public async Task ACancellationCallbackAllocatesAboveEveryImportedId()
+    {
+        await using var node = await Node.StartAsync(_data, _metadata, _time);
+        node.Recorder.AfterFinished = (_, kind) =>
+        {
+            if (kind == ActionOutcomeKind.Cancelled) node.Actions.Enqueue(new ProcessOrder { Amount = 7 });
+        };
+        await node.Actions.ImportAsync(node.Publisher, [
+            new() { ActionId = 5, Order = 1, Input = new ProcessOrder(), IsCancelled = true },
+            new() { ActionId = 1, Order = 2, Input = new ProcessOrder { Amount = 1 } },
+            new() { ActionId = 6, Order = 3, Input = new ProcessOrder { Amount = 6 } }
+        ]);
+        Assert.Equal([(1ul, 1), (6ul, 6), (7ul, 7)],
+            node.Queued.Select(q => (q.ActionId, ((ProcessOrder)q.Input!).Amount)).OrderBy(q => q.ActionId));
+    }
+
+    [Fact]
     public async Task ReplicasAndAColdReplayImportTheSameBytes()
     {
         await using var first = await Node.StartAsync(_data, _metadata, _time, batch: 1);

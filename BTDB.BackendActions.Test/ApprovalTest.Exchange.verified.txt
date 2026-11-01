@@ -3,6 +3,7 @@
   Draining: bool
   Finished: List<AttemptMessage>
   Generation: ulong
+  Lost: List<AttemptMessage>
   NodeId: string
   Running: List<AttemptMessage>
   WorkerSession: Guid

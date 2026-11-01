@@ -64,9 +64,11 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * `IActionWithBeforeStart<TInput>.OnBeforeStart(input)` runs in the consume that records a start. An exception
   finishes the attempt as `Failed` with code `BeforeStartFailed`; writes made before it stay, so validate first.
 * Failures: throw `BackendActionException(code, message, details)`; any other exception finishes the attempt as
-  `Failed` with code `Unexpected`.
+  `Failed` with code `Unexpected`. An outcome larger than `EventPublisherOptions.MaximumEventSize` finishes it as
+  `Failed` with code `OutcomeTooLarge`, without its result.
 * An exception from `OnFinished` does not undo the outcome: the action still finishes, the handler's writes before it
-  stay, and `BackendActions.OnFinishedFailed(id, kind, exception)`, when set, reports it inside the consume.
+  stay, and `BackendActions.OnFinishedFailed(id, kind, exception)`, when set, reports it inside the consume. The
+  finishing action's unification key is already free there, so an input `OnFinished` enqueues starts a new action.
 
 ## Register and host
 
@@ -126,7 +128,8 @@ action. A worker of an older `ApplicationGeneration` than the coordinator gets n
 
 Execution is at least once: `ExecuteAsync` can run again after a lost worker, an expired lease (2 min without a
 report) or a leader change, so external effects need idempotency. `OnFinished` runs exactly once per outcome: results
-of a superseded attempt are ignored. After `MaxAttempts` (5) lost attempts the coordinator finishes the action as
+of a superseded attempt are ignored. A worker that cannot publish an attempt's outcome reports the attempt as lost
+and never runs it again, so the coordinator records a new attempt at once. After `MaxAttempts` (5) lost attempts the coordinator finishes the action as
 `Interrupted` with code `AttemptsExhausted`. A stopping worker publishes nothing for its running attempts and tells the
 coordinator in a last exchange, so they run again elsewhere at once.
 

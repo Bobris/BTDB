@@ -55,9 +55,10 @@ public class ActionPlannerTest
     }
 
     List<WorkerCommand> Exchange(Guid worker, TimeSpan now, int capacity = 100, string node = "node",
-        ReportedAttempt[]? running = null, ReportedAttempt[]? finished = null, ulong generation = 3) =>
+        ReportedAttempt[]? running = null, ReportedAttempt[]? finished = null, ulong generation = 3,
+        ReportedAttempt[]? lost = null) =>
         Planner.Exchange(worker, node, capacity, generation, true,
-            running ?? [], finished ?? [], now);
+            running ?? [], finished ?? [], now, lost);
 
     [Fact]
     public void PriorityThenOrderWithinATenantAndOneActionPerTenantPerRound()
@@ -201,6 +202,25 @@ public class ActionPlannerTest
             Planner.Expire(30 * Second)); // the worker timed out too
         Assert.Empty(Planner.Expire(40 * Second)); // abandoned once
         Assert.Empty(Planner.Plan(40 * Second));
+    }
+
+    [Fact]
+    public void AnAttemptItsWorkerLostGetsANewAttemptAtOnceUntilTheyAreExhausted()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        PlanAndStart(default);
+        Assert.Empty(Exchange(worker, Second, lost: [new(id, 1)])); // no Start of the same attempt again
+        Assert.Equal(0, Planner.Workers[worker].Used);
+        Assert.Empty(Planner.Expire(Second));
+        Assert.Equal([id], PlanAndStart(Second)); // long before the lease passes
+        Assert.Equal(2ul, _rows[id].RunAttempts);
+        Exchange(worker, 2 * Second, lost: [new(id, 1)]); // a late report of the old attempt keeps the new one
+        Assert.Equal(worker, Planner.Actions[id].Worker);
+        Exchange(worker, 2 * Second, lost: [new(id, 2)]);
+        Assert.Equal([new Abandonment(id, 2, ActionOutcomeKind.Interrupted, "AttemptsExhausted")],
+            Planner.Expire(2 * Second));
     }
 
     [Fact]

@@ -118,6 +118,14 @@
   gaps from merges; the consume's input gets the ID it merged into. An `ActionFinished` with an unknown outcome kind
   is rejected when published instead of failing its consume. A worker finishes an attempt cancelled before it ran as
   `Cancelled` without calling the handler.
+- BackendActions: an outcome the worker could not publish, such as a result over `MaximumEventSize`, made the
+  coordinator start the same attempt on it again and again, ignoring `MaxAttempts`. A too large outcome now finishes
+  the attempt as `Failed` with code `OutcomeTooLarge`; any other publication failure is reported in the exchange's new
+  `Lost` list, the worker never runs that attempt again, and the coordinator records a new attempt at once.
+- BackendActions: an input with the unification key of an action being cancelled, enqueued from its `OnFinished`,
+  merged into that action and was deleted with it. The key's index is now removed before `OnFinished` runs.
+- BackendActions: `Import` raised the ID allocator only after its rows, so an ID allocated by a cancelled row's
+  `OnFinished` could equal a later imported ID and fail the whole import. It now reserves the largest ID first.
 - BackendActions: `IActionContext.SubmitPartialAsync(PureEvent ev)` only publishes the application's own event and
   waits for its local consume; the application's event handler consumes the part. It replaces partial results carried
   in `ActionFinished`: `ActionOutcomeKind.Partial` is removed, `OnFinished` sees final outcomes only, and
