@@ -40,6 +40,9 @@
   `aot-actions-smoke` CI job, publishes a NativeAOT app that imports, enqueues, merges, cancels and runs actions with
   partial results and failures through the host, and fails on trim or AOT warnings in BackendActions or EventSourcing.
   `Register(handler)` keeps its input's parameterless constructor under trimming.
+  The smoke also sends a payload of every supported field shape through events and ObjectDB, and runs relations
+  with lazy collections, singletons and upgrades of stored objects, relations and events. It builds with warnings as
+  errors, so generated code must compile cleanly.
 
 ### Fixed
 
@@ -53,6 +56,15 @@
   `RuntimeHelpers.SizeOf`.
 - EventSourcing: the poison-event attempt journal used reflection-based JSON, which NativeAOT disables; it is source
   generated now, in the same format.
+- NativeAOT: `RawData.MethodTable` read `IsValueType`, `IsNullable`, `HasInstantiation`, `IsGenericTypeDefinition` and
+  `IsConstructedGenericType` from CoreCLR's flag layout, so under NativeAOT a `List<T>` looked like a struct and a
+  struct like a reference type; loading a dictionary of lists from an event failed. They now decode NativeAOT's
+  layout too, detected at startup; sizes and the GC pointers flag already agreed.
+- NativeAOT: `Singleton<T>()` and `New<T>()` of a type with fields that need initialization, such as an
+  `IOrderedDictionary`, emitted IL; they now initialize those fields as loading does. Loading also initialized a small
+  value-type field missing from the stored data twice.
+- Source generator: collection registrations of nullable items declared an unused variable (warning CS0219), which
+  failed builds treating warnings as errors.
 
 - Replication: on `OnDiskReplicationFileStorage` a transaction could not read a value it had written itself before
   committing: the read threw `EndOfStreamException`, because the file's appender publishes its length only when it

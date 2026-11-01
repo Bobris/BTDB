@@ -3303,7 +3303,6 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     factoryCode.Append($$"""
 
-                                HashSetEntry<{{collection.KeyType}}> e{{idx}} = new();
                                 BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
                                 {
                                     Type = typeof({{collection.FullName}}),

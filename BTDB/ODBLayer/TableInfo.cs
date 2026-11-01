@@ -170,6 +170,32 @@ public class TableInfo
             return;
         }
 
+        if (IFieldHandler.UseNoEmit && ReflectionMetadata.FindByType(ClientType!) is { } metadata)
+        {
+            // Without emitting code, as the loader initializes fields missing in stored data; so New and Singleton
+            // also work under NativeAOT.
+            var inits = new List<LoadFunc>();
+            for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+            {
+                if (tableVersionInfo[fi].Handler is not IFieldHandlerWithInit { } handler || !handler.NeedInit())
+                    continue;
+                var fieldInfo = metadata.Fields.FirstOrDefault(f => f.Name == tableVersionInfo[fi].Name) ??
+                                throw new InvalidOperationException(
+                                    $"Cannot get field metadata for {tableVersionInfo[fi].Name} in {ClientType.ToSimpleName()}");
+                inits.Add(CreateFieldInit(handler, fieldInfo));
+            }
+
+            var initsArray = inits.ToArray();
+            var needsCtx = tableVersionInfo.NeedsCtx();
+            Interlocked.CompareExchange(ref _initializer, (transaction, _, obj) =>
+            {
+                var ctx = needsCtx ? new DBReaderCtx(transaction) : null;
+                MemReader reader = default;
+                foreach (var init in initsArray) init(obj, ref reader, ctx);
+            }, null);
+            return;
+        }
+
         var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
             $"Initializer_{Name}");
         var ilGenerator = method.Generator;
@@ -516,6 +542,61 @@ public class TableInfo
         internal FieldHandlerInit Init;
     }
 
+    // A loader step setting a field that needs initialization, such as an IDictionary, to its new value.
+    static unsafe LoadFunc CreateFieldInit(IFieldHandlerWithInit handler, FieldMetadata fieldInfo)
+    {
+        var init = handler.Init();
+        var propRefSetter = fieldInfo.PropRefSetter;
+        if (propRefSetter == null)
+        {
+            var offset = fieldInfo.ByteOffset!.Value;
+            return (obj, ref _, ctx) => { init(ctx, ref RawData.Ref(obj, offset)); };
+        }
+
+        if (!fieldInfo.Type.IsValueType)
+        {
+            return (obj, ref _, ctx) =>
+            {
+                object? value = null;
+                init(ctx, ref Unsafe.As<object, byte>(ref value));
+                propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+            };
+        }
+
+        if (RawData.FitsInInt128(fieldInfo.Type))
+        {
+            return (obj, ref _, ctx) =>
+            {
+                Int128 value = 0;
+                init(ctx, ref Unsafe.As<Int128, byte>(ref value));
+                propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+            };
+        }
+
+        var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
+        return (obj, ref _, ctx) =>
+        {
+            FieldLoaderCtx fieldLoaderCtx = new FieldLoaderCtx()
+            {
+                Object = obj,
+                Init = init,
+                Setter = propRefSetter,
+                Ctx = ctx,
+                Reader = default
+            };
+
+            stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                ref fieldLoaderCtx.StoragePtr, &Nested);
+
+            static void Nested(ref byte value)
+            {
+                ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                context.Init(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+            }
+        };
+    }
+
     unsafe ObjectLoader CreateLoader(uint version)
     {
         EnsureClientTypeVersion();
@@ -639,59 +720,7 @@ public class TableInfo
                                                         _clientType.ToSimpleName());
                 }
 
-                var init = iFieldHandlerWithInit.Init();
-                var propRefSetter = fieldInfo.PropRefSetter;
-                if (propRefSetter == null)
-                {
-                    var offset = fieldInfo.ByteOffset.Value;
-                    loaders.Add((obj, ref _, ctx) => { init(ctx, ref RawData.Ref(obj, offset)); });
-                    continue;
-                }
-
-                if (!fieldInfo.Type.IsValueType)
-                {
-                    loaders.Add((obj, ref _, ctx) =>
-                    {
-                        object? value = null;
-                        init(ctx, ref Unsafe.As<object, byte>(ref value));
-                        propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
-                    });
-                    continue;
-                }
-
-                if (!RawData.MethodTableOf(fieldInfo.Type).ContainsGCPointers &&
-                    RawData.GetSizeAndAlign(fieldInfo.Type).Size <= 16)
-                {
-                    loaders.Add((obj, ref _, ctx) =>
-                    {
-                        Int128 value = 0;
-                        init(ctx, ref Unsafe.As<Int128, byte>(ref value));
-                        propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
-                    });
-                }
-
-                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
-                loaders.Add((obj, ref _, ctx) =>
-                {
-                    FieldLoaderCtx fieldLoaderCtx = new FieldLoaderCtx()
-                    {
-                        Object = obj,
-                        Init = init,
-                        Setter = propRefSetter,
-                        Ctx = ctx,
-                        Reader = default
-                    };
-
-                    stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
-                        ref fieldLoaderCtx.StoragePtr, &Nested);
-
-                    static void Nested(ref byte value)
-                    {
-                        ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
-                        context.Init(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
-                        context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
-                    }
-                });
+                loaders.Add(CreateFieldInit(iFieldHandlerWithInit, fieldInfo));
             }
 
             var loadersArray = loaders.ToArray();

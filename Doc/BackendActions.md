@@ -45,6 +45,9 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 }
 ```
 
+* Inputs and results are copied, so use plain collections (`List<T>`, `Dictionary<TKey, TValue>`, `HashSet<T>`). An
+  input property typed `IDictionary`, `IOrderedDictionary` or `IOrderedSet` is stored as a lazy database collection,
+  which the handler cannot read after the worker's query ends.
 * `ActionInput<TResult>` carries `TenantId` (0 means none; it scopes fairness, `SingleRunningPerTenant` and the
   per-tenant queries) and `ActionId`, assigned on enqueue. Input classes are stored in ObjectDB rows and events; the
   `[Generate]` on `IActionInput` makes the source generator cover them.

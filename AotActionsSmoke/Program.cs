@@ -116,6 +116,7 @@ static class Program
 
     static async Task<int> Main()
     {
+        Storage.Run();
         using var stopping = new CancellationTokenSource(TimeSpan.FromMinutes(1));
         using var files = new InMemoryFileCollection();
         using var keyValues = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
@@ -151,36 +152,62 @@ static class Program
         });
         var running = host.RunAsync(stopping.Token);
 
-        var square = await actions.EnqueueAsync(publisher, new Square { Value = 3 }, cancellation: stopping.Token);
-        Check("new IDs follow the imported ones", true, square.ActionId > 1000);
-        await actions.EnqueueAsync(publisher, new Chunked { Parts = 2 }, cancellation: stopping.Token);
-        await actions.EnqueueAsync(publisher, new Failing(), cancellation: stopping.Token);
-        await publisher.PublishAsync(new AddToSum { Values = [1, 2, 3] }, stopping.Token);
-        var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
-        var byHand = await actions.EnqueueAsync(publisher, new ByHand(), later, stopping.Token);
-        using (publisher.StartQuery())
-            Check("hand registration reads the attributes", "smoke-by-hand", actions.FindAction(byHand)?.Name);
-        Check("a delayed action cancels", true, await actions.CancelAsync(publisher, byHand, stopping.Token));
+        try
+        {
+            var square = await actions.EnqueueAsync(publisher, new Square { Value = 3 }, cancellation: stopping.Token);
+            Check("new IDs follow the imported ones", true, square.ActionId > 1000);
+            await actions.EnqueueAsync(publisher, new Chunked { Parts = 2 }, cancellation: stopping.Token);
+            await actions.EnqueueAsync(publisher, new Failing(), cancellation: stopping.Token);
+            await actions.EnqueueAsync(publisher, new Echo { Payload = Shapes.Sample() }, cancellation: stopping.Token);
+            await publisher.PublishAsync(new AddToSum { Values = [1, 2, 3] }, stopping.Token);
+            var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
+            var byHand = await actions.EnqueueAsync(publisher, new ByHand(), later, stopping.Token);
+            using (publisher.StartQuery())
+                Check("hand registration reads the attributes", "smoke-by-hand", actions.FindAction(byHand)?.Name);
+            Check("a delayed action cancels", true, await actions.CancelAsync(publisher, byHand, stopping.Token));
 
-        string[] expected =
-        [
-            "chunked Completed 0", "chunked Partial 1", "chunked Partial 2", "failing Failed Smoke",
-            $"square 1000 9 Completed 3 81", $"square {square.ActionId} 3 Completed 1 9", "sum Completed 6"
-        ];
-        var watch = Stopwatch.StartNew();
-        while (Outcomes.Count < expected.Length && watch.Elapsed < TimeSpan.FromSeconds(30))
-            await Task.Delay(20, stopping.Token);
-        Check("outcomes", string.Join(", ", expected), string.Join(", ", Outcomes.Order(StringComparer.Ordinal)));
-        var overview = await host.GetOverviewAsync(stopping.Token);
-        Check("overview workers", "smoke", string.Join(",", overview.Workers.Select(w => w.NodeId)));
-        using (publisher.StartQuery())
-            Check("nothing left", 0, actions.ListActions().Count());
-
-        await stopping.CancelAsync();
-        try { await running; }
-        catch (OperationCanceledException) { }
+            string[] expected =
+            [
+                "chunked Completed 0", "chunked Partial 1", "chunked Partial 2", "echo Completed same", "failing Failed Smoke",
+                $"square 1000 9 Completed 3 81", $"square {square.ActionId} 3 Completed 1 9", "sum Completed 6"
+            ];
+            var watch = Stopwatch.StartNew();
+            while (Outcomes.Count < expected.Length && watch.Elapsed < TimeSpan.FromSeconds(30))
+                await Task.Delay(20, stopping.Token);
+            Check("outcomes", string.Join(", ", expected), string.Join(", ", Outcomes.Order(StringComparer.Ordinal)));
+            var overview = await host.GetOverviewAsync(stopping.Token);
+            Check("overview workers", "smoke", string.Join(",", overview.Workers.Select(w => w.NodeId)));
+            using (publisher.StartQuery())
+                Check("nothing left", 0, actions.ListActions().Count());
+        }
+        catch (Exception error)
+        {
+            // A NativeAOT gap surfaces as an exception; print it before disposal can fail too.
+            _failures++;
+            Console.WriteLine("FAIL " + error);
+        }
+        finally
+        {
+            await stopping.CancelAsync();
+            try { await running; }
+            catch (OperationCanceledException) { }
+        }
         Console.WriteLine(_failures == 0 ? "BackendActions NativeAOT smoke passed." : $"{_failures} checks failed.");
         return _failures == 0 ? 0 : 1;
+    }
+
+    internal static void Step(string name, Action check)
+    {
+        try
+        {
+            check();
+            Console.WriteLine("ok   " + name);
+        }
+        catch (Exception error)
+        {
+            _failures++;
+            Console.WriteLine($"FAIL {name}: {error}");
+        }
     }
 
     static void Check<TValue>(string name, TValue expected, TValue actual)

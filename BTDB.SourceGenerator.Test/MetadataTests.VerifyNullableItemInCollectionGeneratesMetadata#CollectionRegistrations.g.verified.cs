@@ -25,7 +25,6 @@ static file class CollectionRegistrations
     [global::System.Runtime.CompilerServices.ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        HashSetEntry<int?> e1 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.List<int?>),

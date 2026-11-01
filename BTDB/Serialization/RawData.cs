@@ -37,12 +37,17 @@ public sealed class RawData
         Unsafe.As<byte, nint>(ref Ref(@object)) = type.TypeHandle.Value;
     }
 
+    // NativeAOT keeps an element type in bits 26-30 of the flags where CoreCLR keeps the type's category and
+    // instantiation bits; the component size, base size, component size flag and GC pointers flag agree.
+    static readonly bool NativeAotLayout = MethodTableOf(typeof(string)).NativeAotElementType == 20;
+
     [StructLayout(LayoutKind.Explicit)]
     public struct MethodTable
     {
         [FieldOffset(0)] public ushort ComponentSize;
         [FieldOffset(0)] public uint Flags;
         [FieldOffset(4)] public uint BaseSize;
+        // CoreCLR layout only, as are the flags below without a NativeAOT branch.
         [FieldOffset(14)] public ushort InterfaceCount;
         [FieldOffset(16)] public unsafe MethodTable* ParentMethodTable;
         [FieldOffset(48)] public unsafe void* ElementType;
@@ -70,25 +75,39 @@ public sealed class RawData
             get => (int)((BaseSize - 3 * 8) / 8U);
         }
 
-        public bool IsValueType => ((int)Flags & 786432) == 262144;
+        // Primitives (2-15), structs (16) and nullables (18); enums carry their underlying primitive.
+        public bool IsValueType => NativeAotLayout
+            ? NativeAotElementType is >= 2 and <= 18
+            : ((int)Flags & 786432) == 262144;
 
-        public bool IsNullable => ((int)Flags & 983040) == 327680;
+        public bool IsNullable => NativeAotLayout ? NativeAotElementType == 18 : ((int)Flags & 983040) == 327680;
 
         public bool HasInstantiation
         {
-            get => ((int)this.Flags & int.MinValue) == 0 && (this.Flags & 48U) > 0U;
+            get => NativeAotLayout
+                ? (Flags & NativeAotIsGeneric) != 0 && !IsGenericTypeDefinition
+                : ((int)this.Flags & int.MinValue) == 0 && (this.Flags & 48U) > 0U;
         }
 
-        public bool IsGenericTypeDefinition => ((int)this.Flags & -2147483600) == 48;
+        public bool IsGenericTypeDefinition => NativeAotLayout
+            ? (Flags & NativeAotKindMask) == NativeAotGenericTypeDefinitionKind
+            : ((int)this.Flags & -2147483600) == 48;
 
         public bool IsConstructedGenericType
         {
             get
             {
+                if (NativeAotLayout) return HasInstantiation;
                 uint num = this.Flags & 2147483696U;
                 return num is 16U or 32U;
             }
         }
+
+        const uint NativeAotKindMask = 0x00030000;
+        const uint NativeAotGenericTypeDefinitionKind = 0x00030000;
+        const uint NativeAotIsGeneric = 0x02000000;
+
+        internal uint NativeAotElementType => (Flags >> 26) & 0x1F;
     }
 
     public static unsafe ref readonly MethodTable MethodTableRef(object @object)

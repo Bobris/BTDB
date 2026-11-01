@@ -224,7 +224,9 @@ overview. `run.sh` fails on trim or AOT warnings in BackendActions and EventSour
 `aot-actions-smoke`. It found four BTDB gaps, all fixed: trimming removed the properties of `[Generate]` types in
 library assemblies (`ClassMetadata.Type` and relation registration are now annotated, so trimming keeps them), the
 inline-object creator emitted IL, the event serializer created enum and struct array types at runtime, and the
-poison-event journal used reflection-based JSON.
+poison-event journal used reflection-based JSON. A second pass added a payload of every field shape, relations with lazy collections,
+singletons and upgrades to the smoke. It found `RawData.MethodTable` decoding CoreCLR's type flags under NativeAOT and
+`Singleton`/`New` emitting their field initializer; both are fixed.
 
 ## 4. Persistent state and events
 

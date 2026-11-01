@@ -9,6 +9,10 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <!-- Generated code must compile cleanly; run.sh judges the trim and AOT warnings itself. -->
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+        <IlcTreatWarningsAsErrors>false</IlcTreatWarningsAsErrors>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../BTDB.BackendActions/BTDB.BackendActions.csproj"/>
