@@ -108,7 +108,8 @@ public class ApprovalTest
             text.AppendLine(rootSet.Contains(type) ? header(type) : "class " + type.FullName);
             // Properties of base classes from other packages, such as an event's EventId, are theirs to approve.
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                         .Where(p => p is { CanRead: true, CanWrite: true } && p.DeclaringType!.Assembly == Package)
+                         .Where(p => p is { CanRead: true, CanWrite: true } && p.DeclaringType!.Assembly == Package &&
+                                     p.GetCustomAttribute<BTDB.ODBLayer.NotStoredAttribute>() == null)
                          .OrderBy(p => p.Name, StringComparer.Ordinal))
             {
                 text.Append("  ").Append(property.Name).Append(": ").Append(Name(property.PropertyType))

@@ -296,6 +296,7 @@ public readonly struct BTDB.BackendActions.QualifiedActionId : IEquatable<Qualif
 public class BTDB.BackendActions.QueuedAction
   ctor()
   property ulong ActionId { get; set; }
+  property QueuedActionFlags Flags { get; set; }
   property object? Input { get; set; }
   property bool IsAggregable { get; set; }
   property bool IsCancelled { get; set; }
@@ -310,6 +311,11 @@ public class BTDB.BackendActions.QueuedAction
   property ulong TenantId { get; set; }
   property string WorkerNode { get; set; }
   property Guid WorkerSession { get; set; }
+public enum BTDB.BackendActions.QueuedActionFlags
+  None = 0
+  Aggregable = 1
+  Cancelled = 2
+  Started = 4
 public sealed class BTDB.BackendActions.RepeatedlyScheduledAttribute : ActionScheduleAttribute
   ctor(int minutes)
   override method DateTime LatestOccurrence(DateTime now)

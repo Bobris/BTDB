@@ -237,7 +237,7 @@ The application's ObjectDB holds these relations. Only consumes write them.
 
 | Relation | Key | Fields |
 | --- | --- | --- |
-| `IQueuedActions` | PK (TenantId, ActionId); `Order` from the relation's `AllocateId` counter | Name, Priority, Order, Input, IsAggregable, IsCancelled, IsStarted, RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
+| `IQueuedActions` | PK (TenantId, ActionId); `Order` from the relation's `AllocateId` counter | Name, Priority, Order, Input, Flags (Aggregable, Cancelled, Started in one byte), RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
 | `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, QueuedAt |
 | `IActionInputIndexes` | PK (TenantId, Name, UniqueKey) | ActionId of the queued action that has not started |
 | `IScheduledActionRuns` | PK Name | LastRun: the latest occurrence started, skipped or recorded |

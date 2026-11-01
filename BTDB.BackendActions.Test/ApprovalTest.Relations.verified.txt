@@ -17,10 +17,8 @@ relation IDelayedActions of BTDB.BackendActions.DelayedAction
   TenantId: ulong [PrimaryKey(1, false)]
 relation IQueuedActions of BTDB.BackendActions.QueuedAction
   ActionId: ulong [PrimaryKey(2, false)]
+  Flags: QueuedActionFlags
   Input: object
-  IsAggregable: bool
-  IsCancelled: bool
-  IsStarted: bool
   LatestInputEventId: ulong
   Name: string
   Order: ulong
@@ -39,3 +37,8 @@ enum BTDB.BackendActions.ActionPriority : byte
   Normal = 4
   Low = 8
   Idle = 16
+enum BTDB.BackendActions.QueuedActionFlags : byte
+  None = 0
+  Aggregable = 1
+  Cancelled = 2
+  Started = 4

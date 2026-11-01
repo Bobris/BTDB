@@ -52,6 +52,8 @@
 - BackendActions: unification keys are bytes. `IActionInputUnificator.GetUniqueKey()` returns `byte[]`, and
   `ActionInputIndex.UniqueKey` and `FindByUniqueKey` take it, so keys composed of several values need no string
   formatting.
+- BackendActions: `QueuedAction` stores its aggregable, cancelled and started states in one `QueuedActionFlags` byte;
+  `IsAggregable`, `IsCancelled` and `IsStarted` remain as unstored views of it.
 
 ### Fixed
 

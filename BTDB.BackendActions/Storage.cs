@@ -13,10 +13,31 @@ public class QueuedAction
     /// <summary>Enqueue order, unique across the cluster's actions, from <see cref="IQueuedActions.AllocateId"/>.</summary>
     public ulong Order { get; set; }
     public object? Input { get; set; }
+    public QueuedActionFlags Flags { get; set; }
+
     /// <summary>True until the action starts or an input fails to aggregate into it.</summary>
-    public bool IsAggregable { get; set; }
-    public bool IsCancelled { get; set; }
-    public bool IsStarted { get; set; }
+    [NotStored]
+    public bool IsAggregable
+    {
+        get => (Flags & QueuedActionFlags.Aggregable) != 0;
+        set => Set(QueuedActionFlags.Aggregable, value);
+    }
+
+    /// <summary>Cancel requested while started; the coordinator finishes it.</summary>
+    [NotStored]
+    public bool IsCancelled
+    {
+        get => (Flags & QueuedActionFlags.Cancelled) != 0;
+        set => Set(QueuedActionFlags.Cancelled, value);
+    }
+
+    [NotStored]
+    public bool IsStarted
+    {
+        get => (Flags & QueuedActionFlags.Started) != 0;
+        set => Set(QueuedActionFlags.Started, value);
+    }
+
     /// <summary>Number of recorded starts; the current attempt when started.</summary>
     public ulong RunAttempts { get; set; }
     public Guid WorkerSession { get; set; }
@@ -27,6 +48,18 @@ public class QueuedAction
     /// <summary>Event that queued the action or last merged an input into it.</summary>
     public ulong LatestInputEventId { get; set; }
     public DateTime QueuedAt { get; set; }
+
+    void Set(QueuedActionFlags flag, bool value) => Flags = value ? Flags | flag : Flags & ~flag;
+}
+
+/// <summary>States of a <see cref="QueuedAction"/>, stored together in one byte.</summary>
+[Flags]
+public enum QueuedActionFlags : byte
+{
+    None = 0,
+    Aggregable = 1,
+    Cancelled = 2,
+    Started = 4
 }
 
 public interface IQueuedActions : IRelation<QueuedAction>
