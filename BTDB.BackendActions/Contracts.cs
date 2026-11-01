@@ -80,16 +80,21 @@ public sealed class ActionError
 public readonly record struct ActionOutcome<TResult>(ActionOutcomeKind Kind, ulong Attempt, TResult? Result,
     ActionError? Error) where TResult : class;
 
+/// <summary>Why <see cref="IActionContext.Cancellation"/> fired. The handler acknowledges it by returning
+/// <see cref="ActionResult.Cancelled"/> or <see cref="ActionResult.Interrupted"/>, or by throwing
+/// OperationCanceledException; a handler that returns a result instead completes the attempt with it.</summary>
 public enum ActionCancellationReason : byte
 {
     None = 0,
-    /// <summary>The action was cancelled; the attempt finishes as <see cref="ActionOutcomeKind.Cancelled"/>.</summary>
+    /// <summary>The action was cancelled; an acknowledged attempt finishes as
+    /// <see cref="ActionOutcomeKind.Cancelled"/>.</summary>
     Cancelled = 1,
-    /// <summary><see cref="IActionContext.CancelAfter"/> elapsed; the attempt finishes as Cancelled with the error code
-    /// <c>Timeout</c>.</summary>
+    /// <summary><see cref="IActionContext.CancelAfter"/> elapsed; an acknowledged attempt finishes as Cancelled with the
+    /// error code <c>Timeout</c>.</summary>
     Timeout = 2,
-    /// <summary>A newer attempt replaced this one, or the worker stops; the attempt publishes nothing.</summary>
-    Stopped = 3
+    /// <summary>A newer attempt replaced this one, or the worker stops; an acknowledged or failed attempt publishes
+    /// nothing, so the action runs again.</summary>
+    Interrupted = 3
 }
 
 /// <summary>Execution context of one attempt on a worker.</summary>
@@ -98,7 +103,8 @@ public interface IActionContext
     QualifiedActionId Id { get; }
     ulong Attempt { get; }
     /// <summary>Cancelled for every <see cref="ActionCancellationReason"/>; an OperationCanceledException thrown after
-    /// it finishes the attempt according to <see cref="CancellationReason"/>.</summary>
+    /// it acknowledges the cancellation and finishes the attempt according to <see cref="CancellationReason"/>, while a
+    /// returned result still completes it.</summary>
     CancellationToken Cancellation { get; }
     ActionCancellationReason CancellationReason { get; }
     /// <summary>A read-only snapshot of the worker's database; it already contains the event that started this attempt.</summary>
@@ -183,10 +189,56 @@ public class BackendActionException(string code, string message, string? details
     public string? Details { get; } = details;
 }
 
+/// <summary>How <c>ExecuteAsync</c> ends without an exception: <see cref="ActionResultKind.Completed"/> with a
+/// result, which converts implicitly so <c>return result;</c> works, or <see cref="ActionResult.Cancelled"/> or
+/// <see cref="ActionResult.Interrupted"/>, which acknowledge the attempt's cancellation reason.</summary>
+public readonly struct ActionResult<TResult> where TResult : class
+{
+    ActionResult(ActionResultKind kind, TResult? result)
+    {
+        Kind = kind;
+        Result = result;
+    }
+
+    public ActionResultKind Kind { get; }
+    public TResult? Result { get; }
+
+    public static implicit operator ActionResult<TResult>(TResult? result) => new(ActionResultKind.Completed, result);
+    public static implicit operator ActionResult<TResult>(ActionEnd end) => new(end.Kind, null);
+}
+
+public enum ActionResultKind : byte
+{
+    Completed = 0,
+    /// <summary>The attempt finishes as <see cref="ActionOutcomeKind.Cancelled"/>, with the error code <c>Timeout</c>
+    /// when <see cref="IActionContext.CancelAfter"/> elapsed.</summary>
+    Cancelled = 1,
+    /// <summary>The attempt publishes no outcome and the action runs again. It does not count toward MaxAttempts when
+    /// it acknowledges <see cref="ActionCancellationReason.Interrupted"/>, and counts otherwise.</summary>
+    Interrupted = 2
+}
+
+/// <summary>An end without a result, converting to any <see cref="ActionResult{TResult}"/>.</summary>
+public readonly struct ActionEnd
+{
+    internal ActionEnd(ActionResultKind kind) => Kind = kind;
+    internal ActionResultKind Kind { get; }
+}
+
+public static class ActionResult
+{
+    /// <summary><c>return ActionResult.Cancelled;</c> instead of throwing OperationCanceledException.</summary>
+    public static ActionEnd Cancelled => new(ActionResultKind.Cancelled);
+    /// <summary><c>return ActionResult.Interrupted;</c> instead of throwing OperationCanceledException.</summary>
+    public static ActionEnd Interrupted => new(ActionResultKind.Interrupted);
+}
+
 public interface IActionHandler<in TInput, TResult> where TInput : ActionInput<TResult> where TResult : class
 {
-    /// <summary>Runs off-transaction on the assigned worker; may run more than once for one action.</summary>
-    Task<TResult> ExecuteAsync(TInput input, IActionContext context);
+    /// <summary>Runs off-transaction on the assigned worker; may run more than once for one action. It acknowledges a
+    /// cancellation or interruption by returning <see cref="ActionResult.Cancelled"/> or
+    /// <see cref="ActionResult.Interrupted"/>, or by throwing OperationCanceledException.</summary>
+    Task<ActionResult<TResult>> ExecuteAsync(TInput input, IActionContext context);
 
     /// <summary>Runs inside the consume of the event that finishes the attempt, on every replica, exactly once per
     /// outcome. Like any consume it must be deterministic.</summary>

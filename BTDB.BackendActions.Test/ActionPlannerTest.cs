@@ -16,7 +16,7 @@ public class ActionPlannerTest
     {
         Name = name, InputType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
         ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant,
-        Execute = (_, _) => Task.FromResult(new object()), Finished = (_, _, _, _, _) => { }, BeforeStart = null
+        Execute = (_, _) => Task.FromResult<(ActionResultKind, object?)>((ActionResultKind.Completed, null)), Finished = (_, _, _, _, _) => { }, BeforeStart = null
     };
 
     static readonly ActionType Report = Type("report");
@@ -202,6 +202,29 @@ public class ActionPlannerTest
             Planner.Expire(30 * Second)); // the worker timed out too
         Assert.Empty(Planner.Expire(40 * Second)); // abandoned once
         Assert.Empty(Planner.Plan(40 * Second));
+    }
+
+    [Fact]
+    public void InterruptedAttemptsDoNotCountTowardTheAttemptLimit()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        PlanAndStart(default);
+        var other = Guid.NewGuid();
+        Exchange(other, default, node: "other");
+        // The stopping worker's ActionInterrupted queues the action again, frees that worker and gives it nothing new.
+        _rows[id].IsStarted = false;
+        _rows[id].InterruptedAttempts = 1;
+        Planner.Update(id, _rows[id], Report, default);
+        Assert.Equal((0, false), (Planner.Workers[worker].Used, Planner.Workers[worker].Ready));
+        Assert.Equal([id], PlanAndStart(default));
+        Assert.Equal(other, Planner.Actions[id].Worker);
+        Assert.Empty(Planner.Expire(10 * Second)); // attempt 2 is lost, but only one attempt counts of MaxAttempts 2
+        Exchange(other, 10 * Second, node: "other");
+        Assert.Equal([id], PlanAndStart(10 * Second));
+        Assert.Equal([new Abandonment(id, 3, ActionOutcomeKind.Interrupted, "AttemptsExhausted")],
+            Planner.Expire(20 * Second));
     }
 
     [Fact]

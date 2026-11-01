@@ -13,7 +13,7 @@ internal sealed class ActionType
     internal required int MaxConcurrent { get; init; }
     internal required string? ConcurrencyGroup { get; init; }
     internal required bool SingleRunningPerTenant { get; init; }
-    internal required Func<IActionInput, IActionContext, Task<object>> Execute { get; init; }
+    internal required Func<IActionInput, IActionContext, Task<(ActionResultKind Kind, object? Result)>> Execute { get; init; }
     internal required Action<IActionInput, ActionOutcomeKind, ulong, object?, ActionError?> Finished { get; init; }
     internal required Action<IActionInput>? BeforeStart { get; init; }
     internal ActionScheduleAttribute? Schedule { get; init; }
@@ -81,7 +81,11 @@ public sealed partial class BackendActions
             MaxConcurrent = metadata.MaxConcurrent,
             ConcurrencyGroup = metadata.ConcurrencyGroup,
             SingleRunningPerTenant = metadata.SingleRunningPerTenant,
-            Execute = async (input, context) => await handler.ExecuteAsync((TInput)input, context).ConfigureAwait(false),
+            Execute = async (input, context) =>
+            {
+                var result = await handler.ExecuteAsync((TInput)input, context).ConfigureAwait(false);
+                return (result.Kind, result.Result);
+            },
             Finished = (input, kind, attempt, result, error) =>
                 handler.OnFinished((TInput)input, new(kind, attempt, (TResult?)result, error)),
             BeforeStart = before == null ? null : input => before.OnBeforeStart((TInput)input),
@@ -106,6 +110,7 @@ public sealed partial class BackendActions
             .Register<CoordinatorActivated>(handler)
             .Register<ActionsStarted>(handler)
             .Register<ActionFinished>(handler)
+            .Register<ActionInterrupted>(handler)
             .Register<DelayedActionsDue>(handler)
             .Register<ScheduledActionStarted>(handler)
             .Register<ActionsSuspended>(handler)
@@ -337,6 +342,23 @@ public sealed partial class BackendActions
             row.RunAttempts != ev.Attempt)
             return; // a superseded attempt or an action that already finished
         Complete(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
+    }
+
+    internal void Interrupt(ActionInterrupted ev)
+    {
+        var queued = Ambient.Relation<IQueuedActions>();
+        if (queued.FindByIdOrDefault(ev.TenantId, ev.ActionId) is not { IsStarted: true } row ||
+            row.RunAttempts != ev.Attempt)
+            return; // a superseded attempt, a repeated report or an action that already finished
+        if (row.IsCancelled)
+        {
+            Complete(row, ActionOutcomeKind.Cancelled, row.RunAttempts, null, null);
+            return;
+        }
+        row.IsStarted = false;
+        row.InterruptedAttempts++;
+        queued.Update(row);
+        Changed(new(row.TenantId, row.ActionId));
     }
 
     internal void QueueDue(DelayedActionsDue ev)

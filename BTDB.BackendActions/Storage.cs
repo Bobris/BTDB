@@ -40,6 +40,8 @@ public class QueuedAction
 
     /// <summary>Number of recorded starts; the current attempt when started.</summary>
     public ulong RunAttempts { get; set; }
+    /// <summary>Attempts their stopping worker interrupted; they do not count toward the planner's MaxAttempts.</summary>
+    public ulong InterruptedAttempts { get; set; }
     public Guid WorkerSession { get; set; }
     /// <summary>Node of the current attempt's worker; a new worker session on that node ends the attempt.</summary>
     public string WorkerNode { get; set; } = "";

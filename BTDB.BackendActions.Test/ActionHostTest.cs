@@ -147,6 +147,91 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AResultReturnedDespiteCancellationCompletesTheAction()
+    {
+        StartHost();
+        var id = await Enqueue(new WaitingOrder { Mode = "finish" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        Assert.True(await _node.Query(a => a.CancelAsync(id)));
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((ActionOutcomeKind.Completed, "done 1"), (Outcomes[0].Kind, Outcomes[0].Result));
+        Assert.Equal([ActionCancellationReason.Cancelled], _node.Recorder.Reasons);
+    }
+
+    [Fact]
+    public async Task AHandlerAcknowledgesCancellationByReturningWithoutAnException()
+    {
+        StartHost();
+        var id = await Enqueue(new WaitingOrder { Mode = "acknowledge" });
+        var cancelling = await Enqueue(new WaitingOrder { Mode = "self-cancel" });
+        await UntilAsync(() => _node.Recorder.Running == 1 && Outcomes.Length == 1);
+        Assert.True(await _node.Query(a => a.CancelAsync(id)));
+        await UntilAsync(() => Outcomes.Length == 2);
+        Assert.Equal([(cancelling, ActionOutcomeKind.Cancelled, (string?)null), (id, ActionOutcomeKind.Cancelled, null)],
+            Outcomes.Select(o => (o.Id, o.Kind, o.Error)));
+        Assert.Equal([ActionCancellationReason.Cancelled], _node.Recorder.Reasons);
+    }
+
+    [Fact]
+    public async Task AReturnedInterruptionOfAStoppingWorkerUsesNoAttempt()
+    {
+        var stop = StartHost();
+        await Enqueue(new WaitingOrder { Mode = "acknowledge" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        stop.Cancel();
+        await _hosts[^1].Run.WaitAsync(TimeSpan.FromSeconds(10));
+        var row = Assert.Single(_node.Queued);
+        Assert.Equal((false, 1ul, 1ul), (row.IsStarted, row.RunAttempts, row.InterruptedAttempts));
+        Assert.Equal([ActionCancellationReason.Interrupted], _node.Recorder.Reasons);
+    }
+
+    [Fact]
+    public async Task AnInterruptionTheHandlerChoseItselfCountsAsAnAttempt()
+    {
+        var options = Options();
+        options.Planner.MaxAttempts = 2;
+        StartHost(options);
+        var id = await Enqueue(new WaitingOrder { Mode = "self-interrupt" });
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((id, ActionOutcomeKind.Interrupted, 2ul, "AttemptsExhausted"),
+            (Outcomes[0].Id, Outcomes[0].Kind, Outcomes[0].Attempt, Outcomes[0].Error));
+        Assert.Equal(2, _node.Recorder.Started.Count);
+    }
+
+    [Fact]
+    public async Task AResultReturnedWhileTheWorkerStopsIsPublished()
+    {
+        var stop = StartHost();
+        var id = await Enqueue(new WaitingOrder { Mode = "finish" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        stop.Cancel();
+        await _hosts[^1].Run.WaitAsync(TimeSpan.FromSeconds(10));
+        var outcome = Assert.Single(Outcomes);
+        Assert.Equal((id, ActionOutcomeKind.Completed, 1ul), (outcome.Id, outcome.Kind, outcome.Attempt));
+        Assert.Equal([ActionCancellationReason.Interrupted], _node.Recorder.Reasons);
+        Assert.Empty(_node.Queued);
+    }
+
+    [Fact]
+    public async Task AnAttemptInterruptedByAStoppingWorkerRunsAgainWithoutUsingAnAttempt()
+    {
+        var options = Options();
+        options.Planner.MaxAttempts = 1;
+        var stop = StartHost(options);
+        var id = await Enqueue(new WaitingOrder { Mode = "wait" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        stop.Cancel();
+        await _hosts[^1].Run.WaitAsync(TimeSpan.FromSeconds(10));
+        var row = Assert.Single(_node.Queued);
+        Assert.Equal((false, 1ul, 1ul), (row.IsStarted, row.RunAttempts, row.InterruptedAttempts));
+        StartHost(options);
+        await UntilAsync(() => _node.Recorder.Started.Count == 2);
+        _node.Recorder.Release.SetResult();
+        await UntilAsync(() => Outcomes.Length == 1);
+        Assert.Equal((id, ActionOutcomeKind.Completed, 2ul), (Outcomes[0].Id, Outcomes[0].Kind, Outcomes[0].Attempt));
+    }
+
+    [Fact]
     public async Task CancelAfterFinishesTheAttemptAsTimedOut()
     {
         StartHost();
@@ -256,7 +341,7 @@ public class ActionHostTest : IAsyncLifetime
     {
         var context = new Testing.TestActionContext(new(1, 2), attempt: 3);
         var handler = new Recorder.ExportProbe();
-        Assert.Equal("all", (await handler.ExecuteAsync(new ExportOrder { Parts = 2 }, context)).Text);
+        Assert.Equal("all", (await handler.ExecuteAsync(new ExportOrder { Parts = 2 }, context)).Result!.Text);
         Assert.Equal([(1ul, 2ul, 3ul, "part 1"), (1ul, 2ul, 3ul, "part 2")],
             context.Partials.Cast<ExportPart>().Select(p => (p.TenantId, p.ActionId, p.Attempt, p.Text)));
         Assert.Equal(-1000, context.CpuDelta);

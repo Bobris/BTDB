@@ -12,6 +12,10 @@ event BTDB.BackendActions.ActionFinished
   Kind: ActionOutcomeKind
   Result: object
   TenantId: ulong
+event BTDB.BackendActions.ActionInterrupted
+  ActionId: ulong
+  Attempt: ulong
+  TenantId: ulong
 event BTDB.BackendActions.ActionsImported
   Actions: List<ImportedAction>
   ScheduledRuns: Dictionary<string, DateTime>

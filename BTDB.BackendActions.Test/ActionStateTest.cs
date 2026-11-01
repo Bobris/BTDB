@@ -33,6 +33,10 @@ public class ActionStateTest
             Actions = [new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, WorkerSession = session }]
         }).AsTask();
 
+    static Task Interrupted(Node node, QualifiedActionId id, ulong attempt) =>
+        node.Publisher.PublishAsync(new ActionInterrupted { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt })
+            .AsTask();
+
     static Task Finished(Node node, QualifiedActionId id, ulong attempt, ActionOutcomeKind kind, string? text = null) =>
         node.Publisher.PublishAsync(new ActionFinished
         {
@@ -251,6 +255,32 @@ public class ActionStateTest
         await Place(node, cancel: new(0, 1));
         Assert.Equal([2ul], node.Queued.Select(q => q.ActionId));
         Assert.Equal([2ul], node.Indexes.Select(i => i.ActionId));
+    }
+
+    [Fact]
+    public async Task AnInterruptedAttemptQueuesTheActionAgainOnce()
+    {
+        await using var node = await Start();
+        var session = await Activate(node);
+        await Place(node, new ProcessOrder { Amount = 1 });
+        await Place(node, new ProcessOrder { Amount = 2 });
+        var id = new QualifiedActionId(0, 1);
+        await Started(node, session, id, 1);
+        await Interrupted(node, id, 2); // not its attempt
+        await Interrupted(node, id, 1);
+        await Interrupted(node, id, 1); // repeated
+        var row = node.Queued[0];
+        Assert.Equal((false, 1ul, 1ul), (row.IsStarted, row.RunAttempts, row.InterruptedAttempts));
+        await Started(node, session, id, 2);
+        Assert.Equal((true, 2ul), (node.Queued[0].IsStarted, node.Queued[0].RunAttempts));
+
+        // A cancelled action does not queue again: its interrupted attempt finishes it.
+        var cancelled = new QualifiedActionId(0, 2);
+        await Started(node, session, cancelled, 1);
+        await Place(node, cancel: cancelled);
+        await Interrupted(node, cancelled, 1);
+        Assert.Equal([1ul], node.Queued.Select(q => q.ActionId));
+        Assert.Equal((cancelled, ActionOutcomeKind.Cancelled), (node.Recorder.Outcomes.Single().Id, node.Recorder.Outcomes.Single().Kind));
     }
 
     [Fact]

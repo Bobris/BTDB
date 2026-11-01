@@ -93,8 +93,8 @@ public class EchoResult
 /// <summary>Returns its input, so the payload crosses both serializers both ways before OnFinished compares it.</summary>
 public class EchoHandler : IActionHandler<Echo, EchoResult>
 {
-    public Task<EchoResult> ExecuteAsync(Echo input, IActionContext context) =>
-        Task.FromResult(new EchoResult { Payload = input.Payload });
+    public Task<ActionResult<EchoResult>> ExecuteAsync(Echo input, IActionContext context) =>
+        Task.FromResult<ActionResult<EchoResult>>(new EchoResult { Payload = input.Payload });
 
     public void OnFinished(Echo input, ActionOutcome<EchoResult> outcome)
     {

@@ -24,8 +24,8 @@ public class Number
 
 public class SquareHandler : IActionHandler<Square, Number>
 {
-    public Task<Number> ExecuteAsync(Square input, IActionContext context) =>
-        Task.FromResult(new Number { Value = input.Value * input.Value });
+    public Task<ActionResult<Number>> ExecuteAsync(Square input, IActionContext context) =>
+        Task.FromResult<ActionResult<Number>>(new Number { Value = input.Value * input.Value });
 
     public void OnFinished(Square input, ActionOutcome<Number> outcome) =>
         Program.Outcomes.Enqueue($"square {input.ActionId} {input.Value} {outcome.Kind} {outcome.Attempt} {outcome.Result?.Value}");
@@ -52,11 +52,11 @@ sealed class ChunkedPartHandler : IEventHandler<ChunkedPart>
 
 public class ChunkedHandler : IActionHandler<Chunked, Number>
 {
-    public async Task<Number> ExecuteAsync(Chunked input, IActionContext context)
+    public async Task<ActionResult<Number>> ExecuteAsync(Chunked input, IActionContext context)
     {
         for (var part = 1; part <= input.Parts; part++)
             await context.SubmitPartialAsync(new ChunkedPart { Attempt = context.Attempt, Value = part });
-        return new() { Value = 0 };
+        return new Number { Value = 0 };
     }
 
     public void OnFinished(Chunked input, ActionOutcome<Number> outcome) =>
@@ -67,7 +67,7 @@ public class Failing : ActionInput<Number>;
 
 public class FailingHandler : IActionHandler<Failing, Number>
 {
-    public Task<Number> ExecuteAsync(Failing input, IActionContext context) =>
+    public Task<ActionResult<Number>> ExecuteAsync(Failing input, IActionContext context) =>
         throw new BackendActionException("Smoke", "Failed on purpose.");
 
     public void OnFinished(Failing input, ActionOutcome<Number> outcome) =>
@@ -90,8 +90,8 @@ public class Sum : ActionInput<Number>, IActionInputAggregator
 
 public class SumHandler : IActionHandler<Sum, Number>
 {
-    public Task<Number> ExecuteAsync(Sum input, IActionContext context) =>
-        Task.FromResult(new Number { Value = input.Values.Sum() });
+    public Task<ActionResult<Number>> ExecuteAsync(Sum input, IActionContext context) =>
+        Task.FromResult<ActionResult<Number>>(new Number { Value = input.Values.Sum() });
 
     public void OnFinished(Sum input, ActionOutcome<Number> outcome) =>
         Program.Outcomes.Enqueue($"sum {outcome.Kind} {outcome.Result?.Value}");
@@ -103,7 +103,7 @@ public class ByHand : ActionInput<Number>;
 
 public class ByHandHandler<T> : IActionHandler<ByHand, Number>
 {
-    public Task<Number> ExecuteAsync(ByHand input, IActionContext context) => Task.FromResult(new Number());
+    public Task<ActionResult<Number>> ExecuteAsync(ByHand input, IActionContext context) => Task.FromResult<ActionResult<Number>>(new Number());
     public void OnFinished(ByHand input, ActionOutcome<Number> outcome) => Program.Outcomes.Enqueue("by-hand " + outcome.Kind);
 }
 

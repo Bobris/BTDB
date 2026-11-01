@@ -18,7 +18,8 @@ public class GeneratedPlain : ActionInput<OrderResult>
 
 public class GeneratedReportHandler : IActionHandler<GeneratedReport, OrderResult>
 {
-    public Task<OrderResult> ExecuteAsync(GeneratedReport input, IActionContext context) => Task.FromResult(new OrderResult());
+    public Task<ActionResult<OrderResult>> ExecuteAsync(GeneratedReport input, IActionContext context) =>
+        Task.FromResult<ActionResult<OrderResult>>(new OrderResult());
     public void OnFinished(GeneratedReport input, ActionOutcome<OrderResult> outcome) { }
 }
 
@@ -26,8 +27,8 @@ public class GeneratedReportHandler : IActionHandler<GeneratedReport, OrderResul
 public class GeneratedPlainHandler(string prefix) : IActionHandler<GeneratedPlain, OrderResult>
 {
     public string Prefix { get; } = prefix;
-    public Task<OrderResult> ExecuteAsync(GeneratedPlain input, IActionContext context) =>
-        Task.FromResult(new OrderResult { Text = Prefix });
+    public Task<ActionResult<OrderResult>> ExecuteAsync(GeneratedPlain input, IActionContext context) =>
+        Task.FromResult<ActionResult<OrderResult>>(new OrderResult { Text = Prefix });
     public void OnFinished(GeneratedPlain input, ActionOutcome<OrderResult> outcome) { }
 }
 

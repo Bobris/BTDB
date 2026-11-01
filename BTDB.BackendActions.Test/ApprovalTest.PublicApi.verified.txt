@@ -9,7 +9,8 @@ public enum BTDB.BackendActions.ActionCancellationReason
   None = 0
   Cancelled = 1
   Timeout = 2
-  Stopped = 3
+  Interrupted = 3
+public readonly struct BTDB.BackendActions.ActionEnd
 public sealed class BTDB.BackendActions.ActionEnqueueOptions
   ctor()
   property ActionPriority Priority { get; set; }
@@ -63,6 +64,11 @@ public abstract class BTDB.BackendActions.ActionInput<TResult> : IActionInput
   protected ctor()
   property ulong ActionId { get; set; }
   property ulong TenantId { get; set; }
+public class BTDB.BackendActions.ActionInterrupted : PureEvent
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong Attempt { get; set; }
+  property ulong TenantId { get; set; }
 public class BTDB.BackendActions.ActionKey
   ctor()
   property ulong ActionId { get; set; }
@@ -96,6 +102,16 @@ public enum BTDB.BackendActions.ActionPriority
   Normal = 4
   Low = 8
   Idle = 16
+public static class BTDB.BackendActions.ActionResult
+  static property ActionEnd Cancelled { get; }
+  static property ActionEnd Interrupted { get; }
+public enum BTDB.BackendActions.ActionResultKind
+  Completed = 0
+  Cancelled = 1
+  Interrupted = 2
+public readonly struct BTDB.BackendActions.ActionResult<TResult>
+  property ActionResultKind Kind { get; }
+  property TResult? Result { get; }
 public abstract class BTDB.BackendActions.ActionScheduleAttribute : Attribute
   protected ctor()
   abstract method DateTime LatestOccurrence(DateTime now)
@@ -227,7 +243,7 @@ public interface BTDB.BackendActions.IActionContext
   method Ambient.Scope StartQuery()
   method ValueTask SubmitPartialAsync(PureEvent ev)
 public interface BTDB.BackendActions.IActionHandler<TInput, TResult>
-  method Task<TResult> ExecuteAsync(TInput input, IActionContext context)
+  method Task<ActionResult<TResult>> ExecuteAsync(TInput input, IActionContext context)
   method void OnFinished(TInput input, ActionOutcome<TResult> outcome)
 public interface BTDB.BackendActions.IActionInput
   property ulong ActionId { get; set; }
@@ -307,6 +323,7 @@ public class BTDB.BackendActions.QueuedAction
   property ulong ActionId { get; set; }
   property QueuedActionFlags Flags { get; set; }
   property object? Input { get; set; }
+  property ulong InterruptedAttempts { get; set; }
   property bool IsAggregable { get; set; }
   property bool IsCancelled { get; set; }
   property bool IsStarted { get; set; }

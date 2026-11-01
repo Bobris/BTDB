@@ -133,6 +133,16 @@
 - BackendActions: `EnqueueAsync`, `CancelAsync`, `SuspendAsync`, `SuspendTenantsAsync` and `ImportAsync` take no
   publisher. In a query scope they publish with the scope's publisher; inside a consume they apply in its transaction.
   `Suspend(names)` suspends action types inside a consume, as `SuspendTenants` does tenants.
+- BackendActions: `ActionCancellationReason.Stopped` is renamed `Interrupted`. A cancellation, timeout or
+  interruption counts only when the handler acknowledges it by throwing `OperationCanceledException`; a result it
+  returns anyway completes the attempt, so a stopping worker now publishes it instead of running the action again.
+  For an attempt it ends without an outcome, a stopping worker publishes the new `ActionInterrupted`: the action
+  queues again at once, and the attempt, counted in `QueuedAction.InterruptedAttempts`, does not count toward
+  `MaxAttempts`. Every node must run this version before a worker publishes the event.
+- BackendActions: `IActionHandler.ExecuteAsync` returns `Task<ActionResult<TResult>>`, a union of a result (converted
+  implicitly from `TResult`), `ActionResult.Cancelled` and `ActionResult.Interrupted`, so a handler acknowledges a
+  cancellation or interruption without throwing; `OperationCanceledException` still works. `Interrupted` returned
+  without an interruption runs the action again as a lost attempt that counts toward `MaxAttempts`.
 - EventSourcing: after `Ambient.PublishEventAsync` or `PublishAndWaitEventAsync` returns, later reads of the query
   scope open a new snapshot that contains the consumed event, instead of the snapshot opened before publishing.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and

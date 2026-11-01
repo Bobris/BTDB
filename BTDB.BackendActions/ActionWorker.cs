@@ -9,7 +9,7 @@ namespace BTDB.BackendActions;
 /// the input and every change before the start are visible. Its outcome is published as <see cref="ActionFinished"/>
 /// and reported as finished until the coordinator acknowledges it. An attempt whose outcome cannot be published is
 /// reported as lost and never runs again here, so the coordinator records a new attempt. Stopping the worker
-/// interrupts running attempts without an outcome, so another node runs them again.
+/// interrupts running attempts; those that acknowledge it publish no outcome, so another node runs them again.
 /// </summary>
 internal sealed class ActionWorker(BackendActions actions, EventPublisher publisher, IBackendActionsCluster cluster,
     BackendActionsOptions options, BackendActionsMetrics? metrics = null)
@@ -184,7 +184,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         internal void Stop(bool forget)
         {
             _forgotten |= forget;
-            End(ActionCancellationReason.Stopped);
+            End(ActionCancellationReason.Interrupted);
         }
 
         // The first reason decides the outcome.
@@ -192,6 +192,15 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         {
             Interlocked.CompareExchange(ref _reason, (int)reason, 0);
             _cancel.Cancel();
+        }
+
+        // An acknowledged interruption publishes no outcome; a cancellation finishes as Cancelled.
+        void Acknowledge(ActionFinished finished, bool interrupted)
+        {
+            if (interrupted) return;
+            finished.Kind = ActionOutcomeKind.Cancelled;
+            if (CancellationReason == ActionCancellationReason.Timeout)
+                finished.Error = new() { Code = "Timeout", Message = "The action timed out." };
         }
 
         internal async Task RunAsync(ulong startEventId)
@@ -221,15 +230,19 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                 try
                 {
                     _cancel.Token.ThrowIfCancellationRequested();
-                    finished.Result = await type.Execute(input, this).ConfigureAwait(false);
-                    finished.Kind = ActionOutcomeKind.Completed;
+                    var (kind, result) = await type.Execute(input, this).ConfigureAwait(false);
+                    if (kind == ActionResultKind.Completed)
+                    {
+                        finished.Result = result;
+                        finished.Kind = ActionOutcomeKind.Completed;
+                    }
+                    else Acknowledge(finished, kind == ActionResultKind.Interrupted);
                 }
+                // Only the handler's OperationCanceledException or returned acknowledgement ends the attempt as
+                // cancelled or interrupted; a result it returns anyway is published.
                 catch (OperationCanceledException) when (_cancel.IsCancellationRequested)
                 {
-                    if (CancellationReason == ActionCancellationReason.Stopped) return;
-                    finished.Kind = ActionOutcomeKind.Cancelled;
-                    if (CancellationReason == ActionCancellationReason.Timeout)
-                        finished.Error = new() { Code = "Timeout", Message = "The action timed out." };
+                    Acknowledge(finished, CancellationReason == ActionCancellationReason.Interrupted);
                 }
                 catch (BackendActionException error)
                 {
@@ -241,7 +254,24 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     finished.Kind = ActionOutcomeKind.Failed;
                     finished.Error = new() { Code = "Unexpected", Message = error.Message, Details = error.ToString() };
                 }
-                if (_forgotten || CancellationReason == ActionCancellationReason.Stopped) return;
+                if (finished.Kind == default || finished.Kind == ActionOutcomeKind.Failed &&
+                    (_forgotten || CancellationReason == ActionCancellationReason.Interrupted))
+                {
+                    // Interrupted, or failed while interrupted, which the interruption may have caused: no outcome, so
+                    // the action runs again. A stopping worker records it, so it does not count as an attempt; an
+                    // interruption the handler chose itself is lost and counts.
+                    if (_forgotten) return;
+                    if (CancellationReason != ActionCancellationReason.Interrupted)
+                    {
+                        lost = true;
+                        return;
+                    }
+                    await worker._publisher.PublishAsync(new ActionInterrupted
+                    {
+                        TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt
+                    }).ConfigureAwait(false);
+                    return;
+                }
                 try
                 {
                     await worker._publisher.PublishAsync(finished).ConfigureAwait(false);

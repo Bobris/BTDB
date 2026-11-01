@@ -37,16 +37,16 @@ public class BackendActionsGeneratorTests : GeneratorTestsBase
 
             public class ReportHandler : IActionHandler<Report, Result>
             {
-                public Task<Result> ExecuteAsync(Report input, IActionContext context) => Task.FromResult(new Result());
+                public Task<ActionResult<Result>> ExecuteAsync(Report input, IActionContext context) => Task.FromResult<ActionResult<Result>>(new Result());
                 public void OnFinished(Report input, ActionOutcome<Result> outcome) { }
             }
 
             // Two inputs, and no parameterless constructor: RegisterGenerated needs a handler factory.
             internal sealed class MailHandler(string server) : IActionHandler<Mail, Result>, IActionHandler<Report, Result>
             {
-                public Task<Result> ExecuteAsync(Mail input, IActionContext context) => Task.FromResult(new Result { Text = server });
+                public Task<ActionResult<Result>> ExecuteAsync(Mail input, IActionContext context) => Task.FromResult<ActionResult<Result>>(new Result { Text = server });
                 public void OnFinished(Mail input, ActionOutcome<Result> outcome) { }
-                public Task<Result> ExecuteAsync(Report input, IActionContext context) => Task.FromResult(new Result());
+                public Task<ActionResult<Result>> ExecuteAsync(Report input, IActionContext context) => Task.FromResult<ActionResult<Result>>(new Result());
                 public void OnFinished(Report input, ActionOutcome<Result> outcome) { }
             }
             """);
@@ -71,7 +71,7 @@ public class BackendActionsGeneratorTests : GeneratorTestsBase
 
             public abstract class HandlerBase<TInput> : IActionHandler<TInput, Result> where TInput : ActionInput<Result>
             {
-                public Task<Result> ExecuteAsync(TInput input, IActionContext context) => Task.FromResult(new Result());
+                public Task<ActionResult<Result>> ExecuteAsync(TInput input, IActionContext context) => Task.FromResult<ActionResult<Result>>(new Result());
                 public void OnFinished(TInput input, ActionOutcome<Result> outcome) { }
             }
 

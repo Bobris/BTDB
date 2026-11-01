@@ -339,10 +339,10 @@ internal sealed class Recorder
     {
         protected Recorder Owner => recorder;
 
-        public Task<OrderResult> ExecuteAsync(TInput input, IActionContext context) => Execute(input, context);
+        public Task<ActionResult<OrderResult>> ExecuteAsync(TInput input, IActionContext context) => Execute(input, context);
 
-        protected virtual Task<OrderResult> Execute(TInput input, IActionContext context) =>
-            Task.FromResult(new OrderResult { Text = describe(input) });
+        protected virtual Task<ActionResult<OrderResult>> Execute(TInput input, IActionContext context) =>
+            Task.FromResult<ActionResult<OrderResult>>(new OrderResult { Text = describe(input) });
 
         public void OnFinished(TInput input, ActionOutcome<OrderResult> outcome)
         {
@@ -353,7 +353,7 @@ internal sealed class Recorder
 
     sealed class SlowHandler(Recorder recorder) : Handler<SlowOrder>(recorder, i => i.Mode)
     {
-        protected override async Task<OrderResult> Execute(SlowOrder input, IActionContext context)
+        protected override async Task<ActionResult<OrderResult>> Execute(SlowOrder input, IActionContext context)
         {
             Owner.Started.Enqueue((context.Id, context.Attempt));
             Interlocked.Increment(ref Owner.Executions);
@@ -361,12 +361,31 @@ internal sealed class Recorder
             InterlockedMax(ref Owner.MaxRunning, running);
             try
             {
-                if (input.Mode != "fast") await Owner.Release.Task.WaitAsync(context.Cancellation);
+                if (input.Mode == "finish")
+                {
+                    // Ignores cancellation and interruption: it returns its result anyway.
+                    try { await Owner.Release.Task.WaitAsync(context.Cancellation); }
+                    catch (OperationCanceledException) { Owner.Reasons.Enqueue(context.CancellationReason); }
+                }
+                else if (input.Mode == "acknowledge")
+                {
+                    // Acknowledges cancellation and interruption by returning, without an exception.
+                    try { await Owner.Release.Task.WaitAsync(context.Cancellation); }
+                    catch (OperationCanceledException)
+                    {
+                        Owner.Reasons.Enqueue(context.CancellationReason);
+                        return context.CancellationReason == ActionCancellationReason.Interrupted
+                            ? ActionResult.Interrupted : ActionResult.Cancelled;
+                    }
+                }
+                else if (input.Mode == "self-cancel") return ActionResult.Cancelled;
+                else if (input.Mode == "self-interrupt") return ActionResult.Interrupted;
+                else if (input.Mode != "fast") await Owner.Release.Task.WaitAsync(context.Cancellation);
                 return input.Mode switch
                 {
                     "fail" => throw new BackendActionException("Rejected", "The order was rejected."),
                     "crash" => throw new InvalidOperationException("Bug."),
-                    _ => new() { Text = "done " + context.Attempt }
+                    _ => new OrderResult { Text = "done " + context.Attempt }
                 };
             }
             finally { Interlocked.Decrement(ref Owner.Running); }
@@ -382,7 +401,7 @@ internal sealed class Recorder
     // Submits its parts, then finishes; a "timeout" export waits for its own CancelAfter.
     sealed class ExportHandler(Recorder recorder) : Handler<ExportOrder>(recorder, i => i.Parts.ToString())
     {
-        protected override async Task<OrderResult> Execute(ExportOrder input, IActionContext context)
+        protected override async Task<ActionResult<OrderResult>> Execute(ExportOrder input, IActionContext context)
         {
             if (input.Timeout)
             {
@@ -397,7 +416,7 @@ internal sealed class Recorder
                     TenantId = context.Id.TenantId, ActionId = context.Id.ActionId, Attempt = context.Attempt,
                     Text = "part " + i
                 });
-            return new() { Text = input.ResultSize > 0 ? new string('x', input.ResultSize) : "all" };
+            return new OrderResult { Text = input.ResultSize > 0 ? new string('x', input.ResultSize) : "all" };
         }
     }
 
@@ -405,7 +424,8 @@ internal sealed class Recorder
     internal sealed class ExportProbe() : IActionHandler<ExportOrder, OrderResult>
     {
         readonly ExportHandler _inner = new(new Recorder());
-        public Task<OrderResult> ExecuteAsync(ExportOrder input, IActionContext context) => _inner.ExecuteAsync(input, context);
+        public Task<ActionResult<OrderResult>> ExecuteAsync(ExportOrder input, IActionContext context) =>
+            _inner.ExecuteAsync(input, context);
         public void OnFinished(ExportOrder input, ActionOutcome<OrderResult> outcome) { }
     }
 
@@ -416,8 +436,8 @@ internal sealed class Recorder
 
     sealed class FragileHandler : IActionHandler<FragileOrder, OrderResult>
     {
-        public Task<OrderResult> ExecuteAsync(FragileOrder input, IActionContext context) =>
-            Task.FromResult(new OrderResult());
+        public Task<ActionResult<OrderResult>> ExecuteAsync(FragileOrder input, IActionContext context) =>
+            Task.FromResult<ActionResult<OrderResult>>(new OrderResult());
 
         public void OnFinished(FragileOrder input, ActionOutcome<OrderResult> outcome) =>
             throw new InvalidOperationException("A bug in OnFinished.");

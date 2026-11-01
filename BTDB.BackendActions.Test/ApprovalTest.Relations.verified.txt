@@ -20,6 +20,7 @@ relation IQueuedActions of BTDB.BackendActions.QueuedAction
   ActionId: ulong [PrimaryKey(2, false)]
   Flags: QueuedActionFlags
   Input: object
+  InterruptedAttempts: ulong
   LatestInputEventId: ulong
   Name: string
   Order: ulong

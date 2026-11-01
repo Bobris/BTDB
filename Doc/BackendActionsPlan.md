@@ -93,7 +93,7 @@ public class ReportResult
 public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult>
 {
     // Off-transaction, on the assigned worker. Honors context.Cancellation.
-    public async Task<ReportResult> ExecuteAsync(GenerateReport input, IActionContext context)
+    public async Task<ActionResult<ReportResult>> ExecuteAsync(GenerateReport input, IActionContext context)
     {
         using (context.StartQuery()) { /* local read-only snapshot, causally after the start */ }
         await context.SubmitPartialAsync(new ReportProgress { ReportId = input.ReportId }); // an application event
@@ -124,10 +124,13 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * Errors are an `ActionError` with Code, Message and Details. `BackendActionException(code, message, details)` sets
   them, and any other exception becomes `Code = "Unexpected"`. There is no ambient error object.
 * Cancellation: `context.Cancellation` is cancelled for every `context.CancellationReason`: `Cancelled` (the action
-  was cancelled), `Timeout` (`context.CancelAfter(delay)` elapsed) and `Stopped` (the attempt was superseded or the
-  worker stops). An `OperationCanceledException` thrown after it finishes the attempt as `Cancelled`, with the error
-  code `Timeout` for a timeout, not as `Failed`; a stopped attempt publishes nothing. The first reason wins. There is
-  no default timeout, as in the reference.
+  was cancelled), `Timeout` (`context.CancelAfter(delay)` elapsed) and `Interrupted` (the attempt was superseded or the
+  worker stops). `ExecuteAsync` returns the union `ActionResult<TResult>`: a result (implicitly converted),
+  `ActionResult.Cancelled` or `ActionResult.Interrupted`. The handler acknowledges the reason by returning one of the
+  latter or by throwing `OperationCanceledException`, which finishes the attempt as `Cancelled`, with the error code
+  `Timeout` for a timeout, not as `Failed`; an acknowledged or failed interrupted attempt publishes nothing. A returned
+  result completes the attempt whatever the reason. `Interrupted` returned without an interruption is a lost attempt
+  that counts. The first reason wins. There is no default timeout, as in the reference.
 * Resources: `context.AdjustResources(cpuDelta)` changes the CPU the coordinator accounts to the running attempt,
   never below 10, with the worker's next exchange; a new attempt starts from the type's cost again.
   `ActionPlannerOptions.CpuOverride(name, cost)` replaces the reference's `IOverrideActionResources`, for example
@@ -172,7 +175,7 @@ A result travels in an `ActionFinished` event and is therefore limited by `Event
 events of the application:
 
 ```csharp
-public async Task<ExportResult> ExecuteAsync(ExportRows input, IActionContext context)
+public async Task<ActionResult<ExportResult>> ExecuteAsync(ExportRows input, IActionContext context)
 {
     foreach (var chunk in ReadInChunks(input, maximumBytes: 4 * 1024 * 1024))
         await context.SubmitPartialAsync(new ExportRowsPart
@@ -268,6 +271,7 @@ Events, all ordinary `BTDB.Replication.EventSourcing` events:
 | `CoordinatorActivated{Session}` | New leader's coordinator | Store `CoordinatorSession`. This is the barrier and fencing epoch (section 5). |
 | `ActionsStarted{Session, [ActionId, Attempt, WorkerSession]}` | Coordinator, one event per planning round | Reject the whole event if `Session` is not current. Per action: skip it if it is gone, cancelled, or `Attempt` is not `RunAttempts + 1`; otherwise set `IsStarted`, `RunAttempts = Attempt`, close aggregation, remove the index entry and run `OnBeforeStart`. A higher attempt supersedes a running one. |
 | `ActionFinished{ActionId, Attempt, Outcome, Result/Error}` | Worker, or the coordinator for abandoned attempts | Ignore it unless the action is started and `RunAttempts == Attempt`. Call `OnFinished` and delete the row. |
+| `ActionInterrupted{ActionId, Attempt}` | A stopping worker, for an attempt it ended without an outcome | Same check. A cancelled action finishes as `Cancelled`; otherwise clear `IsStarted` and increment `InterruptedAttempts`. |
 | `DelayedActionsDue{[ActionId]}` | Coordinator, about every 10 s | Move due rows to `IQueuedActions`, or unify them into existing rows. |
 | `ScheduledActionStarted{Name, ExpectedLastRun, NewLastRun, Start}` | Coordinator scheduler | Only if `LastRun == ExpectedLastRun` (an optimistic check in consume, not in a validator): set `LastRun = NewLastRun` and, when `Start`, enqueue a new input. |
 | `BackendActionsSettingsChanged{...}` | Admin API | Update the singleton. |
@@ -371,13 +375,16 @@ without the node, the new coordinator waits a whole lease (2 min by default) bef
 Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is not implemented: the worker timeout
 already bounds the wait, and no test showed a need for a second signal.
 
-A stopping worker cancels its attempts and publishes no outcome for them, so they run again elsewhere, as after a
-crash. Its last exchange, with `Draining` and no running attempts, removes the worker at once, so the reruns need not
+A stopping worker interrupts its attempts. A result returned anyway is published; for the others the worker publishes
+`ActionInterrupted`, whose consume queues the action again and increments `InterruptedAttempts`, so the attempt does
+not count toward `MaxAttempts` and runs again elsewhere at once, even if the coordinator stops too; the coordinator
+assigns nothing new to the interrupting worker. A cancelled action
+finishes as `Cancelled` instead. Its last exchange, with `Draining` and no running attempts, removes the worker at once, so the reruns need not
 wait for the worker timeout; when that exchange fails, the timeout still ends them. An `Interrupted` outcome comes
 only from the coordinator, for exhausted attempts.
 
 Lease expiry (no report of a running attempt) makes the action runnable again. The next `ActionsStarted` supersedes
-the old attempt. After `MaxAttempts` (default 5), the coordinator publishes `ActionFinished(Interrupted, "attempts
+the old attempt. After `MaxAttempts` (default 5) attempts, not counting interrupted ones, the coordinator publishes `ActionFinished(Interrupted, "attempts
 exhausted")` for the current attempt. Cancellation of an action with a dead worker is finished the same way, as
 `Cancelled`.
 

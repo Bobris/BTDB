@@ -63,6 +63,15 @@ public class ActionFinished : PureEvent
     public ActionError? Error { get; set; }
 }
 
+/// <summary>A stopping worker's attempt ended without an outcome: the action queues again, and the attempt does not
+/// count toward MaxAttempts.</summary>
+public class ActionInterrupted : PureEvent
+{
+    public ulong TenantId { get; set; }
+    public ulong ActionId { get; set; }
+    public ulong Attempt { get; set; }
+}
+
 /// <summary>Starts a scheduled type for an occurrence, unless another start already moved its last run.</summary>
 public class ScheduledActionStarted : PureEvent
 {
@@ -98,6 +107,7 @@ public class DelayedActionsDue : PureEvent
 sealed class BackendActionsEventHandler(BackendActions actions) :
     IEventHandler<ActionEnqueued, ActionEnqueuedResult>, IEventHandler<ActionCancelRequested, ActionCancelResult>,
     IEventHandler<CoordinatorActivated>, IEventHandler<ActionsStarted>, IEventHandler<ActionFinished>,
+    IEventHandler<ActionInterrupted>,
     IEventHandler<DelayedActionsDue>, IEventHandler<ScheduledActionStarted>, IEventHandler<ActionsSuspended>,
     IEventHandler<ActionsImported>
 {
@@ -125,6 +135,8 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
     public void Consume(ActionsStarted ev) => actions.Start(ev);
     public void Validate(ActionFinished ev) => BackendActions.CheckKind(ev);
     public void Consume(ActionFinished ev) => actions.Finish(ev);
+    public void Validate(ActionInterrupted ev) { }
+    public void Consume(ActionInterrupted ev) => actions.Interrupt(ev);
     public void Validate(DelayedActionsDue ev) { }
     public void Consume(DelayedActionsDue ev) => actions.QueueDue(ev);
     public void Validate(ScheduledActionStarted ev) { }

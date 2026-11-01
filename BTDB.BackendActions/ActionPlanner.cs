@@ -7,7 +7,8 @@ public sealed class ActionPlannerOptions
     public TimeSpan Lease { get; set; } = TimeSpan.FromMinutes(2);
     /// <summary>A worker silent this long is gone, with all its attempts.</summary>
     public TimeSpan WorkerTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    /// <summary>After this many starts an action whose attempt is lost finishes as Interrupted.</summary>
+    /// <summary>After this many starts, not counting attempts their stopping worker interrupted, an action whose attempt
+    /// is lost finishes as Interrupted.</summary>
     public ulong MaxAttempts { get; set; } = 5;
     /// <summary>Share of a worker's capacity that actions of each priority may fill.</summary>
     public Dictionary<ActionPriority, double> CapacityShares { get; set; } = new()
@@ -30,6 +31,8 @@ internal sealed class PlannedAction
     internal ActionPriority Priority { get; set; }
     internal ulong Order { get; set; }
     internal ulong RunAttempts { get; set; }
+    /// <summary>Attempts their stopping worker interrupted, which do not count toward MaxAttempts.</summary>
+    internal ulong InterruptedAttempts { get; set; }
     internal bool IsCancelled { get; set; }
     internal bool IsStarted { get; set; }
     internal ulong StartEventId { get; set; }
@@ -175,6 +178,12 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
                 unknownAttempt = false;
             }
             else if (row.RunAttempts == action.RunAttempts) unknownAttempt = false;
+            if (!row.IsStarted && action.Starting == null && action.Worker is { } holder)
+            {
+                // Its worker interrupted the attempt, which only a stopping worker does: give it nothing new.
+                if (_workers.TryGetValue(holder, out var stopping)) stopping.Ready = false;
+                Release(action);
+            }
         }
         if (row.RunAttempts != action.RunAttempts)
         {
@@ -196,6 +205,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         action.RecordedSession = row.WorkerSession;
         action.RecordedNode = row.WorkerNode;
         action.RunAttempts = row.RunAttempts;
+        action.InterruptedAttempts = row.InterruptedAttempts;
         if (action.Protected && _workers.Values.Any(w => w.NodeId == action.RecordedNode && w.Session != action.RecordedSession))
             action.Protected = false; // its node already runs a newer process
         Count(action);
@@ -319,7 +329,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             if (!action.IsStarted || !action.Idle) continue;
             if (action.IsCancelled)
                 abandoned.Add(new(action.Id, action.RunAttempts, ActionOutcomeKind.Cancelled, "WorkerLost"));
-            else if (action.RunAttempts >= options.MaxAttempts)
+            else if (action.RunAttempts - action.InterruptedAttempts >= options.MaxAttempts)
                 abandoned.Add(new(action.Id, action.RunAttempts, ActionOutcomeKind.Interrupted, "AttemptsExhausted"));
             else continue;
             action.Abandoned = true;

@@ -46,11 +46,11 @@ internal sealed record Execution(ulong ActionId, ulong Attempt);
 
 internal sealed class SleepHandler(string node, ConcurrentQueue<Execution> executions) : IActionHandler<SleepAction, SleepResult>
 {
-    public async Task<SleepResult> ExecuteAsync(SleepAction input, IActionContext context)
+    public async Task<ActionResult<SleepResult>> ExecuteAsync(SleepAction input, IActionContext context)
     {
         executions.Enqueue(new(context.Id.ActionId, context.Attempt));
         await Task.Delay(input.Milliseconds, context.Cancellation);
-        return new() { Node = node };
+        return new SleepResult { Node = node };
     }
 
     public void OnFinished(SleepAction input, ActionOutcome<SleepResult> outcome)

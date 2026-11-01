@@ -30,11 +30,14 @@ public class ReportResult
 
 public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult>
 {
-    public async Task<ReportResult> ExecuteAsync(GenerateReport input, IActionContext context)
+    public async Task<ActionResult<ReportResult>> ExecuteAsync(GenerateReport input, IActionContext context)
     {
         using (context.StartQuery()) { /* read-only snapshot that contains the event that started this attempt */ }
+        if (context.Cancellation.IsCancellationRequested) // or let an awaited call throw OperationCanceledException
+            return context.CancellationReason == ActionCancellationReason.Interrupted
+                ? ActionResult.Interrupted : ActionResult.Cancelled;
         await Task.Delay(100, context.Cancellation);
-        return new() { BlobName = "report-" + input.ReportId };
+        return new ReportResult { BlobName = "report-" + input.ReportId }; // converts to ActionResult<ReportResult>
     }
 
     public void OnFinished(GenerateReport input, ActionOutcome<ReportResult> outcome)
@@ -137,14 +140,24 @@ action. A worker of an older `ApplicationGeneration` than the coordinator gets n
 Execution is at least once: `ExecuteAsync` can run again after a lost worker, an expired lease (2 min without a
 report) or a leader change, so external effects need idempotency. `OnFinished` runs exactly once per outcome: results
 of a superseded attempt are ignored. A worker that cannot publish an attempt's outcome reports the attempt as lost
-and never runs it again, so the coordinator records a new attempt at once. After `MaxAttempts` (5) lost attempts the coordinator finishes the action as
-`Interrupted` with code `AttemptsExhausted`. A stopping worker publishes nothing for its running attempts and tells the
-coordinator in a last exchange, so they run again elsewhere at once.
+and never runs it again, so the coordinator records a new attempt at once. After `MaxAttempts` (5) lost attempts the
+coordinator finishes the action as `Interrupted` with code `AttemptsExhausted`. A stopping worker interrupts its
+running attempts and publishes the results of those that still return one. For the others it publishes
+`ActionInterrupted`, which queues the action again at once; an interruption is not the action's fault, so it does not
+count toward `MaxAttempts` (`QueuedAction.InterruptedAttempts` counts them). A crash, a lost worker or an expired lease
+still counts.
 
 `IActionContext` offers:
 
-* `Cancellation` and `CancellationReason`: `Cancelled`, `Timeout` (after `CancelAfter(delay)`, finishing as
-  `Cancelled` with code `Timeout`) or `Stopped` (superseded or the worker stops; nothing is published).
+* `Cancellation` and `CancellationReason`: `Cancelled`, `Timeout` (after `CancelAfter(delay)`) or `Interrupted`
+  (superseded or the worker stops). `ExecuteAsync` returns an `ActionResult<TResult>`: a result, which converts
+  implicitly, `ActionResult.Cancelled` or `ActionResult.Interrupted`. The handler acknowledges a cancellation by
+  returning one of the latter, without an exception, or by throwing `OperationCanceledException`. The attempt then
+  finishes as `Cancelled`, with code `Timeout` for a timeout, or, when interrupted, publishes nothing and runs again
+  without using an attempt. A handler may also return `Cancelled` on its own, which finishes the attempt as
+  `Cancelled`, or `Interrupted`, which runs it again as a lost attempt that counts toward `MaxAttempts`. A result
+  completes the attempt whatever the reason; a failure while interrupted publishes nothing, since the interruption may have caused
+  it. A synchronous handler returns `Task.FromResult<ActionResult<TResult>>(result)`.
 * `SubmitPartialAsync(ev)`: publishes an event of the application and returns after this node consumed it, so parts
   keep their order and a slow consumer slows the action down. It does nothing else: the application's own event
   handler consumes the part. It is often used to commit partial progress: each consumed part is durable on every
