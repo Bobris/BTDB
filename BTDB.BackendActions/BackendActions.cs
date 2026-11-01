@@ -325,14 +325,12 @@ public sealed partial class BackendActions
             else
                 indexes.Insert(new() { TenantId = input.TenantId, Name = type.Name, UniqueKey = key, ActionId = input.ActionId });
         }
-        var state = State();
         queued.Insert(new()
         {
             TenantId = input.TenantId, ActionId = input.ActionId, Name = type.Name, Priority = priority,
-            Order = state.NextOrder++, Input = input, IsAggregable = input is IActionInputAggregator,
+            Order = queued.AllocateId(), Input = input, IsAggregable = input is IActionInputAggregator,
             LatestInputEventId = ev.EventId, QueuedAt = ev.When
         });
-        Ambient.Relation<IBackendActionsStates>().Update(state);
         Changed(new(input.TenantId, input.ActionId));
         return new(input.TenantId, input.ActionId);
     }

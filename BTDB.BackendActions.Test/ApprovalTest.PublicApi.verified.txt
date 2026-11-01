@@ -180,7 +180,6 @@ public class BTDB.BackendActions.BackendActionsState
   ctor()
   property Guid CoordinatorSession { get; set; }
   property ulong Id { get; set; }
-  property ulong NextOrder { get; set; }
   property List<string> Suspended { get; set; }
 public class BTDB.BackendActions.CoordinatorActivated : PureEvent
   ctor()
@@ -247,6 +246,7 @@ public interface BTDB.BackendActions.IDelayedActions : ICovariantRelation<Delaye
   method bool RemoveById(ulong tenantId, ulong actionId)
   method void Update(DelayedAction item)
 public interface BTDB.BackendActions.IQueuedActions : ICovariantRelation<QueuedAction>, IEnumerable, IEnumerable<QueuedAction>, IReadOnlyCollection<QueuedAction>, IRelation, IRelation<QueuedAction>
+  method ulong AllocateId()
   method IEnumerable<QueuedAction> FindById(ulong tenantId)
   method QueuedAction? FindByIdOrDefault(ulong tenantId, ulong actionId)
   method void Insert(QueuedAction item)

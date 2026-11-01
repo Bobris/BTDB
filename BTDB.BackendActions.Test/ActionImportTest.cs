@@ -24,8 +24,8 @@ public class ActionImportTest
 
     static void AssertImported(Node node)
     {
-        Assert.Equal([(2ul, 400ul, 0ul, ActionPriority.Low, 0ul), (2, 410, 1, ActionPriority.Normal, 0),
-                (2, 420, 2, ActionPriority.Normal, 0), (1, 500, 3, ActionPriority.Normal, 2)],
+        Assert.Equal([(2ul, 400ul, 1ul, ActionPriority.Low, 0ul), (2, 410, 2, ActionPriority.Normal, 0),
+                (2, 420, 3, ActionPriority.Normal, 0), (1, 500, 4, ActionPriority.Normal, 2)],
             node.Queued.OrderBy(q => q.Order).Select(q => (q.TenantId, q.ActionId, q.Order, q.Priority, q.RunAttempts)));
         Assert.All(node.Queued, q => Assert.False(q.IsStarted));
         Assert.Equal([false, true], node.Queued.Where(q => q.TenantId == 2 && q.ActionId != 400).Select(q => q.IsAggregable));
@@ -53,7 +53,7 @@ public class ActionImportTest
         Assert.Equal(new QualifiedActionId(1, 951), fresh);
         Assert.Equal(new QualifiedActionId(2, 420),
             await node.Actions.EnqueueAsync(node.Publisher, new CollectItems { TenantId = 2, Key = "c", Items = [3] }));
-        Assert.Equal(4ul, node.Queued.Single(q => q.ActionId == 951).Order);
+        Assert.Equal(5ul, node.Queued.Single(q => q.ActionId == 951).Order);
     }
 
     [Fact]

@@ -61,7 +61,6 @@ public sealed partial class BackendActions
         var queued = Ambient.Relation<IQueuedActions>();
         var delayed = Ambient.Relation<IDelayedActions>();
         var indexes = Ambient.Relation<IActionInputIndexes>();
-        var state = State();
         var highest = 0ul;
         foreach (var action in actions.OrderBy(a => a.Order))
         {
@@ -92,7 +91,7 @@ public sealed partial class BackendActions
             queued.Insert(new()
             {
                 TenantId = action.TenantId, ActionId = action.ActionId, Name = type.Name, Priority = action.Priority,
-                Order = state.NextOrder++, Input = input, IsAggregable = aggregable, RunAttempts = action.RunAttempts,
+                Order = queued.AllocateId(), Input = input, IsAggregable = aggregable, RunAttempts = action.RunAttempts,
                 LatestInputEventId = ev.EventId, QueuedAt = action.QueuedAt
             });
             if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { Length: > 0 } key &&
@@ -100,7 +99,6 @@ public sealed partial class BackendActions
                 indexes.Upsert(new() { TenantId = action.TenantId, Name = type.Name, UniqueKey = key, ActionId = action.ActionId });
             Changed(new(action.TenantId, action.ActionId));
         }
-        Ambient.Relation<IBackendActionsStates>().Update(state);
         var transaction = Ambient.Transaction.KeyValueDBTransaction;
         if (transaction.GetUlong(2) < highest) transaction.SetUlong(2, highest); // the slot Ambient.AllocateId uses
     }

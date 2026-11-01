@@ -48,7 +48,7 @@ public class ActionStateTest
         await Place(node, new ProcessOrder { TenantId = 7, Amount = 6 });
         Assert.Equal([new(7, 1), new QualifiedActionId(7, 2)], node.Recorder.Enqueued);
         var queued = node.Queued;
-        Assert.Equal([(1ul, ActionPriority.Low, 0ul, 1ul), (2ul, ActionPriority.Normal, 1ul, 2ul)],
+        Assert.Equal([(1ul, ActionPriority.Low, 1ul, 1ul), (2ul, ActionPriority.Normal, 2ul, 2ul)],
             queued.Select(q => (q.ActionId, q.Priority, q.Order, q.LatestInputEventId)));
         Assert.All(queued, q => Assert.Equal(typeof(ProcessOrder).FullName, q.Name));
         Assert.Equal(5, Assert.IsType<ProcessOrder>(queued[0].Input).Amount);

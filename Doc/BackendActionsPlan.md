@@ -237,11 +237,11 @@ The application's ObjectDB holds these relations. Only consumes write them.
 
 | Relation | Key | Fields |
 | --- | --- | --- |
-| `IQueuedActions` | PK (TenantId, ActionId) | Name, Priority, Order, Input, IsAggregable, IsCancelled, IsStarted, RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
+| `IQueuedActions` | PK (TenantId, ActionId); `Order` from the relation's `AllocateId` counter | Name, Priority, Order, Input, IsAggregable, IsCancelled, IsStarted, RunAttempts, WorkerSession, StartEventId, LatestInputEventId, QueuedAt |
 | `IDelayedActions` | PK (TenantId, ActionId); SK StartAt | Name, Priority, Input, QueuedAt |
 | `IActionInputIndexes` | PK (TenantId, Name, UniqueKey) | ActionId of the queued action that has not started |
 | `IScheduledActionRuns` | PK Name | LastRun: the latest occurrence started, skipped or recorded |
-| `IBackendActionsStates`, one row with Id 0 | PK Id | NextOrder, CoordinatorSession; later settings (capacity shares by priority, suspended action names) |
+| `IBackendActionsStates`, one row with Id 0 | PK Id | CoordinatorSession; later settings (capacity shares by priority, suspended action names) |
 
 Whether an input unifies or aggregates comes from its type, so rows store no flags for it. Secondary keys for
 monitoring are added with monitoring (A5) when its queries need them.

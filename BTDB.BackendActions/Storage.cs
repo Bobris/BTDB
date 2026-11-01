@@ -10,7 +10,7 @@ public class QueuedAction
     [PrimaryKey(2)] public ulong ActionId { get; set; }
     public string Name { get; set; } = "";
     public ActionPriority Priority { get; set; }
-    /// <summary>Enqueue order, unique across the cluster's actions.</summary>
+    /// <summary>Enqueue order, unique across the cluster's actions, from <see cref="IQueuedActions.AllocateId"/>.</summary>
     public ulong Order { get; set; }
     public object? Input { get; set; }
     /// <summary>True until the action starts or an input fails to aggregate into it.</summary>
@@ -31,6 +31,8 @@ public class QueuedAction
 
 public interface IQueuedActions : IRelation<QueuedAction>
 {
+    /// <summary>The next enqueue order: a counter of the relation, cheaper than a row every enqueue rewrites.</summary>
+    ulong AllocateId();
     void Insert(QueuedAction item);
     void Update(QueuedAction item);
     QueuedAction? FindByIdOrDefault(ulong tenantId, ulong actionId);
@@ -93,7 +95,6 @@ public interface IScheduledActionRuns : IRelation<ScheduledActionRun>
 public class BackendActionsState
 {
     [PrimaryKey(1)] public ulong Id { get; set; }
-    public ulong NextOrder { get; set; }
     /// <summary>The coordinator session whose start events are accepted.</summary>
     public Guid CoordinatorSession { get; set; }
     /// <summary>Action types that start no new attempts; their inputs keep queueing.</summary>

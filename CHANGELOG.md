@@ -46,6 +46,9 @@
 - BackendActions: Verify baselines of the public API, the events, the relation schemas and the JSON the workers and
   the coordinator exchange, so a change to a stored or replicated format, or one that breaks a rolling upgrade,
   shows in review.
+- BackendActions: `QueuedAction.Order` comes from the `IQueuedActions` relation counter (`AllocateId`), starting at 1,
+  instead of `BackendActionsState.NextOrder`, which is removed. Enqueue and import no longer read and rewrite the
+  state row for every action.
 
 ### Fixed
 
