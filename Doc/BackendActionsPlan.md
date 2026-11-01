@@ -148,8 +148,7 @@ Submission:
 ```csharp
 // actions is the application's BackendActions instance (no process-global state).
 // Inside any event handler's Consume: transactional with the business change, deterministic ID, no extra event.
-var id = actions.Enqueue(new GenerateReport { ReportId = 7 },
-    new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
+var id = actions.Enqueue(new GenerateReport { ReportId = 7 }, ActionPriority.Low, startAt: ev.When.AddHours(1));
 actions.Cancel(id);
 
 // From a query scope, for example in an API endpoint or scheduler: publishes ActionEnqueued / ActionCancelRequested

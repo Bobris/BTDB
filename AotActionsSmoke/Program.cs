@@ -185,8 +185,8 @@ static class Program
                 {
                     ActionId = 999_999, Attempt = 1, Progress = new Number { Value = 7 }
                 }, stopping.Token);
-                var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
-                var byHand = await actions.EnqueueAsync(new ByHand(), later, stopping.Token);
+                var byHand = await actions.EnqueueAsync(new ByHand(), startAt: DateTime.UtcNow.AddDays(1),
+                    cancellation: stopping.Token);
                 Check("hand registration reads the attributes", "smoke-by-hand", actions.FindAction(byHand)?.Name);
                 Check("a delayed action cancels", true, await actions.CancelAsync(byHand, stopping.Token));
             }

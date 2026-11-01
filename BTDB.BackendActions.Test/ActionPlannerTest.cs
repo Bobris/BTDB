@@ -15,7 +15,7 @@ public class ActionPlannerTest
         bool singlePerTenant = false) => new()
     {
         Name = name, InputType = typeof(object), Cpu = cpu, MaxConcurrent = maxConcurrent,
-        ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant,
+        ConcurrencyGroup = group, SingleRunningPerTenant = singlePerTenant, Priority = ActionPriority.Normal,
         Execute = (_, _) => Task.FromResult<(ActionResultKind, object?)>(default), Finished = (_, _, _, _, _) => { }, BeforeStart = null
     };
 

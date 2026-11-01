@@ -180,7 +180,8 @@ internal sealed class Node : IAsyncDisposable
 public class PlaceOrder : PureEvent
 {
     public object? Input { get; set; }
-    public ActionPriority Priority { get; set; } = ActionPriority.Normal;
+    /// <summary>Null uses the type's default priority.</summary>
+    public ActionPriority? Priority { get; set; }
     public DateTime? StartAt { get; set; }
     public ulong CancelTenantId { get; set; }
     public ulong CancelActionId { get; set; }
@@ -213,9 +214,9 @@ internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>, IEventH
     {
         if (ev.Input is IActionInput input)
         {
-            var options = new ActionEnqueueOptions { Priority = ev.Priority, StartAt = ev.StartAt };
-            node.Recorder.Enqueued.Enqueue(ev.UseAsync ? node.Actions.EnqueueAsync(input, options).GetAwaiter().GetResult()
-                : node.Actions.Enqueue(input, options));
+            node.Recorder.Enqueued.Enqueue(ev.UseAsync
+                ? node.Actions.EnqueueAsync(input, ev.Priority, ev.StartAt).GetAwaiter().GetResult()
+                : node.Actions.Enqueue(input, ev.Priority, ev.StartAt));
         }
         if (ev.CancelActionId != 0)
         {
@@ -284,6 +285,10 @@ public class ExportOrder : ActionInput<OrderResult>
 [RepeatedlyScheduled(60)]
 public class HourlyOrder : ActionInput<OrderResult>;
 
+/// <summary>Queues at Idle priority unless an enqueue names one.</summary>
+[BackendAction(Priority = ActionPriority.Idle)]
+public class IdleOrder : ActionInput<OrderResult>;
+
 /// <summary>A SlowOrder without a concurrency limit.</summary>
 public class WaitingOrder : SlowOrder;
 
@@ -313,6 +318,7 @@ internal sealed class Recorder
 
     internal void Register(BackendActions actions) => actions
         .Register(new Handler<ProcessOrder>(this, i => i.Amount.ToString()))
+        .Register(new Handler<IdleOrder>(this, _ => "idle"))
         .Register(new Handler<RefreshCache>(this, i => i.Key))
         .Register(new Handler<CollectItems>(this, i => string.Join(",", i.Items)))
         .Register(new ValidatingHandler(this))

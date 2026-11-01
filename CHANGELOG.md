@@ -146,6 +146,9 @@
   `ActionResult.InterruptedWith(progress)` commits a `TResult` atomically with the interruption, in
   `ActionInterrupted.Progress`; `OnFinished` receives it as the new non-final `ActionOutcomeKind.Progress` only while
   the attempt is current, so the next attempt resumes from it. `ActionFinished` rejects `Progress`.
+- BackendActions: `ActionEnqueueOptions` is removed; `Enqueue` and `EnqueueAsync` take optional `priority` and
+  `startAt` parameters instead. `[BackendAction(Priority = ...)]` sets an action type's default priority, used when an
+  enqueue names none and for scheduled starts; the source generator emits it with the other attribute values.
 - EventSourcing: after `Ambient.PublishEventAsync` or `PublishAndWaitEventAsync` returns, later reads of the query
   scope open a new snapshot that contains the consumed event, instead of the snapshot opened before publishing.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and

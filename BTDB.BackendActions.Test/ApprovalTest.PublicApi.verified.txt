@@ -11,10 +11,6 @@ public enum BTDB.BackendActions.ActionCancellationReason
   Timeout = 2
   Interrupted = 3
 public readonly struct BTDB.BackendActions.ActionEnd
-public sealed class BTDB.BackendActions.ActionEnqueueOptions
-  ctor()
-  property ActionPriority Priority { get; set; }
-  property DateTime? StartAt { get; set; }
 public class BTDB.BackendActions.ActionEnqueued : EventWithResult<ActionEnqueuedResult>
   ctor()
   property object? Input { get; set; }
@@ -156,6 +152,7 @@ public sealed class BTDB.BackendActions.BackendActionAttribute : Attribute
   property int Cpu { get; set; }
   property int MaxConcurrent { get; set; }
   property string? Name { get; set; }
+  property ActionPriority Priority { get; set; }
   property bool SingleRunningPerTenant { get; set; }
 public class BTDB.BackendActions.BackendActionException : Exception, ISerializable
   ctor(string code, string message, string? details = null)
@@ -165,8 +162,8 @@ public sealed class BTDB.BackendActions.BackendActions
   ctor()
   method bool Cancel(QualifiedActionId id)
   method Task<bool> CancelAsync(QualifiedActionId id, CancellationToken cancellation = default)
-  method QualifiedActionId Enqueue(IActionInput input, ActionEnqueueOptions? options = null)
-  method Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
+  method QualifiedActionId Enqueue(IActionInput input, ActionPriority? priority = null, DateTime? startAt = null)
+  method Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionPriority? priority = null, DateTime? startAt = null, CancellationToken cancellation = default)
   method ActionInfo? FindAction(QualifiedActionId id)
   method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, byte[] uniqueKey)
   method bool HasStartedActions(ulong tenantId)
@@ -234,7 +231,7 @@ public abstract class BTDB.BackendActions.GeneratedAction
   property Type HandlerType { get; }
   property Type InputType { get; }
 public sealed class BTDB.BackendActions.GeneratedAction<TInput, TResult> : GeneratedAction
-  ctor(Type handlerType, string? name, int cpu, int maxConcurrent, string? concurrencyGroup, bool singleRunningPerTenant, ActionScheduleAttribute? schedule, Func<TInput>? createInput, Func<object>? createHandler)
+  ctor(Type handlerType, string? name, int cpu, int maxConcurrent, string? concurrencyGroup, bool singleRunningPerTenant, ActionPriority priority, ActionScheduleAttribute? schedule, Func<TInput>? createInput, Func<object>? createHandler)
 public static class BTDB.BackendActions.GeneratedActions
   static method void Add(GeneratedAction action)
 public interface BTDB.BackendActions.IActionContext

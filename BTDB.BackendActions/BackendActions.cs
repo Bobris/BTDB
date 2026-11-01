@@ -13,6 +13,8 @@ internal sealed class ActionType
     internal required int MaxConcurrent { get; init; }
     internal required string? ConcurrencyGroup { get; init; }
     internal required bool SingleRunningPerTenant { get; init; }
+    /// <summary>The priority of an enqueue that names none.</summary>
+    internal required ActionPriority Priority { get; init; }
     internal required Func<IActionInput, IActionContext, Task<(ActionResultKind Kind, object? Result)>> Execute { get; init; }
     internal required Action<IActionInput, ActionOutcomeKind, ulong, object?, ActionError?> Finished { get; init; }
     internal required Action<IActionInput>? BeforeStart { get; init; }
@@ -68,7 +70,7 @@ public sealed partial class BackendActions
     {
         ArgumentNullException.ThrowIfNull(handler);
         if (_frozen) throw new InvalidOperationException("Register action types before registering events.");
-        if (metadata.Cpu < 0 || metadata.MaxConcurrent < 0)
+        if (metadata.Cpu < 0 || metadata.MaxConcurrent < 0 || !Enum.IsDefined(metadata.Priority))
             throw new ArgumentException($"Invalid limits of action {typeof(TInput).FullName}.");
         if (metadata.Schedule != null && metadata.Create == null)
             throw new ArgumentException($"Scheduled action {typeof(TInput).FullName} needs a parameterless constructor.");
@@ -81,6 +83,7 @@ public sealed partial class BackendActions
             MaxConcurrent = metadata.MaxConcurrent,
             ConcurrencyGroup = metadata.ConcurrencyGroup,
             SingleRunningPerTenant = metadata.SingleRunningPerTenant,
+            Priority = metadata.Priority,
             Execute = async (input, context) =>
             {
                 var result = await handler.ExecuteAsync((TInput)input, context).ConfigureAwait(false);
@@ -134,15 +137,15 @@ public sealed partial class BackendActions
     /// <summary>Enqueues as <see cref="Enqueue"/> does and returns the action it queued into. Inside a query scope it
     /// publishes <see cref="ActionEnqueued"/> with the scope's publisher and waits for its consume; inside a consume it
     /// queues in the consume's transaction.</summary>
-    public async Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionEnqueueOptions? options = null,
-        CancellationToken cancellation = default)
+    public async Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionPriority? priority = null,
+        DateTime? startAt = null, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(input);
-        options ??= new();
-        if (!Ambient.IsQuery) return Enqueue(input, options);
+        if (!Ambient.IsQuery) return Enqueue(input, priority, startAt);
+        // The event carries the resolved priority, so every replica queues with the same one.
         var result = await Ambient.PublishAndWaitEventAsync(new ActionEnqueued
         {
-            Input = input, Priority = options.Priority, StartAt = options.StartAt
+            Input = input, Priority = priority ?? TypeOf(input).Priority, StartAt = startAt
         }, cancellation).ConfigureAwait(false);
         return new(result.TenantId, result.ActionId);
     }
@@ -160,24 +163,27 @@ public sealed partial class BackendActions
     }
 
     /// <summary>Queues an action in the current consume, in its transaction, and returns its ID: the ID of the queued
-    /// action the input merged into, or a new one allocated deterministically when the input's ActionId is zero.</summary>
-    public QualifiedActionId Enqueue(IActionInput input, ActionEnqueueOptions? options = null)
+    /// action the input merged into, or a new one allocated deterministically when the input's ActionId is zero.
+    /// Without <paramref name="priority"/> it uses the type's <see cref="BackendActionAttribute.Priority"/>; a
+    /// <paramref name="startAt"/> after the enqueuing event's time keeps the action delayed until then. A merged input
+    /// changes neither of the queued action's.</summary>
+    public QualifiedActionId Enqueue(IActionInput input, ActionPriority? priority = null, DateTime? startAt = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         var ev = CurrentConsume();
         var type = TypeOf(input);
-        options ??= new();
-        if (options.StartAt is { } startAt && startAt > ev.When)
+        var resolved = priority ?? type.Priority;
+        if (startAt > ev.When)
         {
             if (input.ActionId == 0) input.ActionId = Ambient.AllocateId();
             Ambient.Relation<IDelayedActions>().Insert(new()
             {
-                TenantId = input.TenantId, ActionId = input.ActionId, StartAt = startAt, Name = type.Name,
-                Priority = options.Priority, Input = input, QueuedAt = ev.When
+                TenantId = input.TenantId, ActionId = input.ActionId, StartAt = startAt.Value, Name = type.Name,
+                Priority = resolved, Input = input, QueuedAt = ev.When
             });
             return new(input.TenantId, input.ActionId);
         }
-        return Queue(type.Name, input.TenantId, input.ActionId, input, options.Priority, ev);
+        return Queue(type.Name, input.TenantId, input.ActionId, input, resolved, ev);
     }
 
     /// <summary>Cancels an action in the current consume. A delayed action is removed, and so is a queued one that
@@ -392,7 +398,7 @@ public sealed partial class BackendActions
         if (ev.Start && TypeOf(ev.Name) is { Create: { } create } type)
         {
             var input = create();
-            Queue(type.Name, input.TenantId, input.ActionId, input, ActionPriority.Normal, ev);
+            Queue(type.Name, input.TenantId, input.ActionId, input, type.Priority, ev);
         }
     }
 

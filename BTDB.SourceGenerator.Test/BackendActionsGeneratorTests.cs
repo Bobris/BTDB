@@ -22,7 +22,8 @@ public class BackendActionsGeneratorTests : GeneratorTestsBase
                 public string Text { get; set; } = "";
             }
 
-            [BackendAction(Name = "reports", Cpu = 40, MaxConcurrent = 3, ConcurrencyGroup = "heavy", SingleRunningPerTenant = true)]
+            [BackendAction(Name = "reports", Cpu = 40, MaxConcurrent = 3, ConcurrencyGroup = "heavy", SingleRunningPerTenant = true,
+                Priority = ActionPriority.Low)]
             [MonthlyScheduled(31, 90)]
             public class Report : ActionInput<Result>
             {

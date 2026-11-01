@@ -10,7 +10,7 @@ file static class Registration
     internal static void Register()
     {
         global::BTDB.BackendActions.GeneratedActions.Add(new global::BTDB.BackendActions.GeneratedAction<global::TestNamespace.Job, global::TestNamespace.Result>(
-            typeof(global::TestNamespace.JobHandler), null, 100, 0, null, false,
+            typeof(global::TestNamespace.JobHandler), null, 100, 0, null, false, (global::BTDB.BackendActions.ActionPriority)4,
             null,
             static () => new global::TestNamespace.Job(),
             static () => new global::TestNamespace.JobHandler()));

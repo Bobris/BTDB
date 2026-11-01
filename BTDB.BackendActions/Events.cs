@@ -125,7 +125,7 @@ sealed class BackendActionsEventHandler(BackendActions actions) :
 
     public ActionEnqueuedResult Consume(ActionEnqueued ev)
     {
-        var id = actions.Enqueue((IActionInput)ev.Input!, new() { Priority = ev.Priority, StartAt = ev.StartAt });
+        var id = actions.Enqueue((IActionInput)ev.Input!, ev.Priority, ev.StartAt);
         return new() { TenantId = id.TenantId, ActionId = id.ActionId };
     }
 

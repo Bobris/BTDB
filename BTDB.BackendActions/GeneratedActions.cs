@@ -6,7 +6,7 @@ namespace BTDB.BackendActions;
 /// <summary>What registration needs to know about an action type: its <see cref="BackendActionAttribute"/> values,
 /// its schedule and how to create its input for a scheduled start.</summary>
 internal sealed record ActionMetadata(string? Name, int Cpu, int MaxConcurrent, string? ConcurrencyGroup,
-    bool SingleRunningPerTenant, ActionScheduleAttribute? Schedule, Func<IActionInput>? Create)
+    bool SingleRunningPerTenant, ActionPriority Priority, ActionScheduleAttribute? Schedule, Func<IActionInput>? Create)
 {
     // Hand registration of an input the source generator did not see.
     internal static ActionMetadata Reflect<
@@ -19,7 +19,7 @@ internal sealed record ActionMetadata(string? Name, int Cpu, int MaxConcurrent, 
         var create = typeof(TInput).GetConstructor(Type.EmptyTypes) == null ? null
             : (Func<IActionInput>)(() => (IActionInput)Activator.CreateInstance(typeof(TInput))!);
         return new(attribute.Name, attribute.Cpu, attribute.MaxConcurrent, attribute.ConcurrencyGroup,
-            attribute.SingleRunningPerTenant, schedule, create);
+            attribute.SingleRunningPerTenant, attribute.Priority, schedule, create);
     }
 }
 
@@ -45,12 +45,12 @@ public abstract class GeneratedAction
 
 [EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class GeneratedAction<TInput, TResult>(Type handlerType, string? name, int cpu, int maxConcurrent,
-    string? concurrencyGroup, bool singleRunningPerTenant, ActionScheduleAttribute? schedule, Func<TInput>? createInput,
-    Func<object>? createHandler) : GeneratedAction(handlerType, typeof(TInput), createHandler)
+    string? concurrencyGroup, bool singleRunningPerTenant, ActionPriority priority, ActionScheduleAttribute? schedule,
+    Func<TInput>? createInput, Func<object>? createHandler) : GeneratedAction(handlerType, typeof(TInput), createHandler)
     where TInput : ActionInput<TResult> where TResult : class
 {
     internal override ActionMetadata Metadata { get; } = new(name, cpu, maxConcurrent, concurrencyGroup,
-        singleRunningPerTenant, schedule, createInput == null ? null : () => createInput());
+        singleRunningPerTenant, priority, schedule, createInput == null ? null : () => createInput());
 
     internal override void RegisterTo(BackendActions actions, Func<Type, object>? handlers)
     {

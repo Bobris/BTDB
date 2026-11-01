@@ -41,9 +41,8 @@ public class ActionHostTest : IAsyncLifetime
         return stop;
     }
 
-    Task<QualifiedActionId> Enqueue(IActionInput input, DateTime? startAt = null,
-        ActionPriority priority = ActionPriority.Normal) =>
-        _node.Query(a => a.EnqueueAsync(input, new() { StartAt = startAt, Priority = priority }));
+    Task<QualifiedActionId> Enqueue(IActionInput input, DateTime? startAt = null, ActionPriority? priority = null) =>
+        _node.Query(a => a.EnqueueAsync(input, priority, startAt));
 
     static async Task UntilAsync(Func<bool> predicate)
     {

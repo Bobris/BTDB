@@ -55,8 +55,8 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   per-tenant queries) and `ActionId`, assigned on enqueue. Input classes are stored in ObjectDB rows and events; the
   `[Generate]` on `IActionInput` makes the source generator cover them.
 * `[BackendAction]`: `Cpu` (100 is one core, at least 10 is accounted), `MaxConcurrent` across the cluster (0 is
-  unlimited) for the type or its `ConcurrencyGroup`, `SingleRunningPerTenant`, and `Name`, by default the input type's
-  full name. Rows store the name, so set it before renaming an input type. After a leader change, attempts that may
+  unlimited) for the type or its `ConcurrencyGroup`, `SingleRunningPerTenant`, `Priority`, the default of an enqueue or
+  scheduled start that names none (`Normal` unless set), and `Name`, by default the input type's full name. Rows store the name, so set it before renaming an input type. After a leader change, attempts that may
   still run count toward both limits until their worker reports them or their lease passes.
 * `IActionInputUnificator.GetUniqueKey()` returns a `byte[]?` key; null means the input never merges, and an empty
   key merges with other empty keys. An input with the key of a queued action that has not started merges into it.
@@ -108,8 +108,7 @@ which should be the publisher's.
 
 ```csharp
 // Inside any event handler's Consume: in its transaction, with a deterministic ID and no extra event.
-var id = actions.Enqueue(new GenerateReport { ReportId = 7 },
-    new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
+var id = actions.Enqueue(new GenerateReport { ReportId = 7 }, ActionPriority.Low, startAt: ev.When.AddHours(1));
 actions.Cancel(id);
 
 // Elsewhere, for example in an API endpoint: inside a query scope, publishes an event with the scope's publisher
@@ -126,8 +125,10 @@ publisher: inside a query scope they publish with the scope's publisher, inside 
 transaction like their synchronous counterparts, and with no ambient scope they throw.
 
 `QualifiedActionId(TenantId, ActionId)` identifies an action. An input that merges returns the ID of the action it
-merged into and allocates no ID of its own. Priorities are `RealTime`, `Normal`, `Low` and `Idle`. A start time later than the enqueuing event's
-time keeps the action delayed. Cancelling removes a delayed action without an outcome, finishes a queued one as
+merged into and allocates no ID of its own. `Enqueue` and `EnqueueAsync` take two optional parameters: `priority`
+(`RealTime`, `Normal`, `Low` or `Idle`; without it the type's `[BackendAction(Priority)]`) and `startAt`, where a time
+later than the enqueuing event's keeps the action delayed. `EnqueueAsync` resolves the default priority when it
+publishes, so the event carries it. A merged input changes neither of the queued action's. Cancelling removes a delayed action without an outcome, finishes a queued one as
 `Cancelled` at once, and marks a started one; its worker or the coordinator then finishes it as `Cancelled`.
 
 ## Execution

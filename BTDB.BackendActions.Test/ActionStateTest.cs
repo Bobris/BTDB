@@ -12,7 +12,7 @@ public class ActionStateTest
 
     Task<Node> Start(int batch = 32) => Node.StartAsync(_data, _metadata, _time, batch);
 
-    static Task Place(Node node, IActionInput? input = null, ActionPriority priority = ActionPriority.Normal,
+    static Task Place(Node node, IActionInput? input = null, ActionPriority? priority = null,
         DateTime? startAt = null, QualifiedActionId? cancel = null) => node.Publisher.PublishAsync(new PlaceOrder
     {
         Input = input, Priority = priority, StartAt = startAt, CancelTenantId = cancel?.TenantId ?? 0,
@@ -81,6 +81,20 @@ public class ActionStateTest
         var outcome = Assert.Single(node.Recorder.Outcomes);
         Assert.Equal((ActionOutcomeKind.Cancelled, 0ul), (outcome.Kind, outcome.Attempt));
         await Assert.ThrowsAsync<InvalidOperationException>(() => node.Query(a => a.EnqueueAsync(new UnregisteredInput())));
+    }
+
+    [Fact]
+    public async Task AnEnqueueWithoutAPriorityUsesTheTypesDefault()
+    {
+        await using var node = await Start();
+        await Place(node, new IdleOrder());
+        await Place(node, new IdleOrder(), ActionPriority.RealTime);
+        await Place(node, new ProcessOrder());
+        await node.Query(a => a.EnqueueAsync(new IdleOrder()));
+        await Place(node, new IdleOrder(), startAt: _time.Now.UtcDateTime.AddHours(1));
+        Assert.Equal([ActionPriority.Idle, ActionPriority.RealTime, ActionPriority.Normal, ActionPriority.Idle],
+            node.Queued.OrderBy(q => q.ActionId).Select(q => q.Priority));
+        Assert.Equal(ActionPriority.Idle, Assert.Single(node.Delayed).Priority);
     }
 
     [Fact]

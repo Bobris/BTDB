@@ -19,6 +19,7 @@ record BackendActionInfo(
     int MaxConcurrent,
     string? ConcurrencyGroup,
     bool SingleRunningPerTenant,
+    byte Priority,
     string? Schedule,
     bool InputHasDefaultConstructor);
 
@@ -97,6 +98,7 @@ static class BackendActionsGeneration
         string? name = null, group = null, schedule = null;
         int cpu = 100, maxConcurrent = 0;
         var single = false;
+        byte priority = 4; // ActionPriority.Normal
         foreach (var attribute in input.GetAttributes())
         {
             if (attribute.AttributeClass is not { } attributeClass) continue;
@@ -110,6 +112,7 @@ static class BackendActionsGeneration
                         case "MaxConcurrent": maxConcurrent = (int)argument.Value.Value!; break;
                         case "ConcurrencyGroup": group = argument.Value.Value as string; break;
                         case "SingleRunningPerTenant": single = (bool)argument.Value.Value!; break;
+                        case "Priority": priority = Convert.ToByte(argument.Value.Value); break;
                     }
             }
             else if (IsSchedule(attributeClass))
@@ -117,7 +120,7 @@ static class BackendActionsGeneration
         }
         return new(input.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             result.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), name, cpu, maxConcurrent, group, single,
-            schedule, HasDefaultConstructor(input));
+            priority, schedule, HasDefaultConstructor(input));
     }
 
     static bool IsSchedule(INamedTypeSymbol attribute)
@@ -158,7 +161,7 @@ static class BackendActionsGeneration
             code.Append("            typeof(").Append(handler.HandlerType).Append("), ").Append(Literal(action.Name))
                 .Append(", ").Append(action.Cpu).Append(", ").Append(action.MaxConcurrent).Append(", ")
                 .Append(Literal(action.ConcurrencyGroup)).Append(", ").Append(action.SingleRunningPerTenant ? "true" : "false")
-                .Append(",\n");
+                .Append(", (global::BTDB.BackendActions.ActionPriority)").Append(action.Priority).Append(",\n");
             code.Append("            ").Append(action.Schedule ?? "null").Append(",\n");
             code.Append("            ").Append(action.InputHasDefaultConstructor ? "static () => new " + action.InputType + "()" : "null")
                 .Append(",\n");

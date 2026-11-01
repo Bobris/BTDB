@@ -58,6 +58,8 @@ public sealed class BackendActionAttribute : Attribute
     public int MaxConcurrent { get; set; }
     public string? ConcurrencyGroup { get; set; }
     public bool SingleRunningPerTenant { get; set; }
+    /// <summary>The priority of an enqueue or scheduled start that names none.</summary>
+    public ActionPriority Priority { get; set; } = ActionPriority.Normal;
 }
 
 public enum ActionOutcomeKind : byte
@@ -264,11 +266,4 @@ public interface IActionHandler<in TInput, TResult> where TInput : ActionInput<T
 public interface IActionWithBeforeStart<in TInput> where TInput : IActionInput
 {
     void OnBeforeStart(TInput input);
-}
-
-public sealed class ActionEnqueueOptions
-{
-    public ActionPriority Priority { get; set; } = ActionPriority.Normal;
-    /// <summary>A start time after the enqueuing event's time keeps the action delayed until then.</summary>
-    public DateTime? StartAt { get; set; }
 }
