@@ -67,7 +67,7 @@ public class ActionInputIndex
 {
     [PrimaryKey(1)] public ulong TenantId { get; set; }
     [PrimaryKey(2)] public string Name { get; set; } = "";
-    [PrimaryKey(3)] public string UniqueKey { get; set; } = "";
+    [PrimaryKey(3)] public byte[] UniqueKey { get; set; } = [];
     public ulong ActionId { get; set; }
 }
 
@@ -75,8 +75,8 @@ public interface IActionInputIndexes : IRelation<ActionInputIndex>
 {
     void Insert(ActionInputIndex item);
     void Update(ActionInputIndex item);
-    ActionInputIndex? FindByIdOrDefault(ulong tenantId, string name, string uniqueKey);
-    bool RemoveById(ulong tenantId, string name, string uniqueKey);
+    ActionInputIndex? FindByIdOrDefault(ulong tenantId, string name, byte[] uniqueKey);
+    bool RemoveById(ulong tenantId, string name, byte[] uniqueKey);
 }
 
 /// <summary>The latest occurrence a scheduled action type was started for (or, the first time, recorded at).</summary>

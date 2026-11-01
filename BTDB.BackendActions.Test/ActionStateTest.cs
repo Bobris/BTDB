@@ -1,3 +1,4 @@
+using System.Text;
 using BTDB.Replication.EventSourcing;
 using Xunit;
 
@@ -88,7 +89,7 @@ public class ActionStateTest
         Assert.Equal("refresh", node.Queued[0].Name);
 
         await Started(node, session, new(0, 1), 1);
-        Assert.Equal(["b"], node.Indexes.Select(i => i.UniqueKey));
+        Assert.Equal(["b"], node.Indexes.Select(i => Encoding.UTF8.GetString(i.UniqueKey)));
         await Place(node, new RefreshCache { Key = "a" }); // the running action computes before this request
         Assert.Equal(new QualifiedActionId(0, 4), node.Recorder.Enqueued.Last());
         await Place(node, new RefreshCache { Key = "a" });
@@ -250,8 +251,8 @@ public class ActionStateTest
         Assert.Null(node.Actions.FindAction(new(1, 2)));
         Assert.True(node.Actions.HasStartedActions(1));
         Assert.False(node.Actions.HasStartedActions(2));
-        Assert.Equal(new QualifiedActionId(2, 2), node.Actions.FindByUniqueKey(2, "refresh", "k"));
-        Assert.Null(node.Actions.FindByUniqueKey(1, "refresh", "k"));
+        Assert.Equal(new QualifiedActionId(2, 2), node.Actions.FindByUniqueKey(2, "refresh", "k"u8.ToArray()));
+        Assert.Null(node.Actions.FindByUniqueKey(1, "refresh", "k"u8.ToArray()));
         Assert.Equal(["refresh"], node.Actions.SuspendedActions);
     }
 

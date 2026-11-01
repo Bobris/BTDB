@@ -1,3 +1,4 @@
+using System.Text;
 using BTDB.Replication.EventSourcing;
 using Xunit;
 
@@ -30,7 +31,7 @@ public class ActionImportTest
         Assert.All(node.Queued, q => Assert.False(q.IsStarted));
         Assert.Equal([false, true], node.Queued.Where(q => q.TenantId == 2 && q.ActionId != 400).Select(q => q.IsAggregable));
         Assert.Equal(Queued, node.Queued[0].QueuedAt);
-        Assert.Equal([(2ul, "c", 420ul), (2, "k", 400)], node.Indexes.Select(i => (i.TenantId, i.UniqueKey, i.ActionId)));
+        Assert.Equal([(2ul, "c", 420ul), (2, "k", 400)], node.Indexes.Select(i => (i.TenantId, Encoding.UTF8.GetString(i.UniqueKey), i.ActionId)));
         Assert.Equal((900ul, Queued.AddDays(60)), (Assert.Single(node.Delayed).ActionId, node.Delayed[0].StartAt));
         var cancelled = Assert.Single(node.Recorder.Outcomes);
         Assert.Equal((new QualifiedActionId(1, 950), ActionOutcomeKind.Cancelled, 1ul), (cancelled.Id, cancelled.Kind, cancelled.Attempt));

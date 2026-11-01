@@ -54,10 +54,12 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * `[BackendAction]`: `Cpu` (100 is one core), `MaxConcurrent` across the cluster (0 is unlimited) for the type or its
   `ConcurrencyGroup`, `SingleRunningPerTenant`, and `Name`, by default the input type's full name. Rows store the
   name, so set it before renaming an input type.
-* `IActionInputUnificator.GetUniqueKey()`: an input with the key of a queued action that has not started merges into
-  it. `IActionInputAggregator.TryAggregate(other)` merges the new input's content; when it returns false, the queued
-  action stops aggregating and the new input starts another action. Once an action starts, a new input with its key
-  creates a new action, so a request never receives a result computed before it was made.
+* `IActionInputUnificator.GetUniqueKey()` returns a `byte[]` key; empty means the input never merges. An input with
+  the key of a queued action that has not started merges into it. Compose a key of several values by writing them into
+  one array, for example with `BinaryPrimitives`. `IActionInputAggregator.TryAggregate(other)` merges the new input's
+  content; when it returns false, the queued action stops aggregating and the new input starts another action. Once
+  an action starts, a new input with its key creates a new action, so a request never receives a result computed
+  before it was made.
 * `IActionWithBeforeStart<TInput>.OnBeforeStart(input)` runs in the consume that records a start. An exception
   finishes the attempt as `Failed` with code `BeforeStartFailed`; writes made before it stay, so validate first.
 * Failures: throw `BackendActionException(code, message, details)`; any other exception finishes the attempt as

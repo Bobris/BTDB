@@ -49,6 +49,9 @@
 - BackendActions: `QueuedAction.Order` comes from the `IQueuedActions` relation counter (`AllocateId`), starting at 1,
   instead of `BackendActionsState.NextOrder`, which is removed. Enqueue and import no longer read and rewrite the
   state row for every action.
+- BackendActions: unification keys are bytes. `IActionInputUnificator.GetUniqueKey()` returns `byte[]`, and
+  `ActionInputIndex.UniqueKey` and `FindByUniqueKey` take it, so keys composed of several values need no string
+  formatting.
 
 ### Fixed
 

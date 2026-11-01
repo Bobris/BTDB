@@ -2,7 +2,7 @@
   ActionId: ulong
   Name: string [PrimaryKey(2, false)]
   TenantId: ulong [PrimaryKey(1, false)]
-  UniqueKey: string [PrimaryKey(3, false)]
+  UniqueKey: byte[] [PrimaryKey(3, false)]
 relation IBackendActionsStates of BTDB.BackendActions.BackendActionsState
   CoordinatorSession: Guid
   Id: ulong [PrimaryKey(1, false)]

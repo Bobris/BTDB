@@ -33,7 +33,9 @@ public abstract class ActionInput<TResult> : IActionInput where TResult : class
 /// yet merges into it instead of creating another action.</summary>
 public interface IActionInputUnificator : IActionInput
 {
-    string GetUniqueKey();
+    /// <summary>The key, compared byte by byte; empty means the input never merges. Compose a key of several values
+    /// by writing them into one array, for example with <c>BinaryPrimitives</c> or <c>MemWriter</c>.</summary>
+    byte[] GetUniqueKey();
 }
 
 /// <summary>A unificator whose queued input absorbs the new one. When <see cref="TryAggregate"/> returns false, the

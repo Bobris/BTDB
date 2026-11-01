@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.Replication;
@@ -204,14 +205,14 @@ public class ProcessOrder : ActionInput<OrderResult>
 public class RefreshCache : ActionInput<OrderResult>, IActionInputUnificator
 {
     public string Key { get; set; } = "";
-    public string GetUniqueKey() => Key;
+    public byte[] GetUniqueKey() => Encoding.UTF8.GetBytes(Key);
 }
 
 public class CollectItems : ActionInput<OrderResult>, IActionInputAggregator
 {
     public string Key { get; set; } = "";
     public List<int> Items { get; set; } = new();
-    public string GetUniqueKey() => Key;
+    public byte[] GetUniqueKey() => Encoding.UTF8.GetBytes(Key);
 
     public bool TryAggregate(IActionInputAggregator other)
     {

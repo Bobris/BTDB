@@ -37,7 +37,7 @@ public sealed partial class BackendActions
         Ambient.Relation<IQueuedActions>().FindById(tenantId).Any(row => row.IsStarted);
 
     /// <summary>The queued, not yet started action an input with this unique key would merge into.</summary>
-    public QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, string uniqueKey) =>
+    public QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, byte[] uniqueKey) =>
         Ambient.Relation<IActionInputIndexes>().FindByIdOrDefault(tenantId, name, uniqueKey) is { } index
             ? new(tenantId, index.ActionId) : null;
 

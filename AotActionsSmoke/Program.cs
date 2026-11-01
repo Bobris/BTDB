@@ -65,7 +65,7 @@ public class FailingHandler : IActionHandler<Failing, Number>
 public class Sum : ActionInput<Number>, IActionInputAggregator
 {
     public List<long> Values { get; set; } = new();
-    public string GetUniqueKey() => "sum";
+    public byte[] GetUniqueKey() => "sum"u8.ToArray();
 
     public bool TryAggregate(IActionInputAggregator other)
     {

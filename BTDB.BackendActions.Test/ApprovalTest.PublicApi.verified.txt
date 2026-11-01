@@ -58,7 +58,7 @@ public class BTDB.BackendActions.ActionInputIndex
   property ulong ActionId { get; set; }
   property string Name { get; set; }
   property ulong TenantId { get; set; }
-  property string UniqueKey { get; set; }
+  property byte[] UniqueKey { get; set; }
 public abstract class BTDB.BackendActions.ActionInput<TResult> : IActionInput
   protected ctor()
   property ulong ActionId { get; set; }
@@ -146,7 +146,7 @@ public sealed class BTDB.BackendActions.BackendActions
   method QualifiedActionId Enqueue(IActionInput input, ActionEnqueueOptions? options = null)
   method Task<QualifiedActionId> EnqueueAsync(IEventPublisher publisher, IActionInput input, ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
   method ActionInfo? FindAction(QualifiedActionId id)
-  method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, string uniqueKey)
+  method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, byte[] uniqueKey)
   method bool HasStartedActions(ulong tenantId)
   method void Import(IEnumerable<ImportedAction> actions)
   method Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, CancellationToken cancellation = default)
@@ -226,12 +226,12 @@ public interface BTDB.BackendActions.IActionInput
 public interface BTDB.BackendActions.IActionInputAggregator : IActionInput, IActionInputUnificator
   method bool TryAggregate(IActionInputAggregator other)
 public interface BTDB.BackendActions.IActionInputIndexes : ICovariantRelation<ActionInputIndex>, IEnumerable, IEnumerable<ActionInputIndex>, IReadOnlyCollection<ActionInputIndex>, IRelation, IRelation<ActionInputIndex>
-  method ActionInputIndex? FindByIdOrDefault(ulong tenantId, string name, string uniqueKey)
+  method ActionInputIndex? FindByIdOrDefault(ulong tenantId, string name, byte[] uniqueKey)
   method void Insert(ActionInputIndex item)
-  method bool RemoveById(ulong tenantId, string name, string uniqueKey)
+  method bool RemoveById(ulong tenantId, string name, byte[] uniqueKey)
   method void Update(ActionInputIndex item)
 public interface BTDB.BackendActions.IActionInputUnificator : IActionInput
-  method string GetUniqueKey()
+  method byte[] GetUniqueKey()
 public interface BTDB.BackendActions.IActionWithBeforeStart<TInput>
   method void OnBeforeStart(TInput input)
 public interface BTDB.BackendActions.IBackendActionsStates : ICovariantRelation<BackendActionsState>, IEnumerable, IEnumerable<BackendActionsState>, IReadOnlyCollection<BackendActionsState>, IRelation, IRelation<BackendActionsState>
