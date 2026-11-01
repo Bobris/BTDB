@@ -28,6 +28,10 @@
   handlers. The package is released with the others from now on, as a preview; usage is in `Doc/BackendActions.md`.
   `BTDB.BackendActions.Process.Test` qualifies it in separate node processes over Azurite with real replication,
   EventLog and EventSourcing: killed workers and a killed leader leave every action finished exactly once.
+- Source generator: every concrete public or internal class implementing `IActionHandler<TInput, TResult>` is
+  registered in a module initializer with its input's `[BackendAction]` and schedule values and typed factories, and
+  `BackendActions.RegisterGenerated(handlerFactory, include)` registers them all without reflection. `Register(handler)`
+  uses the generated values too and reads the attributes only for inputs the generator did not see.
 
 ### Fixed
 

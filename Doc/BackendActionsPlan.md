@@ -187,7 +187,7 @@ public void OnFinished(ExportRows input, ActionOutcome<ExportResult> outcome)
 Hosting:
 
 ```csharp
-var actions = new BackendActions().Register(new GenerateReportHandler());
+var actions = new BackendActions().RegisterGenerated(type => container.Resolve(type)); // or Register(handler)
 actions.RegisterTypes(objectDb);                        // input types stored polymorphically in action rows
 await objectDb.InitializeRelations([.. applicationRelations, .. BackendActions.RelationTypes]);
 actions.RegisterEvents(dispatcher);                     // the library's own event handlers, before the publisher
@@ -201,17 +201,21 @@ var running = host.RunAsync(stopping);
 The library registers its own events (section 4) with the application's `EventDispatcher`, so they share the data
 topic, the ObjectDB and its batching. Relations are added to the application's `InitializeRelations` list.
 
-### 3.1 Source-generated registration (A8)
+### 3.1 Source-generated registration (A8, done)
 
-Registration currently reflects at startup: `Register` reads `[BackendAction]` and the schedule attributes with
-`Attribute.GetCustomAttribute`, checks for a parameterless constructor and creates scheduled inputs with
-`Activator.CreateInstance`, and every type is listed by hand. `BTDB.SourceGenerator` will instead discover every class
-implementing `IActionHandler<TInput, TResult>` in the application and generate, for each, the action's metadata (name,
-CPU, limits, group, schedule), a typed input factory for scheduled types and typed invokers. The application then
-registers all of them with one call, for example `actions.RegisterGenerated(handlerFactory)`, where handlers come from
-the BTDB IOC container or a supplied factory. Hand registration stays for tests and special cases. Reflection-free
-registration also keeps BackendActions usable in trimmed and AOT applications, like the rest of the generator's
-output. Snapshot tests go through `GeneratorTestsBase.VerifySourceGenerator`.
+Hand registration reflects at startup: `Register` reads `[BackendAction]` and the schedule attributes, checks for a
+parameterless constructor and creates scheduled inputs with `Activator.CreateInstance`. `BTDB.SourceGenerator` now
+finds every concrete, non-generic public or internal class implementing `IActionHandler<TInput, TResult>` (a class
+whose concrete base already implements the same interface is left to that base) and emits a module initializer per
+handler. It adds one `GeneratedAction<TInput, TResult>` per handled input to `GeneratedActions`, with the input's
+name, CPU, limits, group and schedule (the attribute rebuilt from its arguments), a typed `new TInput()` for scheduled
+starts and a typed `new THandler()` when the handler has an accessible parameterless constructor.
+`actions.RegisterGenerated(handlerFactory, include)` registers them all; handlers come from the factory (for example
+the IOC container) or their parameterless constructor. `Register(handler)` stays for tests and special cases and uses
+the generated values when they exist. The generator pipeline is separate from the main one and emits a file only per
+handler, so it stays incremental. Tests: `BackendActionsGeneratorTests` (Verify snapshots) and
+`ActionGenerationTest`; the process qualification nodes register through it. Not done: an AOT smoke run, and marking
+the package AOT-compatible, which also needs the reflection fallback of `Register` annotated.
 
 ## 4. Persistent state and events
 
@@ -438,7 +442,7 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. Done. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification. Done: healthy, killed-worker and killed-leader runs in `BTDB.BackendActions.Process.Test`; it found and fixed an `OnDiskReplicationFileStorage` bug (a transaction could not read its own unflushed values). Partitions, restarts on the same directory and upgrades are not covered yet. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
 | A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
-| A8 | Source-generated registration (section 3.1). | Applications register every action without reflection; SourceGenerator snapshot tests and an AOT smoke run pass. |
+| A8 | Source-generated registration (section 3.1). Done, except the AOT smoke run. | Applications register every action without reflection; SourceGenerator snapshot tests and an AOT smoke run pass. |
 
 ## 11. Migration from the reference implementation
 

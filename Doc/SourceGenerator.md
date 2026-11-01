@@ -195,3 +195,11 @@ and reuse the cached plan. Queries passed to code which reads `Expression` still
 
 Interceptors need the `InterceptsLocation` support of the .NET 9 SDK compiler (Roslyn 4.12) or newer; with an older
 compiler, or without the opt-in, nothing is generated.
+
+## Backend action handlers
+
+In a project referencing `BTDB.BackendActions`, every concrete, non-generic public or internal class implementing
+`IActionHandler<TInput, TResult>` gets a module initializer that adds it to `GeneratedActions`, with its input's
+`[BackendAction]` and schedule values, a factory of the input for scheduled starts and, when the handler has an
+accessible parameterless constructor, a factory of the handler. `BackendActions.RegisterGenerated` registers them
+without reflection; see [backend actions](BackendActions.md#register-and-host).

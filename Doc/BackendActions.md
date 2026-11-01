@@ -62,10 +62,15 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 
 ## Register and host
 
-Every node registers every action type, because outcomes are handled on every replica.
+Every node registers every action type, because outcomes are handled on every replica. `BTDB.SourceGenerator`
+registers each concrete public or internal class implementing `IActionHandler<TInput, TResult>` with its input's
+`[BackendAction]` and schedule values, without reflection; `RegisterGenerated` adds them all. Handlers come from the
+given factory, for example the BTDB IOC container, or from their parameterless constructor. Two handlers of one input
+are an error. `Register(handler)` registers one handler by hand; it uses the generated values when they exist and
+reads the attributes otherwise.
 
 ```csharp
-var actions = new BackendActions().Register(new GenerateReportHandler());
+var actions = new BackendActions().RegisterGenerated(type => container.Resolve(type));
 actions.RegisterTypes(objectDb);                     // input types for polymorphic storage
 await objectDb.InitializeRelations([.. applicationRelations, .. BackendActions.RelationTypes]);
 actions.RegisterEvents(dispatcher);                  // before the EventPublisher is constructed

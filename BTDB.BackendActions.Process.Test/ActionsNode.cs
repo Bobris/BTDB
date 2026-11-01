@@ -111,7 +111,8 @@ internal sealed class ActionsNode(string nodeId, string endpoint, BlobContainerC
         _services.TrySetResult(services);
     }
 
-    internal void RegisterActions() => _actions.Register(new SleepHandler(nodeId, Executions));
+    // Source-generated registration; the handler needs this node's state, so it comes from a factory.
+    internal void RegisterActions() => _actions.RegisterGenerated(_ => new SleepHandler(nodeId, Executions));
 
     public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
     {

@@ -263,6 +263,7 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+        BackendActionsGeneration.Register(context);
     }
 
     static bool HasGenerateAttribute(ISymbol symbol)

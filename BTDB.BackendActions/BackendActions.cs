@@ -39,34 +39,47 @@ public sealed partial class BackendActions
     readonly Dictionary<string, ActionType> _byName = new(StringComparer.Ordinal);
     bool _frozen;
 
+    /// <summary>Registers an action type and its handler. The type's metadata comes from the source generator when
+    /// it generated the handler's input, otherwise from the input's attributes through reflection.</summary>
     public BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
+        where TInput : ActionInput<TResult> where TResult : class =>
+        Register(handler, GeneratedActions.Metadata<TInput, TResult>() ?? ActionMetadata.Reflect<TInput>());
+
+    /// <summary>Registers every handler the source generator found in the loaded assemblies, or those whose type
+    /// <paramref name="include"/> accepts. Handlers come from <paramref name="handlers"/>, for example an IOC container's
+    /// resolve; without it each handler needs a parameterless constructor.</summary>
+    public BackendActions RegisterGenerated(Func<Type, object>? handlers = null, Func<Type, bool>? include = null)
+    {
+        foreach (var action in GeneratedActions.All)
+            if (include?.Invoke(action.HandlerType) ?? true) action.RegisterTo(this, handlers);
+        return this;
+    }
+
+    internal BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler, ActionMetadata metadata)
         where TInput : ActionInput<TResult> where TResult : class
     {
         ArgumentNullException.ThrowIfNull(handler);
         if (_frozen) throw new InvalidOperationException("Register action types before registering events.");
-        var attribute = (BackendActionAttribute?)Attribute.GetCustomAttribute(typeof(TInput), typeof(BackendActionAttribute))
-                        ?? new BackendActionAttribute();
-        if (attribute.Cpu < 0 || attribute.MaxConcurrent < 0)
+        if (metadata.Cpu < 0 || metadata.MaxConcurrent < 0)
             throw new ArgumentException($"Invalid limits of action {typeof(TInput).FullName}.");
-        var before = handler as IActionWithBeforeStart<TInput>;
-        var schedule = (ActionScheduleAttribute?)Attribute.GetCustomAttribute(typeof(TInput), typeof(ActionScheduleAttribute));
-        if (schedule != null && typeof(TInput).GetConstructor(Type.EmptyTypes) == null)
+        if (metadata.Schedule != null && metadata.Create == null)
             throw new ArgumentException($"Scheduled action {typeof(TInput).FullName} needs a parameterless constructor.");
+        var before = handler as IActionWithBeforeStart<TInput>;
         var type = new ActionType
         {
-            Name = attribute.Name ?? typeof(TInput).FullName!,
+            Name = metadata.Name ?? typeof(TInput).FullName!,
             InputType = typeof(TInput),
             ResultType = typeof(TResult),
-            Cpu = attribute.Cpu,
-            MaxConcurrent = attribute.MaxConcurrent,
-            ConcurrencyGroup = attribute.ConcurrencyGroup,
-            SingleRunningPerTenant = attribute.SingleRunningPerTenant,
+            Cpu = metadata.Cpu,
+            MaxConcurrent = metadata.MaxConcurrent,
+            ConcurrencyGroup = metadata.ConcurrencyGroup,
+            SingleRunningPerTenant = metadata.SingleRunningPerTenant,
             Execute = async (input, context) => await handler.ExecuteAsync((TInput)input, context).ConfigureAwait(false),
             Finished = (input, kind, attempt, result, error) =>
                 handler.OnFinished((TInput)input, new(kind, attempt, (TResult?)result, error)),
             BeforeStart = before == null ? null : input => before.OnBeforeStart((TInput)input),
-            Schedule = schedule,
-            Create = schedule == null ? null : () => (IActionInput)Activator.CreateInstance(typeof(TInput))!,
+            Schedule = metadata.Schedule,
+            Create = metadata.Schedule == null ? null : metadata.Create,
             Gate = handler as IScheduledActionGate
         };
         if (_byName.ContainsKey(type.Name)) throw new ArgumentException($"Action name {type.Name} is already registered.");

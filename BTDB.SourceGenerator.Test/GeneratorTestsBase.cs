@@ -60,10 +60,8 @@ public class GeneratorTestsBase
         var result = runResult2.GetRunResult().Results.Single();
         var allOutputs = result.TrackedOutputSteps.SelectMany(outputStep => outputStep.Value)
             .SelectMany(output => output.Outputs).ToList();
-        if (allOutputs.Count != 0)
-        {
-            Assert.Collection(allOutputs, output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
-        }
+        // The main output, plus one per backend action handler.
+        Assert.All(allOutputs, output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
 
         return Verifier.Verify(runResult);
     }

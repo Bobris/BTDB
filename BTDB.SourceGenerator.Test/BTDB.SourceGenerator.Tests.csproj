@@ -31,6 +31,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
+        <ProjectReference Include="../BTDB.BackendActions/BTDB.BackendActions.csproj"/>
         <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj"/>
         <ProjectReference Include="../Sample3rdPartyLib/Sample3rdPartyLib.csproj"/>
     </ItemGroup>
