@@ -332,13 +332,14 @@ The exchange is a `ReplicationLeaderChannel` request on the channel `btdb-backen
 to about 10 s, or until there is a command for this worker.
 
 * **Request** (JSON): `WorkerSession` (fresh per process), `NodeId`, CPU capacity, application generation,
-  Draining, the attempts it runs with their CPU adjustments, and the attempts whose `ActionFinished` it published and
-  applied locally, until acknowledged.
+  Draining, the attempts it runs with their CPU adjustments and whether it already ends them (`Cancelling`), and the
+  attempts whose `ActionFinished` it published and applied locally, until acknowledged.
 * **Response:** `CoordinatorSession`, the acknowledged finished attempts, and commands: `Start{ActionId, Attempt,
   StartEventId}`, `Cancel{Attempt}` and `Forget{Attempt}` (a stale attempt: stop it and drop its result).
 
 Commands carry no sequence numbers. The coordinator derives them from each report: `Start` for an attempt assigned
-to the worker that it does not report, `Cancel` for a reported attempt of a cancelled action, `Forget` for a reported
+to the worker that it does not report, `Cancel` for a reported attempt of a cancelled action that the worker does not
+already end, `Forget` for a reported
 attempt that is superseded or unknown. A lost response therefore costs one round trip, and a worker ignores a `Start`
 for an attempt it already runs or finished. A finished report stops the coordinator from starting the attempt again
 until its `ActionFinished` is applied on the leader; if that never happens within a lease, the action runs again. The
@@ -355,7 +356,9 @@ Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is n
 already bounds the wait, and no test showed a need for a second signal.
 
 A stopping worker cancels its attempts and publishes no outcome for them, so they run again elsewhere, as after a
-crash. An `Interrupted` outcome comes only from the coordinator, for exhausted attempts.
+crash. Its last exchange, with `Draining` and no running attempts, removes the worker at once, so the reruns need not
+wait for the worker timeout; when that exchange fails, the timeout still ends them. An `Interrupted` outcome comes
+only from the coordinator, for exhausted attempts.
 
 Lease expiry (no report of a running attempt) makes the action runnable again. The next `ActionsStarted` supersedes
 the old attempt. After `MaxAttempts` (default 5), the coordinator publishes `ActionFinished(Interrupted, "attempts

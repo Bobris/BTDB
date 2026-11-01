@@ -40,6 +40,9 @@ public sealed class BackendActionsOptions
 /// </summary>
 internal sealed class ActionCoordinator(BackendActions actions, EventPublisher publisher, BackendActionsOptions options)
 {
+    /// <summary>Most delayed actions one <see cref="DelayedActionsDue"/> queues.</summary>
+    internal const int DueBatch = 1000;
+
     readonly object _lock = new();
     readonly ActionPlanner _planner = new(options.Planner, options.ApplicationGeneration);
     readonly TimeProvider _time = options.TimeProvider;
@@ -107,7 +110,9 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                     await StartSchedulesAsync(cancellation).ConfigureAwait(false);
                 }
                 if (abandoned.Count != 0 || assignments.Count != 0) continue; // their changes arrive promptly
-                await Task.WhenAny(changed, wake, Task.Delay(options.PlanInterval, _time, cancellation)).ConfigureAwait(false);
+                using var tick = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                await Task.WhenAny(changed, wake, Task.Delay(options.PlanInterval, _time, tick.Token)).ConfigureAwait(false);
+                tick.Cancel(); // frees the timer when a change came first
             }
         }
         finally
@@ -126,17 +131,21 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         var now = Now;
         lock (_lock)
         {
-            LoadSuspended();
+            LoadState();
             foreach (var row in Ambient.Relation<IQueuedActions>())
                 _planner.Update(new(row.TenantId, row.ActionId), row, actions.TypeOf(row.Name), now);
         }
     }
 
-    // Inside a query, under the lock.
-    void LoadSuspended()
+    // Inside a query, under the lock. A later CoordinatorActivated, for example a previous leader's that landed late,
+    // rejects every start of this session, so it ends and the next one activates again.
+    void LoadState()
     {
-        _planner.Suspended = new HashSet<string>(actions.SuspendedActions, StringComparer.Ordinal);
-        _planner.SuspendedTenants = new HashSet<ulong>(actions.SuspendedTenants);
+        var state = Ambient.Relation<IBackendActionsStates>().FindByIdOrDefault(0);
+        if (state?.CoordinatorSession != Session)
+            throw new InvalidOperationException("Another backend action coordinator was activated.");
+        _planner.Suspended = new HashSet<string>(state.Suspended, StringComparer.Ordinal);
+        _planner.SuspendedTenants = new HashSet<ulong>(state.SuspendedTenants);
     }
 
     void Apply(HashSet<QualifiedActionId> changed)
@@ -151,7 +160,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 {
                     if (id == ActionChanges.Settings)
                     {
-                        LoadSuspended();
+                        LoadState();
                         continue;
                     }
                     var row = queued.FindByIdOrDefault(id.TenantId, id.ActionId);
@@ -168,8 +177,8 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             due = Ambient.Relation<IDelayedActions>().ListByStartAt(new(EnumerationOrder.Ascending, DateTime.MinValue,
                     KeyProposition.Included, _time.GetUtcNow().UtcDateTime, KeyProposition.Included))
                 .Select(d => new ActionKey { TenantId = d.TenantId, ActionId = d.ActionId }).ToList();
-        if (due.Count != 0)
-            await publisher.PublishAsync(new DelayedActionsDue { Actions = due }, cancellation).ConfigureAwait(false);
+        foreach (var batch in due.Chunk(DueBatch))
+            await publisher.PublishAsync(new DelayedActionsDue { Actions = [.. batch] }, cancellation).ConfigureAwait(false);
     }
 
     // Each passed occurrence starts once: the consume accepts only a start from the last run it read.
@@ -234,28 +243,39 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         var finished = request.Finished.Select(a => a.ToAttempt()).ToList();
         var deadline = Now + options.PollTimeout;
         var response = new ExchangeResponse { CoordinatorSession = Session, Acknowledged = request.Finished };
-        while (true)
+        using var poll = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        Task? timeout = null; // one timer per poll, however often the workers are woken
+        try
         {
-            Task wake;
-            lock (_lock)
+            while (true)
             {
-                if (_closed || !_ready) throw new IOException("The backend action coordinator is not running.");
-                var commands = _planner.Exchange(request.WorkerSession, request.NodeId, request.Cpu, request.Generation,
-                    !request.Draining, running, finished, Now);
-                finished = [];
-                response.Commands = commands.Select(c => new CommandMessage
+                Task wake;
+                lock (_lock)
                 {
-                    Kind = c.Kind, TenantId = c.Id.TenantId, ActionId = c.Id.ActionId, Attempt = c.Attempt,
-                    StartEventId = c.StartEventId
-                }).ToList();
-                wake = _workersWake.Task;
-                _loopWake.TrySetResult(); // a new or freed worker may take actions
+                    if (_closed || !_ready) throw new IOException("The backend action coordinator is not running.");
+                    var commands = _planner.Exchange(request.WorkerSession, request.NodeId, request.Cpu,
+                        request.Generation, !request.Draining, running, finished, Now);
+                    finished = [];
+                    response.Commands = commands.Select(c => new CommandMessage
+                    {
+                        Kind = c.Kind, TenantId = c.Id.TenantId, ActionId = c.Id.ActionId, Attempt = c.Attempt,
+                        StartEventId = c.StartEventId
+                    }).ToList();
+                    wake = _workersWake.Task;
+                    _loopWake.TrySetResult(); // a new or freed worker may take actions
+                }
+                var remaining = deadline - Now;
+                if (response.Commands.Count != 0 || response.Acknowledged.Count != 0 || request.Draining ||
+                    remaining <= TimeSpan.Zero || timeout is { IsCompleted: true })
+                    return ExchangeJson.Encode(response);
+                timeout ??= Task.Delay(remaining, _time, poll.Token);
+                await Task.WhenAny(wake, timeout).ConfigureAwait(false);
+                cancellation.ThrowIfCancellationRequested();
             }
-            var remaining = deadline - Now;
-            if (response.Commands.Count != 0 || response.Acknowledged.Count != 0 || remaining <= TimeSpan.Zero)
-                return ExchangeJson.Encode(response);
-            await Task.WhenAny(wake, Task.Delay(remaining, _time, cancellation)).ConfigureAwait(false);
-            cancellation.ThrowIfCancellationRequested();
+        }
+        finally
+        {
+            poll.Cancel();
         }
     }
 }

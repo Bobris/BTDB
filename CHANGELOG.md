@@ -91,6 +91,29 @@
   flushes. ObjectDB hits this when it updates or reads a row it inserted in the same transaction. The storage now
   reads the appender's current block past the published length, as `OnDiskFileCollection` reads its writer's buffer; a
   sealed file still ends at its length. `InMemoryReplicationFileStorage` was not affected.
+- BackendActions: after a leader change, attempts started under the previous coordinator and not yet reported by
+  their worker did not count toward `MaxConcurrent` and `SingleRunningPerTenant`, so a second action of a
+  single-running tenant could start next to one still running. Protected attempts now count until adopted or expired.
+- BackendActions: a cancelled attempt whose handler did not stop at once made its worker and the coordinator
+  exchange in a tight loop, each answer repeating the Cancel. Workers now report attempts they already end
+  (`AttemptMessage.Cancelling`), and the coordinator cancels each only once.
+- BackendActions: an exception from `OnFinished` rolled the finishing event back, so the coordinator republished the
+  outcome after every restart and stopped scheduling. It is now caught like a `BeforeStart` failure: the outcome
+  counts, the handler's earlier writes stay, and the new `BackendActions.OnFinishedFailed` callback reports it.
+- BackendActions: a due delayed action whose type was no longer registered failed the whole `DelayedActionsDue`,
+  which blocked every other delayed action and restarted the coordinator in a loop. It now queues by its stored name
+  like any other row of an unknown type, and due actions are queued in batches of 1000.
+- BackendActions: a stopping worker never sent its `Draining` exchange, so the coordinator kept assigning it actions
+  and its attempts ran again only after the worker timeout. It now sends a last exchange without running attempts,
+  and the coordinator releases them at once. Superseded executions are awaited when the worker stops.
+- BackendActions: when a late `CoordinatorActivated` of another session was applied, the running coordinator had
+  every start rejected and stalled with its workers' capacity held. It now ends, and the next session activates again.
+- BackendActions: an action type costing less than 10 CPU, or overridden below it, did not use any of a worker's
+  capacity, so a worker took any number of them. Every attempt now costs at least 10, as `AdjustResources` already
+  ensured.
+- BackendActions: the coordinator no longer scans every action on each worker exchange or replans when nothing changed
+  since a plan found nothing to start. Tenant consumption decays in one step instead of one pass per elapsed second,
+  and the poll and plan timers no longer pile up when workers are woken often.
 
 ## 36.0.1
 

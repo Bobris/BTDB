@@ -40,6 +40,12 @@ public sealed partial class BackendActions
     readonly Dictionary<string, ActionType> _byName = new(StringComparer.Ordinal);
     bool _frozen;
 
+    /// <summary>Called inside the consume when a handler's <c>OnFinished</c> throws an exception that is not fatal;
+    /// the outcome still counts and the handler's writes before the exception stay. Without it the exception is
+    /// ignored, so one failing handler does not stop the action from finishing or block the coordinator. Like any
+    /// consume it runs on every replica.</summary>
+    public Action<QualifiedActionId, ActionOutcomeKind, Exception>? OnFinishedFailed { get; set; }
+
     /// <summary>Registers an action type and its handler. The type's metadata comes from the source generator when
     /// it generated the handler's input, otherwise from the input's attributes through reflection, which trimming
     /// supports: the annotation keeps the input's parameterless constructor for scheduled starts.</summary>
@@ -165,7 +171,7 @@ public sealed partial class BackendActions
             });
             return new(input.TenantId, input.ActionId);
         }
-        return Queue(type, input, options.Priority, ev);
+        return Queue(type.Name, input.TenantId, input.ActionId, input, options.Priority, ev);
     }
 
     /// <summary>Cancels an action in the current consume. A delayed action is removed, and so is a queued one that
@@ -258,6 +264,7 @@ public sealed partial class BackendActions
         var state = State();
         state.CoordinatorSession = session;
         Ambient.Relation<IBackendActionsStates>().Update(state);
+        Changed(ActionChanges.Settings); // a running coordinator of another session learns it was replaced
     }
 
     internal void Start(ActionsStarted ev)
@@ -304,7 +311,7 @@ public sealed partial class BackendActions
             return; // a superseded attempt or an action that already finished
         Changed(new(row.TenantId, row.ActionId));
         if (ev.Kind == ActionOutcomeKind.Partial)
-            TypeOf(row.Name)?.Finished((IActionInput)row.Input!, ev.Kind, ev.Attempt, ev.Result, ev.Error);
+            OnFinished(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
         else
             Complete(row, ev.Kind, ev.Attempt, ev.Result, ev.Error);
     }
@@ -316,8 +323,8 @@ public sealed partial class BackendActions
         {
             if (delayed.FindByIdOrDefault(key.TenantId, key.ActionId) is not { } row || row.StartAt > ev.When) continue;
             delayed.RemoveById(row.TenantId, row.ActionId);
-            var input = (IActionInput)row.Input!;
-            Queue(TypeOf(input), input, row.Priority, ev);
+            // By its stored name, so an unregistered type queues like any row and waits for its type.
+            Queue(row.Name, row.TenantId, row.ActionId, row.Input, row.Priority, ev);
         }
     }
 
@@ -331,20 +338,20 @@ public sealed partial class BackendActions
         {
             var input = create();
             input.ActionId = Ambient.AllocateId();
-            Queue(type, input, ActionPriority.Normal, ev);
+            Queue(type.Name, input.TenantId, input.ActionId, input, ActionPriority.Normal, ev);
         }
     }
 
-    QualifiedActionId Queue(ActionType type, IActionInput input, ActionPriority priority, Event ev)
+    QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev)
     {
         var queued = Ambient.Relation<IQueuedActions>();
         if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { Length: > 0 } key)
         {
             var indexes = Ambient.Relation<IActionInputIndexes>();
-            if (indexes.FindByIdOrDefault(input.TenantId, type.Name, key) is { } index)
+            if (indexes.FindByIdOrDefault(tenantId, name, key) is { } index)
             {
-                var existing = queued.FindByIdOrDefault(input.TenantId, index.ActionId) ??
-                               throw new InvalidOperationException($"Action index {type.Name}/{key} has no queued action.");
+                var existing = queued.FindByIdOrDefault(tenantId, index.ActionId) ?? throw new InvalidOperationException(
+                    $"Action index {name}/{Convert.ToHexString(key)} has no queued action.");
                 if (input is not IActionInputAggregator aggregator ||
                     existing.IsAggregable && ((IActionInputAggregator)existing.Input!).TryAggregate(aggregator))
                 {
@@ -354,29 +361,43 @@ public sealed partial class BackendActions
                 }
                 existing.IsAggregable = false;
                 queued.Update(existing);
-                index.ActionId = input.ActionId;
+                index.ActionId = actionId;
                 indexes.Update(index);
             }
             else
-                indexes.Insert(new() { TenantId = input.TenantId, Name = type.Name, UniqueKey = key, ActionId = input.ActionId });
+                indexes.Insert(new() { TenantId = tenantId, Name = name, UniqueKey = key, ActionId = actionId });
         }
         queued.Insert(new()
         {
-            TenantId = input.TenantId, ActionId = input.ActionId, Name = type.Name, Priority = priority,
+            TenantId = tenantId, ActionId = actionId, Name = name, Priority = priority,
             Order = queued.AllocateId(), Input = input, IsAggregable = input is IActionInputAggregator,
             LatestInputEventId = ev.EventId, QueuedAt = ev.When
         });
-        Changed(new(input.TenantId, input.ActionId));
-        return new(input.TenantId, input.ActionId);
+        Changed(new(tenantId, actionId));
+        return new(tenantId, actionId);
     }
 
     // Removes the row after its handler's final outcome; an unregistered type finishes without a callback.
     void Complete(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error)
     {
-        TypeOf(row.Name)?.Finished((IActionInput)row.Input!, kind, attempt, result, error);
+        OnFinished(row, kind, attempt, result, error);
         RemoveIndex(row);
         Ambient.Relation<IQueuedActions>().RemoveById(row.TenantId, row.ActionId);
         Changed(new(row.TenantId, row.ActionId));
+    }
+
+    void OnFinished(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error)
+    {
+        if (TypeOf(row.Name) is not { } type) return;
+        try
+        {
+            type.Finished((IActionInput)row.Input!, kind, attempt, result, error);
+        }
+        catch (Exception exception) when (!EventPublisherOptions.DefaultIsFatalConsumeException(exception))
+        {
+            // Rethrowing would roll the outcome back, and the coordinator would publish it again forever.
+            OnFinishedFailed?.Invoke(new(row.TenantId, row.ActionId), kind, exception);
+        }
     }
 
     // Tells a coordinator running on this node, once the batch is visible; replay registers nothing.

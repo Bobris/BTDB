@@ -20,6 +20,8 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
     readonly object _lock = new();
     readonly Dictionary<QualifiedActionId, Execution> _running = new();
     readonly Dictionary<QualifiedActionId, ulong> _finished = new();
+    /// <summary>Superseded executions still ending; the worker waits for them when it stops.</summary>
+    readonly HashSet<Execution> _forgotten = new();
     CancellationTokenSource? _poll;
 
     internal Guid Session { get; } = Guid.NewGuid();
@@ -60,20 +62,35 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             lock (_lock)
             {
                 foreach (var execution in _running.Values) execution.Stop(forget: false);
-                executions = _running.Values.Select(e => e.Task).ToArray();
+                executions = _running.Values.Concat(_forgotten).Select(e => e.Task).ToArray();
             }
             await Task.WhenAll(executions).ConfigureAwait(false);
+            await DrainAsync().ConfigureAwait(false);
         }
     }
 
-    ExchangeRequest Request()
+    // Tells the coordinator at once that this worker's attempts end, instead of after the worker timeout, and reports
+    // the results published meanwhile. Best effort: a missed drain only delays the reruns.
+    async Task DrainAsync()
+    {
+        using var timeout = new CancellationTokenSource(_options.RetryDelay + TimeSpan.FromSeconds(5));
+        try
+        {
+            await cluster.SendAsync(ExchangeJson.Channel, ExchangeJson.Encode(Request(draining: true)), timeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is IOException or OperationCanceledException) { }
+    }
+
+    ExchangeRequest Request(bool draining = false)
     {
         lock (_lock)
             return new()
             {
                 WorkerSession = Session, NodeId = _options.NodeId, Cpu = _options.WorkerCpu,
-                Generation = _options.ApplicationGeneration,
-                Running = _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt, e.CpuDelta)).ToList(),
+                Generation = _options.ApplicationGeneration, Draining = draining,
+                Running = draining ? [] : _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt, e.CpuDelta,
+                    e.CancellationReason != ActionCancellationReason.None)).ToList(),
                 Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList()
             };
     }
@@ -105,6 +122,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                         if (execution?.Attempt != command.Attempt) break;
                         execution.Stop(forget: true);
                         _running.Remove(id);
+                        _forgotten.Add(execution);
                         break;
                 }
             }
@@ -115,6 +133,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
     {
         lock (_lock)
         {
+            if (_forgotten.Remove(execution)) return;
             if (!_running.TryGetValue(execution.Id, out var current) || current != execution) return;
             _running.Remove(execution.Id);
             if (published) _finished[execution.Id] = execution.Attempt;

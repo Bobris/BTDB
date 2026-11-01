@@ -156,6 +156,7 @@ public sealed class BTDB.BackendActions.BackendActions
   method void ImportScheduledRuns(IReadOnlyDictionary<string, DateTime> runs)
   method bool IsTenantSuspended(ulong tenantId)
   method IEnumerable<ActionInfo> ListActions(ulong? tenantId = null)
+  property Action<QualifiedActionId, ActionOutcomeKind, Exception>? OnFinishedFailed { get; set; }
   method BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
   method void RegisterEvents(EventDispatcher dispatcher)
   method BackendActions RegisterGenerated(Func<Type, object>? handlers = null, Func<Type, bool>? include = null)

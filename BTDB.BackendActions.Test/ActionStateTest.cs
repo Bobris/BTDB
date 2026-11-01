@@ -211,6 +211,51 @@ public class ActionStateTest
     }
 
     [Fact]
+    public async Task AFailingOnFinishedStillFinishesTheAction()
+    {
+        await using var node = await Start();
+        var session = await Activate(node);
+        await Place(node, new FragileOrder());
+        await Place(node, new FragileOrder());
+        var started = new QualifiedActionId(0, 1);
+        var queued = new QualifiedActionId(0, 2);
+        await Started(node, session, started, 1);
+        await Finished(node, started, 1, ActionOutcomeKind.Partial, "part");
+        await Finished(node, started, 1, ActionOutcomeKind.Completed, "done");
+        await Place(node, cancel: queued);
+        Assert.Empty(node.Queued);
+        Assert.Equal([(started, ActionOutcomeKind.Partial), (started, ActionOutcomeKind.Completed),
+            (queued, ActionOutcomeKind.Cancelled)], node.Recorder.FinishFailures);
+    }
+
+    [Fact]
+    public async Task ADelayedActionOfAnUnknownTypeQueuesWithoutBlockingTheOthers()
+    {
+        await using var node = await Start();
+        var later = _time.Now.UtcDateTime.AddMinutes(1);
+        await Place(node, new ProcessOrder { Amount = 1 }, startAt: later);
+        await Place(node, new ProcessOrder { Amount = 2 }, startAt: later);
+        using (var transaction = await node.Objects.StartWritingTransaction())
+        {
+            // As after its type was removed: an unknown name and an input that no longer loads.
+            var delayed = transaction.GetRelation<IDelayedActions>();
+            var row = delayed.FindByIdOrDefault(0, 1)!;
+            row.Name = "removed";
+            row.Input = null;
+            delayed.Update(row);
+            transaction.Commit();
+        }
+        _time.Now = _time.Now.AddMinutes(1);
+        await node.Publisher.PublishAsync(new DelayedActionsDue
+        {
+            Actions = [new() { ActionId = 1 }, new() { ActionId = 2 }]
+        });
+        Assert.Empty(node.Delayed);
+        Assert.Equal([("removed", 1ul), (typeof(ProcessOrder).FullName!, 2ul)],
+            node.Queued.Select(q => (q.Name, q.ActionId)));
+    }
+
+    [Fact]
     public async Task FailedBeforeStartFinishesTheAttempt()
     {
         await using var node = await Start();

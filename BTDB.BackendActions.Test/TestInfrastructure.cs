@@ -94,6 +94,7 @@ internal sealed class Node : IAsyncDisposable
         var node = new Node(files, keyValues);
         node.Objects.Open(keyValues, false, new DBOptions().WithoutAutoRegistrationOfRelations());
         node.Recorder.Register(node.Actions);
+        node.Actions.OnFinishedFailed = (id, kind, _) => node.Recorder.FinishFailures.Enqueue((id, kind));
         node.Actions.RegisterTypes(node.Objects);
         await node.Objects.InitializeRelations([.. BackendActions.RelationTypes]);
         var dispatcher = new EventDispatcher();
@@ -248,6 +249,9 @@ public class ValidatedOrder : ActionInput<OrderResult>
     public bool Reject { get; set; }
 }
 
+/// <summary>Its handler's OnFinished throws.</summary>
+public class FragileOrder : ActionInput<OrderResult>;
+
 internal sealed record Outcome(string Name, QualifiedActionId Id, ActionOutcomeKind Kind, ulong Attempt, string? Result,
     string? Error, string Input);
 
@@ -258,6 +262,7 @@ internal sealed class Recorder
     internal readonly ConcurrentQueue<bool> Cancelled = new();
     internal readonly ConcurrentQueue<Outcome> Outcomes = new();
     internal readonly ConcurrentQueue<QualifiedActionId> BeforeStarts = new();
+    internal readonly ConcurrentQueue<(QualifiedActionId Id, ActionOutcomeKind Kind)> FinishFailures = new();
 
     internal void Register(BackendActions actions) => actions
         .Register(new Handler<ProcessOrder>(this, i => i.Amount.ToString()))
@@ -267,7 +272,8 @@ internal sealed class Recorder
         .Register(new SlowHandler(this))
         .Register<WaitingOrder, OrderResult>(new SlowHandler(this))
         .Register(new ExportHandler(this))
-        .Register(new HourlyHandler(this));
+        .Register(new HourlyHandler(this))
+        .Register(new FragileHandler());
 
     internal volatile bool AllowScheduled = true;
     internal readonly ConcurrentQueue<ActionCancellationReason> Reasons = new();
@@ -352,6 +358,15 @@ internal sealed class Recorder
     sealed class HourlyHandler(Recorder recorder) : Handler<HourlyOrder>(recorder, _ => "hourly"), IScheduledActionGate
     {
         public bool CanStartScheduled(DateTime now) => Owner.AllowScheduled;
+    }
+
+    sealed class FragileHandler : IActionHandler<FragileOrder, OrderResult>
+    {
+        public Task<OrderResult> ExecuteAsync(FragileOrder input, IActionContext context) =>
+            Task.FromResult(new OrderResult());
+
+        public void OnFinished(FragileOrder input, ActionOutcome<OrderResult> outcome) =>
+            throw new InvalidOperationException("A bug in OnFinished.");
     }
 
     sealed class ValidatingHandler(Recorder recorder) : Handler<ValidatedOrder>(recorder, i => i.Reject.ToString()),

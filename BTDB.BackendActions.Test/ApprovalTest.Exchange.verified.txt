@@ -19,6 +19,7 @@ json ActionsOverview
 json AttemptMessage
   ActionId: ulong
   Attempt: ulong
+  Cancelling: bool
   CpuDelta: int
   TenantId: ulong
 json CommandMessage

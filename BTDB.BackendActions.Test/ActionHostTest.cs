@@ -81,6 +81,20 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ACoordinatorReplacedByALateActivationStartsAgain()
+    {
+        StartHost();
+        await Enqueue(new ProcessOrder { Amount = 1 });
+        await UntilAsync(() => Outcomes.Length == 1);
+        var replaced = _host!.Coordinator!.Session;
+        // A previous leader's activation lands late and rejects every start of the running coordinator.
+        await _node.Publisher.PublishAsync(new CoordinatorActivated { Session = Guid.NewGuid() });
+        await Enqueue(new ProcessOrder { Amount = 2 });
+        await UntilAsync(() => Outcomes.Length == 2);
+        Assert.NotEqual(replaced, _host.Coordinator!.Session);
+    }
+
+    [Fact]
     public async Task HandlerFailuresFinishTheActionWithTheirCode()
     {
         StartHost();

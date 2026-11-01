@@ -45,6 +45,8 @@ internal sealed class PlannedAction
     /// <summary>Started under an earlier coordinator session; it may still run until its worker reports or the lease
     /// passes.</summary>
     internal bool Protected { get; set; }
+    /// <summary>Counted in the concurrency limits: held by a worker or protected.</summary>
+    internal bool Counted { get; set; }
     /// <summary>Its worker reported the attempt finished; its ActionFinished is not applied here yet.</summary>
     internal bool Finished { get; set; }
     /// <summary>The coordinator published the attempt's ActionFinished itself.</summary>
@@ -78,7 +80,9 @@ internal readonly record struct Assignment(QualifiedActionId Id, ulong Attempt, 
 
 internal readonly record struct Abandonment(QualifiedActionId Id, ulong Attempt, ActionOutcomeKind Kind, string Reason);
 
-internal readonly record struct ReportedAttempt(QualifiedActionId Id, ulong Attempt, int CpuDelta = 0);
+/// <summary>A worker's attempt; Cancelling when the worker already ends it, so it needs no Cancel command.</summary>
+internal readonly record struct ReportedAttempt(QualifiedActionId Id, ulong Attempt, int CpuDelta = 0,
+    bool Cancelling = false);
 
 internal enum WorkerCommandKind : byte { Start = 1, Cancel = 2, Forget = 3 }
 
@@ -90,7 +94,8 @@ internal readonly record struct WorkerCommand(WorkerCommandKind Kind, QualifiedA
 /// are served in ascending order of decayed CPU consumption, one action per tenant per round; within a tenant by
 /// priority, then enqueue order. An action starts on the next ready worker, round robin, whose application generation
 /// is not older than the coordinator's and that has room for its cost within its priority's capacity share; concurrency
-/// groups and single-running tenants limit it. An older worker keeps the attempts it already runs.
+/// groups and single-running tenants limit it, counting protected attempts too. An older worker keeps the attempts
+/// it already runs.
 /// </summary>
 internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generation = 0)
 {
@@ -108,19 +113,43 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     readonly List<Guid> _workerOrder = new();
     readonly Dictionary<string, int> _runningGroups = new(StringComparer.Ordinal);
     readonly Dictionary<(string Group, ulong Tenant), int> _runningTenantGroups = new();
+    /// <summary>CPU of the attempts workers hold, per tenant.</summary>
+    readonly Dictionary<ulong, int> _runningCpu = new();
     int _nextWorker;
     TimeSpan _decayedUntil;
+    IReadOnlySet<string> _suspended = new HashSet<string>(StringComparer.Ordinal);
+    IReadOnlySet<ulong> _suspendedTenants = new HashSet<ulong>();
+    /// <summary>The last plan found nothing to start and nothing it depends on changed since.</summary>
+    bool _settled;
 
     internal IReadOnlyDictionary<QualifiedActionId, PlannedAction> Actions => _actions;
     internal IReadOnlyDictionary<Guid, PlannedWorker> Workers => _workers;
     /// <summary>Action types that start no new attempts.</summary>
-    internal IReadOnlySet<string> Suspended { get; set; } = new HashSet<string>(StringComparer.Ordinal);
-    internal IReadOnlySet<ulong> SuspendedTenants { get; set; } = new HashSet<ulong>();
+    internal IReadOnlySet<string> Suspended
+    {
+        get => _suspended;
+        set
+        {
+            _suspended = value;
+            _settled = false;
+        }
+    }
+
+    internal IReadOnlySet<ulong> SuspendedTenants
+    {
+        get => _suspendedTenants;
+        set
+        {
+            _suspendedTenants = value;
+            _settled = false;
+        }
+    }
 
     /// <summary>Applies an action's committed row, or its removal when row is null. A started attempt this session did
     /// not start is protected for one lease, so a new coordinator does not start it twice while it may still run.</summary>
     internal void Update(QualifiedActionId id, QueuedAction? row, ActionType? type, TimeSpan now)
     {
+        _settled = false;
         _actions.TryGetValue(id, out var action);
         if (row == null || type == null)
         {
@@ -131,7 +160,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         if (action == null)
         {
             action = new() { Id = id, Type = type };
-            action.BaseCpu = options.CpuOverride?.Invoke(type.Name, type.Cpu) ?? type.Cpu;
+            action.BaseCpu = Math.Max(10, options.CpuOverride?.Invoke(type.Name, type.Cpu) ?? type.Cpu);
             action.Cpu = action.BaseCpu;
             _actions.Add(id, action);
         }
@@ -169,6 +198,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         action.RunAttempts = row.RunAttempts;
         if (action.Protected && _workers.Values.Any(w => w.NodeId == action.RecordedNode && w.Session != action.RecordedSession))
             action.Protected = false; // its node already runs a newer process
+        Count(action);
         if (!_tenants.TryGetValue(id.TenantId, out var tenant))
             _tenants.Add(id.TenantId, tenant = new(TenantOrder));
         tenant.Add(action);
@@ -183,23 +213,31 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     {
         foreach (var other in _workers.Values.Where(w => w.NodeId == nodeId && w.Session != session).ToList())
             Expire(other); // the node restarted: its previous process's attempts are gone
-        foreach (var action in _actions.Values)
-            if (action.Protected && action.RecordedNode == nodeId && action.RecordedSession != session &&
-                !running.Any(r => r.Id == action.Id))
-                action.Protected = false; // recorded by an earlier coordinator for that previous process
+        var commands = new List<WorkerCommand>();
+        var reported = new HashSet<QualifiedActionId>();
+        foreach (var attempt in running) reported.Add(attempt.Id);
         if (!_workers.TryGetValue(session, out var worker))
         {
+            // Later protections of this node end in Update, so only a new session needs this scan.
+            foreach (var action in _actions.Values)
+                if (action.Protected && action.RecordedNode == nodeId && action.RecordedSession != session &&
+                    !reported.Contains(action.Id))
+                {
+                    action.Protected = false; // recorded by an earlier coordinator for that previous process
+                    Count(action);
+                }
             worker = new() { Session = session, NodeId = nodeId };
             _workers.Add(session, worker);
             _workerOrder.Add(session);
+            _settled = false;
         }
+        if (worker.Capacity != capacity || worker.Generation != workerGeneration || worker.Ready != ready)
+            _settled = false;
         worker.Capacity = capacity;
         worker.Generation = workerGeneration;
         worker.Ready = ready;
         worker.ExpiresAt = now + options.WorkerTimeout;
         worker.LastExchange = now;
-        var commands = new List<WorkerCommand>();
-        var reported = new HashSet<QualifiedActionId>();
         foreach (var attempt in finished)
         {
             reported.Add(attempt.Id);
@@ -207,6 +245,11 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             if (action.Worker == session) Release(action);
             action.Finished = true;
             action.LeaseUntil = now + options.Lease; // reruns if its ActionFinished never applies
+        }
+        if (!ready)
+        {
+            Expire(worker); // it stops without results for its running attempts, so they run again elsewhere
+            return commands;
         }
         foreach (var attempt in running)
         {
@@ -228,10 +271,13 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             if (cpu != action.HeldCpu)
             {
                 worker.Used += cpu - action.HeldCpu;
+                Add(_runningCpu, action.Id.TenantId, cpu - action.HeldCpu);
                 action.HeldCpu = cpu;
+                _settled = false;
             }
             action.Cpu = cpu;
-            if (action.IsCancelled) commands.Add(new(WorkerCommandKind.Cancel, attempt.Id, attempt.Attempt));
+            if (action.IsCancelled && !attempt.Cancelling)
+                commands.Add(new(WorkerCommandKind.Cancel, attempt.Id, attempt.Attempt));
         }
         foreach (var id in worker.Actions.ToList())
         {
@@ -255,8 +301,12 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
             if (action.LeaseUntil <= now)
             {
                 if (action.Worker != null && action.Starting == null) Release(action);
-                action.Protected = false;
-                action.Finished = false; // its ActionFinished never applied
+                if (action.Protected || action.Finished)
+                {
+                    action.Protected = false;
+                    action.Finished = false; // its ActionFinished never applied
+                    Count(action);
+                }
             }
             if (!action.IsStarted || !action.Idle) continue;
             if (action.IsCancelled)
@@ -274,7 +324,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     {
         Decay(now);
         var assignments = new List<Assignment>();
-        if (!_workers.Values.Any(w => w.Ready)) return assignments;
+        if (_settled || !_workers.Values.Any(w => w.Ready)) return assignments;
         bool progress;
         do
         {
@@ -297,23 +347,27 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
                 }
             }
         } while (progress);
+        _settled = true; // a mutation or a new worker report makes the next plan look again
         return assignments;
     }
 
+    // Each whole second decays the consumption and adds the running CPU, which is constant since the last call, so the
+    // seconds collapse into a geometric series.
     void Decay(TimeSpan now)
     {
         if (_decayedUntil == default) _decayedUntil = now;
-        while (now - _decayedUntil >= TimeSpan.FromSeconds(1))
+        var seconds = (now - _decayedUntil).Ticks / TimeSpan.TicksPerSecond;
+        if (seconds <= 0) return;
+        _decayedUntil += TimeSpan.FromSeconds(seconds);
+        var decay = options.ConsumptionDecay;
+        var factor = Math.Pow(decay, seconds);
+        var sum = decay == 1 ? seconds : (1 - factor) / (1 - decay);
+        foreach (var tenant in _consumption.Keys.ToList())
         {
-            _decayedUntil += TimeSpan.FromSeconds(1);
-            foreach (var tenant in _consumption.Keys.ToList())
-            {
-                var running = _tenants.TryGetValue(tenant, out var actions)
-                    ? actions.Where(a => a.Worker != null).Sum(a => a.Cpu) : 0;
-                var value = _consumption[tenant] * options.ConsumptionDecay + running;
-                if (value <= 0.1 && running == 0 && actions is not { Count: > 0 }) _consumption.Remove(tenant);
-                else _consumption[tenant] = value <= 0.1 ? 0 : value;
-            }
+            var running = _runningCpu.GetValueOrDefault(tenant);
+            var value = _consumption[tenant] * factor + running * sum;
+            if (value <= 0.1 && running == 0 && !_tenants.ContainsKey(tenant)) _consumption.Remove(tenant);
+            else _consumption[tenant] = value <= 0.1 ? 0 : value;
         }
     }
 
@@ -348,9 +402,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         action.Cpu = action.BaseCpu; // a new attempt starts without the previous one's adjustment
         action.HeldCpu = action.Cpu;
         worker.Used += action.HeldCpu;
-        _runningGroups[action.Group] = _runningGroups.GetValueOrDefault(action.Group) + 1;
-        var key = (action.Group, action.Id.TenantId);
-        _runningTenantGroups[key] = _runningTenantGroups.GetValueOrDefault(key) + 1;
+        Add(_runningCpu, action.Id.TenantId, action.HeldCpu);
+        Count(action);
     }
 
     void Release(PlannedAction action)
@@ -358,13 +411,35 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         if (action.Worker is not { } session) return;
         action.Worker = null;
         if (_workers.TryGetValue(session, out var worker) && worker.Actions.Remove(action.Id)) worker.Used -= action.HeldCpu;
-        _runningGroups[action.Group]--;
-        _runningTenantGroups[(action.Group, action.Id.TenantId)]--;
+        Add(_runningCpu, action.Id.TenantId, -action.HeldCpu);
+        Count(action);
+        _settled = false;
+    }
+
+    // Concurrency limits count every attempt that runs or may still run: held by a worker or protected after a
+    // coordinator change, so a new coordinator does not start a second one next to it.
+    void Count(PlannedAction action)
+    {
+        var counted = action.Worker != null || action.Protected;
+        if (counted == action.Counted) return;
+        action.Counted = counted;
+        _settled = false;
+        var delta = counted ? 1 : -1;
+        Add(_runningGroups, action.Group, delta);
+        Add(_runningTenantGroups, (action.Group, action.Id.TenantId), delta);
+    }
+
+    static void Add<TKey>(Dictionary<TKey, int> counts, TKey key, int delta) where TKey : notnull
+    {
+        var value = counts.GetValueOrDefault(key) + delta;
+        if (value == 0) counts.Remove(key);
+        else counts[key] = value;
     }
 
     void Expire(PlannedWorker worker)
     {
         foreach (var id in worker.Actions.ToList()) Release(_actions[id]);
+        _settled = false;
         _workers.Remove(worker.Session);
         _workerOrder.Remove(worker.Session);
         if (_nextWorker >= _workerOrder.Count) _nextWorker = 0;
@@ -373,6 +448,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     void Remove(PlannedAction action)
     {
         Release(action);
+        action.Protected = false;
+        Count(action);
         _actions.Remove(action.Id);
         var tenant = _tenants[action.Id.TenantId];
         tenant.Remove(action);

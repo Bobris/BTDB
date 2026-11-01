@@ -34,10 +34,15 @@ internal sealed class AttemptMessage
     public ulong Attempt { get; set; }
     /// <summary>The running attempt's resource adjustment, in CPU units.</summary>
     public int CpuDelta { get; set; }
+    /// <summary>The running attempt is already cancelled on the worker, so the coordinator sends no Cancel again.</summary>
+    public bool Cancelling { get; set; }
 
-    internal ReportedAttempt ToAttempt() => new(new(TenantId, ActionId), Attempt, CpuDelta);
-    internal static AttemptMessage From(QualifiedActionId id, ulong attempt, int cpuDelta = 0) =>
-        new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, CpuDelta = cpuDelta };
+    internal ReportedAttempt ToAttempt() => new(new(TenantId, ActionId), Attempt, CpuDelta, Cancelling);
+    internal static AttemptMessage From(QualifiedActionId id, ulong attempt, int cpuDelta = 0, bool cancelling = false) =>
+        new()
+        {
+            TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempt, CpuDelta = cpuDelta, Cancelling = cancelling
+        };
 }
 
 /// <summary>A worker's long poll: its state, which the coordinator reconciles with its own view.</summary>
@@ -47,6 +52,7 @@ internal sealed class ExchangeRequest
     public string NodeId { get; set; } = "";
     public int Cpu { get; set; }
     public ulong Generation { get; set; }
+    /// <summary>The worker stops: its last exchange, without running attempts, which then run again elsewhere.</summary>
     public bool Draining { get; set; }
     public List<AttemptMessage> Running { get; set; } = new();
     /// <summary>Attempts whose ActionFinished this worker published and applied, until acknowledged.</summary>

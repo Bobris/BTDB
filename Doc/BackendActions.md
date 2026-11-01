@@ -51,9 +51,10 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * `ActionInput<TResult>` carries `TenantId` (0 means none; it scopes fairness, `SingleRunningPerTenant` and the
   per-tenant queries) and `ActionId`, assigned on enqueue. Input classes are stored in ObjectDB rows and events; the
   `[Generate]` on `IActionInput` makes the source generator cover them.
-* `[BackendAction]`: `Cpu` (100 is one core), `MaxConcurrent` across the cluster (0 is unlimited) for the type or its
-  `ConcurrencyGroup`, `SingleRunningPerTenant`, and `Name`, by default the input type's full name. Rows store the
-  name, so set it before renaming an input type.
+* `[BackendAction]`: `Cpu` (100 is one core, at least 10 is accounted), `MaxConcurrent` across the cluster (0 is
+  unlimited) for the type or its `ConcurrencyGroup`, `SingleRunningPerTenant`, and `Name`, by default the input type's
+  full name. Rows store the name, so set it before renaming an input type. After a leader change, attempts that may
+  still run count toward both limits until their worker reports them or their lease passes.
 * `IActionInputUnificator.GetUniqueKey()` returns a `byte[]` key; empty means the input never merges. An input with
   the key of a queued action that has not started merges into it. Compose a key of several values by writing them into
   one array, for example with `BinaryPrimitives`. `IActionInputAggregator.TryAggregate(other)` merges the new input's
@@ -64,6 +65,8 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   finishes the attempt as `Failed` with code `BeforeStartFailed`; writes made before it stay, so validate first.
 * Failures: throw `BackendActionException(code, message, details)`; any other exception finishes the attempt as
   `Failed` with code `Unexpected`.
+* An exception from `OnFinished` does not undo the outcome: the action still finishes, the handler's writes before it
+  stay, and `BackendActions.OnFinishedFailed(id, kind, exception)`, when set, reports it inside the consume.
 
 ## Register and host
 
@@ -124,8 +127,8 @@ action. A worker of an older `ApplicationGeneration` than the coordinator gets n
 Execution is at least once: `ExecuteAsync` can run again after a lost worker, an expired lease (2 min without a
 report) or a leader change, so external effects need idempotency. `OnFinished` runs exactly once per outcome: results
 of a superseded attempt are ignored. After `MaxAttempts` (5) lost attempts the coordinator finishes the action as
-`Interrupted` with code `AttemptsExhausted`. A stopping worker publishes nothing for its running attempts, so they run
-again elsewhere.
+`Interrupted` with code `AttemptsExhausted`. A stopping worker publishes nothing for its running attempts and tells the
+coordinator in a last exchange, so they run again elsewhere at once.
 
 `IActionContext` offers:
 

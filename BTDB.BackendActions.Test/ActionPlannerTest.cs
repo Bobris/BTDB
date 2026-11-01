@@ -329,4 +329,80 @@ public class ActionPlannerTest
         Planner.Update(id, null, null, 2 * Second);
         Assert.Empty(Planner.Actions);
     }
+
+    [Fact]
+    public void ProtectedAttemptsCountTowardConcurrencyLimits()
+    {
+        var single = Type("single", maxConcurrent: 1, singlePerTenant: true);
+        var recorded = Add(single, 5, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = Guid.NewGuid();
+            row.WorkerNode = "old";
+        });
+        var waiting = Add(single, 5);
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 1000);
+        Assert.True(Planner.Actions[recorded].Protected);
+        Assert.Empty(PlanAndStart(default)); // the protected attempt may still run on node old
+        Assert.Empty(Planner.Expire(10 * Second)); // the protection passed: the recorded attempt runs again first
+        Exchange(worker, 10 * Second, capacity: 1000);
+        Assert.Equal([recorded], PlanAndStart(10 * Second));
+        Planner.Update(recorded, null, null, 10 * Second);
+        Assert.Equal([waiting], PlanAndStart(10 * Second));
+    }
+
+    [Fact]
+    public void ACancelIsNotRepeatedWhileTheWorkerEndsTheAttempt()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default);
+        var id = Add(Report);
+        PlanAndStart(default);
+        _rows[id].IsCancelled = true;
+        Planner.Update(id, _rows[id], Report, default);
+        Assert.Equal([new WorkerCommand(WorkerCommandKind.Cancel, id, 1)], Exchange(worker, default, running: [new(id, 1)]));
+        Assert.Empty(Exchange(worker, default, running: [new(id, 1, Cancelling: true)]));
+    }
+
+    [Fact]
+    public void ADrainingWorkerLeavesAndItsAttemptsRunElsewhere()
+    {
+        var leaving = Guid.NewGuid();
+        Exchange(leaving, default, node: "1");
+        var id = Add(Report);
+        PlanAndStart(default);
+        var queued = Add(Report);
+        Assert.Empty(Planner.Exchange(leaving, "1", 100, 3, false, [], [], Second));
+        Assert.False(Planner.Workers.ContainsKey(leaving));
+        Assert.Null(Planner.Actions[id].Worker);
+        Exchange(Guid.NewGuid(), Second, capacity: 1000, node: "2");
+        Assert.Equal([id, queued], PlanAndStart(Second).OrderBy(i => i.ActionId));
+        Assert.Equal(2ul, _rows[id].RunAttempts);
+    }
+
+    [Fact]
+    public void ActionsCostAtLeastTenCpu()
+    {
+        _options.CpuOverride = (_, _) => 0;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 100);
+        for (var i = 0; i < 12; i++) Add(Report);
+        Assert.Equal(10, PlanAndStart(default).Count); // a worker's first 100 CPU, at 10 each
+        Assert.Equal(100, Planner.Workers[worker].Used);
+    }
+
+    [Fact]
+    public void ConsumptionDecaysOverManySecondsAtOnce()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 1000);
+        var running = Add(Report, 1);
+        Assert.Equal([running], PlanAndStart(default));
+        Planner.Plan(3600 * Second); // an hour of running 100 CPU converges to 100 / (1 - 0.95)
+        var first = Add(Report, 1);
+        var other = Add(Report, 3);
+        Assert.Equal([other, first], PlanAndStart(3600 * Second));
+    }
 }
