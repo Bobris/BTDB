@@ -156,7 +156,11 @@ var id2 = await actions.EnqueueAsync(publisher, new GenerateReport { ReportId = 
 `EnqueueAsync` and `CancelAsync` use `PublishAndWaitAsync`, so the returned ID is the one the consume assigned.
 An input that unifies or aggregates returns the ID of the action it merged into.
 
-### Partial results and large results
+### Partial results, progress and large results
+
+`SubmitPartialAsync` is often used to commit partial progress: a long action publishes what it has done so far, each
+part is durable once consumed, and a later attempt resumes from the last committed part instead of starting over. The
+same mechanism returns results larger than one event.
 
 A result travels in an `ActionFinished` event and is therefore limited by `EventPublisherOptions.MaximumEventSize`
 (50 MiB by default). There is no blob-reference mechanism in v1. A handler with more data publishes it in parts, as

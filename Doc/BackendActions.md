@@ -139,10 +139,13 @@ coordinator in a last exchange, so they run again elsewhere at once.
   `Cancelled` with code `Timeout`) or `Stopped` (superseded or the worker stops; nothing is published).
 * `SubmitPartialAsync(ev)`: publishes an event of the application and returns after this node consumed it, so parts
   keep their order and a slow consumer slows the action down. It does nothing else: the application's own event
-  handler consumes the part. Use it for results larger than one event (`EventPublisherOptions.MaximumEventSize`, 50 MiB
-  by default): publish the data in parts and return a small final result. Put `context.Id` and `context.Attempt` in
-  the event; a new attempt starts again from its first part, and a superseded attempt's parts can still arrive, so the
-  consume can skip a part unless `FindAction(id)` is `Started` with `RunAttempts` equal to its attempt.
+  handler consumes the part. It is often used to commit partial progress: each consumed part is durable on every
+  replica, so a long action can record the work it has done, and a later attempt can resume from the last committed
+  part instead of starting over. It also returns results larger than one event
+  (`EventPublisherOptions.MaximumEventSize`, 50 MiB by default): publish the data in parts and return a small final
+  result. Put `context.Id` and `context.Attempt` in the event; a new attempt starts from its first part unless it
+  resumes from the committed progress, and a superseded attempt's parts can still arrive, so the consume can skip a
+  part unless `FindAction(id)` is `Started` with `RunAttempts` equal to its attempt.
 * `AdjustResources(cpuDelta)`: changes the CPU the coordinator accounts to this attempt, never below 10.
 * `StartQuery()`: a snapshot of the worker's database.
 
