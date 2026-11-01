@@ -120,6 +120,10 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             return res;
         }
 
+        // On the IL stack an enum is its underlying primitive, so converting that primitive converts the enum.
+        if (from.IsEnum && to.IsPrimitive) return GenerateConversion(from.GetEnumUnderlyingType(), to);
+        if (from.IsPrimitive && to.IsEnum) return GenerateConversion(from, to.GetEnumUnderlyingType());
+
         var toIList = to.SpecializationOf(typeof(IList<>));
         if (toIList is { } && GenerateConversion(from, toIList.GenericTypeArguments[0]) is { } itemConversion)
         {

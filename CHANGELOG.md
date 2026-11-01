@@ -81,6 +81,10 @@
   value-type field missing from the stored data twice.
 - Source generator: collection registrations of nullable items declared an unused variable (warning CS0219), which
   failed builds treating warnings as errors.
+- ObjectDB: with IL emitted relation loaders (`IFieldHandler.UseNoEmitForRelations = false`), upgrading a relation
+  field from an enum to its underlying or a wider integer type, such as `int` or `long`, reported a type
+  incompatibility and loaded 0. The IL type convertor now converts between enums and primitive types through the
+  enum's underlying type, as the no-emit converters already did.
 
 - Replication: on `OnDiskReplicationFileStorage` a transaction could not read a value it had written itself before
   committing: the read threw `EndOfStreamException`, because the file's appender publishes its length only when it

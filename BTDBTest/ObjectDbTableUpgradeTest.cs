@@ -1135,7 +1135,8 @@ public class ObjectDbTableUpgradeTest : IDisposable
 
     public enum TestEnum
     {
-        Test
+        Test,
+        Other
     }
 
     public class ObjV1
@@ -1156,26 +1157,159 @@ public class ObjectDbTableUpgradeTest : IDisposable
     {
     }
 
-    [Fact]
-    public void UpgradeNotNullableEnumToNullableEnum()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeNotNullableEnumToNullableEnum(bool useNoEmit)
     {
-        using (var tr = _db.StartTransaction())
+        RunWithEmitMode(useNoEmit, () =>
         {
-            var creator = tr.InitRelation<IObjV1Table>("MyRelation");
-            var objV1Table = creator(tr);
-            var job1 = new ObjV1 { MyTestEnum = TestEnum.Test };
-            objV1Table.Upsert(job1);
-            tr.Commit();
-        }
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IObjV1Table>("MyRelation");
+                var objV1Table = creator(tr);
+                var job1 = new ObjV1 { MyTestEnum = TestEnum.Other };
+                objV1Table.Upsert(job1);
+                tr.Commit();
+            }
 
-        ReopenDb();
+            ReopenDb();
 
-        using (var tr = _db.StartTransaction())
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IObjV2Table>("MyRelation");
+                var objV2Table = creator(tr);
+                Assert.Equal(TestEnum.Other, Assert.Single(objV2Table.ToList()).MyTestEnum);
+            }
+        });
+    }
+
+    public enum ByteKind : byte
+    {
+        A,
+        B
+    }
+
+    public class ByteKindRowV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public ByteKind Kind { get; set; }
+    }
+
+    public class ByteKindRowNullable
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public ByteKind? Kind { get; set; }
+    }
+
+    public class ByteKindRowInt
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public int Kind { get; set; }
+    }
+
+    public class ByteKindRowLong
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public long Kind { get; set; }
+    }
+
+    public class ByteKindRowByte
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public byte Kind { get; set; }
+    }
+
+    [PersistedName("ByteKindRows")]
+    public interface IByteKindRowV1Table : IRelation<ByteKindRowV1>
+    {
+    }
+
+    [PersistedName("ByteKindRows")]
+    public interface IByteKindRowNullableTable : IRelation<ByteKindRowNullable>
+    {
+    }
+
+    [PersistedName("ByteKindRows")]
+    public interface IByteKindRowIntTable : IRelation<ByteKindRowInt>
+    {
+    }
+
+    [PersistedName("ByteKindRows")]
+    public interface IByteKindRowLongTable : IRelation<ByteKindRowLong>
+    {
+    }
+
+    [PersistedName("ByteKindRows")]
+    public interface IByteKindRowByteTable : IRelation<ByteKindRowByte>
+    {
+    }
+
+    void StoreByteKindB()
+    {
+        using var tr = _db.StartTransaction();
+        tr.GetRelation<IByteKindRowV1Table>().Upsert(new() { Id = 1, Kind = ByteKind.B });
+        tr.Commit();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeByteEnumToNullableEnumKeepsValue(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
         {
-            var creator = tr.InitRelation<IObjV2Table>("MyRelation");
-            var objV2Table = creator(tr);
-            objV2Table.ToList();
-        }
+            StoreByteKindB();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var row = Assert.Single(tr.GetRelation<IByteKindRowNullableTable>());
+            Assert.Equal(ByteKind.B, row.Kind);
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeByteEnumToIntKeepsValue(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            StoreByteKindB();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var row = Assert.Single(tr.GetRelation<IByteKindRowIntTable>());
+            Assert.Equal((int)ByteKind.B, row.Kind);
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeByteEnumToLongKeepsValue(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            StoreByteKindB();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var row = Assert.Single(tr.GetRelation<IByteKindRowLongTable>());
+            Assert.Equal((long)ByteKind.B, row.Kind);
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UpgradeByteEnumToUnderlyingTypeKeepsValue(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            StoreByteKindB();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var row = Assert.Single(tr.GetRelation<IByteKindRowByteTable>());
+            Assert.Equal((byte)ByteKind.B, row.Kind);
+        });
     }
 
     public class Obj2V1
