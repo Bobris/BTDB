@@ -1,0 +1,51 @@
+﻿json ExchangeRequest
+  Cpu: int
+  Draining: bool
+  Finished: List<AttemptMessage>
+  Generation: ulong
+  NodeId: string
+  Running: List<AttemptMessage>
+  WorkerSession: Guid
+json ExchangeResponse
+  Acknowledged: List<AttemptMessage>
+  Commands: List<CommandMessage>
+  CoordinatorSession: Guid
+json ActionsOverview
+  CoordinatorSession: Guid
+  Priorities: IReadOnlyList<PriorityOverview>
+  Suspended: IReadOnlyList<string>
+  Workers: IReadOnlyList<WorkerOverview>
+json AttemptMessage
+  ActionId: ulong
+  Attempt: ulong
+  CpuDelta: int
+  TenantId: ulong
+json CommandMessage
+  ActionId: ulong
+  Attempt: ulong
+  Kind: WorkerCommandKind
+  StartEventId: ulong
+  TenantId: ulong
+json PriorityOverview
+  Priority: ActionPriority
+  Protected: int
+  Running: int
+  Waiting: int
+json WorkerOverview
+  Attempts: int
+  Capacity: int
+  Generation: ulong
+  NodeId: string
+  Ready: bool
+  Session: Guid
+  SinceExchange: TimeSpan
+  Used: int
+enum BTDB.BackendActions.WorkerCommandKind : byte
+  Start = 1
+  Cancel = 2
+  Forget = 3
+enum BTDB.BackendActions.ActionPriority : byte
+  RealTime = 2
+  Normal = 4
+  Low = 8
+  Idle = 16

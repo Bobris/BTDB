@@ -1,0 +1,42 @@
+﻿relation IActionInputIndexes of BTDB.BackendActions.ActionInputIndex
+  ActionId: ulong
+  Name: string [PrimaryKey(2, false)]
+  TenantId: ulong [PrimaryKey(1, false)]
+  UniqueKey: string [PrimaryKey(3, false)]
+relation IBackendActionsStates of BTDB.BackendActions.BackendActionsState
+  CoordinatorSession: Guid
+  Id: ulong [PrimaryKey(1, false)]
+  NextOrder: ulong
+  Suspended: List<string>
+relation IDelayedActions of BTDB.BackendActions.DelayedAction
+  ActionId: ulong [PrimaryKey(2, false)]
+  Input: object
+  Name: string
+  Priority: ActionPriority
+  QueuedAt: DateTime
+  StartAt: DateTime [SecondaryKey("StartAt")]
+  TenantId: ulong [PrimaryKey(1, false)]
+relation IQueuedActions of BTDB.BackendActions.QueuedAction
+  ActionId: ulong [PrimaryKey(2, false)]
+  Input: object
+  IsAggregable: bool
+  IsCancelled: bool
+  IsStarted: bool
+  LatestInputEventId: ulong
+  Name: string
+  Order: ulong
+  Priority: ActionPriority
+  QueuedAt: DateTime
+  RunAttempts: ulong
+  StartEventId: ulong
+  TenantId: ulong [PrimaryKey(1, false)]
+  WorkerNode: string
+  WorkerSession: Guid
+relation IScheduledActionRuns of BTDB.BackendActions.ScheduledActionRun
+  LastRun: DateTime
+  Name: string [PrimaryKey(1, false)]
+enum BTDB.BackendActions.ActionPriority : byte
+  RealTime = 2
+  Normal = 4
+  Low = 8
+  Idle = 16

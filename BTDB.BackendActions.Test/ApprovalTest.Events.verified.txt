@@ -1,0 +1,68 @@
+﻿event BTDB.BackendActions.ActionCancelRequested
+  ActionId: ulong
+  TenantId: ulong
+event BTDB.BackendActions.ActionEnqueued
+  Input: object
+  Priority: ActionPriority
+  StartAt: DateTime?
+event BTDB.BackendActions.ActionFinished
+  ActionId: ulong
+  Attempt: ulong
+  Error: ActionError
+  Kind: ActionOutcomeKind
+  Result: object
+  TenantId: ulong
+event BTDB.BackendActions.ActionsImported
+  Actions: List<ImportedAction>
+  ScheduledRuns: Dictionary<string, DateTime>
+  Suspended: List<string>
+event BTDB.BackendActions.ActionsStarted
+  Actions: List<StartedAction>
+  Session: Guid
+event BTDB.BackendActions.ActionsSuspended
+  Names: List<string>
+  Suspended: bool
+event BTDB.BackendActions.CoordinatorActivated
+  Session: Guid
+event BTDB.BackendActions.DelayedActionsDue
+  Actions: List<ActionKey>
+event BTDB.BackendActions.ScheduledActionStarted
+  ExpectedLastRun: DateTime
+  Name: string
+  NewLastRun: DateTime
+  Start: bool
+enum BTDB.BackendActions.ActionPriority : byte
+  RealTime = 2
+  Normal = 4
+  Low = 8
+  Idle = 16
+class BTDB.BackendActions.ActionError
+  Code: string
+  Details: string
+  Message: string
+enum BTDB.BackendActions.ActionOutcomeKind : byte
+  Completed = 1
+  Partial = 2
+  Failed = 3
+  Cancelled = 4
+  Interrupted = 5
+class BTDB.BackendActions.ImportedAction
+  ActionId: ulong
+  Input: object
+  IsAggregable: bool
+  IsCancelled: bool
+  Order: ulong
+  Priority: ActionPriority
+  QueuedAt: DateTime
+  RunAttempts: ulong
+  StartAt: DateTime?
+  TenantId: ulong
+class BTDB.BackendActions.StartedAction
+  ActionId: ulong
+  Attempt: ulong
+  TenantId: ulong
+  WorkerNode: string
+  WorkerSession: Guid
+class BTDB.BackendActions.ActionKey
+  ActionId: ulong
+  TenantId: ulong

@@ -1,0 +1,362 @@
+﻿public class BTDB.BackendActions.ActionCancelRequested : EventWithResult<ActionCancelResult>
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong TenantId { get; set; }
+public class BTDB.BackendActions.ActionCancelResult
+  ctor()
+  property bool Found { get; set; }
+public enum BTDB.BackendActions.ActionCancellationReason
+  None = 0
+  Cancelled = 1
+  Timeout = 2
+  Stopped = 3
+public sealed class BTDB.BackendActions.ActionEnqueueOptions
+  ctor()
+  property ActionPriority Priority { get; set; }
+  property DateTime? StartAt { get; set; }
+public class BTDB.BackendActions.ActionEnqueued : EventWithResult<ActionEnqueuedResult>
+  ctor()
+  property object? Input { get; set; }
+  property ActionPriority Priority { get; set; }
+  property DateTime? StartAt { get; set; }
+public class BTDB.BackendActions.ActionEnqueuedResult
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong TenantId { get; set; }
+public sealed class BTDB.BackendActions.ActionError
+  ctor()
+  property string Code { get; set; }
+  property string? Details { get; set; }
+  property string Message { get; set; }
+public class BTDB.BackendActions.ActionFinished : PureEvent
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong Attempt { get; set; }
+  property ActionError? Error { get; set; }
+  property ActionOutcomeKind Kind { get; set; }
+  property object? Result { get; set; }
+  property ulong TenantId { get; set; }
+public sealed class BTDB.BackendActions.ActionInfo : IEquatable<ActionInfo>
+  ctor(QualifiedActionId Id, string Name, ActionState State, ActionPriority Priority, ulong RunAttempts, bool IsCancelled, DateTime QueuedAt, DateTime? StartAt, string WorkerNode, object? Input)
+  method void Deconstruct(out QualifiedActionId Id, out string Name, out ActionState State, out ActionPriority Priority, out ulong RunAttempts, out bool IsCancelled, out DateTime QueuedAt, out DateTime? StartAt, out string WorkerNode, out object? Input)
+  method bool Equals(ActionInfo? other)
+  override method bool Equals(object? obj)
+  override method int GetHashCode()
+  property QualifiedActionId Id { get; init; }
+  property object? Input { get; init; }
+  property bool IsCancelled { get; init; }
+  property string Name { get; init; }
+  property ActionPriority Priority { get; init; }
+  property DateTime QueuedAt { get; init; }
+  property ulong RunAttempts { get; init; }
+  property DateTime? StartAt { get; init; }
+  property ActionState State { get; init; }
+  override method string ToString()
+  property string WorkerNode { get; init; }
+public class BTDB.BackendActions.ActionInputIndex
+  ctor()
+  property ulong ActionId { get; set; }
+  property string Name { get; set; }
+  property ulong TenantId { get; set; }
+  property string UniqueKey { get; set; }
+public abstract class BTDB.BackendActions.ActionInput<TResult> : IActionInput
+  protected ctor()
+  property ulong ActionId { get; set; }
+  property ulong TenantId { get; set; }
+public class BTDB.BackendActions.ActionKey
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong TenantId { get; set; }
+public enum BTDB.BackendActions.ActionOutcomeKind
+  Completed = 1
+  Partial = 2
+  Failed = 3
+  Cancelled = 4
+  Interrupted = 5
+public readonly struct BTDB.BackendActions.ActionOutcome<TResult> : IEquatable<ActionOutcome<TResult>>
+  ctor(ActionOutcomeKind Kind, ulong Attempt, TResult? Result, ActionError? Error)
+  property ulong Attempt { get; init; }
+  method void Deconstruct(out ActionOutcomeKind Kind, out ulong Attempt, out TResult? Result, out ActionError? Error)
+  method bool Equals(ActionOutcome<TResult> other)
+  override method bool Equals(object obj)
+  property ActionError? Error { get; init; }
+  override method int GetHashCode()
+  property ActionOutcomeKind Kind { get; init; }
+  property TResult? Result { get; init; }
+  override method string ToString()
+public sealed class BTDB.BackendActions.ActionPlannerOptions
+  ctor()
+  property Dictionary<ActionPriority, double> CapacityShares { get; set; }
+  property double ConsumptionDecay { get; set; }
+  property Func<string, int, int>? CpuOverride { get; set; }
+  property TimeSpan Lease { get; set; }
+  property ulong MaxAttempts { get; set; }
+  property TimeSpan WorkerTimeout { get; set; }
+public enum BTDB.BackendActions.ActionPriority
+  RealTime = 2
+  Normal = 4
+  Low = 8
+  Idle = 16
+public abstract class BTDB.BackendActions.ActionScheduleAttribute : Attribute
+  protected ctor()
+  abstract method DateTime LatestOccurrence(DateTime now)
+public enum BTDB.BackendActions.ActionState
+  Delayed = 1
+  Queued = 2
+  Started = 3
+public class BTDB.BackendActions.ActionsImported : PureEvent
+  ctor()
+  property List<ImportedAction> Actions { get; set; }
+  property Dictionary<string, DateTime> ScheduledRuns { get; set; }
+  property List<string> Suspended { get; set; }
+public sealed class BTDB.BackendActions.ActionsOverview : IEquatable<ActionsOverview>
+  ctor(Guid CoordinatorSession, IReadOnlyList<WorkerOverview> Workers, IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended)
+  property Guid CoordinatorSession { get; init; }
+  method void Deconstruct(out Guid CoordinatorSession, out IReadOnlyList<WorkerOverview> Workers, out IReadOnlyList<PriorityOverview> Priorities, out IReadOnlyList<string> Suspended)
+  method bool Equals(ActionsOverview? other)
+  override method bool Equals(object? obj)
+  override method int GetHashCode()
+  property IReadOnlyList<PriorityOverview> Priorities { get; init; }
+  property IReadOnlyList<string> Suspended { get; init; }
+  override method string ToString()
+  property IReadOnlyList<WorkerOverview> Workers { get; init; }
+public class BTDB.BackendActions.ActionsStarted : PureEvent
+  ctor()
+  property List<StartedAction> Actions { get; set; }
+  property Guid Session { get; set; }
+public class BTDB.BackendActions.ActionsSuspended : PureEvent
+  ctor()
+  property List<string> Names { get; set; }
+  property bool Suspended { get; set; }
+public sealed class BTDB.BackendActions.BackendActionAttribute : Attribute
+  ctor()
+  property string? ConcurrencyGroup { get; set; }
+  property int Cpu { get; set; }
+  property int MaxConcurrent { get; set; }
+  property string? Name { get; set; }
+  property bool SingleRunningPerTenant { get; set; }
+public class BTDB.BackendActions.BackendActionException : Exception, ISerializable
+  ctor(string code, string message, string? details = null)
+  property string Code { get; }
+  property string? Details { get; }
+public sealed class BTDB.BackendActions.BackendActions
+  ctor()
+  method bool Cancel(QualifiedActionId id)
+  method Task<bool> CancelAsync(IEventPublisher publisher, QualifiedActionId id, CancellationToken cancellation = default)
+  method QualifiedActionId Enqueue(IActionInput input, ActionEnqueueOptions? options = null)
+  method Task<QualifiedActionId> EnqueueAsync(IEventPublisher publisher, IActionInput input, ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
+  method ActionInfo? FindAction(QualifiedActionId id)
+  method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, string uniqueKey)
+  method bool HasStartedActions(ulong tenantId)
+  method void Import(IEnumerable<ImportedAction> actions)
+  method Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, CancellationToken cancellation = default)
+  method void ImportScheduledRuns(IReadOnlyDictionary<string, DateTime> runs)
+  method IEnumerable<ActionInfo> ListActions(ulong? tenantId = null)
+  method BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
+  method void RegisterEvents(EventDispatcher dispatcher)
+  method BackendActions RegisterGenerated(Func<Type, object>? handlers = null, Func<Type, bool>? include = null)
+  method void RegisterTypes(IObjectDB database)
+  static property IReadOnlyList<Type> RelationTypes { get; }
+  method Task SuspendAsync(IEventPublisher publisher, IEnumerable<string> names, bool suspended = true, CancellationToken cancellation = default)
+  property IReadOnlyList<string> SuspendedActions { get; }
+public sealed class BTDB.BackendActions.BackendActionsHost
+  ctor(BackendActions actions, EventPublisher publisher, ReplicationLeadership leadership, ReplicationLeaderChannel channel, BackendActionsOptions options)
+  method Task<ActionsOverview> GetOverviewAsync(CancellationToken cancellation = default)
+  method Task RunAsync(CancellationToken stopping)
+public sealed class BTDB.BackendActions.BackendActionsOptions
+  ctor()
+  property ulong ApplicationGeneration { get; set; }
+  property TimeSpan DelayedInterval { get; set; }
+  property string NodeId { get; set; }
+  property TimeSpan PlanInterval { get; set; }
+  property ActionPlannerOptions Planner { get; set; }
+  property TimeSpan PollTimeout { get; set; }
+  property TimeSpan RetryDelay { get; set; }
+  property bool RunWorker { get; set; }
+  property TimeSpan ScheduleInterval { get; set; }
+  property TimeProvider TimeProvider { get; set; }
+  property int WorkerCpu { get; set; }
+public class BTDB.BackendActions.BackendActionsState
+  ctor()
+  property Guid CoordinatorSession { get; set; }
+  property ulong Id { get; set; }
+  property ulong NextOrder { get; set; }
+  property List<string> Suspended { get; set; }
+public class BTDB.BackendActions.CoordinatorActivated : PureEvent
+  ctor()
+  property Guid Session { get; set; }
+public sealed class BTDB.BackendActions.DailyScheduledAttribute : ActionScheduleAttribute
+  ctor(int minuteOfDay)
+  override method DateTime LatestOccurrence(DateTime now)
+  property int MinuteOfDay { get; }
+public class BTDB.BackendActions.DelayedAction
+  ctor()
+  property ulong ActionId { get; set; }
+  property object? Input { get; set; }
+  property string Name { get; set; }
+  property ActionPriority Priority { get; set; }
+  property DateTime QueuedAt { get; set; }
+  property DateTime StartAt { get; set; }
+  property ulong TenantId { get; set; }
+public class BTDB.BackendActions.DelayedActionsDue : PureEvent
+  ctor()
+  property List<ActionKey> Actions { get; set; }
+public abstract class BTDB.BackendActions.GeneratedAction
+  property Func<object>? CreateHandler { get; }
+  property Type HandlerType { get; }
+  property Type InputType { get; }
+public sealed class BTDB.BackendActions.GeneratedAction<TInput, TResult> : GeneratedAction
+  ctor(Type handlerType, string? name, int cpu, int maxConcurrent, string? concurrencyGroup, bool singleRunningPerTenant, ActionScheduleAttribute? schedule, Func<TInput>? createInput, Func<object>? createHandler)
+public static class BTDB.BackendActions.GeneratedActions
+  static method void Add(GeneratedAction action)
+public interface BTDB.BackendActions.IActionContext
+  method void AdjustResources(int cpuDelta)
+  property ulong Attempt { get; }
+  method void CancelAfter(TimeSpan delay)
+  property CancellationToken Cancellation { get; }
+  property ActionCancellationReason CancellationReason { get; }
+  property QualifiedActionId Id { get; }
+  method Ambient.Scope StartQuery()
+  method Task SubmitPartialAsync(object result)
+public interface BTDB.BackendActions.IActionHandler<TInput, TResult>
+  method Task<TResult> ExecuteAsync(TInput input, IActionContext context)
+  method void OnFinished(TInput input, ActionOutcome<TResult> outcome)
+public interface BTDB.BackendActions.IActionInput
+  property ulong ActionId { get; set; }
+  property ulong TenantId { get; set; }
+public interface BTDB.BackendActions.IActionInputAggregator : IActionInput, IActionInputUnificator
+  method bool TryAggregate(IActionInputAggregator other)
+public interface BTDB.BackendActions.IActionInputIndexes : ICovariantRelation<ActionInputIndex>, IEnumerable, IEnumerable<ActionInputIndex>, IReadOnlyCollection<ActionInputIndex>, IRelation, IRelation<ActionInputIndex>
+  method ActionInputIndex? FindByIdOrDefault(ulong tenantId, string name, string uniqueKey)
+  method void Insert(ActionInputIndex item)
+  method bool RemoveById(ulong tenantId, string name, string uniqueKey)
+  method void Update(ActionInputIndex item)
+public interface BTDB.BackendActions.IActionInputUnificator : IActionInput
+  method string GetUniqueKey()
+public interface BTDB.BackendActions.IActionWithBeforeStart<TInput>
+  method void OnBeforeStart(TInput input)
+public interface BTDB.BackendActions.IBackendActionsStates : ICovariantRelation<BackendActionsState>, IEnumerable, IEnumerable<BackendActionsState>, IReadOnlyCollection<BackendActionsState>, IRelation, IRelation<BackendActionsState>
+  method BackendActionsState? FindByIdOrDefault(ulong id)
+  method void Insert(BackendActionsState item)
+  method void Update(BackendActionsState item)
+public interface BTDB.BackendActions.IDelayedActions : ICovariantRelation<DelayedAction>, IEnumerable, IEnumerable<DelayedAction>, IReadOnlyCollection<DelayedAction>, IRelation, IRelation<DelayedAction>
+  method IEnumerable<DelayedAction> FindById(ulong tenantId)
+  method DelayedAction? FindByIdOrDefault(ulong tenantId, ulong actionId)
+  method void Insert(DelayedAction item)
+  method IEnumerable<DelayedAction> ListByStartAt(AdvancedEnumeratorParam<DateTime> param)
+  method bool RemoveById(ulong tenantId, ulong actionId)
+  method void Update(DelayedAction item)
+public interface BTDB.BackendActions.IQueuedActions : ICovariantRelation<QueuedAction>, IEnumerable, IEnumerable<QueuedAction>, IReadOnlyCollection<QueuedAction>, IRelation, IRelation<QueuedAction>
+  method IEnumerable<QueuedAction> FindById(ulong tenantId)
+  method QueuedAction? FindByIdOrDefault(ulong tenantId, ulong actionId)
+  method void Insert(QueuedAction item)
+  method bool RemoveById(ulong tenantId, ulong actionId)
+  method void Update(QueuedAction item)
+public interface BTDB.BackendActions.IScheduledActionGate
+  method bool CanStartScheduled(DateTime now)
+public interface BTDB.BackendActions.IScheduledActionRuns : ICovariantRelation<ScheduledActionRun>, IEnumerable, IEnumerable<ScheduledActionRun>, IReadOnlyCollection<ScheduledActionRun>, IRelation, IRelation<ScheduledActionRun>
+  method ScheduledActionRun? FindByIdOrDefault(string name)
+public class BTDB.BackendActions.ImportedAction
+  ctor()
+  property ulong ActionId { get; set; }
+  property object? Input { get; set; }
+  property bool IsAggregable { get; set; }
+  property bool IsCancelled { get; set; }
+  property ulong Order { get; set; }
+  property ActionPriority Priority { get; set; }
+  property DateTime QueuedAt { get; set; }
+  property ulong RunAttempts { get; set; }
+  property DateTime? StartAt { get; set; }
+  property ulong TenantId { get; set; }
+public sealed class BTDB.BackendActions.MonthlyScheduledAttribute : ActionScheduleAttribute
+  ctor(int day, int minuteOfDay)
+  property int Day { get; }
+  override method DateTime LatestOccurrence(DateTime now)
+  property int MinuteOfDay { get; }
+public sealed class BTDB.BackendActions.PriorityOverview : IEquatable<PriorityOverview>
+  ctor(ActionPriority Priority, int Waiting, int Running, int Protected)
+  method void Deconstruct(out ActionPriority Priority, out int Waiting, out int Running, out int Protected)
+  method bool Equals(PriorityOverview? other)
+  override method bool Equals(object? obj)
+  override method int GetHashCode()
+  property ActionPriority Priority { get; init; }
+  property int Protected { get; init; }
+  property int Running { get; init; }
+  override method string ToString()
+  property int Waiting { get; init; }
+public readonly struct BTDB.BackendActions.QualifiedActionId : IEquatable<QualifiedActionId>
+  ctor(ulong TenantId, ulong ActionId)
+  property ulong ActionId { get; init; }
+  method void Deconstruct(out ulong TenantId, out ulong ActionId)
+  method bool Equals(QualifiedActionId other)
+  override method bool Equals(object obj)
+  override method int GetHashCode()
+  property ulong TenantId { get; init; }
+  override method string ToString()
+public class BTDB.BackendActions.QueuedAction
+  ctor()
+  property ulong ActionId { get; set; }
+  property object? Input { get; set; }
+  property bool IsAggregable { get; set; }
+  property bool IsCancelled { get; set; }
+  property bool IsStarted { get; set; }
+  property ulong LatestInputEventId { get; set; }
+  property string Name { get; set; }
+  property ulong Order { get; set; }
+  property ActionPriority Priority { get; set; }
+  property DateTime QueuedAt { get; set; }
+  property ulong RunAttempts { get; set; }
+  property ulong StartEventId { get; set; }
+  property ulong TenantId { get; set; }
+  property string WorkerNode { get; set; }
+  property Guid WorkerSession { get; set; }
+public sealed class BTDB.BackendActions.RepeatedlyScheduledAttribute : ActionScheduleAttribute
+  ctor(int minutes)
+  override method DateTime LatestOccurrence(DateTime now)
+  property int Minutes { get; }
+public class BTDB.BackendActions.ScheduledActionRun
+  ctor()
+  property DateTime LastRun { get; set; }
+  property string Name { get; set; }
+public class BTDB.BackendActions.ScheduledActionStarted : PureEvent
+  ctor()
+  property DateTime ExpectedLastRun { get; set; }
+  property string Name { get; set; }
+  property DateTime NewLastRun { get; set; }
+  property bool Start { get; set; }
+public class BTDB.BackendActions.StartedAction
+  ctor()
+  property ulong ActionId { get; set; }
+  property ulong Attempt { get; set; }
+  property ulong TenantId { get; set; }
+  property string WorkerNode { get; set; }
+  property Guid WorkerSession { get; set; }
+public sealed class BTDB.BackendActions.Testing.TestActionContext : IActionContext
+  ctor(QualifiedActionId id = default, ulong attempt = 1, EventPublisher? publisher = null, Type? resultType = null)
+  method void AdjustResources(int cpuDelta)
+  property ulong Attempt { get; }
+  method void Cancel(ActionCancellationReason reason = Cancelled)
+  method void CancelAfter(TimeSpan delay)
+  property CancellationToken Cancellation { get; }
+  property ActionCancellationReason CancellationReason { get; }
+  property int CpuDelta { get; }
+  property QualifiedActionId Id { get; }
+  property IReadOnlyList<object> Partials { get; }
+  method Ambient.Scope StartQuery()
+  method Task SubmitPartialAsync(object result)
+  property TimeSpan? Timeout { get; }
+public sealed class BTDB.BackendActions.WorkerOverview : IEquatable<WorkerOverview>
+  ctor(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready, TimeSpan SinceExchange, int Attempts)
+  property int Attempts { get; init; }
+  property int Capacity { get; init; }
+  method void Deconstruct(out Guid Session, out string NodeId, out ulong Generation, out int Capacity, out int Used, out bool Ready, out TimeSpan SinceExchange, out int Attempts)
+  method bool Equals(WorkerOverview? other)
+  override method bool Equals(object? obj)
+  property ulong Generation { get; init; }
+  override method int GetHashCode()
+  property string NodeId { get; init; }
+  property bool Ready { get; init; }
+  property Guid Session { get; init; }
+  property TimeSpan SinceExchange { get; init; }
+  override method string ToString()
+  property int Used { get; init; }

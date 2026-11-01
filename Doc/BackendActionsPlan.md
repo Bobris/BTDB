@@ -1,6 +1,9 @@
 # BTDB.BackendActions — implementation plan
 
-Status: proposal, revised 2026-10-31. Nothing is implemented yet.
+Status: milestones A0–A8 are implemented (revised 2026-11-01). Still open: qualification on live Azure, process runs
+with partitions, restarts on the same directory and upgrades (A6), the import rehearsal (A7), and the cluster tests
+of section 9 for a lost exchange response, a deposed leader's late `ActionsStarted` and a fault-injecting transport,
+and the import test of section 11 that restarts every node.
 
 Decided in review: a `ulong TenantId` scope, a single package, a recorded start for every action with no opt-out
 (section 5), partial results as the way to return results larger than one event, and migration by draining running
@@ -436,7 +439,8 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
   injecting transport.
 * **Process tests:** kill -9 the worker or the leader under load. Assert that every action finishes exactly once in
   `OnFinished`, and that no action is lost (the reference's failover verification scenario).
-* **Approval tests:** public API, event list and relation schemas (Assent), as in the reference.
+* **Approval tests:** public API, event list, relation schemas and the exchange JSON, as Verify baselines in
+  `BTDB.BackendActions.Test/ApprovalTest.*.verified.txt`. Done.
 * **Application test helpers:** `Testing.TestActionContext` runs `ExecuteAsync` without a cluster and records parts,
   adjustments and timeouts. `OnFinished` is a consume and is tested through an `EventPublisher`, so no handler base
   class is needed.

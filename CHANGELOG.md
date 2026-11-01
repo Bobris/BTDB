@@ -43,6 +43,9 @@
   The smoke also sends a payload of every supported field shape through events and ObjectDB, and runs relations
   with lazy collections, singletons and upgrades of stored objects, relations and events. It builds with warnings as
   errors, so generated code must compile cleanly.
+- BackendActions: Verify baselines of the public API, the events, the relation schemas and the JSON the workers and
+  the coordinator exchange, so a change to a stored or replicated format, or one that breaks a rolling upgrade,
+  shows in review.
 
 ### Fixed
 
