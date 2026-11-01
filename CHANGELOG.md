@@ -26,6 +26,8 @@
   snapshot, `BackendActionsHost.GetOverviewAsync` returns the coordinator's workers and queue, `SuspendAsync` stops
   starting chosen types, and meter `BTDB.BackendActions` counts attempts. `Testing.TestActionContext` helps unit test
   handlers. The package is released with the others from now on, as a preview; usage is in `Doc/BackendActions.md`.
+  `BTDB.BackendActions.Process.Test` qualifies it in separate node processes over Azurite with real replication,
+  EventLog and EventSourcing: killed workers and a killed leader leave every action finished exactly once.
 
 ### Fixed
 

@@ -7,7 +7,8 @@ each outcome back to the application on every replica. The design, its trade-off
 in [the implementation plan](BackendActionsPlan.md).
 
 The package depends only on `BTDB.Replication.EventSourcing`. It is not production-qualified: failover is tested in
-process, not yet with real replication processes.
+process and in separate node processes over Azurite
+([process qualification](../BTDB.BackendActions.Process.Test/README.md)), not yet on live Azure.
 
 ## Define an action
 
