@@ -115,18 +115,51 @@ public static class Ambient
         return new(context);
     }
 
-    public static ValueTask PublishEventAsync(PureEvent ev, CancellationToken cancellation = default) =>
-        QueryPublisher().PublishAsync(ev, cancellation);
+    // Like the publisher's entry points these are not async, so misuse and validation throw on the caller's stack.
 
+    /// <summary>Publishes with the query scope's publisher and returns after this node consumed the event; later reads
+    /// of the scope see it.</summary>
+    public static ValueTask PublishEventAsync(PureEvent ev, CancellationToken cancellation = default)
+    {
+        var context = QueryContext();
+        return RefreshAfter(context, context.Publisher.PublishAsync(ev, cancellation));
+    }
+
+    /// <summary>Publishes with the query scope's publisher and returns the consume's result; later reads of the scope
+    /// see the event.</summary>
     public static Task<TResult> PublishAndWaitEventAsync<TResult>(EventWithResult<TResult> ev,
-        CancellationToken cancellation = default) where TResult : class =>
-        QueryPublisher().PublishAndWaitAsync(ev, cancellation);
+        CancellationToken cancellation = default) where TResult : class
+    {
+        var context = QueryContext();
+        return RefreshAfter(context, context.Publisher.PublishAndWaitAsync(ev, cancellation));
+    }
 
-    static EventPublisher QueryPublisher()
+    static async ValueTask RefreshAfter(Context context, ValueTask publishing)
+    {
+        await publishing.ConfigureAwait(false);
+        Refresh(context);
+    }
+
+    static async Task<TResult> RefreshAfter<TResult>(Context context, Task<TResult> publishing)
+    {
+        var result = await publishing.ConfigureAwait(false);
+        Refresh(context);
+        return result;
+    }
+
+    static Context QueryContext()
     {
         var context = GetContext();
         if (!context.Query) throw new InvalidOperationException("Publishing during consumption would duplicate events on every node.");
-        return context.Publisher;
+        return context;
+    }
+
+    // The next read opens a snapshot that contains the consumed event.
+    static void Refresh(Context context)
+    {
+        if (!context.Active) return;
+        context.Transaction?.Dispose();
+        context.Transaction = null;
     }
 
     static Context GetContext() => Current.Value is { Active: true } context ? context

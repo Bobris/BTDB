@@ -42,8 +42,8 @@ public class ActionImportTest
     public async Task AnImportEventKeepsIdsOrderIndexesAndRaisesTheAllocator()
     {
         await using var node = await Node.StartAsync(_data, _metadata, _time);
-        await node.Actions.ImportAsync(node.Publisher, OldRows(),
-            new Dictionary<string, DateTime> { [typeof(HourlyOrder).FullName!] = Queued }, ["refresh"], [2]);
+        await node.Query(a => a.ImportAsync(OldRows(),
+            new Dictionary<string, DateTime> { [typeof(HourlyOrder).FullName!] = Queued }, ["refresh"], [2]));
         AssertImported(node);
         var hourly = node.Read<IScheduledActionRuns, ScheduledActionRun>().Single();
         Assert.Equal((typeof(HourlyOrder).FullName, Queued), (hourly.Name, hourly.LastRun));
@@ -54,10 +54,10 @@ public class ActionImportTest
         }
 
         // New actions get IDs above every imported one, merge into imported keys and queue after them.
-        var fresh = await node.Actions.EnqueueAsync(node.Publisher, new ProcessOrder { TenantId = 1 });
+        var fresh = await node.Query(a => a.EnqueueAsync(new ProcessOrder { TenantId = 1 }));
         Assert.Equal(new QualifiedActionId(1, 951), fresh);
         Assert.Equal(new QualifiedActionId(2, 420),
-            await node.Actions.EnqueueAsync(node.Publisher, new CollectItems { TenantId = 2, Key = "c", Items = [3] }));
+            await node.Query(a => a.EnqueueAsync(new CollectItems { TenantId = 2, Key = "c", Items = [3] })));
         Assert.Equal(5ul, node.Queued.Single(q => q.ActionId == 951).Order);
     }
 
@@ -74,10 +74,9 @@ public class ActionImportTest
     public async Task ImportingAnExistingIdFailsTheWholeEvent()
     {
         await using var node = await Node.StartAsync(_data, _metadata, _time);
-        await node.Actions.ImportAsync(node.Publisher, OldRows());
+        await node.Query(a => a.ImportAsync(OldRows()));
         var queued = node.Queued.Length;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Actions.ImportAsync(node.Publisher,
-            [new() { TenantId = 7, ActionId = 1, Input = new ProcessOrder() }, OldRows()[0]]));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Query(a => a.ImportAsync([new() { TenantId = 7, ActionId = 1, Input = new ProcessOrder() }, OldRows()[0]])));
         Assert.Equal(queued, node.Queued.Length);
         Assert.DoesNotContain(node.Queued, q => q.TenantId == 7);
     }
@@ -90,11 +89,11 @@ public class ActionImportTest
         {
             if (kind == ActionOutcomeKind.Cancelled) node.Actions.Enqueue(new ProcessOrder { Amount = 7 });
         };
-        await node.Actions.ImportAsync(node.Publisher, [
+        await node.Query(a => a.ImportAsync([
             new() { ActionId = 5, Order = 1, Input = new ProcessOrder(), IsCancelled = true },
             new() { ActionId = 1, Order = 2, Input = new ProcessOrder { Amount = 1 } },
             new() { ActionId = 6, Order = 3, Input = new ProcessOrder { Amount = 6 } }
-        ]);
+        ]));
         Assert.Equal([(1ul, 1), (6ul, 6), (7ul, 7)],
             node.Queued.Select(q => (q.ActionId, ((ProcessOrder)q.Input!).Amount)).OrderBy(q => q.ActionId));
     }
@@ -105,9 +104,9 @@ public class ActionImportTest
         await using var first = await Node.StartAsync(_data, _metadata, _time, batch: 1);
         var genesis = first.CopyFiles();
         await using var second = await Node.StartAsync(_data, _metadata, _time, 64, first.CopyFiles());
-        await first.Actions.ImportAsync(first.Publisher, OldRows()[..3]);
+        await first.Query(a => a.ImportAsync(OldRows()[..3]));
         await second.Publisher.PublishAsync(new PlaceOrder { Input = new ProcessOrder { Amount = 1 } });
-        await first.Actions.ImportAsync(first.Publisher, OldRows()[3..]);
+        await first.Query(a => a.ImportAsync(OldRows()[3..]));
         var end = first.Publisher.LastAppliedEventId;
         using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
             while (second.Publisher.LastAppliedEventId != end) await Task.Delay(1, timeout.Token);

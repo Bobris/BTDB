@@ -234,8 +234,9 @@ internal sealed class ActionsNode(string nodeId, string endpoint, BlobContainerC
     {
         var publisher = Publisher ?? throw new IOException("The application is not running.");
         var ids = new List<QualifiedActionId>();
-        for (var i = 0; i < count; i++)
-            ids.Add(await _actions.EnqueueAsync(publisher, new SleepAction { Milliseconds = milliseconds }));
+        using (publisher.StartQuery())
+            for (var i = 0; i < count; i++)
+                ids.Add(await _actions.EnqueueAsync(new SleepAction { Milliseconds = milliseconds }));
         return ids;
     }
 

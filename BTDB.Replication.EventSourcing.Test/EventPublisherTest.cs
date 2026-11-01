@@ -266,6 +266,20 @@ public class EventPublisherTest
     }
 
     [Fact]
+    public async Task AQueryScopeReadsWhatItPublished()
+    {
+        using var db = await TestDatabase.OpenAsync();
+        await using var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), new Handler());
+        await publisher.StartAsync();
+        using (publisher.StartQuery())
+        {
+            Assert.Empty(Ambient.Relation<IEntries>());
+            await Ambient.PublishEventAsync(new AddPure { Amount = 1 });
+            Assert.Single(Ambient.Relation<IEntries>());
+        }
+    }
+
+    [Fact]
     public async Task AmbientQueriesStayIsolatedAndConsumptionCannotPublish()
     {
         using var a = await TestDatabase.OpenAsync();

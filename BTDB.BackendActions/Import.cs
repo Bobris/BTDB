@@ -35,21 +35,23 @@ public class ActionsImported : PureEvent
 
 public sealed partial class BackendActions
 {
-    /// <summary>Publishes one <see cref="ActionsImported"/>. Publish batches in ascending old order, below the
-    /// publisher's MaximumEventSize, before any coordinator starts.</summary>
-    public async Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions,
+    /// <summary>Imports one batch: inside a query scope by publishing <see cref="ActionsImported"/> with the scope's
+    /// publisher, inside a consume in its transaction. Import batches in ascending old order, below the publisher's
+    /// MaximumEventSize, before any coordinator starts.</summary>
+    public async Task ImportAsync(IReadOnlyList<ImportedAction> actions,
         IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null,
         IReadOnlyList<ulong>? suspendedTenants = null, CancellationToken cancellation = default)
     {
-        ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(actions);
-        await publisher.PublishAsync(new ActionsImported
+        var ev = new ActionsImported
         {
             Actions = actions.ToList(),
             ScheduledRuns = scheduledRuns?.ToDictionary(r => r.Key, r => r.Value, StringComparer.Ordinal) ?? new(),
             Suspended = suspended?.ToList() ?? new(),
             SuspendedTenants = suspendedTenants?.ToList() ?? new()
-        }, cancellation).ConfigureAwait(false);
+        };
+        if (!Ambient.IsQuery) Import(ev);
+        else await Ambient.PublishEventAsync(ev, cancellation).ConfigureAwait(false);
     }
 
     /// <summary>Imports actions in the current consume, keeping their IDs. They queue in their old relative order,
@@ -97,7 +99,7 @@ public sealed partial class BackendActions
                 Order = queued.AllocateId(), Input = input, IsAggregable = aggregable, RunAttempts = action.RunAttempts,
                 LatestInputEventId = ev.EventId, QueuedAt = action.QueuedAt
             });
-            if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { Length: > 0 } key &&
+            if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { } key &&
                 (input is not IActionInputAggregator || aggregable))
                 indexes.Upsert(new() { TenantId = action.TenantId, Name = type.Name, UniqueKey = key, ActionId = action.ActionId });
             Changed(new(action.TenantId, action.ActionId));

@@ -29,13 +29,14 @@ public abstract class ActionInput<TResult> : IActionInput where TResult : class
     public ulong ActionId { get; set; }
 }
 
-/// <summary>An enqueued input with the same type, tenant and nonempty key as a queued action that has not started
-/// yet merges into it instead of creating another action.</summary>
+/// <summary>An enqueued input with the same type, tenant and key as a queued action that has not started yet merges
+/// into it instead of creating another action.</summary>
 public interface IActionInputUnificator : IActionInput
 {
-    /// <summary>The key, compared byte by byte; empty means the input never merges. Compose a key of several values
-    /// by writing them into one array, for example with <c>BinaryPrimitives</c> or <c>MemWriter</c>.</summary>
-    byte[] GetUniqueKey();
+    /// <summary>The key, compared byte by byte; null means the input never merges, and an empty key merges with other
+    /// empty keys. Compose a key of several values by writing them into one array, for example with
+    /// <c>BinaryPrimitives</c> or <c>MemWriter</c>.</summary>
+    byte[]? GetUniqueKey();
 }
 
 /// <summary>A unificator whose queued input absorbs the new one. When <see cref="TryAggregate"/> returns false, the

@@ -149,11 +149,16 @@ var id = actions.Enqueue(new GenerateReport { ReportId = 7 },
     new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
 actions.Cancel(id);
 
-// From a query, API endpoint or scheduler: publishes ActionEnqueued / ActionCancelRequested.
-var id2 = await actions.EnqueueAsync(publisher, new GenerateReport { ReportId = 8 }, cancellation: cancellation);
+// From a query scope, for example in an API endpoint or scheduler: publishes ActionEnqueued / ActionCancelRequested
+// with the scope's publisher.
+using (publisher.StartQuery())
+{
+    var id2 = await actions.EnqueueAsync(new GenerateReport { ReportId = 8 }, cancellation: cancellation);
+}
 ```
 
-`EnqueueAsync` and `CancelAsync` use `PublishAndWaitAsync`, so the returned ID is the one the consume assigned.
+`EnqueueAsync` and `CancelAsync` use `Ambient.PublishAndWaitEventAsync`, so the returned ID is the one the consume
+assigned. Called inside a consume, they apply in its transaction instead.
 An input that unifies or aggregates returns the ID of the action it merged into.
 
 ### Partial results, progress and large results
@@ -437,8 +442,8 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
 * **Metrics** (meter `BTDB.BackendActions`, one per host, no node or action labels): attempts started and finished
   (by `kind`), start delay and attempt duration, failed exchanges; the gauges waiting, running and workers come only
   from the node whose coordinator runs.
-* **Suspension:** `SuspendAsync(publisher, names, suspended)` and `SuspendTenantsAsync(publisher, tenantIds,
-  suspended)` publish `ActionsSuspended`; `SuspendTenants` does it inside a consume. Suspended types and the actions of
+* **Suspension:** in a query scope, `SuspendAsync(names, suspended)` and `SuspendTenantsAsync(tenantIds, suspended)`
+  publish `ActionsSuspended`; inside a consume they, `Suspend` and `SuspendTenants` apply in its transaction. Suspended types and the actions of
   suspended tenants start no new attempts; running ones go on and inputs keep queueing. The planner skips a suspended
   tenant as a whole in its fairness loop.
 * **Dropped:** capacity shares as an admin event (they stay leader configuration in `ActionPlannerOptions`, like the
@@ -506,8 +511,8 @@ action tables.
 
 Implemented in A7; the runbook is in [BackendActions.md](BackendActions.md#migrating-from-another-action-system).
 
-`BackendActions.Import(IEnumerable<ImportedAction>)` can be called from any consume; `ImportAsync(publisher, ...)`
-publishes the event. The `ActionsImported` event uses
+`BackendActions.Import(IEnumerable<ImportedAction>)` can be called from any consume; `ImportAsync(...)` in a query
+scope publishes the event. The `ActionsImported` event uses
 the same code, so an application can choose either way in:
 
 * **The old tables are in the same ObjectDB:** publish one application-defined migration event. Its consume reads the

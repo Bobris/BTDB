@@ -157,6 +157,17 @@ internal sealed class Node : IAsyncDisposable
         return result.ToArray();
     }
 
+    /// <summary>Calls an async API in a query scope, as code outside a consume does.</summary>
+    internal async Task<T> Query<T>(Func<BackendActions, Task<T>> call)
+    {
+        using (Publisher.StartQuery()) return await call(Actions);
+    }
+
+    internal async Task Query(Func<BackendActions, Task> call)
+    {
+        using (Publisher.StartQuery()) await call(Actions);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await Publisher.DisposeAsync();
@@ -176,6 +187,9 @@ public class PlaceOrder : PureEvent
     /// <summary>Imports <see cref="ActionImportTest.OldRows"/>, as an application reading its old tables would.</summary>
     public bool Migrate { get; set; }
     public List<ulong> SuspendTenants { get; set; } = new();
+    public List<string> SuspendTypes { get; set; } = new();
+    /// <summary>Enqueues and cancels through the async APIs, which apply in the consume too.</summary>
+    public bool UseAsync { get; set; }
 }
 
 /// <summary>A part an export submits before its final result.</summary>
@@ -198,11 +212,19 @@ internal sealed class AppHandler(Node node) : IEventHandler<PlaceOrder>, IEventH
     public void Consume(PlaceOrder ev)
     {
         if (ev.Input is IActionInput input)
-            node.Recorder.Enqueued.Enqueue(node.Actions.Enqueue(input,
-                new() { Priority = ev.Priority, StartAt = ev.StartAt }));
+        {
+            var options = new ActionEnqueueOptions { Priority = ev.Priority, StartAt = ev.StartAt };
+            node.Recorder.Enqueued.Enqueue(ev.UseAsync ? node.Actions.EnqueueAsync(input, options).GetAwaiter().GetResult()
+                : node.Actions.Enqueue(input, options));
+        }
         if (ev.CancelActionId != 0)
-            node.Recorder.Cancelled.Enqueue(node.Actions.Cancel(new(ev.CancelTenantId, ev.CancelActionId)));
+        {
+            var id = new QualifiedActionId(ev.CancelTenantId, ev.CancelActionId);
+            node.Recorder.Cancelled.Enqueue(ev.UseAsync ? node.Actions.CancelAsync(id).GetAwaiter().GetResult()
+                : node.Actions.Cancel(id));
+        }
         if (ev.SuspendTenants.Count != 0) node.Actions.SuspendTenants(ev.SuspendTenants);
+        if (ev.SuspendTypes.Count != 0) node.Actions.Suspend(ev.SuspendTypes);
         if (ev.Migrate)
         {
             node.Actions.Import(ActionImportTest.OldRows());
@@ -227,14 +249,14 @@ public class ProcessOrder : ActionInput<OrderResult>
 public class RefreshCache : ActionInput<OrderResult>, IActionInputUnificator
 {
     public string Key { get; set; } = "";
-    public byte[] GetUniqueKey() => Encoding.UTF8.GetBytes(Key);
+    public byte[]? GetUniqueKey() => Key == "-" ? null : Encoding.UTF8.GetBytes(Key);
 }
 
 public class CollectItems : ActionInput<OrderResult>, IActionInputAggregator
 {
     public string Key { get; set; } = "";
     public List<int> Items { get; set; } = new();
-    public byte[] GetUniqueKey() => Encoding.UTF8.GetBytes(Key);
+    public byte[]? GetUniqueKey() => Key == "-" ? null : Encoding.UTF8.GetBytes(Key);
 
     public bool TryAggregate(IActionInputAggregator other)
     {

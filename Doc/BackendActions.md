@@ -55,9 +55,9 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   unlimited) for the type or its `ConcurrencyGroup`, `SingleRunningPerTenant`, and `Name`, by default the input type's
   full name. Rows store the name, so set it before renaming an input type. After a leader change, attempts that may
   still run count toward both limits until their worker reports them or their lease passes.
-* `IActionInputUnificator.GetUniqueKey()` returns a `byte[]` key; empty means the input never merges. An input with
-  the key of a queued action that has not started merges into it. Compose a key of several values by writing them into
-  one array, for example with `BinaryPrimitives`. `IActionInputAggregator.TryAggregate(other)` merges the new input's
+* `IActionInputUnificator.GetUniqueKey()` returns a `byte[]?` key; null means the input never merges, and an empty
+  key merges with other empty keys. An input with the key of a queued action that has not started merges into it.
+  Compose a key of several values by writing them into one array, for example with `BinaryPrimitives`. `IActionInputAggregator.TryAggregate(other)` merges the new input's
   content; when it returns false, the queued action stops aggregating and the new input starts another action. Once
   an action starts, a new input with its key creates a new action, so a request never receives a result computed
   before it was made.
@@ -109,10 +109,18 @@ var id = actions.Enqueue(new GenerateReport { ReportId = 7 },
     new ActionEnqueueOptions { Priority = ActionPriority.Low, StartAt = ev.When.AddHours(1) });
 actions.Cancel(id);
 
-// Elsewhere, for example in an API endpoint: publishes an event and waits for it to be applied.
-var other = await actions.EnqueueAsync(publisher, new GenerateReport { ReportId = 8 });
-var found = await actions.CancelAsync(publisher, other);
+// Elsewhere, for example in an API endpoint: inside a query scope, publishes an event with the scope's publisher
+// and waits for it to be applied; later reads of the scope see it.
+using (publisher.StartQuery())
+{
+    var other = await actions.EnqueueAsync(new GenerateReport { ReportId = 8 });
+    var found = await actions.CancelAsync(other);
+}
 ```
+
+The async methods (`EnqueueAsync`, `CancelAsync`, `SuspendAsync`, `SuspendTenantsAsync`, `ImportAsync`) take no
+publisher: inside a query scope they publish with the scope's publisher, inside a consume they apply in its
+transaction like their synchronous counterparts, and with no ambient scope they throw.
 
 `QualifiedActionId(TenantId, ActionId)` identifies an action. An input that merges returns the ID of the action it
 merged into and allocates no ID of its own. Priorities are `RealTime`, `Normal`, `Low` and `Idle`. A start time later than the enqueuing event's
@@ -172,13 +180,16 @@ using (publisher.StartQuery())
     var paused = actions.IsTenantSuspended(tenantId); // or actions.SuspendedTenants
 }
 var overview = await host.GetOverviewAsync(stopping); // from the leader: workers, waiting and running per priority
-await actions.SuspendAsync(publisher, [name]);         // start no new attempts of these types
-await actions.SuspendTenantsAsync(publisher, [tenantId]); // nor of these tenants' actions
+using (publisher.StartQuery())
+{
+    await actions.SuspendAsync([name]);            // start no new attempts of these types
+    await actions.SuspendTenantsAsync([tenantId]); // nor of these tenants' actions
+}
 ```
 
 Suspension stops new attempts only: running attempts go on, and inputs keep queueing, merging and becoming due.
 Resume with `suspended: false`. Inside a consume, for example of an application event that deactivates a tenant,
-`actions.SuspendTenants([tenantId])` suspends in that event's transaction. Tenant 0 holds the actions without a
+`actions.SuspendTenants([tenantId])` or `actions.Suspend([name])` suspends in that event's transaction. Tenant 0 holds the actions without a
 tenant, scheduled ones included. Suspended tenants are few by design: they are stored in one row.
 
 Meter `BTDB.BackendActions` counts each worker's started and finished attempts (`btdb.backend_actions.attempts.*`,
@@ -197,9 +208,9 @@ any new coordinator starts:
    * The old tables are in the application's ObjectDB: publish one application event whose consume reads them and
      calls `actions.Import(rows)`, `actions.ImportScheduledRuns(lastRuns)` and, for suspended tenants,
      `actions.SuspendTenants(ids)`. Every replica imports the same rows.
-   * The old tables are elsewhere: an export tool calls `actions.ImportAsync(publisher, rows, lastRuns, suspended,
-     suspendedTenants)`,
-     in batches below the publisher's `MaximumEventSize`, in ascending old order.
+   * The old tables are elsewhere: an export tool calls `actions.ImportAsync(rows, lastRuns, suspended,
+     suspendedTenants)` in a query scope, in batches below the publisher's `MaximumEventSize`, in ascending old
+     order.
 4. Verify queued and delayed counts per action name and tenant and the scheduled last runs (`ListActions`), then start
    the cluster, so the coordinator loads the imported rows. Keep the old tables until the validation window ends.
 

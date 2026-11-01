@@ -138,7 +138,8 @@ cache or a process-local counter.
 `publisher.StartQuery()` or `Ambient.StartQuery(publisher)` creates an async-flow query scope. `Ambient.Relation<T>`
 lazily opens a read-only snapshot; nested query scopes for the same publisher reuse it. `TemporaryCloseTransaction`
 releases that snapshot so a later query in the same scope sees newly visible commits. `Ambient.PublishEventAsync`
-and `PublishAndWaitEventAsync` forward to that scope's publisher. Different publishers and their databases remain
+and `PublishAndWaitEventAsync` forward to that scope's publisher and, once this node consumed the event, release the
+scope's snapshot, so later reads in the scope see it. Different publishers and their databases remain
 isolated even in one process.
 
 During consumption the wrapper installs the event's writer, `CurrentEvent`, `EventId`, `IsQuery = false` and

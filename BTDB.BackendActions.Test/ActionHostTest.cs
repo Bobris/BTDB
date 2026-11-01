@@ -43,7 +43,7 @@ public class ActionHostTest : IAsyncLifetime
 
     Task<QualifiedActionId> Enqueue(IActionInput input, DateTime? startAt = null,
         ActionPriority priority = ActionPriority.Normal) =>
-        _node.Actions.EnqueueAsync(_node.Publisher, input, new() { StartAt = startAt, Priority = priority });
+        _node.Query(a => a.EnqueueAsync(input, new() { StartAt = startAt, Priority = priority }));
 
     static async Task UntilAsync(Func<bool> predicate)
     {
@@ -71,7 +71,7 @@ public class ActionHostTest : IAsyncLifetime
         var first = await Enqueue(new SlowOrder { Mode = "wait" });
         var second = await Enqueue(new SlowOrder { Mode = "wait" });
         await UntilAsync(() => _node.Recorder.Running == 1);
-        Assert.True(await _node.Actions.CancelAsync(_node.Publisher, first));
+        Assert.True(await _node.Query(a => a.CancelAsync(first)));
         await UntilAsync(() => Outcomes.Length == 1 && _node.Recorder.Started.Count == 2);
         Assert.Equal((first, ActionOutcomeKind.Cancelled), (Outcomes[0].Id, Outcomes[0].Kind));
         _node.Recorder.Release.SetResult();
@@ -188,13 +188,13 @@ public class ActionHostTest : IAsyncLifetime
     {
         StartHost();
         var name = typeof(ProcessOrder).FullName!;
-        await _node.Actions.SuspendAsync(_node.Publisher, [name]);
+        await _node.Query(a => a.SuspendAsync([name]));
         await Enqueue(new ProcessOrder { Amount = 1 });
         await Enqueue(new RefreshCache { Key = "other types run" });
         await UntilAsync(() => Outcomes.Length == 1);
         await Task.Delay(200);
         Assert.Equal("RefreshCache", Assert.Single(Outcomes).Name);
-        await _node.Actions.SuspendAsync(_node.Publisher, [name], suspended: false);
+        await _node.Query(a => a.SuspendAsync([name], suspended: false));
         await UntilAsync(() => Outcomes.Length == 2);
     }
 
@@ -202,14 +202,14 @@ public class ActionHostTest : IAsyncLifetime
     public async Task SuspendedTenantsStartNothingNewUntilResumed()
     {
         StartHost();
-        await _node.Actions.SuspendTenantsAsync(_node.Publisher, [5]);
+        await _node.Query(a => a.SuspendTenantsAsync([5]));
         await Enqueue(new ProcessOrder { TenantId = 5, Amount = 1 });
         await Enqueue(new ProcessOrder { TenantId = 6, Amount = 2 });
         await UntilAsync(() => Outcomes.Length == 1);
         await Task.Delay(200);
         Assert.Equal(6ul, Assert.Single(Outcomes).Id.TenantId);
         Assert.Equal([5ul], (await _host!.GetOverviewAsync()).SuspendedTenants);
-        await _node.Actions.SuspendTenantsAsync(_node.Publisher, [5], suspended: false);
+        await _node.Query(a => a.SuspendTenantsAsync([5], suspended: false));
         await UntilAsync(() => Outcomes.Length == 2);
     }
 
@@ -268,7 +268,7 @@ public class ActionHostTest : IAsyncLifetime
     [Fact]
     public async Task ImportedActionsRunOnceWithTheirNextAttempt()
     {
-        await _node.Actions.ImportAsync(_node.Publisher, ActionImportTest.OldRows());
+        await _node.Query(a => a.ImportAsync(ActionImportTest.OldRows()));
         StartHost();
         await UntilAsync(() => Outcomes.Length == 5); // the cancelled one at import, then the four queued
         Assert.Equal([(500ul, ActionOutcomeKind.Completed, 3ul)],

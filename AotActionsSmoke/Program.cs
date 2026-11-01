@@ -79,7 +79,7 @@ public class FailingHandler : IActionHandler<Failing, Number>
 public class Sum : ActionInput<Number>, IActionInputAggregator
 {
     public List<long> Values { get; set; } = new();
-    public byte[] GetUniqueKey() => "sum"u8.ToArray();
+    public byte[]? GetUniqueKey() => "sum"u8.ToArray();
 
     public bool TryAggregate(IActionInputAggregator other)
     {
@@ -153,12 +153,13 @@ static class Program
         await publisher.StartAsync(stopping.Token);
 
         // Cutover first: an action of the old system that ran twice before.
-        await actions.ImportAsync(publisher, [
-            new ImportedAction
-            {
-                ActionId = 1000, Input = new Square { Value = 9 }, Order = 1, QueuedAt = DateTime.UtcNow, RunAttempts = 2
-            }
-        ], cancellation: stopping.Token);
+        using (publisher.StartQuery())
+            await actions.ImportAsync([
+                new ImportedAction
+                {
+                    ActionId = 1000, Input = new Square { Value = 9 }, Order = 1, QueuedAt = DateTime.UtcNow, RunAttempts = 2
+                }
+            ], cancellation: stopping.Token);
 
         var host = new BackendActionsHost(actions, publisher, new LoopbackCluster(), new BackendActionsOptions
         {
@@ -169,17 +170,20 @@ static class Program
 
         try
         {
-            var square = await actions.EnqueueAsync(publisher, new Square { Value = 3 }, cancellation: stopping.Token);
-            Check("new IDs follow the imported ones", true, square.ActionId > 1000);
-            await actions.EnqueueAsync(publisher, new Chunked { Parts = 2 }, cancellation: stopping.Token);
-            await actions.EnqueueAsync(publisher, new Failing(), cancellation: stopping.Token);
-            await actions.EnqueueAsync(publisher, new Echo { Payload = Shapes.Sample() }, cancellation: stopping.Token);
-            await publisher.PublishAsync(new AddToSum { Values = [1, 2, 3] }, stopping.Token);
-            var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
-            var byHand = await actions.EnqueueAsync(publisher, new ByHand(), later, stopping.Token);
+            QualifiedActionId square;
             using (publisher.StartQuery())
+            {
+                square = await actions.EnqueueAsync(new Square { Value = 3 }, cancellation: stopping.Token);
+                Check("new IDs follow the imported ones", true, square.ActionId > 1000);
+                await actions.EnqueueAsync(new Chunked { Parts = 2 }, cancellation: stopping.Token);
+                await actions.EnqueueAsync(new Failing(), cancellation: stopping.Token);
+                await actions.EnqueueAsync(new Echo { Payload = Shapes.Sample() }, cancellation: stopping.Token);
+                await Ambient.PublishEventAsync(new AddToSum { Values = [1, 2, 3] }, stopping.Token);
+                var later = new ActionEnqueueOptions { StartAt = DateTime.UtcNow.AddDays(1) };
+                var byHand = await actions.EnqueueAsync(new ByHand(), later, stopping.Token);
                 Check("hand registration reads the attributes", "smoke-by-hand", actions.FindAction(byHand)?.Name);
-            Check("a delayed action cancels", true, await actions.CancelAsync(publisher, byHand, stopping.Token));
+                Check("a delayed action cancels", true, await actions.CancelAsync(byHand, stopping.Token));
+            }
 
             string[] expected =
             [

@@ -49,12 +49,12 @@
 - BackendActions: `QueuedAction.Order` comes from the `IQueuedActions` relation counter (`AllocateId`), starting at 1,
   instead of `BackendActionsState.NextOrder`, which is removed. Enqueue and import no longer read and rewrite the
   state row for every action.
-- BackendActions: unification keys are bytes. `IActionInputUnificator.GetUniqueKey()` returns `byte[]`, and
+- BackendActions: unification keys are bytes. `IActionInputUnificator.GetUniqueKey()` returns `byte[]?`, and
   `ActionInputIndex.UniqueKey` and `FindByUniqueKey` take it, so keys composed of several values need no string
-  formatting.
+  formatting. Null means the input never merges; an empty key merges with other empty keys.
 - BackendActions: `QueuedAction` stores its aggregable, cancelled and started states in one `QueuedActionFlags` byte;
   `IsAggregable`, `IsCancelled` and `IsStarted` remain as unstored views of it.
-- BackendActions: whole tenants can be suspended. `SuspendTenantsAsync(publisher, tenantIds, suspended)`, or
+- BackendActions: whole tenants can be suspended. `SuspendTenantsAsync(tenantIds, suspended)`, or
   `SuspendTenants` inside a consume, stops new attempts of the tenants' actions while running ones go on and inputs
   keep queueing. `SuspendedTenants` and `IsTenantSuspended` read them on any node, the leader overview lists them, and
   `ImportAsync` carries them over. They are stored next to the suspended types in the state row, and
@@ -130,6 +130,11 @@
   waits for its local consume; the application's event handler consumes the part. It replaces partial results carried
   in `ActionFinished`: `ActionOutcomeKind.Partial` is removed, `OnFinished` sees final outcomes only, and
   `TestActionContext` records the submitted events and no longer takes a result type.
+- BackendActions: `EnqueueAsync`, `CancelAsync`, `SuspendAsync`, `SuspendTenantsAsync` and `ImportAsync` take no
+  publisher. In a query scope they publish with the scope's publisher; inside a consume they apply in its transaction.
+  `Suspend(names)` suspends action types inside a consume, as `SuspendTenants` does tenants.
+- EventSourcing: after `Ambient.PublishEventAsync` or `PublishAndWaitEventAsync` returns, later reads of the query
+  scope open a new snapshot that contains the consumed event, instead of the snapshot opened before publishing.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and
   never lowers it; `BackendActions.Import` uses it instead of writing the allocator's slot itself.
 

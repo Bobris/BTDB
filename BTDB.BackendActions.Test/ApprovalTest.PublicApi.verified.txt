@@ -144,14 +144,14 @@ public class BTDB.BackendActions.BackendActionException : Exception, ISerializab
 public sealed class BTDB.BackendActions.BackendActions
   ctor()
   method bool Cancel(QualifiedActionId id)
-  method Task<bool> CancelAsync(IEventPublisher publisher, QualifiedActionId id, CancellationToken cancellation = default)
+  method Task<bool> CancelAsync(QualifiedActionId id, CancellationToken cancellation = default)
   method QualifiedActionId Enqueue(IActionInput input, ActionEnqueueOptions? options = null)
-  method Task<QualifiedActionId> EnqueueAsync(IEventPublisher publisher, IActionInput input, ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
+  method Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
   method ActionInfo? FindAction(QualifiedActionId id)
   method QualifiedActionId? FindByUniqueKey(ulong tenantId, string name, byte[] uniqueKey)
   method bool HasStartedActions(ulong tenantId)
   method void Import(IEnumerable<ImportedAction> actions)
-  method Task ImportAsync(IEventPublisher publisher, IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, IReadOnlyList<ulong>? suspendedTenants = null, CancellationToken cancellation = default)
+  method Task ImportAsync(IReadOnlyList<ImportedAction> actions, IReadOnlyDictionary<string, DateTime>? scheduledRuns = null, IReadOnlyList<string>? suspended = null, IReadOnlyList<ulong>? suspendedTenants = null, CancellationToken cancellation = default)
   method void ImportScheduledRuns(IReadOnlyDictionary<string, DateTime> runs)
   method bool IsTenantSuspended(ulong tenantId)
   method IEnumerable<ActionInfo> ListActions(ulong? tenantId = null)
@@ -161,9 +161,10 @@ public sealed class BTDB.BackendActions.BackendActions
   method BackendActions RegisterGenerated(Func<Type, object>? handlers = null, Func<Type, bool>? include = null)
   method void RegisterTypes(IObjectDB database)
   static property IReadOnlyList<Type> RelationTypes { get; }
-  method Task SuspendAsync(IEventPublisher publisher, IEnumerable<string> names, bool suspended = true, CancellationToken cancellation = default)
+  method void Suspend(IEnumerable<string> names, bool suspended = true)
+  method Task SuspendAsync(IEnumerable<string> names, bool suspended = true, CancellationToken cancellation = default)
   method void SuspendTenants(IEnumerable<ulong> tenantIds, bool suspended = true)
-  method Task SuspendTenantsAsync(IEventPublisher publisher, IEnumerable<ulong> tenantIds, bool suspended = true, CancellationToken cancellation = default)
+  method Task SuspendTenantsAsync(IEnumerable<ulong> tenantIds, bool suspended = true, CancellationToken cancellation = default)
   property IReadOnlyList<string> SuspendedActions { get; }
   property IReadOnlyList<ulong> SuspendedTenants { get; }
 public sealed class BTDB.BackendActions.BackendActionsHost
@@ -239,7 +240,7 @@ public interface BTDB.BackendActions.IActionInputIndexes : ICovariantRelation<Ac
   method bool RemoveById(ulong tenantId, string name, byte[] uniqueKey)
   method void Update(ActionInputIndex item)
 public interface BTDB.BackendActions.IActionInputUnificator : IActionInput
-  method byte[] GetUniqueKey()
+  method byte[]? GetUniqueKey()
 public interface BTDB.BackendActions.IActionWithBeforeStart<TInput>
   method void OnBeforeStart(TInput input)
 public interface BTDB.BackendActions.IBackendActionsStates : ICovariantRelation<BackendActionsState>, IEnumerable, IEnumerable<BackendActionsState>, IReadOnlyCollection<BackendActionsState>, IRelation, IRelation<BackendActionsState>

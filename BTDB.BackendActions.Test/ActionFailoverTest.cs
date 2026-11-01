@@ -49,7 +49,7 @@ public class ActionFailoverTest : IAsyncLifetime
         return stop;
     }
 
-    Task<QualifiedActionId> Enqueue(IActionInput input) => _nodes["a"].Actions.EnqueueAsync(_nodes["a"].Publisher, input);
+    Task<QualifiedActionId> Enqueue(IActionInput input) => _nodes["a"].Query(a => a.EnqueueAsync(input));
 
     static async Task UntilAsync(Func<bool> predicate)
     {

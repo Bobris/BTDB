@@ -126,26 +126,29 @@ public sealed partial class BackendActions
 
     internal ActionType? TypeOf(string name) => _byName.GetValueOrDefault(name);
 
-    /// <summary>Publishes <see cref="ActionEnqueued"/> from outside a consume and returns the action it queued into.</summary>
-    public async Task<QualifiedActionId> EnqueueAsync(IEventPublisher publisher, IActionInput input,
-        ActionEnqueueOptions? options = null, CancellationToken cancellation = default)
+    /// <summary>Enqueues as <see cref="Enqueue"/> does and returns the action it queued into. Inside a query scope it
+    /// publishes <see cref="ActionEnqueued"/> with the scope's publisher and waits for its consume; inside a consume it
+    /// queues in the consume's transaction.</summary>
+    public async Task<QualifiedActionId> EnqueueAsync(IActionInput input, ActionEnqueueOptions? options = null,
+        CancellationToken cancellation = default)
     {
-        ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(input);
         options ??= new();
-        var result = await publisher.PublishAndWaitAsync(new ActionEnqueued
+        if (!Ambient.IsQuery) return Enqueue(input, options);
+        var result = await Ambient.PublishAndWaitEventAsync(new ActionEnqueued
         {
             Input = input, Priority = options.Priority, StartAt = options.StartAt
         }, cancellation).ConfigureAwait(false);
         return new(result.TenantId, result.ActionId);
     }
 
-    /// <summary>Publishes <see cref="ActionCancelRequested"/>; false when no queued or delayed action has the ID.</summary>
-    public async Task<bool> CancelAsync(IEventPublisher publisher, QualifiedActionId id,
-        CancellationToken cancellation = default)
+    /// <summary>Cancels as <see cref="Cancel"/> does: inside a query scope by publishing
+    /// <see cref="ActionCancelRequested"/> with the scope's publisher, inside a consume in its transaction. False when
+    /// no queued or delayed action has the ID.</summary>
+    public async Task<bool> CancelAsync(QualifiedActionId id, CancellationToken cancellation = default)
     {
-        ArgumentNullException.ThrowIfNull(publisher);
-        return (await publisher.PublishAndWaitAsync(new ActionCancelRequested
+        if (!Ambient.IsQuery) return Cancel(id);
+        return (await Ambient.PublishAndWaitEventAsync(new ActionCancelRequested
         {
             TenantId = id.TenantId, ActionId = id.ActionId
         }, cancellation).ConfigureAwait(false)).Found;
@@ -195,31 +198,50 @@ public sealed partial class BackendActions
         return true;
     }
 
-    /// <summary>Publishes <see cref="ActionsSuspended"/>: suspended types start no new attempts, running ones go on,
-    /// and their inputs keep queueing. Resume them with <paramref name="suspended"/> false.</summary>
-    public async Task SuspendAsync(IEventPublisher publisher, IEnumerable<string> names, bool suspended = true,
-        CancellationToken cancellation = default)
+    /// <summary>Suspends action types as <see cref="Suspend(IEnumerable{string}, bool)"/> does: inside a query scope
+    /// by publishing <see cref="ActionsSuspended"/> with the scope's publisher, inside a consume in its
+    /// transaction.</summary>
+    public Task SuspendAsync(IEnumerable<string> names, bool suspended = true, CancellationToken cancellation = default)
     {
-        ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(names);
-        await publisher.PublishAsync(new ActionsSuspended { Names = names.ToList(), Suspended = suspended }, cancellation)
-            .ConfigureAwait(false);
+        return SuspendAsync(names.ToList(), [], suspended, cancellation);
     }
 
-    /// <summary>Publishes <see cref="ActionsSuspended"/> for tenants: their actions start no new attempts, running
-    /// ones go on, and their inputs keep queueing. Tenant 0 holds the actions without a tenant, scheduled ones
-    /// included. Resume them with <paramref name="suspended"/> false.</summary>
-    public async Task SuspendTenantsAsync(IEventPublisher publisher, IEnumerable<ulong> tenantIds, bool suspended = true,
+    /// <summary>Suspends tenants as <see cref="SuspendTenants"/> does: inside a query scope by publishing
+    /// <see cref="ActionsSuspended"/> with the scope's publisher, inside a consume in its transaction.</summary>
+    public Task SuspendTenantsAsync(IEnumerable<ulong> tenantIds, bool suspended = true,
         CancellationToken cancellation = default)
     {
-        ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(tenantIds);
-        await publisher.PublishAsync(new ActionsSuspended { TenantIds = tenantIds.ToList(), Suspended = suspended },
-            cancellation).ConfigureAwait(false);
+        return SuspendAsync([], tenantIds.ToList(), suspended, cancellation);
     }
 
-    /// <summary>Suspends or resumes tenants in the current consume, as <see cref="SuspendTenantsAsync"/> does, for
-    /// example when an application event deactivates a tenant.</summary>
+    async Task SuspendAsync(List<string> names, List<ulong> tenantIds, bool suspended, CancellationToken cancellation)
+    {
+        if (!Ambient.IsQuery)
+        {
+            CurrentConsume();
+            Suspend(names, tenantIds, suspended);
+            return;
+        }
+        await Ambient.PublishEventAsync(new ActionsSuspended
+        {
+            Names = names, TenantIds = tenantIds, Suspended = suspended
+        }, cancellation).ConfigureAwait(false);
+    }
+
+    /// <summary>Suspends or resumes action types in the current consume: suspended types start no new attempts,
+    /// running ones go on, and their inputs keep queueing.</summary>
+    public void Suspend(IEnumerable<string> names, bool suspended = true)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        CurrentConsume();
+        Suspend(names.ToList(), [], suspended);
+    }
+
+    /// <summary>Suspends or resumes tenants in the current consume, for example when an application event deactivates
+    /// a tenant: their actions start no new attempts, running ones go on, and their inputs keep queueing. Tenant 0
+    /// holds the actions without a tenant, scheduled ones included.</summary>
     public void SuspendTenants(IEnumerable<ulong> tenantIds, bool suspended = true)
     {
         ArgumentNullException.ThrowIfNull(tenantIds);
@@ -347,7 +369,7 @@ public sealed partial class BackendActions
     QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev)
     {
         var queued = Ambient.Relation<IQueuedActions>();
-        if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { Length: > 0 } key)
+        if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { } key)
         {
             var indexes = Ambient.Relation<IActionInputIndexes>();
             if (indexes.FindByIdOrDefault(tenantId, name, key) is { } index)
@@ -425,7 +447,7 @@ public sealed partial class BackendActions
 
     static void RemoveIndex(QueuedAction row)
     {
-        if (row.Input is not IActionInputUnificator unificator || unificator.GetUniqueKey() is not { Length: > 0 } key) return;
+        if (row.Input is not IActionInputUnificator unificator || unificator.GetUniqueKey() is not { } key) return;
         var indexes = Ambient.Relation<IActionInputIndexes>();
         if (indexes.FindByIdOrDefault(row.TenantId, row.Name, key) is { } index && index.ActionId == row.ActionId)
             indexes.RemoveById(row.TenantId, row.Name, key);
@@ -441,7 +463,7 @@ public sealed partial class BackendActions
     }
 
     static Event CurrentConsume() => !Ambient.IsQuery && Ambient.CurrentEvent is { } ev ? ev
-        : throw new InvalidOperationException("Enqueue and Cancel run only inside a consume; use EnqueueAsync or CancelAsync elsewhere.");
+        : throw new InvalidOperationException("This runs only inside a consume; use its Async variant in a query scope.");
 }
 
 /// <summary>Actions whose rows changed in committed batches, for the coordinator running on this node.</summary>

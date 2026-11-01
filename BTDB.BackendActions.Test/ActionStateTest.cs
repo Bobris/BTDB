@@ -61,18 +61,46 @@ public class ActionStateTest
     }
 
     [Fact]
-    public async Task EnqueueAsyncAndCancelAsyncPublishFromOutsideAConsume()
+    public async Task EnqueueAsyncAndCancelAsyncPublishFromAQueryScope()
     {
         await using var node = await Start();
-        var id = await node.Actions.EnqueueAsync(node.Publisher, new ProcessOrder { TenantId = 3, Amount = 1 });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Actions.EnqueueAsync(new ProcessOrder()));
+        var id = await node.Query(a => a.EnqueueAsync(new ProcessOrder { TenantId = 3, Amount = 1 }));
         Assert.Equal(new QualifiedActionId(3, 1), id);
         Assert.Single(node.Queued);
-        Assert.True(await node.Actions.CancelAsync(node.Publisher, id));
-        Assert.False(await node.Actions.CancelAsync(node.Publisher, id));
+        Assert.True(await node.Query(a => a.CancelAsync(id)));
+        Assert.False(await node.Query(a => a.CancelAsync(id)));
         Assert.Empty(node.Queued);
         var outcome = Assert.Single(node.Recorder.Outcomes);
         Assert.Equal((ActionOutcomeKind.Cancelled, 0ul), (outcome.Kind, outcome.Attempt));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Actions.EnqueueAsync(node.Publisher, new UnregisteredInput()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Query(a => a.EnqueueAsync(new UnregisteredInput())));
+    }
+
+    [Fact]
+    public async Task EnqueueAsyncAndCancelAsyncApplyInsideAConsume()
+    {
+        await using var node = await Start();
+        var end = node.Publisher.LastAppliedEventId;
+        await node.Publisher.PublishAsync(new PlaceOrder { Input = new ProcessOrder { Amount = 1 }, UseAsync = true });
+        await node.Publisher.PublishAsync(new PlaceOrder { CancelActionId = 1, UseAsync = true });
+        Assert.Equal(end + 2, node.Publisher.LastAppliedEventId); // nothing else was published
+        Assert.Equal([new QualifiedActionId(0, 1)], node.Recorder.Enqueued);
+        Assert.Equal([true], node.Recorder.Cancelled);
+        Assert.Empty(node.Queued);
+    }
+
+    [Fact]
+    public async Task AnEmptyKeyMergesAndANullKeyNever()
+    {
+        await using var node = await Start();
+        await Place(node, new RefreshCache { Key = "" });
+        await Place(node, new RefreshCache { Key = "" });
+        await Place(node, new RefreshCache { Key = "-" }); // its key is null
+        await Place(node, new RefreshCache { Key = "-" });
+        Assert.Equal([new(0, 1), new(0, 1), new(0, 2), new QualifiedActionId(0, 3)], node.Recorder.Enqueued);
+        Assert.Equal([(1ul, 0)], node.Indexes.Select(i => (i.ActionId, i.UniqueKey.Length)));
+        using (node.Publisher.StartQuery())
+            Assert.Equal(new QualifiedActionId(0, 1), node.Actions.FindByUniqueKey(0, "refresh", []));
     }
 
     [Fact]
@@ -136,7 +164,7 @@ public class ActionStateTest
         Assert.Equal([2ul], node.Queued.Select(q => q.ActionId)); // unified into the queued request
 
         await Place(node, new ProcessOrder(), startAt: due.AddHours(1));
-        Assert.True(await node.Actions.CancelAsync(node.Publisher, new(0, 3)));
+        Assert.True(await node.Query(a => a.CancelAsync(new(0, 3))));
         Assert.Empty(node.Delayed);
         Assert.Empty(node.Recorder.Outcomes); // a delayed action is removed without an outcome
     }
@@ -306,10 +334,11 @@ public class ActionStateTest
         await Place(node, new RefreshCache { TenantId = 2, Key = "k" });
         await Place(node, new ProcessOrder { TenantId = 1 }, ActionPriority.Low, _time.Now.UtcDateTime.AddHours(1));
         await Started(node, session, new(1, 1), 1);
-        await node.Actions.SuspendAsync(node.Publisher, ["refresh", "other"]);
-        await node.Actions.SuspendAsync(node.Publisher, ["other"], suspended: false);
-        await node.Actions.SuspendTenantsAsync(node.Publisher, [9, 4]);
-        await node.Actions.SuspendTenantsAsync(node.Publisher, [9], suspended: false);
+        await node.Query(a => a.SuspendAsync(["refresh", "other"]));
+        await node.Query(a => a.SuspendAsync(["other"], suspended: false));
+        await node.Publisher.PublishAsync(new PlaceOrder { SuspendTypes = ["third"] }); // in an application consume
+        await node.Query(a => a.SuspendTenantsAsync([9, 4]));
+        await node.Query(a => a.SuspendTenantsAsync([9], suspended: false));
         await node.Publisher.PublishAsync(new PlaceOrder { SuspendTenants = [3] }); // in an application consume
         using var query = node.Publisher.StartQuery();
         Assert.Equal([(new QualifiedActionId(1, 3), ActionState.Delayed), (new(1, 1), ActionState.Started),
@@ -324,7 +353,7 @@ public class ActionStateTest
         Assert.False(node.Actions.HasStartedActions(2));
         Assert.Equal(new QualifiedActionId(2, 2), node.Actions.FindByUniqueKey(2, "refresh", "k"u8.ToArray()));
         Assert.Null(node.Actions.FindByUniqueKey(1, "refresh", "k"u8.ToArray()));
-        Assert.Equal(["refresh"], node.Actions.SuspendedActions);
+        Assert.Equal(["refresh", "third"], node.Actions.SuspendedActions);
         Assert.Equal([3ul, 4ul], node.Actions.SuspendedTenants);
         Assert.True(node.Actions.IsTenantSuspended(4));
         Assert.False(node.Actions.IsTenantSuspended(9));
