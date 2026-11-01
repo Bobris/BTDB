@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using BTDB.IOC;
 using BTDB.ODBLayer;
 
@@ -6,7 +7,15 @@ namespace BTDB.Serialization;
 
 public class ClassMetadata
 {
-    public Type Type;
+    // Generated code assigns typeof(T) here, so trimming keeps the members ObjectDB and the event serializers still
+    // reflect over, also for types in library assemblies.
+    [DynamicallyAccessedMembers(StoredMembers)] public Type Type;
+
+    internal const DynamicallyAccessedMemberTypes StoredMembers =
+        DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties |
+        DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields |
+        DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors |
+        DynamicallyAccessedMemberTypes.Interfaces;
     public Type[] Implements;
     public string Name;
     public string Namespace;

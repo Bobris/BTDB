@@ -69,6 +69,8 @@ given factory, for example the BTDB IOC container, or from their parameterless c
 are an error. `Register(handler)` registers one handler by hand; it uses the generated values when they exist and
 reads the attributes otherwise.
 
+The package works under NativeAOT; `AotActionsSmoke/` publishes and runs a NativeAOT app with actions, and CI runs it.
+
 ```csharp
 var actions = new BackendActions().RegisterGenerated(type => container.Resolve(type));
 actions.RegisterTypes(objectDb);                     // input types for polymorphic storage

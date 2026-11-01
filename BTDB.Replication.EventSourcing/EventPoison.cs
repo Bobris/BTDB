@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using BTDB.Replication.EventLog;
 
 namespace BTDB.Replication.EventSourcing;
@@ -153,7 +154,7 @@ internal static class EventSkips
 /// <summary>This node's last started attempt: the data offset and how many times it started without completing.</summary>
 internal sealed class EventAttemptJournal(IEventLogStorage storage, string key, int limit)
 {
-    sealed record Attempt(ulong Offset, int Count);
+    internal sealed record Attempt(ulong Offset, int Count);
 
     Attempt? _last;
     string? _version;
@@ -182,7 +183,7 @@ internal sealed class EventAttemptJournal(IEventLogStorage storage, string key, 
 
     async Task WriteAsync(Attempt attempt, CancellationToken cancellation)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(attempt);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(attempt, EventAttemptJson.Default.Attempt);
         while (true)
         {
             var result = await storage.WriteAsync(key, _version, bytes, null, null, cancellation).ConfigureAwait(false);
@@ -201,6 +202,10 @@ internal sealed class EventAttemptJournal(IEventLogStorage storage, string key, 
     }
 
     static Attempt Decode(EventLogBlob blob) =>
-        JsonSerializer.Deserialize<Attempt>(blob.Content.Span) is { Count: > 0 } attempt ? attempt
+        JsonSerializer.Deserialize(blob.Content.Span, EventAttemptJson.Default.Attempt) is { Count: > 0 } attempt ? attempt
             : throw new InvalidDataException("Invalid event attempt record.");
 }
+
+/// <summary>Source-generated, so the journal also works under NativeAOT; the format is the default one.</summary>
+[JsonSerializable(typeof(EventAttemptJournal.Attempt))]
+internal sealed partial class EventAttemptJson : JsonSerializerContext;

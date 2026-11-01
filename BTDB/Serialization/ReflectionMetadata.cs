@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -185,7 +186,8 @@ public static class ReflectionMetadata
         ptr = 0;
     }
 
-    public static void RegisterRelation(Type type,
+    // The relation builder reflects over the interface's methods and properties.
+    public static void RegisterRelation([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type,
         Func<RelationInfo, Func<IObjectDBTransaction, IRelation>> creator, Type[] loadTypes)
     {
         _lock.StartWrite();

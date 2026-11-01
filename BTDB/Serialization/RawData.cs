@@ -248,11 +248,24 @@ public sealed class RawData
             return (16, 4);
         }
 
-        // from type make Array<type> because it has always ComponentSize
-        var size = MethodTableOf(type.MakeArrayType()).ComponentSize;
+        var size = (uint)RuntimeHelpers.SizeOf(type.TypeHandle);
         // Nullable<T> stores its value right after HasValue at the alignment of T, and its size is a multiple of it
-        var alignment = (uint)(MethodTableOf(typeof(Nullable<>).MakeGenericType(type).MakeArrayType()).ComponentSize - size);
-        return (size, alignment);
+        return (size, NullableAlignment(type, size));
+    }
+
+    static uint NullableAlignment(Type type, uint size)
+    {
+        try
+        {
+            return (uint)RuntimeHelpers.SizeOf(typeof(Nullable<>).MakeGenericType(type).TypeHandle) - size;
+        }
+        catch (NotSupportedException)
+        {
+            // NativeAOT compiled no T?, so no nullable layout depends on it: the largest alignment dividing the size.
+            var alignment = 8u;
+            while (size % alignment != 0) alignment /= 2;
+            return alignment;
+        }
     }
 
     public static int GetArrayLength(ref byte array)

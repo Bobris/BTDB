@@ -214,8 +214,17 @@ starts and a typed `new THandler()` when the handler has an accessible parameter
 the IOC container) or their parameterless constructor. `Register(handler)` stays for tests and special cases and uses
 the generated values when they exist. The generator pipeline is separate from the main one and emits a file only per
 handler, so it stays incremental. Tests: `BackendActionsGeneratorTests` (Verify snapshots) and
-`ActionGenerationTest`; the process qualification nodes register through it. Not done: an AOT smoke run, and marking
-the package AOT-compatible, which also needs the reflection fallback of `Register` annotated.
+`ActionGenerationTest`; the process qualification nodes register through it.
+
+The package is marked AOT-compatible; the analyzer's only finding was the reflection fallback of `Register`, whose
+input type parameter is now annotated to keep the parameterless constructor. `AotActionsSmoke/` is the NativeAOT
+smoke app: it runs the host on an in-process single-node cluster (the HTTP replication stack is not part of it) and
+covers import, generated and hand registration, enqueue, merging, partial results, failure, cancellation and the
+overview. `run.sh` fails on trim or AOT warnings in BackendActions and EventSourcing; CI runs it as
+`aot-actions-smoke`. It found four BTDB gaps, all fixed: trimming removed the properties of `[Generate]` types in
+library assemblies (`ClassMetadata.Type` and relation registration are now annotated, so trimming keeps them), the
+inline-object creator emitted IL, the event serializer created enum and struct array types at runtime, and the
+poison-event journal used reflection-based JSON.
 
 ## 4. Persistent state and events
 
@@ -442,7 +451,7 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
 | A5 | Monitoring, metrics, test helpers, `Doc/BackendActions.md`, changelog, release wiring. Done. | The package packs, and docs cover hosting, and the API. |
 | A6 | Process qualification. Done: healthy, killed-worker and killed-leader runs in `BTDB.BackendActions.Process.Test`; it found and fixed an `OnDiskReplicationFileStorage` bug (a transaction could not read its own unflushed values). Partitions, restarts on the same directory and upgrades are not covered yet. | Kill and failover runs show exactly-once `OnFinished` and no lost actions. |
 | A7 | Import API (`Import`, `ActionsImported`, scheduled runs, settings) and the cutover runbook (section 11). Done, except the rehearsal, which needs the old system's tables and its export tool, outside this repository. | Import tests pass, and a rehearsal against a copy of the old tables matches the counts. |
-| A8 | Source-generated registration (section 3.1). Done, except the AOT smoke run. | Applications register every action without reflection; SourceGenerator snapshot tests and an AOT smoke run pass. |
+| A8 | Source-generated registration (section 3.1) and the NativeAOT smoke run (`AotActionsSmoke/`). Done. | Applications register every action without reflection; SourceGenerator snapshot tests and an AOT smoke run pass. |
 
 ## 11. Migration from the reference implementation
 

@@ -42,3 +42,17 @@ jobs:
                 run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
             -   name: Publish and run relation query NativeAOT smoke test
                 run: ./AotQuerySmoke/run.sh
+
+    aot-actions-smoke:
+        runs-on: ubuntu-latest
+
+        steps:
+            -   uses: actions/checkout@v2
+            -   name: Setup .NET
+                uses: actions/setup-dotnet@v1
+                with:
+                    dotnet-version: 10.0.x
+            -   name: Install NativeAOT prerequisites
+                run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+            -   name: Publish and run backend actions NativeAOT smoke test
+                run: ./AotActionsSmoke/run.sh

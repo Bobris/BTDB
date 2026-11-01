@@ -40,7 +40,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _signed = IsSignedEnum(type);
         _flags = IsFlagsEnum(type);
         var underlyingType = type.GetEnumUnderlyingType();
-        var enumValues = type.GetEnumValues();
+        var enumValues = type.GetEnumValuesAsUnderlyingType(); // no TEnum[] to create under NativeAOT
         IEnumerable<ulong> enumValuesUnsignedLongs;
         if (underlyingType == typeof(int)) enumValuesUnsignedLongs = enumValues.Cast<int>().Select(i => (ulong)i);
         else if (underlyingType == typeof(uint))

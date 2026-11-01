@@ -97,7 +97,7 @@ public class TableInfo
         }
     }
 
-    void CreateCreator()
+    unsafe void CreateCreator()
     {
         var factoryType = typeof(Func<>).MakeGenericType(_clientType!);
         var container = _tableInfoResolver.Container;
@@ -110,7 +110,6 @@ public class TableInfo
 
         if (factory != null)
         {
-            factoryType = factory.GetType();
             // ReSharper disable once EqualExpressionComparison intentional
             if (((Func<object>)factory)() == ((Func<object>)factory)())
             {
@@ -118,16 +117,13 @@ public class TableInfo
                                                                     " cannot be registered as singleton");
             }
 
-            var method = ILBuilder.Instance.NewMethod(
-                $"Creator_{Name}", typeof(Func<IInternalObjectDBTransaction, DBObjectMetadata, object>),
-                factoryType);
-            var ilGenerator = method.Generator;
-            ilGenerator
-                .Ldarg(0)
-                .Callvirt(factoryType.GetMethod(nameof(Func<object>.Invoke))!)
-                .Ret();
-            var creator = (Func<IInternalObjectDBTransaction, DBObjectMetadata, object>)method.Create(factory);
-            Interlocked.CompareExchange(ref _creator, creator, null);
+            var create = (Func<object>)factory;
+            Interlocked.CompareExchange(ref _creator, (_, _) => create(), null);
+        }
+        else if (ReflectionMetadata.FindByType(_clientType!) is { Creator: not null } metadata)
+        {
+            // Without emitting code, so objects stored inline also load under NativeAOT.
+            Interlocked.CompareExchange(ref _creator, (_, _) => metadata.Creator(), null);
         }
         else
         {
@@ -168,50 +164,53 @@ public class TableInfo
     {
         EnsureClientTypeVersion();
         var tableVersionInfo = ClientTableVersionInfo;
+        if (!tableVersionInfo!.NeedsInit())
+        {
+            Interlocked.CompareExchange(ref _initializer, static (_, _, _) => { }, null);
+            return;
+        }
+
         var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
             $"Initializer_{Name}");
         var ilGenerator = method.Generator;
-        if (tableVersionInfo!.NeedsInit())
+        ilGenerator.DeclareLocal(ClientType!);
+        ilGenerator
+            .Ldarg(2)
+            .Castclass(ClientType)
+            .Stloc(0);
+        var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+        if (anyNeedsCtx)
         {
-            ilGenerator.DeclareLocal(ClientType!);
+            ilGenerator.DeclareLocal(typeof(IReaderCtx));
             ilGenerator
-                .Ldarg(2)
-                .Castclass(ClientType)
-                .Stloc(0);
-            var anyNeedsCtx = tableVersionInfo.NeedsCtx();
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Newobj(() => new DBReaderCtx(null))
-                    .Stloc(1);
-            }
+                .Ldarg(0)
+                .Newobj(() => new DBReaderCtx(null))
+                .Stloc(1);
+        }
 
-            var props = _clientType!.GetVisibleInstanceProperties();
-            for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
-            {
-                var srcFieldInfo = tableVersionInfo[fi];
-                var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
-                if (iFieldHandlerWithInit == null) continue;
-                Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler.NeedsCtx())
-                    readerOrCtx = il => il.Ldloc(1);
-                else
-                    readerOrCtx = il => il.Ldnull();
-                var specializedSrcHandler = srcFieldInfo.Handler;
-                var willLoad = specializedSrcHandler.HandledType();
-                var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetAnySetMethod();
-                var converterGenerator =
-                    _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
-                        setterMethod!.GetParameters()[0].ParameterType);
-                if (converterGenerator == null) continue;
-                if (!iFieldHandlerWithInit.NeedInit()) continue;
-                ilGenerator.Ldloc(0);
-                iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
-                converterGenerator(ilGenerator);
-                ilGenerator.Call(setterMethod);
-            }
+        var props = _clientType!.GetVisibleInstanceProperties();
+        for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+        {
+            var srcFieldInfo = tableVersionInfo[fi];
+            var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
+            if (iFieldHandlerWithInit == null) continue;
+            Action<IILGen> readerOrCtx;
+            if (srcFieldInfo.Handler.NeedsCtx())
+                readerOrCtx = il => il.Ldloc(1);
+            else
+                readerOrCtx = il => il.Ldnull();
+            var specializedSrcHandler = srcFieldInfo.Handler;
+            var willLoad = specializedSrcHandler.HandledType();
+            var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetAnySetMethod();
+            var converterGenerator =
+                _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
+                    setterMethod!.GetParameters()[0].ParameterType);
+            if (converterGenerator == null) continue;
+            if (!iFieldHandlerWithInit.NeedInit()) continue;
+            ilGenerator.Ldloc(0);
+            iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
+            converterGenerator(ilGenerator);
+            ilGenerator.Call(setterMethod);
         }
 
         ilGenerator.Ret();

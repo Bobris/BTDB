@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 namespace BTDB.BackendActions;
 
@@ -8,7 +9,9 @@ internal sealed record ActionMetadata(string? Name, int Cpu, int MaxConcurrent, 
     bool SingleRunningPerTenant, ActionScheduleAttribute? Schedule, Func<IActionInput>? Create)
 {
     // Hand registration of an input the source generator did not see.
-    internal static ActionMetadata Reflect<TInput>() where TInput : IActionInput
+    internal static ActionMetadata Reflect<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TInput>()
+        where TInput : IActionInput
     {
         var attribute = (BackendActionAttribute?)Attribute.GetCustomAttribute(typeof(TInput), typeof(BackendActionAttribute))
                         ?? new BackendActionAttribute();

@@ -5,6 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <IsAotCompatible>true</IsAotCompatible>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.BackendActions</PackageId>
         <Version>36.0.1</Version>
@@ -28,5 +29,7 @@
         <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
         <None Include="README.md" Pack="true" PackagePath="/" />
         <InternalsVisibleTo Include="BTDB.BackendActions.Test" />
+        <!-- The smoke app runs the host on an in-process single-node cluster. -->
+        <InternalsVisibleTo Include="AotActionsSmoke" />
     </ItemGroup>
 </Project>

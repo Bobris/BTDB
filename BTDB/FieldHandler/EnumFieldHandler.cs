@@ -39,7 +39,7 @@ public class EnumFieldHandler : IFieldHandler
             }
 
             var undertype = enumType.GetEnumUnderlyingType();
-            var enumValues = enumType.GetEnumValues();
+            var enumValues = enumType.GetEnumValuesAsUnderlyingType(); // no TEnum[] to create under NativeAOT
             IEnumerable<ulong> enumValuesUlongs;
             if (undertype == typeof(int)) enumValuesUlongs = enumValues.Cast<int>().Select(i => (ulong)i);
             else if (undertype == typeof(uint)) enumValuesUlongs = enumValues.Cast<uint>().Select(i => (ulong)i);

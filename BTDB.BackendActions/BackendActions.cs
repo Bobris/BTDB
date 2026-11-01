@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BTDB.ODBLayer;
 using BTDB.Replication.EventSourcing;
 
@@ -40,8 +41,10 @@ public sealed partial class BackendActions
     bool _frozen;
 
     /// <summary>Registers an action type and its handler. The type's metadata comes from the source generator when
-    /// it generated the handler's input, otherwise from the input's attributes through reflection.</summary>
-    public BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
+    /// it generated the handler's input, otherwise from the input's attributes through reflection, which trimming
+    /// supports: the annotation keeps the input's parameterless constructor for scheduled starts.</summary>
+    public BackendActions Register<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+        TInput, TResult>(IActionHandler<TInput, TResult> handler)
         where TInput : ActionInput<TResult> where TResult : class =>
         Register(handler, GeneratedActions.Metadata<TInput, TResult>() ?? ActionMetadata.Reflect<TInput>());
 

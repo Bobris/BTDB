@@ -36,8 +36,23 @@
   carry actions over from another system at cutover with their IDs, relative order, run attempts, delayed start
   times and cancellation, and the last runs of scheduled types and suspended types. The ID allocator rises above every
   imported ID. The cutover runbook is in `Doc/BackendActions.md`.
+- BackendActions runs under NativeAOT and is marked AOT-compatible. `AotActionsSmoke/run.sh`, also the
+  `aot-actions-smoke` CI job, publishes a NativeAOT app that imports, enqueues, merges, cancels and runs actions with
+  partial results and failures through the host, and fails on trim or AOT warnings in BackendActions or EventSourcing.
+  `Register(handler)` keeps its input's parameterless constructor under trimming.
 
 ### Fixed
+
+- NativeAOT: trimming removed the properties of `[Generate]` types outside the application assembly, so relations of
+  library types failed to initialize, and objects stored inline and events could not be versioned. Generated metadata
+  now keeps those types' properties, fields, constructors and interfaces, and relation interfaces' members.
+- NativeAOT: reading an object stored inline in ObjectDB emitted its creator with `Reflection.Emit`; it now uses the
+  generated creator, as relations do.
+- NativeAOT: the event serializer and ObjectDB failed on enums and on struct fields such as `DateTime` whose array
+  types were never compiled. Enum values are read as their underlying type, and struct sizes come from
+  `RuntimeHelpers.SizeOf`.
+- EventSourcing: the poison-event attempt journal used reflection-based JSON, which NativeAOT disables; it is source
+  generated now, in the same format.
 
 - Replication: on `OnDiskReplicationFileStorage` a transaction could not read a value it had written itself before
   committing: the read threw `EndOfStreamException`, because the file's appender publishes its length only when it
