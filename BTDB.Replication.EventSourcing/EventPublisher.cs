@@ -138,6 +138,9 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     /// <summary>Faults when replay, consumption or input fails. Hosts must observe it and arrange restart.</summary>
     public Task Completion => _run;
     public Ambient.Scope StartQuery() => Ambient.StartQuery(this);
+    /// <summary>The node ID of the configured <see cref="EventPublisherOptions.Cluster"/>, the replication node's
+    /// <c>LeaderCandidate.NodeId</c>; null without one.</summary>
+    public string? SelfNodeId => _options.Cluster?.SelfNodeId;
     public EventClusterSnapshot Cluster => (_options.Cluster ??
         throw new InvalidOperationException("Configure EventPublisherOptions.Cluster for node discovery.")).Current;
 

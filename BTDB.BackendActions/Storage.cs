@@ -13,6 +13,9 @@ public class QueuedAction
     /// <summary>Enqueue order, unique across the cluster's actions, from <see cref="IQueuedActions.AllocateId"/>.</summary>
     public ulong Order { get; set; }
     public object? Input { get; set; }
+    /// <summary>The unification key the action was queued with, which its index entry may still name; stored so that
+    /// removing the entry calls no application code and finds it even after aggregation changed the input.</summary>
+    public byte[]? UniqueKey { get; set; }
     public QueuedActionFlags Flags { get; set; }
 
     /// <summary>True until the action starts or an input fails to aggregate into it.</summary>

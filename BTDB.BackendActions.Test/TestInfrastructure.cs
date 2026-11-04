@@ -82,7 +82,8 @@ internal sealed class Node : IAsyncDisposable
     }
 
     internal static async Task<Node> StartAsync(MemoryTopic data, MemoryTopic metadata, TimeProvider time,
-        int batch = 32, InMemoryReplicationFileStorage? files = null, int? maximumEventSize = null)
+        int batch = 32, InMemoryReplicationFileStorage? files = null, int? maximumEventSize = null,
+        Action<BackendActions, Recorder>? register = null)
     {
         files ??= new();
         var capture = new TransactionLogCapture();
@@ -94,6 +95,7 @@ internal sealed class Node : IAsyncDisposable
         var node = new Node(files, keyValues);
         node.Objects.Open(keyValues, false, new DBOptions().WithoutAutoRegistrationOfRelations());
         node.Recorder.Register(node.Actions);
+        register?.Invoke(node.Actions, node.Recorder);
         node.Actions.OnFinishedFailed = (id, kind, _) => node.Recorder.FinishFailures.Enqueue((id, kind));
         node.Actions.RegisterTypes(node.Objects);
         await node.Objects.InitializeRelations([.. BackendActions.RelationTypes]);
@@ -300,6 +302,25 @@ public class ValidatedOrder : ActionInput<OrderResult>
 /// <summary>Its handler's OnFinished throws.</summary>
 public class FragileOrder : ActionInput<OrderResult>;
 
+/// <summary>An aggregator whose key changes once it holds more than one item. The key "throw" makes GetUniqueKey
+/// throw, and a negative item makes TryAggregate throw, as an application bug would.</summary>
+public class ShiftingItems : ActionInput<OrderResult>, IActionInputAggregator
+{
+    public string Key { get; set; } = "";
+    public List<int> Items { get; set; } = new();
+
+    public byte[]? GetUniqueKey() => Key == "throw" ? throw new InvalidOperationException("No key.")
+        : Encoding.UTF8.GetBytes(Items.Count > 1 ? Key + "+" : Key);
+
+    public bool TryAggregate(IActionInputAggregator other)
+    {
+        var items = ((ShiftingItems)other).Items;
+        if (items.Any(i => i < 0)) throw new InvalidOperationException("Cannot aggregate.");
+        Items.AddRange(items);
+        return true;
+    }
+}
+
 internal sealed record Outcome(string Name, QualifiedActionId Id, ActionOutcomeKind Kind, ulong Attempt, string? Result,
     string? Error, string Input);
 
@@ -321,6 +342,7 @@ internal sealed class Recorder
         .Register(new Handler<IdleOrder>(this, _ => "idle"))
         .Register(new Handler<RefreshCache>(this, i => i.Key))
         .Register(new Handler<CollectItems>(this, i => string.Join(",", i.Items)))
+        .Register(new Handler<ShiftingItems>(this, i => string.Join(",", i.Items)))
         .Register(new ValidatingHandler(this))
         .Register(new SlowHandler(this))
         .Register<WaitingOrder, OrderResult>(new SlowHandler(this))
@@ -506,10 +528,13 @@ internal sealed class FakeCluster
         }
     }
 
-    internal IBackendActionsCluster Node(string name) => new NodeView(this, name);
+    /// <summary>A node's view; generation stands for the replication node's application generation.</summary>
+    internal IBackendActionsCluster Node(string name, ulong? generation = 0) => new NodeView(this, name, generation);
 
-    sealed class NodeView(FakeCluster cluster, string name) : IBackendActionsCluster
+    sealed class NodeView(FakeCluster cluster, string name, ulong? generation) : IBackendActionsCluster
     {
+        public ulong? ApplicationGeneration => generation;
+
         public async Task RunWhileLeaderAsync(Func<CancellationToken, Task> action, CancellationToken cancellation)
         {
             while (true)

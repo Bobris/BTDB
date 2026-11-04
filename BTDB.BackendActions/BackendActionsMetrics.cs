@@ -17,6 +17,7 @@ internal sealed class BackendActionsMetrics : IDisposable
     readonly Histogram<double> _startDelay;
     readonly Histogram<double> _duration;
     readonly Counter<long> _exchangeFailures;
+    readonly Counter<long> _coordinatorRejections;
 
     internal BackendActionsMetrics(Func<ActionsOverview?> overview)
     {
@@ -30,6 +31,8 @@ internal sealed class BackendActionsMetrics : IDisposable
             "Execution time of finished attempts.");
         _exchangeFailures = _meter.CreateCounter<long>("btdb.backend_actions.exchange.failures", description:
             "Worker exchanges with the leader that failed.");
+        _coordinatorRejections = _meter.CreateCounter<long>("btdb.backend_actions.coordinator.rejected_events",
+            description: "Events of the coordinator whose consume failed, so it published them again later or not at all.");
         _meter.CreateObservableGauge("btdb.backend_actions.waiting",
             () => Measure(overview(), o => o.Priorities.Sum(p => p.Waiting)), description: "Actions waiting to start.");
         _meter.CreateObservableGauge("btdb.backend_actions.running",
@@ -54,6 +57,8 @@ internal sealed class BackendActionsMetrics : IDisposable
     }
 
     internal void ExchangeFailed() => _exchangeFailures.Add(1);
+
+    internal void CoordinatorEventRejected() => _coordinatorRejections.Add(1);
 
     public void Dispose() => _meter.Dispose();
 }

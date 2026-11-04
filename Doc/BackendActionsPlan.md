@@ -65,7 +65,7 @@ Only the parts that shape this plan.
 | Scheduling | Daily, monthly and repeated attributes evaluated every 5 s on the leader; optimistic `LastRun` check in a validator. | Kept. |
 | Action IDs | Pre-allocated 100k ranges in a DB singleton, refilled by events, for determinism in consume. | Replaced by `Ambient.AllocateId()`, which is already deterministic in consume. |
 | Resources | One CPU dimension; overrides through `IOverrideActionResources`; runtime adjustment through heartbeats; 10 CPU floor. | Kept. The worker sends its own capacity, which the reference does not (it assumes identical nodes). |
-| Planning | Tenant fairness by decayed consumption (×0.95 per second); order (Priority, Order, ID); group limits; capacity share per priority (0.6/0.8/1.0); round-robin workers; 2 min lease; 5 attempts, then cancel. | Ported. The admission check also counts the action's own cost. |
+| Planning | Tenant fairness by decayed consumption (×0.95 per second); order (Priority, Order, ID); group limits; capacity share per priority (0.6/0.8/1.0); round-robin workers; 2 min lease; 5 attempts, then cancel. | Ported. The admission check also counts the action's own cost, and an action bypassed by smaller ones for `ReserveAfter` (30 s) reserves a worker, so large actions cannot starve. |
 | Failover | Every node mirrors the coordinator from the coordination stream. A new leader publishes "leader elected", waits, reloads rows and protects running actions for one lease. | No mirrors. The new leader reloads from the DB after a barrier event and learns running attempts from worker exchanges. |
 | Worker | Waits for input events, closes aggregation with an awaited event, publishes run-attempt and before-start events, executes, and publishes the finished event with throttling. | Collapsed into one coordinator-published `ActionsStarted` event plus one worker-published `ActionFinished` event. |
 | Duplicates | At-least-once execution. Duplicate finished events are only logged as "no matching action". | Execution stays at-least-once. Result handling becomes exactly-once per attempt (section 5). |
@@ -216,7 +216,7 @@ actions.RegisterEvents(dispatcher);                     // the library's own eve
 builder.Services.AddBTDBReplication(...);
 // after the publisher started; join RunAsync before disposing the publisher
 var host = new BackendActionsHost(actions, publisher, app.Services.GetRequiredService<ReplicationLeadership>(),
-    app.Services.GetRequiredService<ReplicationLeaderChannel>(), new BackendActionsOptions { NodeId = nodeId });
+    app.Services.GetRequiredService<ReplicationLeaderChannel>(), new BackendActionsOptions()); // identity from the node
 var running = host.RunAsync(stopping);
 ```
 
@@ -300,8 +300,8 @@ RunWhileLeaderAsync(leaderCancellation =>
   2. session = new Guid; await PublishAndWaitAsync(CoordinatorActivated(session))
      -> the local DB now contains every event published before the barrier
   3. load IQueuedActions / IDelayedActions in one StartQuery() snapshot
-  4. rows with Started != null are "possibly running": protect them for one lease (default 2 min) or until their
-     worker reports
+  4. rows with Started != null are "possibly running": protect them for one lease (default 2 min) or until a
+     worker of their node reports
   5. serve worker exchanges, plan, run the delayed and recurring schedulers, until leaderCancellation)
 ```
 
@@ -375,6 +375,11 @@ and its attempts are lost at once. A new `WorkerSession` from the same `NodeId` 
 of the old session without waiting for their leases. `ActionsStarted` records the worker's node in the row, so this
 holds also for attempts a previous coordinator started. The failover test of a restarted node shows the difference:
 without the node, the new coordinator waits a whole lease (2 min by default) before starting the attempt again.
+The same session reporting without the attempt ends its protection too. A worker sends one exchange at a time and
+registers every `Start` it receives before it builds the next request, so its first report to a new coordinator lists
+every attempt it may still run. An attempt it leaves out was recorded but never delivered, because the previous
+coordinator stopped between `ActionsStarted` and the exchange, as it can on every handoff. Before this, such an attempt
+waited a whole lease.
 Expiring a worker whose node left a non-settling `EventCluster.LiveNodeIds` is not implemented: the worker timeout
 already bounds the wait, and no test showed a need for a second signal.
 
@@ -399,12 +404,12 @@ The leader is also a worker: the channel calls the leader's own handler directly
 2. Workers' exchanges fail and they re-resolve the leader. Finished results are published to the event stream, which
    needs no coordinator, so work completed during the gap is not lost.
 3. The new leader activates, publishes `CoordinatorActivated` and reloads. Rows that are started but unreported are
-   protected for one lease.
+   protected for one lease, or until a worker of their node reports without them.
 4. Workers reconnect and report their running attempts. The coordinator adopts those, rebuilds resource usage, and
    reassigns the rest after protection ends.
 
 The same path covers a graceful handoff during a rolling upgrade. Each worker reports its application generation
-(`BackendActionsOptions.ApplicationGeneration`, the node's `ReplicationNodeOptions.ApplicationGeneration`), and the
+(the node's `ReplicationNodeOptions.ApplicationGeneration`, which the host reads from `ReplicationLeadership`), and the
 coordinator starts nothing new on a worker older than its own generation. Attempts an older worker already runs
 finish normally, and after the handoff to an upgraded leader new actions run only on upgraded nodes. Workers list no
 action types: every node registers every type anyway, because `OnFinished` runs on every replica.

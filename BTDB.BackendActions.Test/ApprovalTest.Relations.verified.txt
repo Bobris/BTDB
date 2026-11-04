@@ -29,6 +29,7 @@ relation IQueuedActions of BTDB.BackendActions.QueuedAction
   RunAttempts: ulong
   StartEventId: ulong
   TenantId: ulong [PrimaryKey(1, false)]
+  UniqueKey: byte[]
   WorkerNode: string
   WorkerSession: Guid
 relation IScheduledActionRuns of BTDB.BackendActions.ScheduledActionRun

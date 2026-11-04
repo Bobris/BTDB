@@ -190,7 +190,7 @@ internal sealed class ActionsNode(string nodeId, string endpoint, BlobContainerC
             _actions.RegisterEvents(dispatcher);
             var log = services.GetRequiredService<IEventLog>();
             var publisher = new EventPublisher(_objects!, log.GetTopic("data"), log.GetTopic("metadata"), dispatcher,
-                new(), _capture);
+                new() { Cluster = new EventCluster(nodeId, services.GetRequiredService<ReplicationPresence>()) }, _capture);
             await publisher.StartAsync(_stopping.Token);
             Volatile.Write(ref _publisher, publisher);
             Console.WriteLine("APPLICATION " + nodeId);

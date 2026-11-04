@@ -203,6 +203,10 @@ await leadership.RunWhileLeaderAsync(async leaderCancellation =>
 }, stoppingToken);
 ```
 
+`ReplicationLeadership.ApplicationGeneration` is the node's `ReplicationNodeOptions.ApplicationGeneration` once the
+node started (null before), so application services that need the generation, such as backend actions, read it
+instead of configuring it a second time.
+
 The helper waits as a follower and starts the callback after actual local activation: term selection, canonical
 validation/adoption and required schema preparation/publication have completed. A lease acquisition, sampled role
 or discovery `LeaderNodeId` alone does not start it. Subscribing after activation starts immediately under the current

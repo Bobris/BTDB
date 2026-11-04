@@ -8,6 +8,8 @@ namespace BTDB.BackendActions;
 /// production, an in-process fake in tests.</summary>
 internal interface IBackendActionsCluster
 {
+    /// <summary>The replication node's application generation, once known.</summary>
+    ulong? ApplicationGeneration { get; }
     Task RunWhileLeaderAsync(Func<CancellationToken, Task> action, CancellationToken cancellation);
     IDisposable Serve(string channel, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>> handler);
     ValueTask<ReadOnlyMemory<byte>> SendAsync(string channel, ReadOnlyMemory<byte> request, CancellationToken cancellation);
@@ -16,6 +18,8 @@ internal interface IBackendActionsCluster
 internal sealed class ReplicationCluster(ReplicationLeadership leadership, ReplicationLeaderChannel channel)
     : IBackendActionsCluster
 {
+    public ulong? ApplicationGeneration => leadership.ApplicationGeneration;
+
     public Task RunWhileLeaderAsync(Func<CancellationToken, Task> action, CancellationToken cancellation) =>
         leadership.RunWhileLeaderAsync(action, cancellation);
 

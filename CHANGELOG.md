@@ -153,6 +153,33 @@
   scope open a new snapshot that contains the consumed event, instead of the snapshot opened before publishing.
 - EventSourcing: `Ambient.ReserveIdsUpTo(id)` raises the `AllocateId` allocator above IDs imported from elsewhere and
   never lowers it; `BackendActions.Import` uses it instead of writing the allocator's slot itself.
+- BackendActions: after a leader change, an attempt that the previous coordinator recorded but stopped before
+  delivering to its worker waited a whole lease (2 min by default), as on every handoff of a rolling upgrade. The
+  worker's first report to the new coordinator now ends the protection of its node's attempts it does not list, so
+  the action starts again at once; a worker reports every `Start` it received, because it exchanges one request at a
+  time.
+- BackendActions: an exception from application code inside the library's own events stopped the coordinator in a
+  loop: `GetUniqueKey`, `TryAggregate` or a scheduled input's constructor failed the whole `DelayedActionsDue`,
+  `ScheduledActionStarted` or the coordinator's `ActionFinished`, and the failed publication ended the coordinator
+  session, which republished it after every restart. A delayed input that cannot queue when due now finishes as
+  `Failed` with code `QueueFailed` while the others queue; a scheduled start that cannot queue skips its occurrence
+  and is reported by the new `BackendActions.OnScheduledStartFailed`. `QueuedAction.UniqueKey` stores the key an
+  action queued with, so its index entry is removed without calling `GetUniqueKey`, also after aggregation changed
+  the input; an index entry left without its action is taken over instead of failing the enqueue. A coordinator
+  event whose consume still fails is retried at the next interval by the same session, a rejected batch of due
+  actions one action at a time, and counted by the new `btdb.backend_actions.coordinator.rejected_events`. `Import`
+  finishes a cancelled row's `OnFinished` through the same guard as other outcomes, so its exception is reported by
+  `OnFinishedFailed` instead of failing the whole import.
+- BackendActions: an action larger than a priority's share of a worker started only on an idle worker, so a steady
+  stream of smaller actions could starve it indefinitely. An action bypassed by actions of the same or a less urgent
+  priority for `ActionPlannerOptions.ReserveAfter` (30 s by default) now reserves the least used worker, which starts
+  nothing else until the action fits; `WorkerOverview.ReservedFor` shows the reservation. `TimeSpan.MaxValue` turns
+  reservations off.
+- BackendActions: `BackendActionsOptions.NodeId` and `ApplicationGeneration` are optional and taken from the
+  replication node by default, so they cannot drift from it: the node ID from the publisher's `EventCluster` (the new
+  `EventPublisher.SelfNodeId`), the generation from the new `ReplicationLeadership.ApplicationGeneration`, which the
+  replication node sets from `ReplicationNodeOptions.ApplicationGeneration`. A value set in the options must equal the
+  node's, or the host's constructor throws; `BackendActionsHost.NodeId` returns the node ID it uses.
 
 ## 36.0.1
 

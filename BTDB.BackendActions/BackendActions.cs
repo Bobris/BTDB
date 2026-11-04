@@ -47,6 +47,11 @@ public sealed partial class BackendActions
     /// consume it runs on every replica.</summary>
     public Action<QualifiedActionId, ActionOutcomeKind, Exception>? OnFinishedFailed { get; set; }
 
+    /// <summary>Called inside the consume when a scheduled start cannot queue its input, because the input's
+    /// constructor, <c>GetUniqueKey</c> or <c>TryAggregate</c> threw an exception that is not fatal. The occurrence is
+    /// skipped and the next one starts as usual. Like any consume it runs on every replica.</summary>
+    public Action<string, Exception>? OnScheduledStartFailed { get; set; }
+
     /// <summary>Registers an action type and its handler. The type's metadata comes from the source generator when
     /// it generated the handler's input, otherwise from the input's attributes through reflection, which trimming
     /// supports: the annotation keeps the input's parameterless constructor for scheduled starts.</summary>
@@ -384,8 +389,18 @@ public sealed partial class BackendActions
         {
             if (delayed.FindByIdOrDefault(key.TenantId, key.ActionId) is not { } row || row.StartAt > ev.When) continue;
             delayed.RemoveById(row.TenantId, row.ActionId);
-            // By its stored name, so an unregistered type queues like any row and waits for its type.
-            Queue(row.Name, row.TenantId, row.ActionId, row.Input, row.Priority, ev);
+            try
+            {
+                // By its stored name, so an unregistered type queues like any row and waits for its type.
+                Queue(row.Name, row.TenantId, row.ActionId, row.Input, row.Priority, ev);
+            }
+            catch (Exception error) when (!EventPublisherOptions.DefaultIsFatalConsumeException(error))
+            {
+                // The input's own GetUniqueKey or TryAggregate threw before Queue wrote anything. Failing the whole
+                // event would block every other due action and stop the coordinator that publishes it.
+                OnFinished(new(row.TenantId, row.ActionId), row.Name, row.Input, ActionOutcomeKind.Failed, 0, null,
+                    QueueFailed(error));
+            }
         }
     }
 
@@ -397,24 +412,43 @@ public sealed partial class BackendActions
         runs.Upsert(new() { Name = ev.Name, LastRun = ev.NewLastRun });
         if (ev.Start && TypeOf(ev.Name) is { Create: { } create } type)
         {
-            var input = create();
-            Queue(type.Name, input.TenantId, input.ActionId, input, type.Priority, ev);
+            try
+            {
+                var input = create();
+                Queue(type.Name, input.TenantId, input.ActionId, input, type.Priority, ev);
+            }
+            catch (Exception error) when (!EventPublisherOptions.DefaultIsFatalConsumeException(error))
+            {
+                // Rethrowing would roll the last run back, and the coordinator would publish the start again forever.
+                OnScheduledStartFailed?.Invoke(type.Name, error);
+            }
         }
     }
 
+    static ActionError QueueFailed(Exception error) =>
+        new() { Code = "QueueFailed", Message = error.Message, Details = error.ToString() };
+
     /// <summary>Queues an input, or merges it into the queued action with its key. An actionId of zero allocates one
-    /// only when a new action is queued, and stores it in the input.</summary>
+    /// only when a new action is queued, and stores it in the input. The application's GetUniqueKey and TryAggregate
+    /// run before anything is written, so their exception leaves no partial change.</summary>
     QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev)
     {
         var queued = Ambient.Relation<IQueuedActions>();
-        if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { } key)
+        var key = (input as IActionInputUnificator)?.GetUniqueKey();
+        if (key != null)
         {
+            var unificator = (IActionInputUnificator)input!;
             var indexes = Ambient.Relation<IActionInputIndexes>();
             if (indexes.FindByIdOrDefault(tenantId, name, key) is { } index)
             {
-                var existing = queued.FindByIdOrDefault(tenantId, index.ActionId) ?? throw new InvalidOperationException(
-                    $"Action index {name}/{Convert.ToHexString(key)} has no queued action.");
-                if (input is not IActionInputAggregator aggregator ||
+                // An entry without its action cannot occur while entries are removed by the stored key; the new
+                // action takes it over rather than failing the consume.
+                if (queued.FindByIdOrDefault(tenantId, index.ActionId) is not { } existing)
+                {
+                    index.ActionId = actionId = Allocate(actionId, input);
+                    indexes.Update(index);
+                }
+                else if (input is not IActionInputAggregator aggregator ||
                     existing.IsAggregable && ((IActionInputAggregator)existing.Input!).TryAggregate(aggregator))
                 {
                     existing.LatestInputEventId = ev.EventId;
@@ -422,10 +456,13 @@ public sealed partial class BackendActions
                     if (actionId == 0) unificator.ActionId = existing.ActionId;
                     return new(existing.TenantId, existing.ActionId); // its scheduling does not change
                 }
-                existing.IsAggregable = false;
-                queued.Update(existing);
-                index.ActionId = actionId = Allocate(actionId, input);
-                indexes.Update(index);
+                else
+                {
+                    existing.IsAggregable = false;
+                    queued.Update(existing);
+                    index.ActionId = actionId = Allocate(actionId, input);
+                    indexes.Update(index);
+                }
             }
             else
                 indexes.Insert(new()
@@ -437,7 +474,7 @@ public sealed partial class BackendActions
         queued.Insert(new()
         {
             TenantId = tenantId, ActionId = actionId, Name = name, Priority = priority,
-            Order = queued.AllocateId(), Input = input, IsAggregable = input is IActionInputAggregator,
+            Order = queued.AllocateId(), Input = input, UniqueKey = key, IsAggregable = input is IActionInputAggregator,
             LatestInputEventId = ev.EventId, QueuedAt = ev.When
         });
         Changed(new(tenantId, actionId));
@@ -463,17 +500,21 @@ public sealed partial class BackendActions
         return actionId;
     }
 
-    void OnFinished(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error)
+    void OnFinished(QueuedAction row, ActionOutcomeKind kind, ulong attempt, object? result, ActionError? error) =>
+        OnFinished(new(row.TenantId, row.ActionId), row.Name, row.Input, kind, attempt, result, error);
+
+    void OnFinished(QualifiedActionId id, string name, object? input, ActionOutcomeKind kind, ulong attempt,
+        object? result, ActionError? error)
     {
-        if (TypeOf(row.Name) is not { } type) return;
+        if (TypeOf(name) is not { } type) return;
         try
         {
-            type.Finished((IActionInput)row.Input!, kind, attempt, result, error);
+            type.Finished((IActionInput)input!, kind, attempt, result, error);
         }
         catch (Exception exception) when (!EventPublisherOptions.DefaultIsFatalConsumeException(exception))
         {
             // Rethrowing would roll the outcome back, and the coordinator would publish it again forever.
-            OnFinishedFailed?.Invoke(new(row.TenantId, row.ActionId), kind, exception);
+            OnFinishedFailed?.Invoke(id, kind, exception);
         }
     }
 
@@ -483,9 +524,10 @@ public sealed partial class BackendActions
         if (Changes.Active) Ambient.RegisterPostCommit(() => Changes.Add(id));
     }
 
+    // By the stored key: no application code runs, so a coordinator's start or abandonment cannot fail here.
     static void RemoveIndex(QueuedAction row)
     {
-        if (row.Input is not IActionInputUnificator unificator || unificator.GetUniqueKey() is not { } key) return;
+        if (row.UniqueKey is not { } key) return;
         var indexes = Ambient.Relation<IActionInputIndexes>();
         if (indexes.FindByIdOrDefault(row.TenantId, row.Name, key) is { } index && index.ActionId == row.ActionId)
             indexes.RemoveById(row.TenantId, row.Name, key);

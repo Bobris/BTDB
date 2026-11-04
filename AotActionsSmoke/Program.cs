@@ -163,7 +163,7 @@ static class Program
 
         var host = new BackendActionsHost(actions, publisher, new LoopbackCluster(), new BackendActionsOptions
         {
-            NodeId = "smoke", ApplicationGeneration = 1, PollTimeout = TimeSpan.FromMilliseconds(200),
+            NodeId = "smoke", PollTimeout = TimeSpan.FromMilliseconds(200),
             RetryDelay = TimeSpan.FromMilliseconds(50), PlanInterval = TimeSpan.FromMilliseconds(20)
         });
         var running = host.RunAsync(stopping.Token);
@@ -250,6 +250,8 @@ static class Program
 /// <summary>A single node that is always the leader; requests to the leader are served in process.</summary>
 sealed class LoopbackCluster : IBackendActionsCluster
 {
+    public ulong? ApplicationGeneration => 1;
+
     readonly ConcurrentDictionary<string, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<ReadOnlyMemory<byte>>>> _handlers = new();
 
     public async Task RunWhileLeaderAsync(Func<CancellationToken, Task> action, CancellationToken cancellation)

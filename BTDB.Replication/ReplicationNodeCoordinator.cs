@@ -141,6 +141,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         // The channel serves exactly the application sessions of this coordinator.
         if (leaderChannel != null && !ReferenceEquals(leaderChannel.Leadership, applicationLeadership))
             throw new ArgumentException("The leader channel must use this node's ReplicationLeadership.");
+        applicationLeadership?.BindGeneration(options.ApplicationGeneration);
         presence?.Bind(scheduler, options.PresenceTimeout);
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
         using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); });

@@ -33,10 +33,10 @@ public class ActionHostTest : IAsyncLifetime
 
     BackendActionsHost? _host;
 
-    CancellationTokenSource StartHost(BackendActionsOptions? options = null)
+    CancellationTokenSource StartHost(BackendActionsOptions? options = null, ulong? generation = 0)
     {
         var stop = new CancellationTokenSource();
-        _host = new BackendActionsHost(_node.Actions, _node.Publisher, _cluster.Node("a"), options ?? Options());
+        _host = new BackendActionsHost(_node.Actions, _node.Publisher, _cluster.Node("a", generation), options ?? Options());
         _hosts.Add((stop, _host.RunAsync(stop.Token)));
         return stop;
     }
@@ -349,6 +349,72 @@ public class ActionHostTest : IAsyncLifetime
 
         _node.Recorder.Release.SetResult();
         await UntilAsync(() => Interlocked.Read(ref finished) == 2);
+    }
+
+    [Fact]
+    public async Task TheCoordinatorGoesOnWhenAConsumeRejectsOneOfItsEvents()
+    {
+        // Application bugs in OnFinished and in the failure hook make the due event of one delayed input fail
+        // deterministically, on every replica.
+        _node.Recorder.AfterFinished = (input, _) =>
+        {
+            if (input is ShiftingItems) throw new InvalidOperationException("A bug in OnFinished.");
+        };
+        _node.Actions.OnFinishedFailed = (_, _, error) => throw new InvalidOperationException("A bug in the hook.", error);
+        StartHost();
+        var host = _host!;
+        var rejected = 0L;
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (ReferenceEquals(instrument.Meter, host.Metrics.Meter)) l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, _, _) =>
+        {
+            if (instrument.Name == "btdb.backend_actions.coordinator.rejected_events") Interlocked.Add(ref rejected, value);
+        });
+        listener.Start();
+        var later = _time.Now.UtcDateTime.AddMinutes(1);
+        await Enqueue(new ShiftingItems { Key = "throw" }, later); // cannot queue: its GetUniqueKey throws
+        await Enqueue(new ProcessOrder { Amount = 1 }, later);
+        await UntilAsync(() => host.Coordinator != null);
+        var coordinator = host.Coordinator;
+        _time.Now = _time.Now.AddMinutes(2);
+        // The batch is rejected, so its actions are published one by one, and only the broken one is rejected again.
+        await UntilAsync(() => Outcomes.Any(o => o.Name == nameof(ProcessOrder)));
+        await UntilAsync(() => Interlocked.Read(ref rejected) >= 2);
+        Assert.Equal(nameof(ShiftingItems), Assert.Single(_node.Delayed).Input!.GetType().Name);
+        await Enqueue(new ProcessOrder { Amount = 2 });
+        await UntilAsync(() => Outcomes.Count(o => o.Name == nameof(ProcessOrder)) == 2);
+        Assert.Same(coordinator, host.Coordinator); // the same session went on
+    }
+
+    [Fact]
+    public async Task TheHostTakesTheReplicationNodesGenerationAndRejectsADifferentOne()
+    {
+        BackendActionsOptions With(ulong? generation, string? nodeId = "a")
+        {
+            var options = Options();
+            options.ApplicationGeneration = generation;
+            options.NodeId = nodeId;
+            return options;
+        }
+
+        BackendActionsHost Create(BackendActionsOptions options, ulong? fromNode) =>
+            new(_node.Actions, _node.Publisher, _cluster.Node("a", fromNode), options);
+
+        Assert.Contains("is 4, but the replication node's is 5",
+            Assert.Throws<ArgumentException>(() => Create(With(4), 5)).Message);
+        Assert.Contains("ApplicationGeneration", Assert.Throws<ArgumentException>(() => Create(With(null), null)).Message);
+        // The test publisher has no EventCluster, so the node ID must be set.
+        Assert.Contains("EventPublisherOptions.Cluster", Assert.Throws<ArgumentException>(() => Create(With(5, null), 5)).Message);
+        Assert.Equal("a", Create(With(4), 4).NodeId);
+        Assert.Equal("a", Create(With(9), null).NodeId); // a node that does not know its generation takes the setting
+
+        StartHost(With(null), generation: 7);
+        var host = _host!;
+        await UntilAsync(() => host.Coordinator?.Overview().Workers.Count == 1);
+        Assert.Equal(7ul, Assert.Single(host.Coordinator!.Overview().Workers).Generation);
     }
 
     [Fact]

@@ -53,9 +53,10 @@ public sealed partial class BackendActions
 public sealed record ActionsOverview(Guid CoordinatorSession, IReadOnlyList<WorkerOverview> Workers,
     IReadOnlyList<PriorityOverview> Priorities, IReadOnlyList<string> Suspended, IReadOnlyList<ulong> SuspendedTenants);
 
-/// <summary>A worker the coordinator heard from: CPU in use and capacity, and its attempts.</summary>
+/// <summary>A worker the coordinator heard from: CPU in use and capacity, and its attempts. ReservedFor is a bypassed
+/// action the worker waits to have room for; it starts nothing else meanwhile.</summary>
 public sealed record WorkerOverview(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready,
-    TimeSpan SinceExchange, int Attempts);
+    TimeSpan SinceExchange, int Attempts, QualifiedActionId? ReservedFor = null);
 
 /// <summary>Actions of one priority: waiting to start, held by a worker, and started under an earlier coordinator
 /// session and not yet reported by their worker.</summary>

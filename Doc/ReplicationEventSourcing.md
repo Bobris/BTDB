@@ -208,7 +208,8 @@ using (publisher.StartQuery())
 var refreshed = await cluster.RefreshAsync(stopping); // After this node's next exchange with the leader.
 ```
 
-Supply the same node ID used in the host's `LeaderCandidate.NodeId`. `LeaderNodeId` is the selected replication
+Supply the same node ID used in the host's `LeaderCandidate.NodeId`. `publisher.SelfNodeId` returns it without
+I/O, and null when no cluster is configured. `LeaderNodeId` is the selected replication
 leader (from its leader document on followers), never data/metadata topic ownership. It is null before a leader is
 selected and can name a leader that is still activating or no longer reachable. The snapshot exposes no lease or peer
 credentials. Use replication's own authority APIs for operations requiring leadership; membership is discovery, not

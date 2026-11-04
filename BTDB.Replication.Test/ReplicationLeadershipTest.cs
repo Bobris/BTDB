@@ -272,4 +272,16 @@ public class ReplicationLeadershipTest
         serving.Close();
         authority.Fence();
     }
+
+    [Fact]
+    public void TheApplicationGenerationIsTheBoundNodesAndCannotChange()
+    {
+        var leadership = new ReplicationLeadership(new Clock());
+        Assert.Null(leadership.ApplicationGeneration);
+        leadership.BindGeneration(3);
+        leadership.BindGeneration(3); // a node restarting its coordinator binds the same value again
+        Assert.Equal(3ul, leadership.ApplicationGeneration);
+        Assert.Throws<InvalidOperationException>(() => leadership.BindGeneration(4));
+        Assert.Equal(3ul, leadership.ApplicationGeneration);
+    }
 }

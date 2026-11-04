@@ -40,7 +40,8 @@ internal static class Program
         var leaderStorage = new AzureLeaderStorage(Connect().GetBlobClient("leader.json"), TimeSpan.FromSeconds(15), initial);
         var actionOptions = new BackendActionsOptions
         {
-            NodeId = nodeId, WorkerCpu = 400, ApplicationGeneration = 1, PollTimeout = TimeSpan.FromSeconds(1),
+            // NodeId and ApplicationGeneration come from the publisher's cluster and the replication node.
+            WorkerCpu = 400, PollTimeout = TimeSpan.FromSeconds(1),
             RetryDelay = TimeSpan.FromMilliseconds(100), PlanInterval = TimeSpan.FromMilliseconds(50),
             Planner = new() { Lease = TimeSpan.FromSeconds(6), WorkerTimeout = TimeSpan.FromSeconds(3) }
         };

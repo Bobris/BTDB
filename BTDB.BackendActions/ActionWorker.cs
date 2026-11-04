@@ -12,7 +12,7 @@ namespace BTDB.BackendActions;
 /// interrupts running attempts; those that acknowledge it publish no outcome, so another node runs them again.
 /// </summary>
 internal sealed class ActionWorker(BackendActions actions, EventPublisher publisher, IBackendActionsCluster cluster,
-    BackendActionsOptions options, BackendActionsMetrics? metrics = null)
+    BackendActionsOptions options, string nodeId, ulong generation, BackendActionsMetrics? metrics = null)
 {
     readonly BackendActions _actions = actions;
     readonly BackendActionsOptions _options = options;
@@ -90,8 +90,8 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
         lock (_lock)
             return new()
             {
-                WorkerSession = Session, NodeId = _options.NodeId, Cpu = _options.WorkerCpu,
-                Generation = _options.ApplicationGeneration, Draining = draining,
+                WorkerSession = Session, NodeId = nodeId, Cpu = _options.WorkerCpu, Generation = generation,
+                Draining = draining,
                 Running = draining ? [] : _running.Values.Select(e => AttemptMessage.From(e.Id, e.Attempt, e.CpuDelta,
                     e.CancellationReason != ActionCancellationReason.None)).ToList(),
                 Finished = _finished.Select(f => AttemptMessage.From(f.Key, f.Value)).ToList(),

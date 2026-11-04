@@ -95,6 +95,7 @@ public sealed class BTDB.BackendActions.ActionPlannerOptions
   property Func<string, int, int>? CpuOverride { get; set; }
   property TimeSpan Lease { get; set; }
   property ulong MaxAttempts { get; set; }
+  property TimeSpan ReserveAfter { get; set; }
   property TimeSpan WorkerTimeout { get; set; }
 public enum BTDB.BackendActions.ActionPriority
   RealTime = 2
@@ -173,6 +174,7 @@ public sealed class BTDB.BackendActions.BackendActions
   method bool IsTenantSuspended(ulong tenantId)
   method IEnumerable<ActionInfo> ListActions(ulong? tenantId = null)
   property Action<QualifiedActionId, ActionOutcomeKind, Exception>? OnFinishedFailed { get; set; }
+  property Action<string, Exception>? OnScheduledStartFailed { get; set; }
   method BackendActions Register<TInput, TResult>(IActionHandler<TInput, TResult> handler)
   method void RegisterEvents(EventDispatcher dispatcher)
   method BackendActions RegisterGenerated(Func<Type, object>? handlers = null, Func<Type, bool>? include = null)
@@ -187,12 +189,13 @@ public sealed class BTDB.BackendActions.BackendActions
 public sealed class BTDB.BackendActions.BackendActionsHost
   ctor(BackendActions actions, EventPublisher publisher, ReplicationLeadership leadership, ReplicationLeaderChannel channel, BackendActionsOptions options)
   method Task<ActionsOverview> GetOverviewAsync(CancellationToken cancellation = default)
+  property string NodeId { get; }
   method Task RunAsync(CancellationToken stopping)
 public sealed class BTDB.BackendActions.BackendActionsOptions
   ctor()
-  property ulong ApplicationGeneration { get; set; }
+  property ulong? ApplicationGeneration { get; set; }
   property TimeSpan DelayedInterval { get; set; }
-  property string NodeId { get; set; }
+  property string? NodeId { get; set; }
   property TimeSpan PlanInterval { get; set; }
   property ActionPlannerOptions Planner { get; set; }
   property TimeSpan PollTimeout { get; set; }
@@ -336,6 +339,7 @@ public class BTDB.BackendActions.QueuedAction
   property ulong RunAttempts { get; set; }
   property ulong StartEventId { get; set; }
   property ulong TenantId { get; set; }
+  property byte[]? UniqueKey { get; set; }
   property string WorkerNode { get; set; }
   property Guid WorkerSession { get; set; }
 public enum BTDB.BackendActions.QueuedActionFlags
@@ -379,16 +383,17 @@ public sealed class BTDB.BackendActions.Testing.TestActionContext : IActionConte
   method ValueTask SubmitPartialAsync(PureEvent ev)
   property TimeSpan? Timeout { get; }
 public sealed class BTDB.BackendActions.WorkerOverview : IEquatable<WorkerOverview>
-  ctor(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready, TimeSpan SinceExchange, int Attempts)
+  ctor(Guid Session, string NodeId, ulong Generation, int Capacity, int Used, bool Ready, TimeSpan SinceExchange, int Attempts, QualifiedActionId? ReservedFor = null)
   property int Attempts { get; init; }
   property int Capacity { get; init; }
-  method void Deconstruct(out Guid Session, out string NodeId, out ulong Generation, out int Capacity, out int Used, out bool Ready, out TimeSpan SinceExchange, out int Attempts)
+  method void Deconstruct(out Guid Session, out string NodeId, out ulong Generation, out int Capacity, out int Used, out bool Ready, out TimeSpan SinceExchange, out int Attempts, out QualifiedActionId? ReservedFor)
   method bool Equals(WorkerOverview? other)
   override method bool Equals(object? obj)
   property ulong Generation { get; init; }
   override method int GetHashCode()
   property string NodeId { get; init; }
   property bool Ready { get; init; }
+  property QualifiedActionId? ReservedFor { get; init; }
   property Guid Session { get; init; }
   property TimeSpan SinceExchange { get; init; }
   override method string ToString()

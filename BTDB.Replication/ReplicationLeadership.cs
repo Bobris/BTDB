@@ -14,7 +14,27 @@ public sealed class ReplicationLeadership(IReplicationScheduler scheduler)
     Session? _current;
     bool _stopped;
 
+    ulong? _generation;
+
     static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>The <c>ReplicationNodeOptions.ApplicationGeneration</c> of the replication node whose sessions this
+    /// service runs; null until that node starts, so application services can take it instead of configuring it
+    /// again.</summary>
+    public ulong? ApplicationGeneration
+    {
+        get { lock (_lock) return _generation; }
+    }
+
+    internal void BindGeneration(ulong generation)
+    {
+        lock (_lock)
+        {
+            if (_generation is { } bound && bound != generation)
+                throw new InvalidOperationException("The leadership already belongs to a node of another application generation.");
+            _generation = generation;
+        }
+    }
 
     /// <summary>Waits as a follower, runs the callback once per active session, and cancels its token on fencing,
     /// lease expiry, handoff or shutdown. Normal callback completion waits for the next session. Callbacks for this

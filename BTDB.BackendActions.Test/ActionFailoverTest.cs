@@ -31,9 +31,10 @@ public class ActionFailoverTest : IAsyncLifetime
         foreach (var node in _nodes.Values) await node.DisposeAsync();
     }
 
-    BackendActionsOptions Options(string node, TimeSpan lease, bool worker, ulong generation, TimeSpan workerTimeout) => new()
+    // The generation comes from the replication node, as in production.
+    BackendActionsOptions Options(string node, TimeSpan lease, bool worker, TimeSpan workerTimeout) => new()
     {
-        NodeId = node, WorkerCpu = 1000, RunWorker = worker, ApplicationGeneration = generation,
+        NodeId = node, WorkerCpu = 1000, RunWorker = worker,
         PollTimeout = TimeSpan.FromMilliseconds(100), RetryDelay = TimeSpan.FromMilliseconds(20),
         PlanInterval = TimeSpan.FromMilliseconds(20), DelayedInterval = TimeSpan.FromMilliseconds(50), TimeProvider = _time,
         Planner = new() { Lease = lease, WorkerTimeout = workerTimeout }
@@ -43,8 +44,8 @@ public class ActionFailoverTest : IAsyncLifetime
         TimeSpan? workerTimeout = null)
     {
         var stop = new CancellationTokenSource();
-        var host = new BackendActionsHost(_nodes[node].Actions, _nodes[node].Publisher, _cluster.Node(node),
-            Options(node, lease, worker, generation, workerTimeout ?? TimeSpan.FromSeconds(1)));
+        var host = new BackendActionsHost(_nodes[node].Actions, _nodes[node].Publisher, _cluster.Node(node, generation),
+            Options(node, lease, worker, workerTimeout ?? TimeSpan.FromSeconds(1)));
         _hosts.Add((stop, host.RunAsync(stop.Token)));
         return stop;
     }

@@ -448,4 +448,123 @@ public class ActionPlannerTest
         var other = Add(Report, 3);
         Assert.Equal([other, first], PlanAndStart(3600 * Second));
     }
+
+    [Fact]
+    public void AnUndeliveredStartOfAReportingWorkerRunsAgainAtOnce()
+    {
+        var worker = Guid.NewGuid();
+        var id = Add(Report, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = worker;
+            row.WorkerNode = "node";
+            row.StartEventId = 7;
+        });
+        Assert.True(Planner.Actions[id].Protected);
+        // The previous coordinator recorded the start but stopped before the worker received it, so the worker's
+        // first report to this coordinator does not list it: nothing runs it, and it need not wait for its lease.
+        Assert.Empty(Exchange(worker, Second, capacity: 1000));
+        Assert.False(Planner.Actions[id].Protected);
+        Assert.Equal([id], PlanAndStart(Second));
+        Assert.Equal((2ul, worker), (_rows[id].RunAttempts, _rows[id].WorkerSession));
+    }
+
+    // Three small actions fill a worker's Normal share; a big one needs the whole worker while a steady stream of small
+    // ones keeps taking every freed room. Returns when the big one started, if within 20 seconds.
+    TimeSpan? StartOfABigActionAmongSmallOnes()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 400);
+        var small = Type("small");
+        var big = Type("big", cpu: 400);
+        var running = new List<QualifiedActionId> { Add(small, 1), Add(small, 1), Add(small, 1) };
+        Assert.Equal(running, PlanAndStart(default));
+        var bigId = Add(big, 2);
+        Add(small, 1);
+        for (var second = 1; second <= 20; second++)
+        {
+            var now = second * Second;
+            if (running.Count != 0)
+            {
+                Planner.Update(running[0], null, null, now);
+                running.RemoveAt(0);
+            }
+            foreach (var id in PlanAndStart(now))
+            {
+                if (id == bigId)
+                {
+                    Assert.Null(Planner.Workers[worker].ReservedFor);
+                    return now;
+                }
+                running.Add(id);
+            }
+            Add(small, 1);
+            if (second >= 11 && _options.ReserveAfter != TimeSpan.MaxValue)
+                Assert.Equal(bigId, Planner.Workers[worker].ReservedFor);
+        }
+        return null;
+    }
+
+    [Fact]
+    public void ABypassedActionReservesAWorkerThatStartsNothingElseUntilItFits()
+    {
+        _options.ReserveAfter = 10 * Second;
+        // Bypassed from 1 s, reserved at 11 s; the two small actions still running then finish at 12 and 13 s.
+        Assert.Equal(13 * Second, StartOfABigActionAmongSmallOnes());
+    }
+
+    [Fact]
+    public void WithoutReservationsSmallActionsStarveABigOne()
+    {
+        _options.ReserveAfter = TimeSpan.MaxValue;
+        Assert.Null(StartOfABigActionAmongSmallOnes());
+    }
+
+    [Fact]
+    public void AnActionOvertakenByATenantVisitedBeforeItIsBypassed()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 400);
+        var busy = Add(Report, 2);
+        Assert.Equal([busy], PlanAndStart(default)); // tenant 2 now consumes more than tenant 1
+        var big = Add(Type("big", cpu: 400), 2);
+        var small = Add(Report, 1);
+        Assert.Equal([small], PlanAndStart(Second));
+        Assert.Equal(Second, Planner.Actions[big].BypassedSince);
+    }
+
+    [Fact]
+    public void AMoreUrgentStartDoesNotBypassALessUrgentAction()
+    {
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 400);
+        var heavy = Add(Heavy, priority: ActionPriority.Idle);
+        Assert.Equal([heavy], PlanAndStart(default));
+        var idle = Add(Report, priority: ActionPriority.Idle);
+        var realTime = Add(Report, priority: ActionPriority.RealTime);
+        Assert.Equal([realTime], PlanAndStart(Second)); // the Idle share keeps room for urgent work, as intended
+        Assert.Null(Planner.Actions[idle].BypassedSince);
+    }
+
+    [Fact]
+    public void AReservationEndsWhenItsActionCannotStart()
+    {
+        _options.ReserveAfter = TimeSpan.Zero;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 400);
+        var running = Add(Report, 1);
+        Assert.Equal([running], PlanAndStart(default));
+        var big = Add(Type("big", cpu: 400), 2);
+        var small = Add(Report, 1);
+        Assert.Equal([small], PlanAndStart(Second));
+        Assert.Empty(PlanAndStart(Second)); // settled, but the reservation is due
+        Assert.Equal(big, Planner.Workers[worker].ReservedFor);
+        var waiting = Add(Report, 1);
+        Assert.Empty(PlanAndStart(Second)); // the reserved worker takes no other action
+        Planner.Suspended = new HashSet<string> { "big" };
+        Assert.Equal([waiting], PlanAndStart(Second));
+        Assert.Null(Planner.Workers[worker].ReservedFor);
+        Assert.Null(Planner.Actions[big].Reservation);
+    }
 }

@@ -469,6 +469,79 @@ public class ActionStateTest
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         while (!predicate()) await Task.Delay(1, timeout.Token);
     }
+
+    [Fact]
+    public async Task AnIndexEntryIsRemovedByTheKeyItsActionQueuedWith()
+    {
+        await using var node = await Start();
+        await Place(node, new ShiftingItems { Key = "k", Items = [1] });
+        await Place(node, new ShiftingItems { Key = "k", Items = [2] }); // merges, and the merged input's key is "k+"
+        var id = Assert.Single(node.Recorder.Enqueued.Distinct());
+        await Started(node, await Activate(node), id, 1);
+        Assert.Empty(node.Indexes);
+        await Finished(node, id, 1, ActionOutcomeKind.Completed, "done");
+        await Place(node, new ShiftingItems { Key = "k", Items = [3] });
+        var next = node.Recorder.Enqueued.Last();
+        Assert.NotEqual(id, next);
+        Assert.Equal([3], ((ShiftingItems)Assert.Single(node.Queued).Input!).Items);
+        Assert.Equal(next.ActionId, Assert.Single(node.Indexes).ActionId);
+    }
+
+    [Fact]
+    public async Task ADueInputThatCannotQueueFailsAloneAndTheOtherDueActionsQueue()
+    {
+        await using var node = await Start();
+        await Place(node, new ShiftingItems { Key = "a", Items = [1] });
+        var later = _time.Now.UtcDateTime.AddMinutes(1);
+        await Place(node, new ShiftingItems { Key = "throw" }, startAt: later); // GetUniqueKey throws
+        await Place(node, new ShiftingItems { Key = "a", Items = [-1] }, startAt: later); // TryAggregate throws
+        await Place(node, new ProcessOrder { Amount = 4 }, startAt: later);
+        var ids = node.Recorder.Enqueued.ToArray();
+        _time.Now = _time.Now.AddMinutes(2);
+        await node.Publisher.PublishAsync(new DelayedActionsDue
+        {
+            Actions = ids.Skip(1).Select(i => new ActionKey { TenantId = i.TenantId, ActionId = i.ActionId }).ToList()
+        });
+        Assert.Empty(node.Delayed);
+        var queued = node.Queued;
+        Assert.Equal([ids[0].ActionId, ids[3].ActionId], queued.Select(q => q.ActionId));
+        Assert.Equal([1], ((ShiftingItems)queued[0].Input!).Items); // the failed aggregation changed nothing
+        Assert.Equal([(ids[1], ActionOutcomeKind.Failed, 0ul, "QueueFailed"), (ids[2], ActionOutcomeKind.Failed, 0ul, "QueueFailed")],
+            node.Recorder.Outcomes.Select(o => (o.Id, o.Kind, o.Attempt, o.Error)));
+    }
+
+    [Fact]
+    public async Task AScheduledStartThatCannotCreateItsInputSkipsTheOccurrence()
+    {
+        var failures = new List<string>();
+        await using var node = await Node.StartAsync(_data, _metadata, _time, register: (actions, _) =>
+        {
+            actions.Register(new BrokenScheduleHandler());
+            actions.OnScheduledStartFailed = (name, _) => failures.Add(name);
+        });
+        var name = typeof(BrokenSchedule).FullName!;
+        var occurrence = _time.Now.UtcDateTime;
+        await node.Publisher.PublishAsync(new ScheduledActionStarted { Name = name, NewLastRun = occurrence, Start = true });
+        Assert.Equal([name], failures);
+        Assert.Equal(occurrence, Assert.Single(node.Read<IScheduledActionRuns, ScheduledActionRun>()).LastRun);
+        Assert.Empty(node.Queued);
+    }
 }
+
+/// <summary>A scheduled type whose constructor fails, as an application bug would.</summary>
+[RepeatedlyScheduled(60)]
+public class BrokenSchedule : ActionInput<OrderResult>
+{
+    public BrokenSchedule() => throw new InvalidOperationException("Cannot create.");
+}
+
+internal sealed class BrokenScheduleHandler : IActionHandler<BrokenSchedule, OrderResult>
+{
+    public Task<ActionResult<OrderResult>> ExecuteAsync(BrokenSchedule input, IActionContext context) =>
+        Task.FromResult<ActionResult<OrderResult>>(new OrderResult());
+
+    public void OnFinished(BrokenSchedule input, ActionOutcome<OrderResult> outcome) { }
+}
+
 
 public class UnregisteredInput : ActionInput<OrderResult>;

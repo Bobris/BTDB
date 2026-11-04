@@ -80,7 +80,8 @@ public sealed partial class BackendActions
             input.ActionId = action.ActionId;
             if (action.IsCancelled)
             {
-                type.Finished(input, ActionOutcomeKind.Cancelled, action.RunAttempts, null, null);
+                OnFinished(new(action.TenantId, action.ActionId), type.Name, input, ActionOutcomeKind.Cancelled,
+                    action.RunAttempts, null, null);
                 continue;
             }
             if (action.StartAt is { } startAt)
@@ -93,14 +94,14 @@ public sealed partial class BackendActions
                 continue;
             }
             var aggregable = input is IActionInputAggregator && action.IsAggregable;
+            var key = (input as IActionInputUnificator)?.GetUniqueKey();
             queued.Insert(new()
             {
                 TenantId = action.TenantId, ActionId = action.ActionId, Name = type.Name, Priority = action.Priority,
-                Order = queued.AllocateId(), Input = input, IsAggregable = aggregable, RunAttempts = action.RunAttempts,
-                LatestInputEventId = ev.EventId, QueuedAt = action.QueuedAt
+                Order = queued.AllocateId(), Input = input, UniqueKey = key, IsAggregable = aggregable,
+                RunAttempts = action.RunAttempts, LatestInputEventId = ev.EventId, QueuedAt = action.QueuedAt
             });
-            if (input is IActionInputUnificator unificator && unificator.GetUniqueKey() is { } key &&
-                (input is not IActionInputAggregator || aggregable))
+            if (key != null && (input is not IActionInputAggregator || aggregable))
                 indexes.Upsert(new() { TenantId = action.TenantId, Name = type.Name, UniqueKey = key, ActionId = action.ActionId });
             Changed(new(action.TenantId, action.ActionId));
         }

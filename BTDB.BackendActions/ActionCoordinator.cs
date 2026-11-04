@@ -6,17 +6,19 @@ namespace BTDB.BackendActions;
 
 public sealed class BackendActionsOptions
 {
-    /// <summary>This node's stable identity across restarts, such as its replication node ID; a new worker session
-    /// from the same node ends the previous process's attempts at once.</summary>
-    public required string NodeId { get; set; }
+    /// <summary>This node's stable identity across restarts; a new worker session from the same node ends the previous
+    /// process's attempts at once. By default the publisher's <c>EventPublisherOptions.Cluster</c> node ID, the
+    /// replication node's; a value set here must equal it when that cluster is configured.</summary>
+    public string? NodeId { get; set; }
     /// <summary>CPU units this node's worker offers; 100 is one core.</summary>
     public int WorkerCpu { get; set; } = Environment.ProcessorCount * 100;
     /// <summary>False runs no worker on this node; it still coordinates while it leads.</summary>
     public bool RunWorker { get; set; } = true;
-    /// <summary>This node's application generation, the value of <c>ReplicationNodeOptions.ApplicationGeneration</c>.
-    /// The coordinator starts nothing new on a worker of an older generation, so during a rolling upgrade new actions
-    /// run only on upgraded nodes; attempts an older worker already runs finish normally.</summary>
-    public ulong ApplicationGeneration { get; set; }
+    /// <summary>This node's application generation. The coordinator starts nothing new on a worker of an older
+    /// generation, so during a rolling upgrade new actions run only on upgraded nodes; attempts an older worker already
+    /// runs finish normally. By default <c>ReplicationNodeOptions.ApplicationGeneration</c>, read from the node's
+    /// <c>ReplicationLeadership</c>; a value set here must equal it.</summary>
+    public ulong? ApplicationGeneration { get; set; }
     public ActionPlannerOptions Planner { get; set; } = new();
     /// <summary>How long the coordinator holds a worker's exchange without news; well below the worker timeout.</summary>
     public TimeSpan PollTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -38,13 +40,14 @@ public sealed class BackendActionsOptions
 /// the starts it plans in one <see cref="ActionsStarted"/> per round and answers worker exchanges with the commands the
 /// planner derives from their reports.
 /// </summary>
-internal sealed class ActionCoordinator(BackendActions actions, EventPublisher publisher, BackendActionsOptions options)
+internal sealed class ActionCoordinator(BackendActions actions, EventPublisher publisher, BackendActionsOptions options,
+    ulong generation, BackendActionsMetrics? metrics = null)
 {
     /// <summary>Most delayed actions one <see cref="DelayedActionsDue"/> queues.</summary>
     internal const int DueBatch = 1000;
 
     readonly object _lock = new();
-    readonly ActionPlanner _planner = new(options.Planner, options.ApplicationGeneration);
+    readonly ActionPlanner _planner = new(options.Planner, generation);
     readonly TimeProvider _time = options.TimeProvider;
     readonly long _started = options.TimeProvider.GetTimestamp();
     TaskCompletionSource _workersWake = Signal();
@@ -82,8 +85,10 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                     abandoned = _planner.Expire(Now);
                     assignments = _planner.Plan(Now);
                 }
+                // A rejected abandonment stays abandoned in this session rather than being published again and again;
+                // the next coordinator session tries it again.
                 foreach (var abandonment in abandoned)
-                    await publisher.PublishAsync(new ActionFinished
+                    await TryPublishAsync(new ActionFinished
                     {
                         TenantId = abandonment.Id.TenantId, ActionId = abandonment.Id.ActionId,
                         Attempt = abandonment.Attempt, Kind = abandonment.Kind,
@@ -178,7 +183,14 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                     KeyProposition.Included, _time.GetUtcNow().UtcDateTime, KeyProposition.Included))
                 .Select(d => new ActionKey { TenantId = d.TenantId, ActionId = d.ActionId }).ToList();
         foreach (var batch in due.Chunk(DueBatch))
-            await publisher.PublishAsync(new DelayedActionsDue { Actions = [.. batch] }, cancellation).ConfigureAwait(false);
+        {
+            if (await TryPublishAsync(new DelayedActionsDue { Actions = [.. batch] }, cancellation).ConfigureAwait(false) ||
+                batch.Length == 1)
+                continue;
+            // One action the consume cannot queue must not hold back the rest of its batch.
+            foreach (var key in batch)
+                await TryPublishAsync(new DelayedActionsDue { Actions = [key] }, cancellation).ConfigureAwait(false);
+        }
     }
 
     // Each passed occurrence starts once: the consume accepts only a start from the last run it read.
@@ -202,7 +214,25 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 });
             }
         }
-        foreach (var start in starts) await publisher.PublishAsync(start, cancellation).ConfigureAwait(false);
+        foreach (var start in starts) await TryPublishAsync(start, cancellation).ConfigureAwait(false);
+    }
+
+    // A consume that fails the same way on every replica rejects only its own event. The coordinator goes on, and the
+    // next interval tries again, instead of ending the session and starting over with a new load and protections.
+    // Fatal failures, cancellation and a stopped publisher still end the session.
+    async Task<bool> TryPublishAsync(PureEvent ev, CancellationToken cancellation)
+    {
+        try
+        {
+            await publisher.PublishAsync(ev, cancellation).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception error) when (!cancellation.IsCancellationRequested &&
+                                      !EventPublisherOptions.DefaultIsFatalConsumeException(error))
+        {
+            metrics?.CoordinatorEventRejected();
+            return false;
+        }
     }
 
     internal ActionsOverview Overview()
@@ -214,7 +244,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             return new(Session,
                 _planner.Workers.Values.OrderBy(w => w.NodeId, StringComparer.Ordinal).Select(w => new WorkerOverview(
                     w.Session, w.NodeId, w.Generation, w.Capacity, w.Used, w.Ready, now - w.LastExchange,
-                    w.Actions.Count)).ToList(),
+                    w.Actions.Count, w.ReservedFor)).ToList(),
                 actionsByPriority.Select(g => new PriorityOverview(g.Key, g.Count(a => a.Runnable),
                     g.Count(a => a.Worker != null), g.Count(a => a.Protected))).ToList(),
                 _planner.Suspended.Order(StringComparer.Ordinal).ToList(), _planner.SuspendedTenants.Order().ToList());

@@ -21,6 +21,11 @@ public sealed class ActionPlannerOptions
     /// <summary>Replaces an action type's CPU cost, given its name and attribute cost, for example from
     /// configuration; evaluated when the coordinator learns of an action.</summary>
     public Func<string, int, int>? CpuOverride { get; set; }
+    /// <summary>How long a runnable action may wait while actions of its own or a less urgent priority start in its
+    /// place, because they fit a worker and it does not. Then it reserves the least used worker, which starts nothing
+    /// else until the action fits it, at the latest once it is idle. <see cref="TimeSpan.MaxValue"/> never
+    /// reserves.</summary>
+    public TimeSpan ReserveAfter { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>One action as the coordinator sees it: its replicated row plus the coordinator's assignment.</summary>
@@ -59,6 +64,13 @@ internal sealed class PlannedAction
     internal int BaseCpu { get; set; }
     /// <summary>The CPU counted on the holding worker.</summary>
     internal int HeldCpu { get; set; }
+    /// <summary>Since when actions of its priority or a less urgent one started in its place, because it did not fit
+    /// any worker; cleared when it starts.</summary>
+    internal TimeSpan? BypassedSince { get; set; }
+    /// <summary>The worker reserved for it.</summary>
+    internal Guid? Reservation { get; set; }
+    /// <summary>The last plan that found no worker for it.</summary>
+    internal int BlockedPlan { get; set; }
     internal string Group => Type.ConcurrencyGroup ?? Type.Name;
     /// <summary>Nothing runs or may run the recorded attempt, and nothing is about to finish it.</summary>
     internal bool Idle => Worker == null && Starting == null && !Protected && !Finished && !Abandoned;
@@ -76,6 +88,8 @@ internal sealed class PlannedWorker
     internal TimeSpan ExpiresAt { get; set; }
     internal TimeSpan LastExchange { get; set; }
     internal int Used { get; set; }
+    /// <summary>The bypassed action this worker waits for; it starts nothing else meanwhile.</summary>
+    internal QualifiedActionId? ReservedFor { get; set; }
     internal readonly HashSet<QualifiedActionId> Actions = new();
 }
 
@@ -98,7 +112,8 @@ internal readonly record struct WorkerCommand(WorkerCommandKind Kind, QualifiedA
 /// priority, then enqueue order. An action starts on the next ready worker, round robin, whose application generation
 /// is not older than the coordinator's and that has room for its cost within its priority's capacity share; concurrency
 /// groups and single-running tenants limit it, counting protected attempts too. An older worker keeps the attempts
-/// it already runs.
+/// it already runs. An action that smaller ones of its priority or a less urgent one keep bypassing reserves a worker
+/// after <see cref="ActionPlannerOptions.ReserveAfter"/>, so it cannot starve.
 /// </summary>
 internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generation = 0)
 {
@@ -118,8 +133,12 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     readonly Dictionary<(string Group, ulong Tenant), int> _runningTenantGroups = new();
     /// <summary>CPU of the attempts workers hold, per tenant.</summary>
     readonly Dictionary<ulong, int> _runningCpu = new();
-    int _nextWorker;
+    /// <summary>Actions this plan found no worker for and that are not bypassed yet, by priority.</summary>
+    readonly SortedList<ActionPriority, List<PlannedAction>> _blocked = new();
+    int _nextWorker, _plan;
     TimeSpan _decayedUntil;
+    /// <summary>When a bypassed action's reservation is due, so a settled plan has to look again.</summary>
+    TimeSpan _nextReservation = TimeSpan.MaxValue;
     IReadOnlySet<string> _suspended = new HashSet<string>(StringComparer.Ordinal);
     IReadOnlySet<ulong> _suspendedTenants = new HashSet<ulong>();
     /// <summary>The last plan found nothing to start and nothing it depends on changed since.</summary>
@@ -206,8 +225,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         action.RecordedNode = row.WorkerNode;
         action.RunAttempts = row.RunAttempts;
         action.InterruptedAttempts = row.InterruptedAttempts;
-        if (action.Protected && _workers.Values.Any(w => w.NodeId == action.RecordedNode && w.Session != action.RecordedSession))
-            action.Protected = false; // its node already runs a newer process
+        if (action.Protected && _workers.Values.Any(w => w.NodeId == action.RecordedNode))
+            action.Protected = false; // its node's worker already exchanged without it, or runs a newer process
         Count(action);
         if (!_tenants.TryGetValue(id.TenantId, out var tenant))
             _tenants.Add(id.TenantId, tenant = new(TenantOrder));
@@ -230,12 +249,16 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         foreach (var attempt in running) reported.Add(attempt.Id);
         if (!_workers.TryGetValue(session, out var worker))
         {
-            // Later protections of this node end in Update, so only a new session needs this scan.
+            // A worker exchanges one request at a time and registers every Start it receives before it sends the next
+            // request, so a report reaching this coordinator lists every attempt of its node that may still run.
+            // A protected attempt it leaves out was recorded for an earlier process of the node, or recorded for this
+            // one but never delivered, because the previous coordinator stopped first. Later protections of this
+            // node end in Update, so only a new session needs this scan.
             foreach (var action in _actions.Values)
-                if (action.Protected && action.RecordedNode == nodeId && action.RecordedSession != session &&
+                if (action.Protected && (action.RecordedSession == session || action.RecordedNode == nodeId) &&
                     !reported.Contains(action.Id))
                 {
-                    action.Protected = false; // recorded by an earlier coordinator for that previous process
+                    action.Protected = false;
                     Count(action);
                 }
             worker = new() { Session = session, NodeId = nodeId };
@@ -342,7 +365,11 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
     {
         Decay(now);
         var assignments = new List<Assignment>();
-        if (_settled || !_workers.Values.Any(w => w.Ready)) return assignments;
+        if (_settled && now < _nextReservation || !_workers.Values.Any(w => w.Ready)) return assignments;
+        _nextReservation = TimeSpan.MaxValue;
+        EndStaleReservations();
+        _plan++;
+        ActionPriority? leastUrgentStarted = null;
         bool progress;
         do
         {
@@ -354,7 +381,13 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
                 {
                     if (!action.Runnable || Suspended.Contains(action.Type.Name) || !GroupAdmits(action)) continue;
                     var worker = PickWorker(action);
-                    if (worker == null) continue;
+                    if (worker == null)
+                    {
+                        Blocked(action, now);
+                        continue;
+                    }
+                    if (leastUrgentStarted == null || action.Priority > leastUrgentStarted)
+                        leastUrgentStarted = action.Priority;
                     var attempt = action.RunAttempts + 1;
                     Acquire(action, worker, now);
                     action.Starting = attempt;
@@ -365,8 +398,88 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
                 }
             }
         } while (progress);
-        _settled = true; // a mutation or a new worker report makes the next plan look again
+        if (leastUrgentStarted is { } started) Bypass(started, now);
+        foreach (var blocked in _blocked.Values) blocked.Clear();
+        _settled = true; // a mutation, a new worker report or a due reservation makes the next plan look again
         return assignments;
+    }
+
+    // No worker has room for the action. Once it has been bypassed for ReserveAfter it reserves a worker.
+    void Blocked(PlannedAction action, TimeSpan now)
+    {
+        if (action.Reservation != null) return;
+        if (action.BypassedSince is not { } since)
+        {
+            if (action.BlockedPlan == _plan) return;
+            action.BlockedPlan = _plan;
+            if (!_blocked.TryGetValue(action.Priority, out var list)) _blocked.Add(action.Priority, list = new());
+            list.Add(action);
+            return;
+        }
+        if (now - since >= options.ReserveAfter) Reserve(action);
+        else Due(since);
+    }
+
+    // Actions up to this priority started in this plan, taking room the blocked ones of the same or a more urgent
+    // priority did not fit into, so those are bypassed. Room only shrinks within a plan, so this holds whichever was
+    // visited first. A more urgent action overtaking a less urgent one is what the capacity shares intend.
+    void Bypass(ActionPriority priority, TimeSpan now)
+    {
+        if (options.ReserveAfter == TimeSpan.MaxValue) return;
+        foreach (var (blockedPriority, list) in _blocked)
+        {
+            if (blockedPriority > priority) break;
+            if (list.Count == 0) continue;
+            foreach (var action in list) action.BypassedSince ??= now;
+            list.Clear();
+            Due(now);
+        }
+    }
+
+    void Due(TimeSpan since)
+    {
+        if (options.ReserveAfter > TimeSpan.MaxValue - since) return;
+        var due = since + options.ReserveAfter;
+        if (due < _nextReservation) _nextReservation = due;
+    }
+
+    // The least used eligible worker that is not reserved yet; none when every one is.
+    void Reserve(PlannedAction action)
+    {
+        PlannedWorker? best = null;
+        foreach (var session in _workerOrder)
+        {
+            var worker = _workers[session];
+            if (!worker.Ready || worker.Generation < generation || worker.ReservedFor != null) continue;
+            if (best == null || worker.Used < best.Used) best = worker;
+        }
+        if (best == null) return;
+        best.ReservedFor = action.Id;
+        action.Reservation = best.Session;
+    }
+
+    // A reservation ends when its action starts or leaves, or can no longer start: so a reserved worker never waits
+    // for an action that waits for something else.
+    void EndStaleReservations()
+    {
+        foreach (var worker in _workers.Values)
+        {
+            if (worker.ReservedFor is not { } id) continue;
+            if (_actions.TryGetValue(id, out var action) && action.Runnable && worker.Ready &&
+                worker.Generation >= generation && !Suspended.Contains(action.Type.Name) &&
+                !SuspendedTenants.Contains(id.TenantId) && GroupAdmits(action))
+                continue;
+            worker.ReservedFor = null;
+            if (action != null) action.Reservation = null;
+        }
+    }
+
+    void EndReservation(PlannedAction action)
+    {
+        if (action.Reservation is not { } session) return;
+        action.Reservation = null;
+        if (_workers.TryGetValue(session, out var worker) && worker.ReservedFor == action.Id) worker.ReservedFor = null;
+        _settled = false;
     }
 
     // Each whole second decays the consumption and adds the running CPU, which is constant since the last call, so the
@@ -404,6 +517,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
         {
             var worker = _workers[_workerOrder[(_nextWorker + i) % _workerOrder.Count]];
             if (!worker.Ready || worker.Generation < generation) continue;
+            if (worker.ReservedFor is { } reserved && reserved != action.Id) continue;
             // An idle worker takes any single action; otherwise the cost must fit the priority's share.
             if (worker.Used != 0 && worker.Used + action.BaseCpu > Math.Max(100, worker.Capacity * share)) continue;
             _nextWorker = (_nextWorker + i + 1) % _workerOrder.Count;
@@ -414,6 +528,8 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
 
     void Acquire(PlannedAction action, PlannedWorker worker, TimeSpan now)
     {
+        EndReservation(action);
+        action.BypassedSince = null;
         action.Worker = worker.Session;
         action.LeaseUntil = now + options.Lease;
         worker.Actions.Add(action.Id);
@@ -456,6 +572,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
 
     void Expire(PlannedWorker worker)
     {
+        if (worker.ReservedFor is { } reserved && _actions.TryGetValue(reserved, out var waiting)) waiting.Reservation = null;
         foreach (var id in worker.Actions.ToList()) Release(_actions[id]);
         _settled = false;
         _workers.Remove(worker.Session);
@@ -465,6 +582,7 @@ internal sealed class ActionPlanner(ActionPlannerOptions options, ulong generati
 
     void Remove(PlannedAction action)
     {
+        EndReservation(action);
         Release(action);
         action.Protected = false;
         Count(action);

@@ -40,6 +40,7 @@ json WorkerOverview
   Generation: ulong
   NodeId: string
   Ready: bool
+  ReservedFor: QualifiedActionId?
   Session: Guid
   SinceExchange: TimeSpan
   Used: int
@@ -52,3 +53,4 @@ enum BTDB.BackendActions.ActionPriority : byte
   Normal = 4
   Low = 8
   Idle = 16
+json Nullable`1

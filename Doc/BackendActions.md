@@ -57,7 +57,8 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * `[BackendAction]`: `Cpu` (100 is one core, at least 10 is accounted), `MaxConcurrent` across the cluster (0 is
   unlimited) for the type or its `ConcurrencyGroup`, `SingleRunningPerTenant`, `Priority`, the default of an enqueue or
   scheduled start that names none (`Normal` unless set), and `Name`, by default the input type's full name. Rows store the name, so set it before renaming an input type. After a leader change, attempts that may
-  still run count toward both limits until their worker reports them or their lease passes.
+  still run count toward both limits until their worker reports them, a worker of their node reports without them,
+  or their lease passes.
 * `IActionInputUnificator.GetUniqueKey()` returns a `byte[]?` key; null means the input never merges, and an empty
   key merges with other empty keys. An input with the key of a queued action that has not started merges into it.
   Compose a key of several values by writing them into one array, for example with `BinaryPrimitives`. `IActionInputAggregator.TryAggregate(other)` merges the new input's
@@ -72,6 +73,17 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
 * An exception from `OnFinished` does not undo the outcome: the action still finishes, the handler's writes before it
   stay, and `BackendActions.OnFinishedFailed(id, kind, exception)`, when set, reports it inside the consume. The
   finishing action's unification key is already free there, so an input `OnFinished` enqueues starts a new action.
+* Application code that the library's own events run is isolated, so one bug cannot block other actions or stop the
+  coordinator. A delayed input whose `GetUniqueKey` or `TryAggregate` throws when it becomes due finishes as `Failed`
+  with code `QueueFailed` (attempt 0) without changing the action it would merge into; the other due actions queue.
+  A scheduled start whose input constructor, `GetUniqueKey` or `TryAggregate` throws skips that occurrence and is
+  reported by `BackendActions.OnScheduledStartFailed(name, exception)`. An action keeps the unification key it was
+  queued with, so its index entry is removed without calling `GetUniqueKey` again, also after aggregation changed
+  the input. When a coordinator's event still fails its consume, for example because a hook such as
+  `OnFinishedFailed` throws, the coordinator goes on with the same session: it publishes a rejected batch of due
+  actions again one by one, and tries a rejected schedule or due action at its next interval. Such rejections are
+  counted by `btdb.backend_actions.coordinator.rejected_events`. An exception from `Enqueue` in an application's own
+  consume fails that consume, as before.
 
 ## Register and host
 
@@ -93,16 +105,20 @@ actions.RegisterEvents(dispatcher);                  // before the EventPublishe
 var host = new BackendActionsHost(actions, publisher,
     app.Services.GetRequiredService<ReplicationLeadership>(),
     app.Services.GetRequiredService<ReplicationLeaderChannel>(),
-    new BackendActionsOptions { NodeId = nodeId, ApplicationGeneration = applicationGeneration });
+    new BackendActionsOptions());
 var running = host.RunAsync(stopping);               // join it before disposing the publisher
 ```
 
 `ReplicationLeadership` and `ReplicationLeaderChannel` come from `AddBTDBReplication`; see
-[requests to the leader](ReplicationHosting.md#requests-to-the-leader). `NodeId` must be stable across restarts of the
-node, and `ApplicationGeneration` equal to the node's `ReplicationNodeOptions.ApplicationGeneration`. Other options:
+[requests to the leader](ReplicationHosting.md#requests-to-the-leader). The host takes the node's identity from the
+replication node, so it cannot drift: `NodeId` from the publisher's `EventPublisherOptions.Cluster` (its
+[`EventCluster`](ReplicationEventSourcing.md), whose node ID is the replication node's), and `ApplicationGeneration`
+from `ReplicationLeadership`, which holds the node's `ReplicationNodeOptions.ApplicationGeneration` once the node
+started. Set them in `BackendActionsOptions` only without an `EventCluster` or outside replication; a value set there
+must equal the replication node's, or the constructor throws. `NodeId` must be stable across restarts. Other options:
 `WorkerCpu` (the node's capacity, by default 100 per processor), `RunWorker`, `Planner` (lease, worker timeout,
-attempt limit, capacity shares, CPU overrides), the poll, plan, delayed and schedule intervals, and `TimeProvider`,
-which should be the publisher's.
+attempt limit, capacity shares, CPU overrides, reservations), the poll, plan, delayed and schedule intervals, and
+`TimeProvider`, which should be the publisher's.
 
 ## Enqueue and cancel
 
@@ -137,6 +153,13 @@ The coordinator runs on the replication leader. It starts actions by priority, t
 serving tenants with the least recent CPU use first. A worker takes an action when its cost fits the priority's share
 of the worker's capacity (`RealTime` 100 %, `Normal` 80 %, `Low` and `Idle` 60 %); an idle worker takes any single
 action. A worker of an older `ApplicationGeneration` than the coordinator gets no new actions.
+
+A large action could starve while smaller ones keep taking every room a worker frees. When actions of the same or a
+less urgent priority start in place of one that fits no worker, it is bypassed; after `Planner.ReserveAfter` (30 s)
+of that, it reserves the least used eligible worker. A reserved worker starts nothing else until the action fits it,
+at the latest once it is idle; its running attempts go on. A more urgent action taking room a less urgent one needs
+does not count, since that is what the capacity shares are for. The reservation ends when the action starts, leaves,
+or can no longer start (suspended, or its concurrency limit is full). `TimeSpan.MaxValue` turns reservations off.
 
 Execution is at least once: `ExecuteAsync` can run again after a lost worker, an expired lease (2 min without a
 report) or a leader change, so external effects need idempotency. `OnFinished` runs exactly once per outcome: results
@@ -198,7 +221,8 @@ using (publisher.StartQuery())
     var suspended = actions.SuspendedActions;
     var paused = actions.IsTenantSuspended(tenantId); // or actions.SuspendedTenants
 }
-var overview = await host.GetOverviewAsync(stopping); // from the leader: workers, waiting and running per priority
+var overview = await host.GetOverviewAsync(stopping); // from the leader: workers and their reservations,
+                                                      // waiting and running per priority
 using (publisher.StartQuery())
 {
     await actions.SuspendAsync([name]);            // start no new attempts of these types
@@ -213,7 +237,8 @@ tenant, scheduled ones included. Suspended tenants are few by design: they are s
 
 Meter `BTDB.BackendActions` counts each worker's started and finished attempts (`btdb.backend_actions.attempts.*`,
 finished by `kind`), records the start delay and attempt duration in seconds, and counts failed exchanges. The node
-whose coordinator runs also reports the gauges `btdb.backend_actions.waiting`, `running` and `workers`.
+whose coordinator runs also counts its events whose consume failed (`btdb.backend_actions.coordinator.rejected_events`)
+and reports the gauges `btdb.backend_actions.waiting`, `running` and `workers`.
 
 ## Migrating from another action system
 
