@@ -1,5 +1,5 @@
-// The planner as committed before its indexes (git ac0b50b6f), kept to check that the indexed planner decides exactly
-// the same: it scans every action, so its result is easy to trust, and PlannerEquivalenceTest compares the two.
+// The scanning planner from before its indexes (git ac0b50b6f), with later state-machine fixes applied too.
+// PlannerEquivalenceTest compares its decisions with the indexed planner's.
 namespace BTDB.BackendActions.Test;
 
 /// <summary>One action as the coordinator sees it: its replicated row plus the coordinator's assignment.</summary>
@@ -166,7 +166,7 @@ internal sealed class ReferencePlanner(ActionPlannerOptions options, ulong gener
                 Release(action);
             }
         }
-        if (row.RunAttempts != action.RunAttempts)
+        if (!row.IsStarted || row.RunAttempts != action.RunAttempts)
         {
             if (unknownAttempt) Release(action); // another session recorded a newer attempt
             action.Protected = false;

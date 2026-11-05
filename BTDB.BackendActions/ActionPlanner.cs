@@ -398,7 +398,7 @@ internal sealed class ActionPlanner
                 Release(action);
             }
         }
-        if (row.RunAttempts != action.RunAttempts)
+        if (!row.IsStarted || row.RunAttempts != action.RunAttempts)
         {
             if (unknownAttempt) Release(action); // another session recorded a newer attempt
             action.Protected = false;
@@ -761,10 +761,18 @@ internal sealed class ActionPlanner
     // Bypassed first actions whose wait reached ReserveAfter reserve a worker, if still no worker has room for them.
     void DueReservations(TimeSpan now)
     {
+        // Take the due entries first: Place may queue the same expired deadline when the action now fits or no
+        // unreserved worker remains. That retry belongs to the next plan, after starts or worker changes can help.
+        List<PlannedAction>? dueActions = null;
         while (_reservationsDue.TryPeek(out var head, out var due) && due <= now)
         {
             if (_reservationsDue.Dequeue()) OrderedOperations++;
             Work++;
+            (dueActions ??= new()).Add(head);
+        }
+        if (dueActions == null) return;
+        foreach (var head in dueActions)
+        {
             head.ReservationQueued = false;
             if (head.Removed || head.Lane is not { Listed: true } lane || lane.Head != head || head.Reservation != null ||
                 head.BypassedSince is not { } since || !lane.Class.Open)
@@ -806,7 +814,8 @@ internal sealed class ActionPlanner
         {
             Work++;
             var id = worker.ReservedFor!.Value;
-            if (_actions.TryGetValue(id, out var action) && action.Runnable && worker.Ready &&
+            if (_actions.TryGetValue(id, out var action) && action.Runnable &&
+                action.Lane is { Listed: true } lane && lane.Head == action && worker.Ready &&
                 worker.Generation >= generation && !Suspended.Contains(action.Type.Name) &&
                 !SuspendedTenants.Contains(id.TenantId) && GroupAdmits(action))
                 continue;

@@ -53,9 +53,11 @@ static class BackendActionsGeneration
         if (syntaxContext.SemanticModel.GetDeclaredSymbol(syntaxContext.Node, cancellation) is not INamedTypeSymbol
             handler)
             return null;
-        // Partial classes have several declarations; analyze the first only.
+        // The syntax provider visits declarations with a base list, which need not include the first partial one.
+        // Analyze the first eligible declaration only, even when several parts declare interfaces.
         if (handler.DeclaringSyntaxReferences.Length > 1 &&
-            handler.DeclaringSyntaxReferences[0].GetSyntax(cancellation) != syntaxContext.Node)
+            handler.DeclaringSyntaxReferences.Select(r => r.GetSyntax(cancellation))
+                .OfType<ClassDeclarationSyntax>().First(d => d.BaseList != null) != syntaxContext.Node)
             return null;
         if (handler.IsAbstract || handler.IsStatic || handler.IsGenericType || !Accessible(handler)) return null;
         var actions = handler.AllInterfaces.Where(IsActionHandler)

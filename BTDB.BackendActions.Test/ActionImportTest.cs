@@ -98,6 +98,70 @@ public class ActionImportTest
             node.Queued.Select(q => (q.ActionId, ((ProcessOrder)q.Input!).Amount)).OrderBy(q => q.ActionId));
     }
 
+    [Theory]
+    [InlineData(0ul)]
+    [InlineData(4ul)]
+    public async Task DelayedImportsKeepTheirHistoryAcrossReplicasAndAColdReplay(ulong attempts)
+    {
+        await using var first = await Node.StartAsync(_data, _metadata, _time, batch: 1);
+        var genesis = first.CopyFiles();
+        await using var second = await Node.StartAsync(_data, _metadata, _time, 64, first.CopyFiles());
+        var id = new QualifiedActionId(3, 50);
+        await first.Query(a => a.ImportAsync([
+            new() { TenantId = id.TenantId, ActionId = id.ActionId, Input = new ProcessOrder { Amount = 7 },
+                RunAttempts = attempts, QueuedAt = Queued, StartAt = _time.Now.UtcDateTime }
+        ]));
+        Assert.Equal(attempts, Assert.Single(first.Delayed).RunAttempts);
+        using (first.Publisher.StartQuery())
+        {
+            Assert.Equal(attempts, first.Actions.FindAction(id)!.RunAttempts);
+            Assert.Equal(attempts, Assert.Single(first.Actions.ListActions()).RunAttempts);
+        }
+        await first.Publisher.PublishAsync(new DelayedActionsDue
+        {
+            Actions = [new() { TenantId = id.TenantId, ActionId = id.ActionId }]
+        });
+        var row = Assert.Single(first.Queued);
+        Assert.Equal((attempts, Queued), (row.RunAttempts, row.QueuedAt));
+        var session = Guid.NewGuid();
+        await first.Publisher.PublishAsync(new CoordinatorActivated { Session = session });
+        await first.Publisher.PublishAsync(new ActionsStarted
+        {
+            Session = session,
+            Actions = [new() { TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempts + 1,
+                WorkerSession = Guid.NewGuid(), WorkerNode = "worker" }]
+        });
+        Assert.Equal(attempts + 1, Assert.Single(first.Queued).RunAttempts);
+        await first.Publisher.PublishAsync(new ActionFinished
+        {
+            TenantId = id.TenantId, ActionId = id.ActionId, Attempt = attempts + 1,
+            Kind = ActionOutcomeKind.Completed, Result = new OrderResult { Text = "done" }
+        });
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            await second.Publisher.WaitForAppliedAsync(first.Publisher.LastAppliedEventId, timeout.Token);
+        await using var cold = await Node.StartAsync(_data, _metadata, _time, 7, genesis);
+        Assert.Equal((id, attempts + 1), (first.Recorder.Outcomes.Single().Id, first.Recorder.Outcomes.Single().Attempt));
+        Assert.Equal(first.Recorder.Outcomes, second.Recorder.Outcomes);
+        Assert.Equal(first.Recorder.Outcomes, cold.Recorder.Outcomes);
+        Assert.Equal(first.NativeTrl(), second.NativeTrl());
+        Assert.Equal(first.NativeTrl(), cold.NativeTrl());
+    }
+
+    [Fact]
+    public async Task ADelayedImportThatCannotQueueReportsItsPreviousAttempts()
+    {
+        await using var node = await Node.StartAsync(_data, _metadata, _time);
+        await node.Query(a => a.ImportAsync([
+            new() { ActionId = 50, Input = new ShiftingItems { Key = "throw" }, RunAttempts = 4,
+                QueuedAt = Queued, StartAt = _time.Now.UtcDateTime }
+        ]));
+        await node.Publisher.PublishAsync(new DelayedActionsDue { Actions = [new() { ActionId = 50 }] });
+        var outcome = Assert.Single(node.Recorder.Outcomes);
+        Assert.Equal((4ul, ActionOutcomeKind.Failed, "QueueFailed"), (outcome.Attempt, outcome.Kind, outcome.Error));
+        Assert.Empty(node.Delayed);
+        Assert.Empty(node.Queued);
+    }
+
     [Fact]
     public async Task ReplicasAndAColdReplayImportTheSameBytes()
     {

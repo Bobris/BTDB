@@ -46,7 +46,7 @@ public sealed partial class BackendActions
         row.QueuedAt, null, row.IsStarted ? row.WorkerNode : "", row.Input);
 
     static ActionInfo Info(DelayedAction row) => new(new(row.TenantId, row.ActionId), row.Name, ActionState.Delayed,
-        row.Priority, 0, false, row.QueuedAt, row.StartAt, "", row.Input);
+        row.Priority, row.RunAttempts, false, row.QueuedAt, row.StartAt, "", row.Input);
 }
 
 /// <summary>The active coordinator's view; see <see cref="BackendActionsHost.GetOverviewAsync"/>.</summary>

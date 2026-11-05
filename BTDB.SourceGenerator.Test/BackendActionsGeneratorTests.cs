@@ -6,6 +6,35 @@ namespace BTDB.SourceGenerator.Tests;
 public class BackendActionsGeneratorTests : GeneratorTestsBase
 {
     [Fact]
+    public Task VerifyPartialHandlersWithInterfacesOnLaterDeclarationsAreRegisteredOnce()
+    {
+        return VerifySourceGenerator("""
+            using System;
+            using System.Threading.Tasks;
+            using BTDB.BackendActions;
+
+            namespace TestNamespace;
+
+            public class Result;
+            public class Job : ActionInput<Result>;
+
+            public partial class JobHandler;
+
+            public partial class JobHandler : IActionHandler<Job, Result>
+            {
+                public Task<ActionResult<Result>> ExecuteAsync(Job input, IActionContext context) =>
+                    Task.FromResult<ActionResult<Result>>(new Result());
+                public void OnFinished(Job input, ActionOutcome<Result> outcome) { }
+            }
+
+            public partial class JobHandler : IDisposable
+            {
+                public void Dispose() { }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyHandlersAreRegisteredWithTheirInputsMetadata()
     {
         return VerifySourceGenerator("""

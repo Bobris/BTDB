@@ -14,6 +14,7 @@ relation IDelayedActions of BTDB.BackendActions.DelayedAction
   Name: string
   Priority: ActionPriority
   QueuedAt: DateTime
+  RunAttempts: ulong
   StartAt: DateTime [SecondaryKey("StartAt")]
   TenantId: ulong [PrimaryKey(1, false)]
 relation IQueuedActions of BTDB.BackendActions.QueuedAction

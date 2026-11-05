@@ -89,7 +89,8 @@ public sealed partial class BackendActions
                 delayed.Insert(new()
                 {
                     TenantId = action.TenantId, ActionId = action.ActionId, StartAt = startAt, Name = type.Name,
-                    Priority = action.Priority, Input = input, QueuedAt = action.QueuedAt
+                    Priority = action.Priority, Input = input, QueuedAt = action.QueuedAt,
+                    RunAttempts = action.RunAttempts
                 });
                 continue;
             }

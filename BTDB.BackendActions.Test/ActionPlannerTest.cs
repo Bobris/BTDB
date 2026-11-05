@@ -60,6 +60,21 @@ public class ActionPlannerTest
         Planner.Exchange(worker, node, capacity, generation, true,
             running ?? [], finished ?? [], now, lost);
 
+    // A regression in the due-reservation loop must fail the test instead of leaving the test process spinning.
+    async Task<List<QualifiedActionId>> PlanWithoutStalling(TimeSpan now)
+    {
+        var planning = Task.Run(() => PlanAndStart(now));
+        try { return await planning.WaitAsync(TimeSpan.FromSeconds(5)); }
+        finally
+        {
+            if (!planning.IsCompleted)
+            {
+                _options.ReserveAfter = TimeSpan.MaxValue;
+                await planning.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+    }
+
     [Fact]
     public void PriorityThenOrderWithinATenantAndOneActionPerTenantPerRound()
     {
@@ -397,6 +412,30 @@ public class ActionPlannerTest
     }
 
     [Fact]
+    public void AnInterruptedProtectedAttemptReleasesItsConcurrencySlotAtOnce()
+    {
+        var type = Type("single", maxConcurrent: 1, singlePerTenant: true);
+        var id = Add(type, 5, change: row =>
+        {
+            row.IsStarted = true;
+            row.RunAttempts = 1;
+            row.WorkerSession = Guid.NewGuid();
+            row.WorkerNode = "old";
+        });
+        var waiting = Add(type, 5);
+        Exchange(Guid.NewGuid(), default, capacity: 1000, node: "other");
+        Assert.Empty(PlanAndStart(default));
+        _rows[id].IsStarted = false;
+        _rows[id].InterruptedAttempts = 1;
+        Planner.Update(id, _rows[id], type, Second); // no exchange or drain from the stopping worker
+        Assert.False(Planner.Actions[id].Protected);
+        Assert.Equal([id], PlanAndStart(Second));
+        Assert.Equal(2ul, _rows[id].RunAttempts);
+        Planner.Update(id, null, null, Second);
+        Assert.Equal([waiting], PlanAndStart(Second));
+    }
+
+    [Fact]
     public void ACancelIsNotRepeatedWhileTheWorkerEndsTheAttempt()
     {
         var worker = Guid.NewGuid();
@@ -512,6 +551,78 @@ public class ActionPlannerTest
         _options.ReserveAfter = 10 * Second;
         // Bypassed from 1 s, reserved at 11 s; the two small actions still running then finish at 12 and 13 s.
         Assert.Equal(13 * Second, StartOfABigActionAmongSmallOnes());
+    }
+
+    [Fact]
+    public async Task ADueReservationWhoseActionNowFitsDoesNotLoop()
+    {
+        _options.ReserveAfter = Second;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 200);
+        var running = Add(Report);
+        Assert.Equal([running], PlanAndStart(default));
+        var big = Add(Type("big", cpu: 200));
+        var small = Add(Type("small", cpu: 10));
+        Assert.Equal([small], PlanAndStart(default));
+        Assert.Equal(TimeSpan.Zero, Planner.Actions[big].BypassedSince);
+        Planner.Update(running, null, null, 2 * Second);
+        Planner.Update(small, null, null, 2 * Second);
+        Assert.Equal([big], await PlanWithoutStalling(2 * Second));
+        Assert.Null(Planner.Workers[worker].ReservedFor);
+    }
+
+    [Fact]
+    public async Task DueReservationsWithNoUnreservedWorkerRetryWithoutLooping()
+    {
+        _options.ReserveAfter = Second;
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 200);
+        var running = Add(Report);
+        Assert.Equal([running], PlanAndStart(default));
+        var big = Add(Type("big", cpu: 200));
+        var bigger = Add(Type("bigger", cpu: 300));
+        var small = Add(Type("small", cpu: 10));
+        Assert.Equal([small], PlanAndStart(default));
+        Assert.Empty(await PlanWithoutStalling(2 * Second));
+        var reserved = Planner.Workers[worker].ReservedFor!.Value;
+        Assert.Contains(reserved, new[] { big, bigger });
+        // Repeated plans with no room return too; after the worker drains, both actions can still start.
+        Assert.Empty(await PlanWithoutStalling(2 * Second));
+        Planner.Update(running, null, null, 2 * Second);
+        Planner.Update(small, null, null, 2 * Second);
+        Assert.Equal([reserved], await PlanWithoutStalling(2 * Second));
+        Planner.Update(reserved, null, null, 2 * Second);
+        Assert.Equal([reserved == big ? bigger : big], await PlanWithoutStalling(2 * Second));
+    }
+
+    [Fact]
+    public void AReservationEndsWhenAnEarlierAttemptRejoinsItsLane()
+    {
+        _options.ReserveAfter = Second;
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var big = Type("big", cpu: 200);
+        Exchange(first, default, capacity: 200, node: "first");
+        var earlier = Add(big);
+        Assert.Equal([earlier], PlanAndStart(default));
+        Exchange(second, default, capacity: 200, node: "second");
+        var running = Add(Report);
+        Assert.Equal([running], PlanAndStart(default));
+        var later = Add(big);
+        var small = Add(Type("small", cpu: 10));
+        Assert.Equal([small], PlanAndStart(default));
+        Assert.Empty(PlanAndStart(2 * Second));
+        Assert.Equal(later, Planner.Workers[second].ReservedFor);
+        // Losing the first worker puts its earlier attempt ahead of the reserved action in the same lane.
+        Planner.Exchange(first, "first", 200, 3, false, [], [], 2 * Second);
+        Planner.Update(running, null, null, 2 * Second);
+        Planner.Update(small, null, null, 2 * Second);
+        Assert.Equal([earlier], PlanAndStart(2 * Second));
+        Assert.Equal(2ul, _rows[earlier].RunAttempts);
+        Assert.Null(Planner.Workers[second].ReservedFor);
+        Assert.Null(Planner.Actions[later].Reservation);
+        Planner.Update(earlier, null, null, 2 * Second);
+        Assert.Equal([later], PlanAndStart(2 * Second));
     }
 
     [Fact]

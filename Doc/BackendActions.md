@@ -75,7 +75,8 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   finishing action's unification key is already free there, so an input `OnFinished` enqueues starts a new action.
 * Application code that the library's own events run is isolated, so one bug cannot block other actions or stop the
   coordinator. A delayed input whose `GetUniqueKey` or `TryAggregate` throws when it becomes due finishes as `Failed`
-  with code `QueueFailed` (attempt 0) without changing the action it would merge into; the other due actions queue.
+  with code `QueueFailed` (attempt 0, or its imported run attempts) without changing the action it would merge into;
+  the other due actions queue.
   A scheduled start whose input constructor, `GetUniqueKey` or `TryAggregate` throws skips that occurrence and is
   reported by `BackendActions.OnScheduledStartFailed(name, exception)`. An action keeps the unification key it was
   queued with, so its index entry is removed without calling `GetUniqueKey` again, also after aggregation changed
@@ -263,7 +264,9 @@ order, queue time, run attempts, `StartAt` for a delayed action, `IsCancelled` a
 the actions in their old relative order after any already queued, keeps delayed ones delayed, finishes cancelled ones
 at once as `Cancelled` through their handler, points each unification key at its latest aggregable action, and raises
 the ID allocator above every imported ID. An ID that already exists fails the whole event. An imported action's next
-attempt is its run attempts plus one.
+attempt is its run attempts plus one, including after a delayed action becomes due; its original queue time is kept.
+`DelayedAction.RunAttempts` stores that history (zero for rows written before this field existed). Upgrade every
+replica before resuming delayed actions after cutover, so their due events preserve the same history and queue time.
 
 ## Testing handlers
 

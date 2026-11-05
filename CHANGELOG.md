@@ -62,6 +62,16 @@
 
 ### Fixed
 
+- BackendActions: due reservations no longer loop indefinitely when an action now fits or all eligible workers are
+  already reserved; a reservation retry waits for the next planning pass. A reservation ends when an earlier attempt
+  rejoins its lane, so it cannot leave an idle worker blocked behind an action that is no longer first.
+- BackendActions: an interrupted attempt protected after a leader change releases its protection and concurrency
+  slot as soon as its interruption applies, even if its stopping worker cannot send its final exchange.
+- BackendActions: delayed imports retain their run attempts and original queue time when they become due, and
+  monitoring reports their imported attempt count while delayed. `DelayedAction.RunAttempts` is a new stored field,
+  defaulting to zero for existing rows; upgrade every replica before resuming delayed actions after cutover.
+- Source generator: partial backend action handlers are registered even when only a later declaration has a base
+  list, and still register once when several declarations name interfaces.
 - NativeAOT: trimming removed the properties of `[Generate]` types outside the application assembly, so relations of
   library types failed to initialize, and objects stored inline and events could not be versioned. Generated metadata
   now keeps those types' properties, fields, constructors and interfaces, and relation interfaces' members.

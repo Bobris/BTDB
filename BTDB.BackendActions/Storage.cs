@@ -88,6 +88,8 @@ public class DelayedAction
     public ActionPriority Priority { get; set; }
     public object? Input { get; set; }
     public DateTime QueuedAt { get; set; }
+    /// <summary>Starts before this action was imported; the next attempt is this plus one.</summary>
+    public ulong RunAttempts { get; set; }
 }
 
 public interface IDelayedActions : IRelation<DelayedAction>

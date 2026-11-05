@@ -224,6 +224,7 @@ public class BTDB.BackendActions.DelayedAction
   property string Name { get; set; }
   property ActionPriority Priority { get; set; }
   property DateTime QueuedAt { get; set; }
+  property ulong RunAttempts { get; set; }
   property DateTime StartAt { get; set; }
   property ulong TenantId { get; set; }
 public class BTDB.BackendActions.DelayedActionsDue : PureEvent

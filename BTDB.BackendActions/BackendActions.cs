@@ -394,14 +394,14 @@ public sealed partial class BackendActions
             try
             {
                 // By its stored name, so an unregistered type queues like any row and waits for its type.
-                Queue(row.Name, row.TenantId, row.ActionId, row.Input, row.Priority, ev);
+                Queue(row.Name, row.TenantId, row.ActionId, row.Input, row.Priority, ev, row.RunAttempts, row.QueuedAt);
             }
             catch (Exception error) when (!EventPublisherOptions.DefaultIsFatalConsumeException(error))
             {
                 // The input's own GetUniqueKey or TryAggregate threw before Queue wrote anything. Failing the whole
                 // event would block every other due action and stop the coordinator that publishes it.
-                OnFinished(new(row.TenantId, row.ActionId), row.Name, row.Input, ActionOutcomeKind.Failed, 0, null,
-                    QueueFailed(error));
+                OnFinished(new(row.TenantId, row.ActionId), row.Name, row.Input, ActionOutcomeKind.Failed,
+                    row.RunAttempts, null, QueueFailed(error));
             }
         }
     }
@@ -433,7 +433,8 @@ public sealed partial class BackendActions
     /// <summary>Queues an input, or merges it into the queued action with its key. An actionId of zero allocates one
     /// only when a new action is queued, and stores it in the input. The application's GetUniqueKey and TryAggregate
     /// run before anything is written, so their exception leaves no partial change.</summary>
-    QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev)
+    QualifiedActionId Queue(string name, ulong tenantId, ulong actionId, object? input, ActionPriority priority, Event ev,
+        ulong runAttempts = 0, DateTime? queuedAt = null)
     {
         var queued = Ambient.Relation<IQueuedActions>();
         var key = (input as IActionInputUnificator)?.GetUniqueKey();
@@ -472,7 +473,7 @@ public sealed partial class BackendActions
         {
             TenantId = tenantId, ActionId = actionId, Name = name, Priority = priority,
             Order = queued.AllocateId(), Input = input, UniqueKey = key, IsAggregable = input is IActionInputAggregator,
-            LatestInputEventId = ev.EventId, QueuedAt = ev.When
+            RunAttempts = runAttempts, LatestInputEventId = ev.EventId, QueuedAt = queuedAt ?? ev.When
         });
         Changed(new(tenantId, actionId));
         return new(tenantId, actionId);
