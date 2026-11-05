@@ -79,8 +79,6 @@ sealed class WalRecordBuilder
 
     readonly LsmEncoder _operations = new();
 
-    public int Length => _operations.Length;
-
     public void LogInsert(ReadOnlySpan<byte> key, bool isSet, bool existsBelow, ReadOnlySpan<byte> value)
     {
         _operations.WriteByte(Insert);

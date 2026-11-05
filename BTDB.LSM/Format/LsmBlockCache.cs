@@ -50,7 +50,9 @@ public sealed class LsmBlockCache : IDisposable
 
     public long SizeBytes => _data.SizeBytes + _metadata.SizeBytes;
     public long NativeBytes => _data.SizeBytes;
-    public long Hits => _data.Hits + _metadata.Hits;
+    /// Hits of the data cache; the metadata cache does not count them, which would make every lookup write a shared
+    /// counter.
+    public long Hits => _data.Hits;
     public long Misses => _data.Misses + _metadata.Misses;
 
     /// Pins the raw bytes cached for (file, offset), loading them on a miss; dispose the handle to unpin.
@@ -348,9 +350,6 @@ sealed class ManagedClockCache(long capacityBytes)
             lock (_ringLock) return _size;
         }
     }
-
-    /// Hits are not counted, which would make every lookup write a shared counter; misses are rare.
-    public long Hits => 0;
 
     public long Misses => Interlocked.Read(ref _misses);
 

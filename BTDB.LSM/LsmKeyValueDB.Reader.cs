@@ -89,10 +89,8 @@ public sealed partial class LsmKeyValueDB
                 _lastManifest = manifest;
             }
 
-            (nextChunk, missing) = authoritative
-                ? await ReplayListedWalAsync(_options, replay, cancellation)
-                : (0L, new List<long>());
-            if (!authoritative)
+            if (authoritative) (nextChunk, missing) = await ReplayListedWalAsync(_options, replay, cancellation);
+            else
             {
                 // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
                 // WalReadParallelism names at once.
@@ -114,7 +112,7 @@ public sealed partial class LsmKeyValueDB
                     if (!complete) break;
                 }
 
-                nextChunk = replay.NextChunk;
+                (nextChunk, missing) = (replay.NextChunk, []);
             }
         }
         catch
@@ -155,19 +153,8 @@ public sealed partial class LsmKeyValueDB
     /// The newest manifest after sequence, found by listing every manifest name.
     async ValueTask<LsmManifest?> ReadNewerManifestAsync(long sequence, CancellationToken cancellation)
     {
-        string? newestKey = null;
-        var newest = sequence;
-        await foreach (var info in _storage.ListAsync(_options.Prefix + "manifest/", cancellation))
-            if (TryParseObjectNumber(info.Key, out var listed) && listed > newest)
-            {
-                newest = listed;
-                newestKey = info.Key;
-            }
-
-        if (newestKey == null) return null;
-        var content = await _storage.TryReadAsync(newestKey, cancellation) ??
-                      throw new BTDBException($"Manifest {newestKey} disappeared while loading.");
-        return LsmManifest.Decode(content, newestKey);
+        var (manifest, key) = await ReadNewestManifestAsync(_options, cancellation, sequence);
+        return key == null ? null : manifest;
     }
 
     /// The number in an object name: the digits after the last slash, up to an extension.

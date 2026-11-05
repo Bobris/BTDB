@@ -19,9 +19,6 @@ sealed class LsmEncoder
 
     public int Length => _buffer.WrittenCount;
     public ReadOnlySpan<byte> WrittenSpan => _buffer.WrittenSpan;
-    public ReadOnlyMemory<byte> WrittenMemory => _buffer.WrittenMemory;
-
-    public void Clear() => _buffer.ResetWrittenCount();
 
     public void WriteByte(byte value)
     {
@@ -134,15 +131,9 @@ ref struct LsmDecoder
         return (int)value;
     }
 
-    public int ReadInt32()
-    {
-        var result = BinaryPrimitives.ReadInt32LittleEndian(Take(4));
-        return result;
-    }
+    public int ReadInt32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
 
     public ulong ReadUInt64() => BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
-
-    public long ReadInt64() => (long)ReadUInt64();
 
     public ReadOnlySpan<byte> Take(int length)
     {

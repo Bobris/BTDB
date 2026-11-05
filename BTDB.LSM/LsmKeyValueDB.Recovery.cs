@@ -124,12 +124,9 @@ public sealed partial class LsmKeyValueDB
             {
                 Memtable = null;
                 Generation = -1;
-                Metadata = new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs);
-                if (Sealed.Count > 0)
-                {
-                    var newest = Sealed[0];
-                    Metadata = new(newest.TransactionNumber, newest.CommitUlong, newest.Ulongs);
-                }
+                Metadata = Sealed.Count > 0
+                    ? new(Sealed[0].TransactionNumber, Sealed[0].CommitUlong, Sealed[0].Ulongs)
+                    : new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs);
             }
 
             if (NextChunk < manifest.WalStartChunk)
@@ -171,15 +168,7 @@ public sealed partial class LsmKeyValueDB
         public SealedMemtable[] Immutables => [.. Replay.Sealed];
         public WalCommitMetadata Metadata => Replay.Metadata;
 
-        /// Highest writer epoch seen in the manifest or the WAL.
-        public long MaxEpoch => Math.Max(Replay.MaxEpoch, Manifest.WriterEpoch);
-
-        /// First WAL chunk name not part of the contiguous replayed prefix.
-        public long FirstFreeChunk => Replay.NextChunk;
-
-        public Dictionary<long, (long Chunk, long Epoch)> GenerationFirstChunk => Replay.GenerationFirstChunk;
-
-        /// WAL chunk names below NextChunk that did not exist when the WAL was listed, from FirstFreeChunk on.
+        /// WAL chunk names below NextChunk that did not exist when the WAL was listed, from the replay's NextChunk on.
         public required List<long> MissingChunks { get; init; }
     }
 
@@ -191,11 +180,13 @@ public sealed partial class LsmKeyValueDB
         long.TryParse(key.AsSpan(key.LastIndexOf('/') + 1), NumberStyles.None, CultureInfo.InvariantCulture,
             out number);
 
+    /// The listed manifest with the highest sequence above after, and its key; without one, an empty manifest and a
+    /// null key.
     static async ValueTask<(LsmManifest Manifest, string? Key)> ReadNewestManifestAsync(LsmKeyValueDBOptions options,
-        CancellationToken cancellation)
+        CancellationToken cancellation, long after = -1)
     {
         string? manifestKey = null;
-        var newest = -1L;
+        var newest = after;
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "manifest/", cancellation))
             if (TryParseObjectNumber(info.Key, out var sequence) && sequence > newest)
             {

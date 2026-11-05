@@ -14,6 +14,16 @@ namespace BTDB.LSM;
 public sealed partial class LsmKeyValueDB
 {
     readonly List<TaskCompletionSource> _fullCompactionRequests = [];
+
+    TaskCompletionSource[] TakeFullCompactionRequests()
+    {
+        lock (_fullCompactionRequests)
+        {
+            TaskCompletionSource[] requests = [.. _fullCompactionRequests];
+            _fullCompactionRequests.Clear();
+            return requests;
+        }
+    }
     readonly SemaphoreSlim _workSignal = new(0);
     volatile TaskCompletionSource _progress = NewProgress();
     Task? _worker;
@@ -184,12 +194,7 @@ public sealed partial class LsmKeyValueDB
             return true;
         }
 
-        TaskCompletionSource[] requests;
-        lock (_fullCompactionRequests)
-        {
-            requests = [.. _fullCompactionRequests];
-            _fullCompactionRequests.Clear();
-        }
+        var requests = TakeFullCompactionRequests();
 
         if (requests.Length > 0)
         {
@@ -534,9 +539,7 @@ public sealed partial class LsmKeyValueDB
                     now - o.Since < (o.Kind == LsmObjectKind.Manifest ? ManifestRetention : grace)) continue;
                 _obsoleteObjects.RemoveAt(i);
                 // Never delete what the current version references, whatever led to the entry.
-                var version = _state.Version;
-                referenced ??= version.AllTables().Select(t => t.Table.FileNumber).Concat(version.ValueFiles.Keys)
-                    .ToHashSet();
+                referenced ??= _state.Version.ReferencedFiles();
                 if (o.IsFile && referenced.Contains(o.Number))
                 {
                     Logger?.LogWarning("BTDB.LSM kept " + ObjectKey(o.Kind, o.Number) +

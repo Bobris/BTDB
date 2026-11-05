@@ -34,7 +34,6 @@ sealed class LevelComponent : ILsmComponent
         Tombstones = new([.. tombstones]);
     }
 
-    public IReadOnlyList<TableReader> Tables => _tables;
     public long EntryCount { get; }
     public long DeltaSum => _deltaBefore[^1];
     public TombstoneSet Tombstones { get; }

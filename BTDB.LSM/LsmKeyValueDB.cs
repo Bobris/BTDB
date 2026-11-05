@@ -426,11 +426,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             _modeLock.Release();
         }
 
-        lock (_fullCompactionRequests)
-        {
-            foreach (var request in _fullCompactionRequests) request.TrySetCanceled();
-            _fullCompactionRequests.Clear();
-        }
+        foreach (var request in TakeFullCompactionRequests()) request.TrySetCanceled();
 
         DeleteObsoleteObjects();
         var state = _state;

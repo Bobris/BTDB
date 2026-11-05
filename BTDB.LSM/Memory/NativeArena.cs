@@ -18,7 +18,7 @@ sealed unsafe class NativeArena : IDisposable
     long _usedBytes;
     int _disposed;
 
-    public NativeArena(int chunkSize = 1024 * 1024)
+    public NativeArena(int chunkSize)
     {
         _chunkSize = chunkSize;
     }

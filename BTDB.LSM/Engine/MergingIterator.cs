@@ -54,8 +54,6 @@ sealed class MergingIterator
     public byte[] Key => _key;
     public LsmValue Value => _value;
 
-    public void Invalidate() => _direction = 0;
-
     public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive)
     {
         _view.Prefetch(key);
@@ -111,7 +109,6 @@ sealed class MergingIterator
             }
 
             if (best == null) return Unpositioned();
-            var masked = -1;
             for (var i = 0; i < _children.Length; i++)
             {
                 var child = _children[i];
@@ -123,7 +120,6 @@ sealed class MergingIterator
 
                 if (components[i].Tombstones.Find(best, out _) is >= 0 and var fragment)
                 {
-                    masked = i;
                     // Everything older than the masking component is hidden up to the fragment end.
                     var end = components[i].Tombstones[fragment].End;
                     for (var j = i + 1; j < _children.Length; j++)
@@ -136,9 +132,9 @@ sealed class MergingIterator
                 }
             }
 
-            for (var i = 0; i < (masked >= 0 ? masked + 1 : _children.Length); i++)
+            // Masking moves every older child past best, so only children at best advance.
+            foreach (var child in _children)
             {
-                var child = _children[i];
                 if (child.Valid && LsmKeys.Compare(child.Current.Key, best) == 0) child.Next();
             }
         }
@@ -157,7 +153,6 @@ sealed class MergingIterator
             }
 
             if (best == null) return Unpositioned();
-            var masked = -1;
             for (var i = 0; i < _children.Length; i++)
             {
                 var child = _children[i];
@@ -169,7 +164,6 @@ sealed class MergingIterator
 
                 if (components[i].Tombstones.Find(best, out _) is >= 0 and var fragment)
                 {
-                    masked = i;
                     var start = components[i].Tombstones[fragment].Start;
                     for (var j = i + 1; j < _children.Length; j++)
                     {
@@ -181,9 +175,9 @@ sealed class MergingIterator
                 }
             }
 
-            for (var i = 0; i < (masked >= 0 ? masked + 1 : _children.Length); i++)
+            // Masking moves every older child past best, so only children at best advance.
+            foreach (var child in _children)
             {
-                var child = _children[i];
                 if (child.Valid && LsmKeys.Compare(child.Current.Key, best) == 0) child.Prev();
             }
         }

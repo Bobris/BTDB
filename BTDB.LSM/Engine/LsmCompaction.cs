@@ -123,13 +123,10 @@ static class LsmCompaction
         LsmCompactionOptions options, TableBuildOptions tableOptions, Func<byte[], TableReader> writeTable,
         ValueSeparation values)
     {
-        if (plan.IsTrivialMove)
-        {
-            var moved = plan.Level == 0
-                ? version.WithLevel0Runs([]).Replace(1, [], plan.Inputs)
-                : version.Replace(plan.Level, plan.Inputs, []).Replace(plan.OutputLevel, [], plan.Inputs);
-            return (moved, []);
-        }
+        var next = plan.Level == 0
+            ? version.WithLevel0Runs([])
+            : version.Replace(plan.Level, plan.Inputs, []);
+        if (plan.IsTrivialMove) return (next.Replace(plan.OutputLevel, [], plan.Inputs), []);
 
         var run = new List<ILsmComponent>();
         if (plan.Level == 0) run.AddRange(version.Level0Components);
@@ -137,11 +134,7 @@ static class LsmCompaction
         if (plan.Overlaps.Length > 0) run.Add(new LevelComponent(plan.Overlaps));
         var below = new LsmView(version.ComponentsBelow(plan.OutputLevel));
         var outputs = WriteOutputs(new LsmMerger([.. run], below, options.OnInputRead), below, options, tableOptions, writeTable, values);
-        var next = plan.Level == 0
-            ? version.WithLevel0Runs([])
-            : version.Replace(plan.Level, plan.Inputs, []);
-        next = next.Replace(plan.OutputLevel, plan.Overlaps, outputs);
-        return (next, [.. plan.Inputs, .. plan.Overlaps]);
+        return (next.Replace(plan.OutputLevel, plan.Overlaps, outputs), [.. plan.Inputs, .. plan.Overlaps]);
     }
 
     /// Merges every table into the bottom level.
@@ -150,10 +143,11 @@ static class LsmCompaction
         ValueSeparation values)
     {
         var obsolete = version.AllTables().Select(t => t.Table).ToArray();
-        var empty = LsmVersion.Empty(version.LevelCount);
         if (obsolete.Length == 0) return (version, []);
-        var outputs = WriteOutputs(new LsmMerger(version.Components, new LsmView([]), options.OnInputRead), new LsmView([]), options,
+        var below = new LsmView([]);
+        var outputs = WriteOutputs(new LsmMerger(version.Components, below, options.OnInputRead), below, options,
             tableOptions, writeTable, values);
+        var empty = LsmVersion.Empty(version.LevelCount);
         return (new LsmVersion(empty.Level0Runs, empty.Levels, version.ValueFiles)
             .Replace(version.LevelCount - 1, [], outputs), obsolete);
     }

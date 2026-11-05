@@ -678,11 +678,11 @@ sealed class TableReader : ILsmComponent
     /// Size of one ranged read when a table is read sequentially for flush or compaction input.
     public const int SequentialReadSize = 4 * 1024 * 1024;
 
-    /// All points in order, read with large sequential ranged reads that bypass the data block cache, so compaction
-    /// input does not evict the working set (ImplementationPlan.md, section 12.2).
     /// Chunks read ahead of the one being decoded when a compaction reads a table sequentially.
     const int SequentialReadAhead = 4;
 
+    /// All points in order, read with large sequential ranged reads that bypass the data block cache, so compaction
+    /// input does not evict the working set (ImplementationPlan.md, section 12.2).
     public IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null)
     {
         // Ranges of up to SequentialReadSize covering whole blocks, read through the read threads with up to
@@ -703,7 +703,7 @@ sealed class TableReader : ILsmComponent
             }
         }
 
-        var reads = new Queue<Task<byte[]>>();
+        var reads = new Queue<(Task<byte[]> Read, int Chunk)>();
         var next = 0;
         while (next < chunks.Count || reads.Count > 0)
         {
@@ -724,12 +724,13 @@ sealed class TableReader : ILsmComponent
                         read.TrySetException(ex);
                     }
                 });
-                reads.Enqueue(read.Task);
+                reads.Enqueue((read.Task, next - 1));
             }
 
-            var chunk = reads.Dequeue().GetAwaiter().GetResult();
+            var (pending, chunkIndex) = reads.Dequeue();
+            var chunk = pending.GetAwaiter().GetResult();
             onRead?.Invoke(chunk.Length);
-            var (chunkPartition, chunkFirst, chunkLast) = chunks[next - reads.Count - 1];
+            var (chunkPartition, chunkFirst, chunkLast) = chunks[chunkIndex];
             var chunkStart = chunkPartition.Offsets[chunkFirst];
             for (var block = chunkFirst; block <= chunkLast; block++)
             {

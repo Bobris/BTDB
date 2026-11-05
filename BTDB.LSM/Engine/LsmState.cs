@@ -24,7 +24,7 @@ sealed class LsmState(
     long transactionNumber,
     long commitSequence,
     long sequence,
-    long manifestSequence = 0)
+    long manifestSequence)
 {
     /// Manifest whose table set this state's version is; readers report the oldest one they use.
     public long ManifestSequence { get; } = manifestSequence;

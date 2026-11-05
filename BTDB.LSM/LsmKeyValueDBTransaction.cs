@@ -32,7 +32,6 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     ulong[] _ulongs;
     long _transactionNumber;
     bool _persistOnCommit;
-    string? _descriptionForLeaks;
 
     public LsmKeyValueDBTransaction(LsmKeyValueDB db, LsmState state, bool writing, bool readOnly)
     {
@@ -49,7 +48,6 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     internal long StateSequence => _state.Sequence;
     internal int SpilledRunCount => _spilledRuns?.Count ?? 0;
     internal int SpilledSegmentCount => _spilledSegments;
-    internal long ManifestSequence => _state.ManifestSequence;
 
     /// Epoch of the writer session this transaction writes under.
     internal long WriterEpoch { get; set; }
@@ -64,11 +62,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     public IKeyValueDB Owner => _db;
     public DateTime CreatedTime { get; } = DateTime.UtcNow;
 
-    public string? DescriptionForLeaks
-    {
-        get => _descriptionForLeaks;
-        set => _descriptionForLeaks = value;
-    }
+    public string? DescriptionForLeaks { get; set; }
 
     public bool RollbackAdvised { get; set; }
     public IKeyValueDBCursor? FirstCursor { get; set; }

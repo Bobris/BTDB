@@ -88,6 +88,10 @@ sealed class LsmVersion
             yield return (level, table);
     }
 
+    /// File numbers of every table and value file of this version.
+    public HashSet<ulong> ReferencedFiles() =>
+        AllTables().Select(t => t.Table.FileNumber).Concat(ValueFiles.Keys).ToHashSet();
+
     public long LevelBytes(int level) => level == 0 ? Level0.Sum(t => t.Length) : Levels[level].Sum(t => t.Length);
 
     /// Components of all levels strictly below level (level >= 1).

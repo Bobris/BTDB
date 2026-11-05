@@ -15,16 +15,13 @@ sealed class DataBlockBuilder(int restartInterval)
     readonly LsmEncoder _encoder = new(64 * 1024);
     readonly List<(int Offset, int DeltaBefore)> _restarts = [];
     byte[] _lastKey = [];
-    int _delta;
-    int _minPrefix;
-    int _maxPrefix;
 
     public int EntryCount { get; private set; }
     public int EstimatedSize => _encoder.Length + _restarts.Count * 8 + TrailerSize;
     public byte[]? FirstKey { get; private set; }
-    public int MinPrefix => _minPrefix;
-    public int MaxPrefix => _maxPrefix;
-    public int DeltaSum => _delta;
+    public int MinPrefix { get; private set; }
+    public int MaxPrefix { get; private set; }
+    public int DeltaSum { get; private set; }
 
     public void Add(in LsmEntry entry)
     {
@@ -32,7 +29,7 @@ sealed class DataBlockBuilder(int restartInterval)
         var shared = 0;
         if (EntryCount % restartInterval == 0)
         {
-            _restarts.Add((_encoder.Length, _delta));
+            _restarts.Add((_encoder.Length, DeltaSum));
         }
         else
         {
@@ -48,9 +45,9 @@ sealed class DataBlockBuilder(int restartInterval)
         _encoder.WriteBytes(key.AsSpan(shared));
         if (entry.IsSet) _encoder.WriteBytes(entry.Value.Span);
         _lastKey = key;
-        _delta += entry.Delta;
-        _minPrefix = Math.Min(_minPrefix, _delta);
-        _maxPrefix = Math.Max(_maxPrefix, _delta);
+        DeltaSum += entry.Delta;
+        MinPrefix = Math.Min(MinPrefix, DeltaSum);
+        MaxPrefix = Math.Max(MaxPrefix, DeltaSum);
         EntryCount++;
     }
 

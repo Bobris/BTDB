@@ -179,8 +179,7 @@ public sealed partial class LsmKeyValueDB
         }
 
         var state = _state;
-        var referenced = state.Version.AllTables().Select(t => t.Table.FileNumber)
-            .Concat(state.Version.ValueFiles.Keys).ToHashSet();
+        var referenced = state.Version.ReferencedFiles();
         var ownFiles = FirstFileNumber(_epoch);
         var manifest = _lastManifest;
         var found = 0;
@@ -210,33 +209,46 @@ public sealed partial class LsmKeyValueDB
     /// they use are never deleted by a reader, and replaced memtable arenas are released once unused.
     void InstallLoaded(LoadedDatabase loaded)
     {
-        long sequence;
-        LsmState previous;
+        LsmState previous, current;
         lock (_stateLock)
         {
             previous = _state;
-            sequence = previous.Sequence + 1;
-            _state = new(loaded.Memtable, loaded.MemtableGeneration, loaded.Immutables, loaded.Version,
+            _state = current = new(loaded.Memtable, loaded.MemtableGeneration, loaded.Immutables, loaded.Version,
                 loaded.Metadata.CommitUlong, loaded.Metadata.Ulongs, loaded.Metadata.TransactionNumber,
-                previous.CommitSequence + 1, sequence, loaded.Manifest.Sequence);
+                previous.CommitSequence + 1, previous.Sequence + 1, loaded.Manifest.Sequence);
         }
 
         _replay = loaded.Replay;
 
         _lastManifest = loaded.Manifest;
         _nextFileNumber = Math.Max(_nextFileNumber, loaded.Manifest.NextFileNumber);
-        lock (_obsoleteObjects)
+        RetireReplacedArenas(previous, current);
+    }
+
+    /// Reloads the reader state from storage after the writer ended; a failure leaves the replay stale.
+    async Task ReloadAfterWriterAsync(string failure)
+    {
+        try
         {
-            foreach (var memtable in previous.Immutables.Select(m => m.Memtable).Append(previous.Memtable))
-            {
-                if (memtable.Arena is { } arena && !ReferencesArena(loaded, arena))
-                    _retiredArenas.Add((arena, sequence));
-            }
+            InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
+            _replayStale = false;
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogWarning(failure + ex.Message);
         }
     }
 
-    static bool ReferencesArena(LoadedDatabase loaded, object arena) =>
-        loaded.Memtable.Arena == arena || loaded.Immutables.Any(m => m.Memtable.Arena == arena);
+    /// Drops the commit records not uploaded yet; their commits are lost with the writer.
+    void DiscardPendingWal()
+    {
+        lock (_walLock)
+        {
+            _walPending.Clear();
+            _walPendingBytes = 0;
+            _walInFlight = null;
+        }
+    }
 
     System.Collections.Generic.Dictionary<ulong, Format.TableReader> OpenTables() =>
         _state.Version.AllTables().ToDictionary(t => t.Table.FileNumber, t => t.Table);
@@ -436,39 +448,16 @@ public sealed partial class LsmKeyValueDB
             : new LsmWriterFencedException("The writer lease was released; the WAL upload failed: " +
                                            uploadError.Message);
         CompleteDurabilityWaiters(long.MaxValue, reason);
-        TaskCompletionSource[] compactions;
-        lock (_fullCompactionRequests)
-        {
-            compactions = [.. _fullCompactionRequests];
-            _fullCompactionRequests.Clear();
-        }
-
-        foreach (var compaction in compactions) compaction.TrySetException(reason);
+        foreach (var compaction in TakeFullCompactionRequests()) compaction.TrySetException(reason);
         FailIngestRequests(reason);
-        lock (_walLock)
-        {
-            _walPending.Clear();
-            _walPendingBytes = 0;
-            _walInFlight = null;
-        }
+        DiscardPendingWal();
 
         // After a complete upload the state is the durable state, but the reader replay lags it; the next refresh or
         // takeover reloads. After a failed one it holds commits storage may lack, so it is reloaded now, as when the
         // lease is lost (BTDB.LSM/Proofs, Reload.lean).
         _replayStale = true;
         if (uploadError == null) return;
-        if (!_disposed)
-        {
-            try
-            {
-                InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
-                _replayStale = false;
-            }
-            catch (Exception ex)
-            {
-                Logger?.LogWarning("BTDB.LSM could not reload after a failed WAL upload: " + ex.Message);
-            }
-        }
+        if (!_disposed) await ReloadAfterWriterAsync("BTDB.LSM could not reload after a failed WAL upload: ");
 
         throw new BTDBException("Commits not yet durable may be lost: " + uploadError.Message, uploadError);
     }
@@ -491,35 +480,14 @@ public sealed partial class LsmKeyValueDB
             {
                 await StopWriterServicesAsync();
                 CompleteDurabilityWaiters(long.MaxValue, reason);
-                TaskCompletionSource[] compactions;
-                lock (_fullCompactionRequests)
-                {
-                    compactions = [.. _fullCompactionRequests];
-                    _fullCompactionRequests.Clear();
-                }
-
-                foreach (var compaction in compactions)
+                foreach (var compaction in TakeFullCompactionRequests())
                     compaction.TrySetException(
                         new LsmWriterFencedException("The writer lease was lost before the compaction ran."));
                 FailIngestRequests(new LsmWriterFencedException("The writer lease was lost before the commit."));
-                lock (_walLock)
-                {
-                    _walPending.Clear();
-                    _walPendingBytes = 0;
-                    _walInFlight = null;
-                }
-
+                DiscardPendingWal();
                 _replayStale = true;
-                if (_disposed) return;
-                try
-                {
-                    InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
-                    _replayStale = false;
-                }
-                catch (Exception ex)
-                {
-                    Logger?.LogWarning("BTDB.LSM could not reload after losing the writer lease: " + ex.Message);
-                }
+                if (!_disposed)
+                    await ReloadAfterWriterAsync("BTDB.LSM could not reload after losing the writer lease: ");
             }
             finally
             {
