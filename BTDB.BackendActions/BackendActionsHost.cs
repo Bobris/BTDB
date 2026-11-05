@@ -15,6 +15,7 @@ public sealed class BackendActionsHost
     readonly EventPublisher _publisher;
     readonly IBackendActionsCluster _cluster;
     readonly BackendActionsOptions _options;
+    readonly ulong _generation;
     ActionCoordinator? _coordinator;
 
     public BackendActionsHost(BackendActions actions, EventPublisher publisher, ReplicationLeadership leadership,
@@ -38,8 +39,8 @@ public sealed class BackendActionsHost
         ArgumentOutOfRangeException.ThrowIfNegative(options.WorkerCpu);
         if (options.PollTimeout <= TimeSpan.Zero || options.PollTimeout >= options.Planner.WorkerTimeout)
             throw new ArgumentException("The poll timeout must be positive and below the worker timeout.");
-        _metrics = new(() => Coordinator?.Overview());
-        Worker = new(actions, publisher, cluster, options, NodeId, _generation, _metrics);
+        Metrics = new(() => Coordinator?.Overview());
+        Worker = new(actions, publisher, cluster, options, NodeId, _generation, Metrics);
     }
 
     // A value configured twice drifts: one set in the options must agree with the replication node's.
@@ -63,13 +64,10 @@ public sealed class BackendActionsHost
     static ArgumentException Different(string name, object configured, object fromNode) =>
         new($"BackendActionsOptions.{name} is {configured}, but the replication node's is {fromNode}.");
 
-    readonly ulong _generation;
-
     /// <summary>This node's ID, as its worker reports it.</summary>
     public string NodeId { get; }
 
-    readonly BackendActionsMetrics _metrics;
-    internal BackendActionsMetrics Metrics => _metrics;
+    internal BackendActionsMetrics Metrics { get; }
 
     internal ActionWorker Worker { get; }
     internal ActionCoordinator? Coordinator => Volatile.Read(ref _coordinator);
@@ -78,7 +76,7 @@ public sealed class BackendActionsHost
     /// <paramref name="stopping"/> is cancelled.</summary>
     public async Task RunAsync(CancellationToken stopping)
     {
-        using var metrics = _metrics;
+        using var metrics = Metrics;
         using var serving = _cluster.Serve(ExchangeJson.Channel, (request, cancellation) =>
             Coordinator is { } coordinator ? coordinator.ExchangeAsync(request, cancellation)
                 : throw new IOException("This node does not coordinate backend actions."));
@@ -122,7 +120,7 @@ public sealed class BackendActionsHost
 
     async Task CoordinateAsync(CancellationToken leader)
     {
-        var coordinator = new ActionCoordinator(_actions, _publisher, _options, _generation, _metrics);
+        var coordinator = new ActionCoordinator(_actions, _publisher, _options, _generation, Metrics);
         Volatile.Write(ref _coordinator, coordinator);
         try
         {

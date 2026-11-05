@@ -69,7 +69,7 @@ internal sealed class PlannedAction
     internal TimeSpan? BypassedSince { get; set; }
     /// <summary>The worker reserved for it.</summary>
     internal Guid? Reservation { get; set; }
-    internal string Group => Type.ConcurrencyGroup ?? Type.Name;
+    internal string Group => Type.Group;
     /// <summary>Nothing runs or may run the recorded attempt, and nothing is about to finish it.</summary>
     internal bool Idle => Worker == null && Starting == null && !Protected && !Finished && !Abandoned;
     internal bool Runnable => Idle && !IsCancelled;
@@ -105,7 +105,7 @@ internal sealed class ActionClass(ActionType type, ActionPriority priority, int 
     internal ActionPriority Priority { get; } = priority;
     internal int Cpu { get; } = cpu;
     internal int Serial { get; } = serial;
-    internal string Group => Type.ConcurrencyGroup ?? Type.Name;
+    internal string Group => Type.Group;
     /// <summary>Listed lanes of this class, by their tenants' serving order as last seen: a tenant's order only rises
     /// between the plan's resets, so a lane may sit too early but never too late, and is repaired when it comes
     /// first.</summary>
@@ -391,7 +391,7 @@ internal sealed class ActionPlanner
                 unknownAttempt = false;
             }
             else if (row.RunAttempts == action.RunAttempts) unknownAttempt = false;
-            if (!row.IsStarted && action.Starting == null && action.Worker is { } holder)
+            if (!row.IsStarted && action.Worker is { } holder)
             {
                 // Its worker interrupted the attempt, which only a stopping worker does: give it nothing new.
                 if (_workers.TryGetValue(holder, out var stopping)) SetReady(stopping, false);
@@ -500,7 +500,6 @@ internal sealed class ActionPlanner
         }
         foreach (var attempt in running)
         {
-            reported.Add(attempt.Id);
             if (!_actions.TryGetValue(attempt.Id, out var action) || !action.IsStarted || action.Starting != null ||
                 action.RunAttempts != attempt.Attempt || action.Finished || action.Abandoned ||
                 action.Worker != null && action.Worker != session)
@@ -569,6 +568,7 @@ internal sealed class ActionPlanner
                 Lease(action, action.LeaseUntil); // renewed since: wait for the renewed lease
                 continue;
             }
+            // A starting attempt keeps its worker: its start event decides, and Update queues its lease again.
             if (action.Worker != null && action.Starting == null) Release(action);
             if (action.Protected || action.Finished)
             {
@@ -577,7 +577,6 @@ internal sealed class ActionPlanner
                 Count(action);
             }
             Refresh(action);
-            if (action.Starting != null) continue; // its start event decides; Update queues its lease again
         }
         var abandoned = new List<Abandonment>();
         if (_abandonable.Count == 0) return abandoned;
@@ -652,7 +651,7 @@ internal sealed class ActionPlanner
     void Served(TenantQueue tenant, List<TenantQueue> served)
     {
         if (tenant.Served == 0) served.Add(tenant);
-        Move(tenant, 1, 0);
+        tenant.Served++;
     }
 
     // The first tenant over all classes that may start: of each share, the classes whose cost fits the largest room
@@ -693,7 +692,7 @@ internal sealed class ActionPlanner
         lane.Tenant.Refreshed.Add(lane);
     }
 
-    void Snap(ActionLane lane)
+    static void Snap(ActionLane lane)
     {
         lane.SnapServed = lane.Tenant.Served;
         lane.SnapKey = lane.Tenant.Key;
@@ -790,8 +789,8 @@ internal sealed class ActionPlanner
     void Reserve(PlannedAction action)
     {
         OrderedOperations++;
-        var (used, index) = _leastUsed.First();
-        if (index < 0 || used == long.MaxValue) return;
+        var (_, index) = _leastUsed.First();
+        if (index < 0) return;
         var best = _slots[index]!;
         best.ReservedFor = action.Id;
         _reserved.Add(best);
@@ -896,15 +895,10 @@ internal sealed class ActionPlanner
     void AddConsumption(TenantQueue tenant, int cpu) =>
         AddKey(tenant, _decay == 1 ? cpu : cpu * Math.Pow(_decay, -_sinceBase));
 
-    void AddKey(TenantQueue tenant, double delta) => Move(tenant, 0, delta);
-
-    // The tenant's serving order rises. Its entries in the classes it waits in stay where they are, too early, until a
-    // class that is consulted finds them first and repairs them; classes nobody consults cost nothing.
-    void Move(TenantQueue tenant, int served, double delta)
-    {
-        tenant.Served += served;
-        tenant.Key += delta;
-    }
+    // The tenant's serving order rises, as it does when it is served. Its entries in the classes it waits in stay
+    // where they are, too early, until a class that is consulted finds them first and repairs them; classes nobody
+    // consults cost nothing.
+    static void AddKey(TenantQueue tenant, double delta) => tenant.Key += delta;
 
     void AddRunningCpu(ulong tenantId, int delta)
     {
@@ -1287,27 +1281,21 @@ internal sealed class ActionPlanner
         }
     }
 
-    bool Add<T>(SortedSet<T> set, T item)
+    void Add<T>(SortedSet<T> set, T item)
     {
         OrderedOperations++;
-        return set.Add(item);
+        set.Add(item);
     }
 
-    bool Remove<T>(SortedSet<T> set, T item)
+    void Remove<T>(SortedSet<T> set, T item)
     {
         OrderedOperations++;
-        return set.Remove(item);
+        set.Remove(item);
     }
 
     void Queue<T>(DeadlineQueue<T> queue, T item, TimeSpan due)
     {
         if (queue.Enqueue(item, due)) OrderedOperations++;
-    }
-
-    void Push<TElement, TPriority>(PriorityQueue<TElement, TPriority> queue, TElement element, TPriority priority)
-    {
-        OrderedOperations++;
-        queue.Enqueue(element, priority);
     }
 }
 

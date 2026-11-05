@@ -10,8 +10,7 @@ namespace BTDB.BackendActions;
 internal sealed class BackendActionsMetrics : IDisposable
 {
     internal const string MeterName = "BTDB.BackendActions";
-    readonly Meter _meter = new(MeterName);
-    internal Meter Meter => _meter;
+    internal Meter Meter { get; } = new(MeterName);
     readonly Counter<long> _started;
     readonly Counter<long> _finished;
     readonly Histogram<double> _startDelay;
@@ -21,23 +20,23 @@ internal sealed class BackendActionsMetrics : IDisposable
 
     internal BackendActionsMetrics(Func<ActionsOverview?> overview)
     {
-        _started = _meter.CreateCounter<long>("btdb.backend_actions.attempts.started", description:
+        _started = Meter.CreateCounter<long>("btdb.backend_actions.attempts.started", description:
             "Attempts this node's worker started.");
-        _finished = _meter.CreateCounter<long>("btdb.backend_actions.attempts.finished", description:
+        _finished = Meter.CreateCounter<long>("btdb.backend_actions.attempts.finished", description:
             "Attempts this node's worker finished, by outcome kind.");
-        _startDelay = _meter.CreateHistogram<double>("btdb.backend_actions.start_delay", "s",
+        _startDelay = Meter.CreateHistogram<double>("btdb.backend_actions.start_delay", "s",
             "From queueing to the start of the first attempt.");
-        _duration = _meter.CreateHistogram<double>("btdb.backend_actions.attempt.duration", "s",
+        _duration = Meter.CreateHistogram<double>("btdb.backend_actions.attempt.duration", "s",
             "Execution time of finished attempts.");
-        _exchangeFailures = _meter.CreateCounter<long>("btdb.backend_actions.exchange.failures", description:
+        _exchangeFailures = Meter.CreateCounter<long>("btdb.backend_actions.exchange.failures", description:
             "Worker exchanges with the leader that failed.");
-        _coordinatorRejections = _meter.CreateCounter<long>("btdb.backend_actions.coordinator.rejected_events",
+        _coordinatorRejections = Meter.CreateCounter<long>("btdb.backend_actions.coordinator.rejected_events",
             description: "Events of the coordinator whose consume failed, so it published them again later or not at all.");
-        _meter.CreateObservableGauge("btdb.backend_actions.waiting",
+        Meter.CreateObservableGauge("btdb.backend_actions.waiting",
             () => Measure(overview(), o => o.Priorities.Sum(p => p.Waiting)), description: "Actions waiting to start.");
-        _meter.CreateObservableGauge("btdb.backend_actions.running",
+        Meter.CreateObservableGauge("btdb.backend_actions.running",
             () => Measure(overview(), o => o.Priorities.Sum(p => p.Running)), description: "Actions held by a worker.");
-        _meter.CreateObservableGauge("btdb.backend_actions.workers",
+        Meter.CreateObservableGauge("btdb.backend_actions.workers",
             () => Measure(overview(), o => o.Workers.Count), description: "Workers known to the coordinator.");
     }
 
@@ -60,5 +59,5 @@ internal sealed class BackendActionsMetrics : IDisposable
 
     internal void CoordinatorEventRejected() => _coordinatorRejections.Add(1);
 
-    public void Dispose() => _meter.Dispose();
+    public void Dispose() => Meter.Dispose();
 }

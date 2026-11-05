@@ -12,6 +12,8 @@ internal sealed class ActionType
     internal required int Cpu { get; init; }
     internal required int MaxConcurrent { get; init; }
     internal required string? ConcurrencyGroup { get; init; }
+    /// <summary>What MaxConcurrent and SingleRunningPerTenant count: the concurrency group, or the type alone.</summary>
+    internal string Group => ConcurrencyGroup ?? Name;
     internal required bool SingleRunningPerTenant { get; init; }
     /// <summary>The priority of an enqueue that names none.</summary>
     internal required ActionPriority Priority { get; init; }
@@ -437,32 +439,27 @@ public sealed partial class BackendActions
         var key = (input as IActionInputUnificator)?.GetUniqueKey();
         if (key != null)
         {
-            var unificator = (IActionInputUnificator)input!;
             var indexes = Ambient.Relation<IActionInputIndexes>();
             if (indexes.FindByIdOrDefault(tenantId, name, key) is { } index)
             {
                 // An entry without its action cannot occur while entries are removed by the stored key; the new
-                // action takes it over rather than failing the consume.
-                if (queued.FindByIdOrDefault(tenantId, index.ActionId) is not { } existing)
+                // action takes it over rather than failing the consume, as it does from an action that stops
+                // aggregating.
+                if (queued.FindByIdOrDefault(tenantId, index.ActionId) is { } existing)
                 {
-                    index.ActionId = actionId = Allocate(actionId, input);
-                    indexes.Update(index);
-                }
-                else if (input is not IActionInputAggregator aggregator ||
-                    existing.IsAggregable && ((IActionInputAggregator)existing.Input!).TryAggregate(aggregator))
-                {
-                    existing.LatestInputEventId = ev.EventId;
-                    queued.Update(existing);
-                    if (actionId == 0) unificator.ActionId = existing.ActionId;
-                    return new(existing.TenantId, existing.ActionId); // its scheduling does not change
-                }
-                else
-                {
+                    if (input is not IActionInputAggregator aggregator ||
+                        existing.IsAggregable && ((IActionInputAggregator)existing.Input!).TryAggregate(aggregator))
+                    {
+                        existing.LatestInputEventId = ev.EventId;
+                        queued.Update(existing);
+                        if (actionId == 0) ((IActionInput)input!).ActionId = existing.ActionId;
+                        return new(existing.TenantId, existing.ActionId); // its scheduling does not change
+                    }
                     existing.IsAggregable = false;
                     queued.Update(existing);
-                    index.ActionId = actionId = Allocate(actionId, input);
-                    indexes.Update(index);
                 }
+                index.ActionId = actionId = Allocate(actionId, input);
+                indexes.Update(index);
             }
             else
                 indexes.Insert(new()
