@@ -567,4 +567,30 @@ public class ActionPlannerTest
         Assert.Null(Planner.Workers[worker].ReservedFor);
         Assert.Null(Planner.Actions[big].Reservation);
     }
+
+    [Fact]
+    public void ConsumptionKeysKeepTheirOrderAndValueAcrossRebases()
+    {
+        _options.ConsumptionDecay = 0.9999; // rebased every hour
+        var worker = Guid.NewGuid();
+        Exchange(worker, default, capacity: 100_000);
+        var heavy = Type("heavy", cpu: 1000);
+        var first = Add(heavy, 1);
+        Assert.Equal([first], PlanAndStart(default));
+        Planner.Update(first, null, null, default); // tenant 1 consumed 1000 and has no action left
+        var second = Add(Type("half", cpu: 500), 2);
+        Exchange(worker, 3600 * Second, capacity: 100_000);
+        Assert.Equal([second], PlanAndStart(3600 * Second));
+        Planner.Update(second, null, null, 3600 * Second);
+        // A plan at time zero starts the decay clock; later plans decay from it, rebasing every hour.
+        for (var hour = 2; hour <= 5; hour++) Planner.Plan(hour * 3600 * Second);
+        var now = 5 * 3600;
+        Assert.Equal(1000 * Math.Pow(0.9999, now), Planner.ConsumptionOf(1), 1e-9); // about 165
+        Assert.Equal(500 * Math.Pow(0.9999, now - 3600), Planner.ConsumptionOf(2), 1e-9); // about 118
+        // Tenant 2 consumed half as much, an hour later: it still weighs less, so it goes first.
+        var one = Add(Report, 1);
+        var two = Add(Report, 2);
+        Exchange(worker, now * Second, capacity: 100_000);
+        Assert.Equal([two, one], PlanAndStart(now * Second));
+    }
 }

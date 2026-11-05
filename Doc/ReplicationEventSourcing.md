@@ -53,6 +53,10 @@ for the default BTDB metadata path. The generated `Event` base makes its subclas
 the generator also supplies relation metadata. Annotate additional nested event payload types with `BTDB.Generate`
 when they are not otherwise discovered by the generator.
 
+`WaitForAppliedAsync(eventId)` completes once this node's database made an event visible (`LastAppliedEventId`
+reached it), for example one whose ID another node announced. Waiters wake once per visible batch, without polling,
+and fail when the publisher stops first.
+
 `PublishAsync(PureEvent)` and `PublishAndWaitAsync(EventWithResult<TResult>)` are deliberately non-async entry points:
 validation and its exceptions occur synchronously before they return. Returning a non-null result from validation
 rejects publication and immediately returns that result; throwing rejects publication with that exception. Neither

@@ -418,6 +418,24 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ADueBacklogLargerThanOnePassIsQueuedInBoundedPasses()
+    {
+        StartHost();
+        await _node.Query(a => a.SuspendAsync([typeof(ProcessOrder).FullName!])); // queue them, but run none
+        var due = _time.Now.UtcDateTime.AddMinutes(1);
+        const int count = ActionCoordinator.DueBatch * ActionCoordinator.DueBatchesPerPass + 2_500;
+        await _node.Query(a => a.ImportAsync(Enumerable.Range(1, count).Select(i => new ImportedAction
+        {
+            TenantId = (ulong)i % 7, ActionId = (ulong)i, Input = new ProcessOrder { Amount = i }, Order = (ulong)i,
+            QueuedAt = _time.Now.UtcDateTime, StartAt = due
+        }).ToList()));
+        Assert.Equal(count, _node.Delayed.Length);
+        _time.Now = _time.Now.AddMinutes(2);
+        await UntilAsync(() => _node.Queued.Length == count);
+        Assert.Empty(_node.Delayed);
+    }
+
+    [Fact]
     public async Task TheTestContextRecordsWhatAHandlerAsks()
     {
         var context = new Testing.TestActionContext(new(1, 2), attempt: 3);

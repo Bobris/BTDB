@@ -180,6 +180,33 @@
   `EventPublisher.SelfNodeId`), the generation from the new `ReplicationLeadership.ApplicationGeneration`, which the
   replication node sets from `ReplicationNodeOptions.ApplicationGeneration`. A value set in the options must equal the
   node's, or the host's constructor throws; `BackendActionsHost.NodeId` returns the node ID it uses.
+- BackendActions: the coordinator's work per change no longer grows with its backlog, its tenants, its workers or its
+  action types. Planning, expiry, the overview and the exchanges scanned every action, tenant, worker or class. At
+  100,000 actions one coordinator step cost 3.6 to 41 ms; it now costs 0.8 to 3.2 µs, and stays flat with 10,000
+  workers or 10,000 action types. Waiting actions sit in lanes per tenant and class (type, priority and cost) that
+  append in constant time. Per capacity share, a segment tree over classes sorted by cost picks the next tenant and
+  its earliest startable action as one prefix minimum. Another tree picks the round robin's next worker with room, in
+  the same order as before, and a Fenwick tree keeps the round robin's places. A tenant's entries are repaired lazily,
+  only in the classes consulted. Leases and worker timeouts expire from deadline queues, the overview counts are
+  kept as actions change, and a change wakes only the exchanges of the workers it concerns. Due delayed actions are
+  queued in batches of 1000, at most ten before the coordinator plans again. Each per-step cost meets a lower bound
+  that `Doc/proofs/PlannerLowerBound.lean` proves in Lean 4: Ω(log T) to serve tenants in consumption order, and
+  Ω(log W) and Ω(log C) to choose a worker or a class. The one cost not covered is a tenant waiting in many open classes:
+  each time it is served, its entries in them are repaired, O(k) per service for k such classes, in practice at most the number of action types. The fairness order and the round robin
+  are the same. Tenants whose consumption decayed below what rounding can tell apart are now ordered by what is left
+  instead of by ID, and a class too large for the room left at the end of a plan marks its first action bypassed.
+  `ActionPlannerOptions.ConsumptionDecay` must now be above 0 and at most 1, and the capacity shares are read when a
+  coordinator starts. The benchmark is `dotnet run -c Release --project DBBenchmark -- backend-actions`.
+  `PlannerComplexityTest` keeps examined elements, ordered operations and comparisons per step constant, the last per
+  log₂ T. `PlannerEquivalenceTest` checks the planner against its scanning predecessor on 400 random histories.
+  `Doc/proofs/PlannerSelection.lean` proves in Lean 4 that the planner's selection rule serves exactly the reference's
+  rounds, that its lazily repaired entries find the true least lane, and that its cost-prefix test is exact.
+- BackendActions: a coordinator whose first plan ran at time zero, as its clock starts there, restarted its
+  consumption decay at the next plan, so tenant consumption from the first interval decayed too little.
+- BackendActions: a worker waits for the event that recorded its attempt with the new
+  `EventPublisher.WaitForAppliedAsync` instead of polling every millisecond.
+- EventSourcing: `EventPublisher.WaitForAppliedAsync(eventId, cancellation)` completes once this node's database made
+  the event visible. Waiters wake once per visible batch, without polling, and fail when the publisher stops first.
 
 ## 36.0.1
 

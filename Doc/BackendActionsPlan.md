@@ -414,6 +414,134 @@ coordinator starts nothing new on a worker older than its own generation. Attemp
 finish normally, and after the handoff to an upgraded leader new actions run only on upgraded nodes. Workers list no
 action types: every node registers every type anyway, because `OnFinished` runs on every replica.
 
+### Coordinator cost
+
+The coordinator's work per change does not grow with the backlog, the tenants, the workers or the action types:
+only with what changes, what starts and, logarithmically, with the size of what must be ordered.
+
+* **Lanes.** Waiting actions sit in lanes, one per tenant and class (type, priority and cost). Every action of a
+  lane is equally able to start, so only its first is looked at. Actions enter in enqueue order, so a lane appends in
+  constant time; only an action queued again goes to a small sorted set beside it.
+* **Serving order.** Each class lists its lanes by their tenant's serving order: actions started for the tenant in
+  this plan, then consumption, then ID. Ordering by the count first gives the reference's rounds exactly: one action
+  per tenant per round, each round by consumption. Consumption is kept divided by the decay since a base second, so
+  decay alone keeps the order; only tenants that run something move once a second, and the base moves once an
+  hour, or sooner for a fast decay. Within a plan a tenant's order only rises, so its entries stay where they are,
+  too early, until a consulted class finds one first and repairs it. A class that is closed or too large costs
+  nothing when its tenants move. The plan's served counts go back to zero on the entries repaired during it.
+* **Choosing the next start.** Per capacity share, a segment tree over the share's classes sorted by cost holds
+  each class's first entry and its first action. The classes whose cost fits the largest room a worker has under
+  that share are a prefix. So the next tenant, and of its lanes that may start the one whose action comes first, is
+  one prefix minimum: O(log C). Suspended types, full groups and too-large costs are never visited. Lanes of a
+  suspended tenant, and of a single-running type while the tenant runs one, leave their class.
+* **Choosing a worker.** Per share, a segment tree over the round robin's slots holds each worker's room. It finds
+  the next worker from the round robin's place whose room fits a cost in O(log W). A Fenwick tree turns slots into
+  places: workers append, a departing one leaves an empty slot, and slots are compacted after Θ(W) departures. The
+  round robin is exactly the reference's. A third tree finds the least used worker to reserve.
+* **Bypass and reservations.** At the end of a plan, open classes too large for the room left whose first action is
+  not marked yet are marked bypassed, from a set per priority sorted by cost; each first action is marked once.
+  Reservations come due from a deadline queue.
+* **Expiry, exchanges, overview, delayed actions.** Leases and worker timeouts expire from deadline queues: a
+  deadline is now plus a fixed timeout, so entries append to a FIFO, and only an out-of-order one goes to a heap. A
+  renewal only moves the deadline. A committed change wakes only the held exchanges of the workers whose actions it
+  touched, and a worker waits for its start event with `EventPublisher.WaitForAppliedAsync` instead of polling. The
+  overview's counts are kept as actions change. Due delayed actions are read and queued a batch of 1000 at a time,
+  at most ten batches before the coordinator plans again.
+
+#### Correctness
+
+[`Doc/proofs/PlannerSelection.lean`](proofs/PlannerSelection.lean) proves in Lean 4 that the indexed planner's rule
+serves exactly the reference's plan. It models a plan as lanes (tenant, action), a startable predicate, costs and
+starting consumption. The only assumption is that a start never makes another action startable, which holds because
+room only shrinks and groups only fill during a plan. The reference serves in rounds: each round's tenants by
+consumption at the round's start, each the earliest startable action, skipping tenants with none, the next round
+being the tenants served. The indexed rule repeatedly takes the least startable lane by the tenant's starts in this
+plan, consumption and ID, then the action.
+
+* `indexed_plan_is_reference`: every run of the indexed rule, from the plan's start, is a run of the reference's
+  rounds with the same starts in the same order. `ref_pick_unique` makes the reference's next start unique, so that
+  run is the reference's plan.
+* `lex_least_is_pick`: the least lane by the code's lexicographic order (starts, consumption, tenant, priority,
+  enqueue order, action) is the rule's pick.
+* `lazy_least`: when every stored entry is at most its true value and the least stored one is up to date, it is the
+  true least. This is why the lazily repaired class entries, which only become stale by rising, find the right lane.
+* `fits_iff_le_largest`: a cost fits some worker's room exactly when it is at most the largest room. This is why the
+  startable classes of a share are the prefix of its classes sorted by cost.
+
+The proof covers the selection rule and these structures. It does not cover the C# code itself, and it does not
+cover reservations, which start a reserved action before the rounds. `PlannerEquivalenceTest` checks the code
+against a copy of the scanning reference on 400 random histories.
+
+#### Lower bounds
+
+[`Doc/proofs/PlannerLowerBound.lean`](proofs/PlannerLowerBound.lean) proves in Lean 4 the bounds the remaining
+logarithms meet. It needs no libraries and depends only on Lean's standard axioms. A comparison-based procedure is
+a decision tree whose nodes compare two quantities, for example two tenants' consumption or a worker's room and a
+cost. Its depth is its worst-case number of comparisons.
+
+* `serving_needs`: serving n tenants in consumption order, where a served tenant's consumption rises above the
+  others', outputs them sorted, so a correct tree needs log₂ n! comparisons. `serving_needs_log` makes that at least
+  j·2^j for n = 2^(j+1): Ω(log n) per served tenant, however the work is spread over the steps.
+* `choosing_needs`: naming the one qualifying candidate out of n needs log₂ n comparisons. Each of the W workers may
+  be the only one with room, and each of the C classes the only one open, so choosing a worker costs Ω(log W) and
+  choosing a class Ω(log C).
+
+A plan that starts nothing must still look at the change, so Ω(1) per step is trivial. Each per-step cost is
+therefore at its lower bound in every measured steady state: constant, or Θ(log T), Θ(log W), Θ(log C) for the
+choices that need them. One cost is outside these bounds. A tenant waiting in k open classes, that is classes whose type
+is not suspended, whose group has room and whose cost fits, makes its entries in all of them stale whenever it is
+served. The next plan that consults them repairs them, O(k) per service. `many-open-lanes` below measures it: one
+tenant in N/10 open classes costs 22 µs, 305 µs and 5.0 ms per step. Classes that are closed or too large cost
+nothing, as `many-lanes` shows. In practice k is bounded by the number of action types. A class is a type,
+priority and cost combination. A type has a single cost and a default priority, and overriding the priority on
+enqueue is rare. Applications define 10 to 100 types, so a start costs at most about 22 µs here. Choosing the least entry over tenant × class pairs, under changes on both sides, is
+a bipartite dynamic problem. No structure is known that is
+polylogarithmic for both kinds of change, and problems of this kind are believed hard. The designs tried move the
+cost rather than remove it. Keeping each tenant's lanes in their own order makes this case constant, but then a
+class that many tenants wait in costs O(tenants) each time its group opens or closes. Grouping lanes by class, as
+now, makes that constant and this one O(k). So this repository states the cost rather than claiming it optimal. Each repaired lane is recorded once for the plan's reset, so memory stays
+linear.
+
+#### Measurements
+
+`dotnet run -c Release --project DBBenchmark -- backend-actions` measures one coordinator step in steady states of
+1000, 10,000 and 100,000 actions. It reports the time, the elements examined, the ordered operations, and the
+comparisons per step, the latter counted through wrapped comparers:
+
+| Scenario | Before, at 100,000 | Now, at 1000 / 10,000 / 100,000 | Examined, ordered | Comparisons |
+| --- | --- | --- | --- | --- |
+| One type limited to 4 running, all waiting for it | 3.60 ms | 0.99 / 1.2 / 1.3 µs | 5, 33 | 6 |
+| N actions of N/10 tenants, room for 3 | 8.70 ms | 1.3 / 1.7 / 2.4 µs | 6, 35 | 21 / 32 / 41 |
+| N tenants each running one single-running action and waiting with the next | 41.07 ms | 1.7 / 2.1 / 3.2 µs | 5, 38 | 24 / 35 / 44 |
+| N actions of a suspended type before a stream of another | 5.78 ms | 0.99 / 1.1 / 0.97 µs | 6, 37 | 6 |
+| N actions too large for a busy worker | 9.03 ms | 0.80 / 0.82 / 0.83 µs | 5, 29 | 6 |
+| N running actions on N/50 workers, one exchange per step | 0.93 ms | 1.7 / 1.6 / 2.2 µs | 81, 0 | 0 |
+| Overview counts | 3.62 ms | 66 / 68 / 71 ns | 0, 0 | 0 |
+| N/10 workers, each full but one | 115.5 µs | 1.3 / 1.4 / 1.5 µs | 4, 33 | 17 |
+| N/10 action types of their own tenants, full, next to a stream | 179.4 µs | 1.3 / 1.3 / 1.6 µs | 4, 30 | 2 |
+| One tenant waiting in N/10 full classes, served through a stream | – | 1.2 / 1.4 / 1.5 µs | 4, 30 | 2 |
+| One tenant waiting in N/10 open classes, room for one start (grows) | – | 22 µs / 305 µs / 5.0 ms | k + 5, 9k | k + 5 |
+
+The "before" column for the last three is the previous version of this indexed planner, which scanned workers
+and classes. Examined elements and ordered operations per step are the same at every size in every scenario.
+Comparisons are constant except where tenants are reordered, and there they stay a steady 2.4 to 3.2 times log₂ of
+the tenants, against the bound's share log₂(T!) / T. What still grows in time is the cost of one ordered operation on
+a larger set, cache misses included: one took 129, 175 and 253 ns on sets of those sizes.
+`dotnet run -c Release --project DBBenchmark -- backend-actions profile <scenario> <N>` reports a scenario's
+allocation and collections per step. It found many-lanes taking 9.7 µs at 100,000 with a 769 MB heap. Each repair
+in its setup plan had appended its lane to the tenant's reset list again, so the list grew quadratically. With each
+lane listed once, the heap is 223 MB and the step 1.5 µs.
+
+`PlannerScenarios.Growing` lists `many-open-lanes`, which the benchmark measures and `PlannerComplexityTest` leaves
+out. `PlannerComplexityTest` requires, in every build, the same examined elements, ordered operations and comparisons per
+step at 1000 and 20,000 actions, or for comparisons the same per log₂ T. `PlannerEquivalenceTest` drives the planner and a copy of its
+scanning predecessor through 400 random histories of 500 steps each. They cover coordinator changes, worker
+restarts and departures, lost attempts and suspensions. After every step it requires the same plans, round robin
+choices, commands, abandonments and accounting. The only allowed difference is the order of two tenants whose
+consumption is equal within rounding, which the two reach by different floating point sums. Reservations are
+excluded: the planner marks a class's first action bypassed when the class is too large at the end of a plan, which
+starts some reservations one plan earlier than its predecessor did.
+
 ## 6. Prerequisites in existing packages
 
 * **R1, an application channel to the leader.** Done as `ReplicationLeaderChannel` in `BTDB.Replication`, carried
@@ -477,6 +605,8 @@ Implemented in A5; usage is in [BackendActions.md](BackendActions.md#monitoring)
   injecting transport.
 * **Process tests:** kill -9 the worker or the leader under load. Assert that every action finishes exactly once in
   `OnFinished`, and that no action is lost (the reference's failover verification scenario).
+* **Planner cost and equivalence:** `PlannerComplexityTest` and `PlannerEquivalenceTest`, see
+  [coordinator cost](#coordinator-cost).
 * **Approval tests:** public API, event list, relation schemas and the exchange JSON, as Verify baselines in
   `BTDB.BackendActions.Test/ApprovalTest.*.verified.txt`. Done.
 * **Application test helpers:** `Testing.TestActionContext` runs `ExecuteAsync` without a cluster and records parts,

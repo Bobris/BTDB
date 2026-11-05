@@ -17,6 +17,7 @@
         <ProjectReference Include="..\BTDB.Replication.Http\BTDB.Replication.Http.csproj"/>
         <ProjectReference Include="..\BTDB.LSM.Azure\BTDB.LSM.Azure.csproj"/>
         <ProjectReference Include="..\BTDB.AzureStorage\BTDB.AzureStorage.csproj"/>
+        <ProjectReference Include="..\BTDB.BackendActions\BTDB.BackendActions.csproj"/>
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Azure.Identity" Version="1.21.0"/>

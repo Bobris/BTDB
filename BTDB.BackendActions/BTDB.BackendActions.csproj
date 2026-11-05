@@ -31,5 +31,7 @@
         <InternalsVisibleTo Include="BTDB.BackendActions.Test" />
         <!-- The smoke app runs the host on an in-process single-node cluster. -->
         <InternalsVisibleTo Include="AotActionsSmoke" />
+        <!-- The planner's scaling benchmark drives it directly. -->
+        <InternalsVisibleTo Include="DBBenchmark" />
     </ItemGroup>
 </Project>

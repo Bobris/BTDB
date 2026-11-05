@@ -209,8 +209,7 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
             bool published = false, lost = false;
             try
             {
-                while (worker._publisher.LastAppliedEventId < startEventId)
-                    await Task.Delay(1, _cancel.Token).ConfigureAwait(false);
+                await worker._publisher.WaitForAppliedAsync(startEventId, _cancel.Token).ConfigureAwait(false);
                 IActionInput input;
                 DateTime queuedAt;
                 ActionType? type;

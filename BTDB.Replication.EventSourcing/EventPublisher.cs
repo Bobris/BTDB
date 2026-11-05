@@ -95,6 +95,9 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     Task _run = Task.CompletedTask;
     Exception? _fault;
     ulong _lastApplied;
+    /// <summary>Completed and replaced each time a batch becomes visible; see <see cref="WaitForAppliedAsync"/>.</summary>
+    TaskCompletionSource _applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    volatile bool _stopped;
     ulong _replayEnd;
     int _started, _disposed;
 
@@ -133,6 +136,23 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     internal IObjectDB Database { get; }
     public ulong LastAppliedEventId => Volatile.Read(ref _lastApplied);
+
+    /// <summary>Completes once this node's database made the event visible: <see cref="LastAppliedEventId"/> reached
+    /// it. Waiters are woken once per visible batch, without polling. Fails when the publisher stopped first.</summary>
+    public async Task WaitForAppliedAsync(ulong eventId, CancellationToken cancellation = default)
+    {
+        while (true)
+        {
+            // The signal before the cursor: a batch writes the cursor before it completes the signal it replaces.
+            var signal = Volatile.Read(ref _applied);
+            if (LastAppliedEventId >= eventId) return;
+            if (_stopped) throw _fault ?? new OperationCanceledException("Event publisher stopped.");
+            await signal.Task.WaitAsync(cancellation).ConfigureAwait(false);
+        }
+    }
+
+    void Applied() => Interlocked.Exchange(ref _applied, new(TaskCreationOptions.RunContinuationsAsynchronously))
+        .TrySetResult();
     /// <summary>Atomic complete batch cut for IReplicationNodeHost.GetProgress, when a capture was supplied.</summary>
     public LeaderTrlProgress? Progress { get { lock (_progressLock) return _progress; } }
     /// <summary>Faults when replay, consumption or input fails. Hosts must observe it and arrange restart.</summary>
@@ -250,7 +270,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         Task? reading = null, metadataReading = null;
         try
         {
-            using (var read = Database.StartReadOnlyTransaction()) _lastApplied = read.GetCommitUlong();
+            using (var read = Database.StartReadOnlyTransaction()) Volatile.Write(ref _lastApplied, read.GetCommitUlong());
+            Applied();
             UpdateProgress();
             var metadataBounds = await _metadataTopic.GetBoundsAsync(_lifetime).ConfigureAwait(false);
             if (metadataBounds.First != 0)
@@ -335,6 +356,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 catch (Exception error) { failure = error; }
                 Database.FinishTransactionBatchAfterCurrentTransaction();
                 Volatile.Write(ref _lastApplied, cursor);
+                Applied();
                 UpdateProgress();
                 if (failure == null && cursor >= _replayEnd && !_ready.Task.IsCompleted)
                     await ReadyAsync().ConfigureAwait(false);
@@ -378,6 +400,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         finally
         {
             _stop.Cancel();
+            _stopped = true;
+            Applied(); // waiters see the stop
             foreach (var pending in _pending.Values)
                 pending.Completion.TrySetException(_fault ?? new OperationCanceledException("Event publisher stopped."));
             if (metadataReading != null) await metadataReading.ConfigureAwait(false);

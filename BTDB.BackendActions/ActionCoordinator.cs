@@ -45,12 +45,16 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
 {
     /// <summary>Most delayed actions one <see cref="DelayedActionsDue"/> queues.</summary>
     internal const int DueBatch = 1000;
+    /// <summary>Most batches of due actions one pass queues before the coordinator plans again.</summary>
+    internal const int DueBatchesPerPass = 10;
 
     readonly object _lock = new();
     readonly ActionPlanner _planner = new(options.Planner, generation);
     readonly TimeProvider _time = options.TimeProvider;
     readonly long _started = options.TimeProvider.GetTimestamp();
-    TaskCompletionSource _workersWake = Signal();
+    /// <summary>Per worker session, the signal its held exchange waits for: only changes of the actions it holds,
+    /// including new starts, give it new commands.</summary>
+    readonly Dictionary<Guid, TaskCompletionSource> _workerWakes = new();
     TaskCompletionSource _loopWake = Signal();
     bool _ready, _closed;
 
@@ -107,7 +111,7 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                 if (Now >= nextDelayed)
                 {
                     nextDelayed = Now + options.DelayedInterval;
-                    await QueueDueAsync(cancellation).ConfigureAwait(false);
+                    if (await QueueDueAsync(cancellation).ConfigureAwait(false)) nextDelayed = Now;
                 }
                 if (Now >= nextSchedule)
                 {
@@ -125,7 +129,8 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             lock (_lock)
             {
                 _closed = true;
-                _workersWake.TrySetResult();
+                foreach (var wake in _workerWakes.Values) wake.TrySetResult();
+                _workerWakes.Clear();
             }
         }
     }
@@ -156,6 +161,8 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
     void Apply(HashSet<QualifiedActionId> changed)
     {
         if (changed.Count == 0) return;
+        var affected = new HashSet<Guid>();
+        var everyone = false;
         using (publisher.StartQuery())
         {
             var queued = Ambient.Relation<IQueuedActions>();
@@ -166,31 +173,47 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                     if (id == ActionChanges.Settings)
                     {
                         LoadState();
+                        everyone = true;
                         continue;
                     }
+                    if (_planner.Holder(id) is { } before) affected.Add(before);
                     var row = queued.FindByIdOrDefault(id.TenantId, id.ActionId);
                     _planner.Update(id, row, row == null ? null : actions.TypeOf(row.Name), now);
+                    if (_planner.Holder(id) is { } after) affected.Add(after);
                 }
         }
-        WakeWorkers();
+        WakeWorkers(everyone ? null : affected);
     }
 
-    async Task QueueDueAsync(CancellationToken cancellation)
+    // Queues due delayed actions a batch at a time, each read after the previous one was queued, so memory does not
+    // grow with the due backlog and the coordinator plans between passes. True when more may be due: the loop then
+    // comes back at once instead of after the interval. A rejected action is skipped for the rest of the pass.
+    async Task<bool> QueueDueAsync(CancellationToken cancellation)
     {
-        List<ActionKey> due;
-        using (publisher.StartQuery())
-            due = Ambient.Relation<IDelayedActions>().ListByStartAt(new(EnumerationOrder.Ascending, DateTime.MinValue,
-                    KeyProposition.Included, _time.GetUtcNow().UtcDateTime, KeyProposition.Included))
-                .Select(d => new ActionKey { TenantId = d.TenantId, ActionId = d.ActionId }).ToList();
-        foreach (var batch in due.Chunk(DueBatch))
+        var now = _time.GetUtcNow().UtcDateTime;
+        var rejected = new HashSet<(ulong TenantId, ulong ActionId)>();
+        for (var pass = 0; pass < DueBatchesPerPass; pass++)
         {
-            if (await TryPublishAsync(new DelayedActionsDue { Actions = [.. batch] }, cancellation).ConfigureAwait(false) ||
-                batch.Length == 1)
-                continue;
-            // One action the consume cannot queue must not hold back the rest of its batch.
-            foreach (var key in batch)
-                await TryPublishAsync(new DelayedActionsDue { Actions = [key] }, cancellation).ConfigureAwait(false);
+            ActionKey[] batch;
+            using (publisher.StartQuery())
+                batch = Ambient.Relation<IDelayedActions>().ListByStartAt(new(EnumerationOrder.Ascending,
+                        DateTime.MinValue, KeyProposition.Included, now, KeyProposition.Included))
+                    .Where(d => !rejected.Contains((d.TenantId, d.ActionId))).Take(DueBatch)
+                    .Select(d => new ActionKey { TenantId = d.TenantId, ActionId = d.ActionId }).ToArray();
+            if (batch.Length == 0) return false;
+            if (!await TryPublishAsync(new DelayedActionsDue { Actions = [.. batch] }, cancellation).ConfigureAwait(false))
+            {
+                // One action the consume cannot queue must not hold back the rest of its batch.
+                if (batch.Length == 1) rejected.Add((batch[0].TenantId, batch[0].ActionId));
+                else
+                    foreach (var key in batch)
+                        if (!await TryPublishAsync(new DelayedActionsDue { Actions = [key] }, cancellation)
+                                .ConfigureAwait(false))
+                            rejected.Add((key.TenantId, key.ActionId));
+            }
+            if (batch.Length < DueBatch) return false;
         }
+        return true;
     }
 
     // Each passed occurrence starts once: the consume accepts only a start from the last run it read.
@@ -240,26 +263,34 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         lock (_lock)
         {
             var now = Now;
-            var actionsByPriority = _planner.Actions.Values.GroupBy(a => a.Priority).OrderBy(g => g.Key);
             return new(Session,
                 _planner.Workers.Values.OrderBy(w => w.NodeId, StringComparer.Ordinal).Select(w => new WorkerOverview(
                     w.Session, w.NodeId, w.Generation, w.Capacity, w.Used, w.Ready, now - w.LastExchange,
                     w.Actions.Count, w.ReservedFor)).ToList(),
-                actionsByPriority.Select(g => new PriorityOverview(g.Key, g.Count(a => a.Runnable),
-                    g.Count(a => a.Worker != null), g.Count(a => a.Protected))).ToList(),
+                _planner.PriorityCounts(),
                 _planner.Suspended.Order(StringComparer.Ordinal).ToList(), _planner.SuspendedTenants.Order().ToList());
         }
     }
 
-    void WakeWorkers()
+    // Wakes the held exchanges of these workers, or of all of them, so they answer with their new commands.
+    void WakeWorkers(IReadOnlyCollection<Guid>? sessions)
     {
-        TaskCompletionSource wake;
+        List<TaskCompletionSource> woken;
         lock (_lock)
         {
-            wake = _workersWake;
-            _workersWake = Signal();
+            if (sessions == null)
+            {
+                woken = _workerWakes.Values.ToList();
+                _workerWakes.Clear();
+            }
+            else
+            {
+                woken = new();
+                foreach (var session in sessions)
+                    if (_workerWakes.Remove(session, out var wake)) woken.Add(wake);
+            }
         }
-        wake.TrySetResult();
+        foreach (var wake in woken) wake.TrySetResult();
     }
 
     /// <summary>A worker's long poll: answers at once with commands or acknowledgements, otherwise when the planner
@@ -278,7 +309,8 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
             CoordinatorSession = Session, Acknowledged = [.. request.Finished, .. request.Lost]
         };
         using var poll = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        Task? timeout = null; // one timer per poll, however often the workers are woken
+        Task? timeout = null; // one timer per poll, however often the worker is woken
+        TaskCompletionSource? waiting = null;
         try
         {
             while (true)
@@ -296,8 +328,10 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
                         Kind = c.Kind, TenantId = c.Id.TenantId, ActionId = c.Id.ActionId, Attempt = c.Attempt,
                         StartEventId = c.StartEventId
                     }).ToList();
-                    wake = _workersWake.Task;
-                    _loopWake.TrySetResult(); // a new or freed worker may take actions
+                    if (!_workerWakes.TryGetValue(request.WorkerSession, out waiting))
+                        _workerWakes.Add(request.WorkerSession, waiting = Signal());
+                    wake = waiting.Task;
+                    if (!_planner.Settled) _loopWake.TrySetResult(); // a new or freed worker may take actions
                 }
                 var remaining = deadline - Now;
                 if (response.Commands.Count != 0 || response.Acknowledged.Count != 0 || request.Draining ||
@@ -311,6 +345,10 @@ internal sealed class ActionCoordinator(BackendActions actions, EventPublisher p
         finally
         {
             poll.Cancel();
+            lock (_lock) // a session that stops polling leaves no signal behind
+                if (waiting != null && _workerWakes.TryGetValue(request.WorkerSession, out var current) &&
+                    current == waiting)
+                    _workerWakes.Remove(request.WorkerSession);
         }
     }
 }

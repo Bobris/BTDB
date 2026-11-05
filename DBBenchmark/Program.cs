@@ -38,6 +38,12 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "backend-actions", StringComparison.OrdinalIgnoreCase))
+        {
+            BackendActions.PlannerScaling.Run(args[1..]);
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "integer-secondary", StringComparison.OrdinalIgnoreCase))
         {
             BenchmarkSwitcher.FromTypes([typeof(IntegerSecondaryKeyBenchmark)]).Run(args[1..]);
