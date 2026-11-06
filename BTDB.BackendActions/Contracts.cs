@@ -97,8 +97,8 @@ public enum ActionCancellationReason : byte
     /// <summary><see cref="IActionContext.CancelAfter"/> elapsed; an acknowledged attempt finishes as Cancelled with the
     /// error code <c>Timeout</c>.</summary>
     Timeout = 2,
-    /// <summary>A newer attempt replaced this one, or the worker stops; an acknowledged or failed attempt publishes
-    /// nothing, so the action runs again.</summary>
+    /// <summary>A newer attempt replaced this one, or the worker stops; an acknowledged attempt publishes nothing, so
+    /// the action runs again, while an exception other than OperationCanceledException still fails it.</summary>
     Interrupted = 3
 }
 

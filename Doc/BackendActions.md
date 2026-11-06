@@ -3,8 +3,9 @@
 `BTDB.BackendActions` runs long, resource-limited background work for applications built on
 [`BTDB.Replication.EventSourcing`](ReplicationEventSourcing.md). Application events enqueue and cancel actions in
 their own transactions. The replication leader schedules them, any node executes them, and an ordered event hands
-each outcome back to the application on every replica. The design, its trade-offs and the remaining milestones are
-in [the implementation plan](BackendActionsPlan.md).
+each outcome back to the application on every replica. Recipes for timeouts, interruptions, cancellation, partial
+results, retries and more are in [the examples](BackendActionsExamples.md). The design, its trade-offs and the
+remaining milestones are in [the implementation plan](BackendActionsPlan.md).
 
 The package depends only on `BTDB.Replication.EventSourcing`. It is not production-qualified: failover is tested in
 process and in separate node processes over Azurite
@@ -167,7 +168,7 @@ report) or a leader change, so external effects need idempotency. `OnFinished` r
 of a superseded attempt are ignored. A worker that cannot publish an attempt's outcome reports the attempt as lost
 and never runs it again, so the coordinator records a new attempt at once. After `MaxAttempts` (5) lost attempts the
 coordinator finishes the action as `Interrupted` with code `AttemptsExhausted`. A stopping worker interrupts its
-running attempts and publishes the results of those that still return one. For the others it publishes
+running attempts and publishes the results and failures of those that still end with one. For the others it publishes
 `ActionInterrupted`, which queues the action again at once; an interruption is not the action's fault, so it does not
 count toward `MaxAttempts` (`QueuedAction.InterruptedAttempts` counts them). A crash, a lost worker or an expired lease
 still counts.
@@ -181,8 +182,9 @@ still counts.
   finishes as `Cancelled`, with code `Timeout` for a timeout, or, when interrupted, publishes nothing and runs again
   without using an attempt. A handler may also return `Cancelled` on its own, which finishes the attempt as
   `Cancelled`, or `Interrupted`, which runs it again as a lost attempt that counts toward `MaxAttempts`. A result
-  completes the attempt whatever the reason; a failure while interrupted publishes nothing, since the interruption may have caused
-  it. A synchronous handler returns `Task.FromResult<ActionResult<TResult>>(result)`.
+  completes the attempt whatever the reason, and so does a failure: any exception other than
+  `OperationCanceledException` finishes it as `Failed`, also while interrupted, so an action runs again only when the
+  handler acknowledges the interruption. A synchronous handler returns `Task.FromResult<ActionResult<TResult>>(result)`.
 * `ActionResult.InterruptedWith(progress)`: an interruption that also commits progress, a `TResult`, in the same
   `ActionInterrupted` event. `OnFinished` receives it as a non-final `Progress` outcome in that event's transaction,
   only while the attempt is current, so the application stores it, the next attempt resumes from it instead of
@@ -199,6 +201,9 @@ still counts.
   part unless `FindAction(id)` is `Started` with `RunAttempts` equal to its attempt.
 * `AdjustResources(cpuDelta)`: changes the CPU the coordinator accounts to this attempt, never below 10.
 * `StartQuery()`: a snapshot of the worker's database.
+
+[The examples](BackendActionsExamples.md#how-an-attempt-ends) tabulate how each way of ending `ExecuteAsync` finishes
+the attempt for every cancellation reason, with recipes for timeouts, checkpoints and partial results.
 
 ## Schedules
 

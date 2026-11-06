@@ -415,6 +415,16 @@ internal sealed class Recorder
                         return ActionResult.InterruptedWith(new OrderResult { Text = "progress " + context.Attempt });
                     }
                 }
+                else if (input.Mode == "fail-on-cancel")
+                {
+                    // Turns every cancellation into its own failure instead of acknowledging it.
+                    try { await Owner.Release.Task.WaitAsync(context.Cancellation); }
+                    catch (OperationCanceledException)
+                    {
+                        Owner.Reasons.Enqueue(context.CancellationReason);
+                        throw new BackendActionException("Rejected", "The order was rejected.");
+                    }
+                }
                 else if (input.Mode == "self-cancel") return ActionResult.Cancelled;
                 else if (input.Mode == "self-interrupt") return ActionResult.Interrupted;
                 else if (input.Mode != "fast") await Owner.Release.Task.WaitAsync(context.Cancellation);

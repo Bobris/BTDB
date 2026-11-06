@@ -59,6 +59,11 @@
   keep queueing. `SuspendedTenants` and `IsTenantSuspended` read them on any node, the leader overview lists them, and
   `ImportAsync` carries them over. They are stored next to the suspended types in the state row, and
   `ActionsSuspended` gained `TenantIds`.
+- BackendActions: `Doc/BackendActionsExamples.md` collects handler recipes: a table of how each way of ending
+  `ExecuteAsync` finishes the attempt for every cancellation reason, hard and soft timeouts, per-call timeouts,
+  checkpointing on interruption with `InterruptedWith`, cancellation cleanup, partial results with superseded-part
+  filtering and resume, retry with backoff from `OnFinished`, storing outcomes, workflows, unification and
+  aggregation, `OnBeforeStart`, `AdjustResources`, gated schedules and unit tests with `TestActionContext`.
 
 ### Fixed
 
@@ -217,6 +222,13 @@
   `EventPublisher.WaitForAppliedAsync` instead of polling every millisecond.
 - EventSourcing: `EventPublisher.WaitForAppliedAsync(eventId, cancellation)` completes once this node's database made
   the event visible. Waiters wake once per visible batch, without polling, and fail when the publisher stops first.
+
+### Changed
+
+- BackendActions: an exception other than `OperationCanceledException` thrown while the worker stops now finishes
+  the action as `Failed` with its code, instead of running it again. An interruption must be intentional: only a
+  handler that acknowledges it, by throwing `OperationCanceledException` or returning `ActionResult.Interrupted` or
+  `InterruptedWith`, runs again. A superseded attempt still publishes nothing.
 
 ## 36.0.1
 

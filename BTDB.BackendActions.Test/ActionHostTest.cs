@@ -228,6 +228,21 @@ public class ActionHostTest : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AFailureWhileTheWorkerStopsFinishesTheAction()
+    {
+        var stop = StartHost();
+        var id = await Enqueue(new WaitingOrder { Mode = "fail-on-cancel" });
+        await UntilAsync(() => _node.Recorder.Running == 1);
+        stop.Cancel();
+        await _hosts[^1].Run.WaitAsync(TimeSpan.FromSeconds(10));
+        var outcome = Assert.Single(Outcomes);
+        Assert.Equal((id, ActionOutcomeKind.Failed, 1ul, "Rejected"),
+            (outcome.Id, outcome.Kind, outcome.Attempt, outcome.Error));
+        Assert.Equal([ActionCancellationReason.Interrupted], _node.Recorder.Reasons);
+        Assert.Empty(_node.Queued);
+    }
+
+    [Fact]
     public async Task AnAttemptInterruptedByAStoppingWorkerRunsAgainWithoutUsingAnAttempt()
     {
         var options = Options();

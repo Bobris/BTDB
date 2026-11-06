@@ -258,12 +258,14 @@ internal sealed class ActionWorker(BackendActions actions, EventPublisher publis
                     finished.Kind = ActionOutcomeKind.Failed;
                     finished.Error = new() { Code = "Unexpected", Message = error.Message, Details = error.ToString() };
                 }
-                if (finished.Kind == default || finished.Kind == ActionOutcomeKind.Failed &&
-                    (_forgotten || CancellationReason == ActionCancellationReason.Interrupted))
+                // Only an acknowledged interruption runs the action again; a failure finishes it even while the
+                // worker stops, so an interruption is always the handler's intent. A superseded attempt publishes
+                // nothing, since a newer attempt owns the action.
+                if (finished.Kind == default || _forgotten && finished.Kind == ActionOutcomeKind.Failed)
                 {
-                    // Interrupted, or failed while interrupted, which the interruption may have caused: no outcome, so
-                    // the action runs again. A stopping worker records it, so it does not count as an attempt; an
-                    // interruption the handler chose itself is lost and counts. Progress travels in the same event.
+                    // Interrupted: no outcome, so the action runs again. A stopping worker records it, so it does not
+                    // count as an attempt; an interruption the handler chose itself is lost and counts. Progress
+                    // travels in the same event.
                     if (_forgotten) return; // superseded: its progress would be stale
                     var counts = CancellationReason != ActionCancellationReason.Interrupted;
                     if (!counts || progress != null)

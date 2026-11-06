@@ -128,8 +128,9 @@ public class GenerateReportHandler : IActionHandler<GenerateReport, ReportResult
   worker stops). `ExecuteAsync` returns the union `ActionResult<TResult>`: a result (implicitly converted),
   `ActionResult.Cancelled` or `ActionResult.Interrupted`. The handler acknowledges the reason by returning one of the
   latter or by throwing `OperationCanceledException`, which finishes the attempt as `Cancelled`, with the error code
-  `Timeout` for a timeout, not as `Failed`; an acknowledged or failed interrupted attempt publishes nothing. A returned
-  result completes the attempt whatever the reason. `Interrupted` returned without an interruption is a lost attempt
+  `Timeout` for a timeout, not as `Failed`; an acknowledged interrupted attempt publishes nothing. A returned
+  result completes the attempt whatever the reason, and any other exception fails it, also while interrupted, so an
+  interruption is always the handler's intent. `Interrupted` returned without an interruption is a lost attempt
   that counts. The first reason wins. There is no default timeout, as in the reference.
 * Resources: `context.AdjustResources(cpuDelta)` changes the CPU the coordinator accounts to the running attempt,
   never below 10, with the worker's next exchange; a new attempt starts from the type's cost again.
