@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.2.0
+
 ### Added
 
 - Replication: `ReplicationFileSet.RestoreAsync(local, storage, genesis)` restores a database's published history or,
