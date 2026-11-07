@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.1.0
+
 ### Added
 
 - Replication: local-directory storage for developing an application on one node without Azure.
