@@ -145,22 +145,30 @@ uses a fixed identity for the same reason.
 
 ## Restore and application ownership
 
-`RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Discover
-shared native TRL objects with `CanonicalTrlInventory.DiscoverAsync`, combine them with the complete native PVL/KVI
-inventory through `AzureReplicationStorage.Bind(inventory)`, initialize `ReplicationFileSet`, and call `BTreeKeyValueDB.OpenAsync`.
+`RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Call
+`ReplicationFileSet.RestoreAsync(localFiles, storage, genesis, cancellation)` and open the database over the returned
+collection with `BTreeKeyValueDB.OpenAsync`. It discovers the shared native TRL objects with
+`CanonicalTrlInventory.DiscoverAsync`, binds them with the complete native PVL/KVI inventory through
+`IBindableReplicationStorage.Bind(inventory)` and initializes the collection. When nothing is published yet (a new
+cluster or an added database) it starts an empty database instead: `HasPublishedHistory` is false, every cached file
+is discarded because unpublished local work is never canonical input, and leader genesis initializes and publishes
+the database. The same collection then serves `CreateMaintenance`, so a new database publishes checkpoints from its
+first session. Pass `files.HasPublishedHistory ? db.ReplicationRestoredPosition : default` as the restored base.
 Writable legacy open conditionally publishes a header-only successor before returning; all nodes derive its ID from
 that common remote inventory. It needs no opt-in flag or leader lease. Use writable `IReplicationStorage` as the remote
 adapter for automatic conversion. An extended successor causes a restore retry; conflicting headers request restart.
 For Azure, use one data adapter per database:
 
 ```csharp
-var storage = new AzureReplicationStorage(dataContainer, databasePrefix);
-var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, selectedRoot, cancellation);
-var remote = storage.Bind(inventory); // Restore and create-only legacy bootstrap need no leadership authority.
-var files = new ReplicationFileSet(localFiles, remote);
-await files.InitializeAsync(cancellation);
-// During CreateMaintenance, bind the same inventory with the supplied session authority:
-// IReplicationStorage maintenanceStorage = storage.Bind(inventory, authority);
+var storage = new AzureReplicationStorage(dataContainer, databasePrefix); // or FileSystemReplicationStorage
+var genesis = new TrlSuccessor("1.trl", 1);
+// Restore and create-only legacy bootstrap need no leadership authority.
+var files = await ReplicationFileSet.RestoreAsync(localFiles, storage, genesis, cancellation);
+var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions { FileCollection = files, TransactionLogCapture = capture /* … */ },
+    cancellation);
+var restoredBase = files.HasPublishedHistory ? db.ReplicationRestoredPosition : default;
+// During CreateMaintenance, bind a fresh inventory with the supplied session authority:
+// IReplicationStorage maintenanceStorage = storage.Bind(await CanonicalTrlInventory.DiscoverAsync(storage, genesis), authority);
 ```
 
 The leader may keep publishing, checkpointing and marking files during a restore: the attempt keeps reading its
@@ -607,8 +615,22 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
   Use the same `MaxRecordSize` on all nodes: a publication round sent to a remote owner carries at most that many
   record bytes, and the HTTP transport sizes its peer message limit and the server's request body limit from it.
 - **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` (while it commits) into level-1 and
-  level-2 objects (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is
-  deleted before the record history is covered, and there is no retention in v1.
+  level-2 objects (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Without retention
+  nothing is deleted before the record history is covered.
+- **Retention.** Every topic keeps its whole history unless `EventLogOptions.Retention` returns limits for its name:
+  `new EventLogRetention(MaxBytes: …, MaxAge: …)`, either or both. The owner's background pass then condemns whole
+  sealed objects, oldest first, while the topic is larger than `MaxBytes` or its oldest object was last written more
+  than `MaxAge` ago. The age is storage time, so it is approximate: a merged object counts from its merge. The latest
+  split is never removed. Condemned objects leave `EventLogBounds.First` at once, so `ReadAsync` below it fails with
+  `EventLogOffsetNotAvailableException`, and are deleted after `DeletionDelay`, so readers that already passed them
+  finish. Give every node the same function, because whichever node owns a topic applies it. Never limit a topic that
+  a database rebuilds itself from, such as the data and metadata topics of `EventPublisher`, which refuses to start
+  when its metadata topic does not begin at 0. Limits suit coordination and notification topics whose consumers
+  start from `Next` or from a recent cursor:
+
+  ```csharp
+  new EventLogOptions { Retention = topic => topic.StartsWith("presence.") ? new(MaxBytes: 64 << 20, MaxAge: TimeSpan.FromDays(7)) : null }
+  ```
 - **Pipelining.** A node keeps up to `MaxPublishRoundsInFlight` (default 64) publication rounds per topic in flight,
   so records published during the owner's storage write join its next write. Keep it above the expected number of
   concurrent publications per node; 1 restores strictly sequential rounds.

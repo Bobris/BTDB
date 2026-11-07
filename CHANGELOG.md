@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+### Added
+
+- Replication: `ReplicationFileSet.RestoreAsync(local, storage, genesis)` restores a database's published history or,
+  when nothing is published yet, starts an empty database, so a host has one restore path for a new cluster, an added
+  database and a restart, without the test-only collection it needed before. `HasPublishedHistory` says which
+  happened (pass a default restored base when it is false). An empty start discards every cached file, so a cache
+  left by unpublished or unrelated work (for example of a wiped cluster) is never reopened, and the new database's
+  collection supports `CreateMaintenance`, so it publishes checkpoints from its first session instead of after a
+  restart.
+- EventLog: per-topic retention. `EventLogOptions.Retention` maps a topic name to `EventLogRetention(MaxBytes,
+  MaxAge)`; null, the default, keeps the whole history. The topic owner's background pass condemns whole sealed
+  objects, oldest first, while the topic is larger than `MaxBytes` or its oldest object was last written more than
+  `MaxAge` ago (storage time, approximate), and never the latest split. Condemned history leaves
+  `EventLogBounds.First` at once and is deleted after `DeletionDelay`. Retention also runs with merging disabled,
+  and an idle topic wakes when its oldest object expires. `EventLogObjectInfo` gains `LastModified`, reported by the
+  Azure, file-system and in-memory storages.
+
+### Changed
+
+- EventLog: `GetBoundsAsync` reports the first retained offset instead of always 0. Without retention it stays 0 and
+  the owner lists storage once per ownership to confirm it.
+
 ## 36.1.0
 
 ### Added

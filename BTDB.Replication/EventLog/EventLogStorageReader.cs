@@ -175,6 +175,41 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         return EventLogFormat.ParseSplitHeader(header, topic).FirstOffset;
     }
 
+    /// <summary>The first retained offset: the lowest first offset of an object without a deletion mark. Retention marks
+    /// every object below its cut, while merging marks only objects that an unmarked object covers, so without retention
+    /// this is 0 and costs one listing and no read.</summary>
+    public async ValueTask<ulong> FirstOffsetAsync(CancellationToken cancellation)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var (listing, _) = await ListAsync(true, cancellation).ConfigureAwait(false);
+            ulong? first = null;
+            for (var level = 1; level < listing.Merged.Length; level++)
+                foreach (var (offset, info) in listing.Merged[level])
+                    if (info.DeleteAfter == null)
+                    {
+                        if (first == null || offset < first) first = offset;
+                        break;
+                    }
+            if (first == 0) return 0;
+            EventLogObjectInfo? split = null;
+            foreach (var (id, info) in listing.Splits)
+                if (info.DeleteAfter == null)
+                {
+                    if (id == 1) return 0;
+                    split = info;
+                    break;
+                }
+            if (split == null) return first ?? 0;
+            try
+            {
+                var offset = await SplitFirstOffsetAsync(split, cancellation).ConfigureAwait(false);
+                return first is { } merged && merged < offset ? merged : offset;
+            }
+            catch (EventLogVersionChangedException) when (attempt < 3) { } // deleted since the listing
+        }
+    }
+
     /// <summary>The object containing <paramref name="offset"/>, preferring the highest merged level, or null when the
     /// offset is at or beyond the end of the existing history.</summary>
     public async ValueTask<EventLogLocated?> LocateAsync(ulong offset, CancellationToken cancellation)

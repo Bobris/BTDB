@@ -13,7 +13,10 @@ public sealed record EventLogBlob(string Version, ReadOnlyMemory<byte> Content, 
 
 public sealed record EventLogBlobProperties(string Version, long Length, EventLogOwner? Owner);
 
-public sealed record EventLogObjectInfo(string Key, string Version, long Length, DateTimeOffset? DeleteAfter);
+/// <summary>A listed object. LastModified is when storage last changed it, at least its last content write; null when the
+/// adapter cannot tell, which retention by age then treats as recent.</summary>
+public sealed record EventLogObjectInfo(string Key, string Version, long Length, DateTimeOffset? DeleteAfter,
+    DateTimeOffset? LastModified = null);
 
 public enum EventLogWriteOutcome { Applied, Rejected, Ambiguous }
 

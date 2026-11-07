@@ -177,7 +177,7 @@ public sealed class AzureEventLogStorage : IEventLogStorage
             if (!next) yield break;
             var blob = blobs.Current;
             yield return new(blob.Name[_root.Length..], Version(blob.Properties.ETag!.Value),
-                blob.Properties.ContentLength ?? 0, DeletionTime(blob.Metadata));
+                blob.Properties.ContentLength ?? 0, DeletionTime(blob.Metadata), blob.Properties.LastModified);
         }
     }
 

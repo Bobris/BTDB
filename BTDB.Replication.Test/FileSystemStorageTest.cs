@@ -320,6 +320,58 @@ public class FileSystemStorageTest : IDisposable
         Assert.Equal(256, cursor.GetKeyValueCount([]));
     }
 
+    [Fact]
+    public async Task RestoreStartsAnEmptyDatabaseUntilItsHistoryIsPublished()
+    {
+        var time = new ManualClock();
+        var authority = Authority();
+        var genesis = new TrlSuccessor("1.trl", 1);
+        using var raw = new FileSystemReplicationStorage(Dir("db"), time);
+        using var local = new InMemoryReplicationFileStorage();
+        // A cache left by unrelated, never published work (for example of a wiped cluster) is not canonical input.
+        using (var stale = await Open(local, new TransactionLogCapture()))
+            for (ulong i = 1; i <= 5; i++) await Write(stale, i);
+        Assert.NotEmpty(local.Enumerate());
+
+        var capture = new TransactionLogCapture();
+        await using (var files = await ReplicationFileSet.RestoreAsync(local, raw, genesis))
+        {
+            Assert.False(files.HasPublishedHistory);
+            Assert.Empty(local.Enumerate());
+            using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+            {
+                FileCollection = files, TransactionLogCapture = capture, CompactorScheduler = null,
+                Compression = new NoCompressionStrategy()
+            });
+            Assert.Equal(default, db.ReplicationRestoredPosition);
+            using (var read = db.StartReadOnlyTransaction()) Assert.Equal(0ul, read.GetCommitUlong());
+            for (ulong i = 1; i <= 10; i++) await Write(db, i);
+            using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
+            Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+            // The new database's collection also publishes checkpoints in its first session.
+            var bound = raw.Bind(await CanonicalTrlInventory.DiscoverAsync(raw, genesis), authority);
+            using var snapshot = db.CaptureKeyIndexSnapshot();
+            Assert.Equal(CheckpointPublishResult.Published,
+                await new CheckpointPublisher(files, publisher, bound).PublishAsync(snapshot));
+        }
+
+        // Once published, the same call restores the history, here into an empty cache.
+        using var cache = new InMemoryReplicationFileStorage();
+        await using var restoredFiles = await ReplicationFileSet.RestoreAsync(cache, raw, genesis);
+        Assert.True(restoredFiles.HasPublishedHistory);
+        using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = restoredFiles, CompactorScheduler = null, Compression = new NoCompressionStrategy()
+        });
+        Assert.NotEqual(0u, restored.ReplicationRestoredPosition.FileId);
+        Assert.Contains(cache.Enumerate(), file => cache.GetFileType(file.Index) is KVFileType.KeyIndex or
+            KVFileType.KeyIndexWithCommitUlong or KVFileType.ModernKeyIndex or KVFileType.ModernKeyIndexWithUlongs);
+        using var transaction = restored.StartReadOnlyTransaction();
+        Assert.Equal(10ul, transaction.GetCommitUlong());
+        using var cursor = transaction.CreateCursor();
+        Assert.Equal(10, cursor.GetKeyValueCount([]));
+    }
+
     static readonly EventLogOwner A = new("a", "http://node-a:5000/x?y=1");
     static readonly EventLogOwner B = new("b", "http://node-b");
 
@@ -359,6 +411,22 @@ public class FileSystemStorageTest : IDisposable
         Assert.Empty((await storage.ReadAsync("t/empty", default))!.Content.ToArray());
         await Assert.ThrowsAsync<FormatException>(() => storage.ReadAsync("T/1", default).AsTask());
         await Assert.ThrowsAsync<FormatException>(() => storage.ReadAsync("t/../x", default).AsTask());
+    }
+
+    [Fact]
+    public async Task EventLogListingReportsTheLastContentWriteForRetentionByAge()
+    {
+        var time = new ManualClock();
+        using var storage = new FileSystemEventLogStorage(Dir("log"), time);
+        var written = await storage.WriteAsync("t/1", null, new byte[] { 1 }, A, null, default);
+        var first = time.Now;
+        time.Advance(TimeSpan.FromHours(3));
+        // A deletion mark changes metadata only, not the content.
+        Assert.NotNull(await storage.ScheduleDeletionAsync("t/1", written.Version!, TimeSpan.FromDays(1), default));
+        await storage.WriteAsync("t/2", null, new byte[] { 2 }, A, null, default);
+        var listed = new List<EventLogObjectInfo>();
+        await foreach (var info in storage.ListAsync("t/", default)) listed.Add(info);
+        Assert.Equal([first, time.Now], listed.Select(i => i.LastModified));
     }
 
     [Fact]

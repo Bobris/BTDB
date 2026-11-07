@@ -53,6 +53,53 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         throw new FileNotFoundException($"Remote file {remoteFileId} has no session mapping.");
     }
 
+    /// <summary>Restore one database's published history into <paramref name="local"/>, or start an empty database
+    /// when nothing is published yet, and initialize the session. Open the database with the returned collection as
+    /// its <c>FileCollection</c> in either case. An empty start discards every cached file, because unpublished local
+    /// work is never canonical input; leader genesis initializes and publishes the new database.</summary>
+    public static async ValueTask<ReplicationFileSet> RestoreAsync(IReplicationFileStorage local,
+        IBindableReplicationStorage canonical, TrlSuccessor genesis, CancellationToken cancellation = default,
+        int maxConcurrentDownloads = 4, IKeyValueDBLogger? logger = null)
+    {
+        var published = await canonical.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false) != genesis ||
+                        await canonical.ReadAsync(genesis.Key, cancellation).ConfigureAwait(false) != null;
+        IRemoteFileCollection remote = published
+            ? canonical.Bind(await CanonicalTrlInventory.DiscoverAsync(canonical, genesis, cancellation).ConfigureAwait(false))
+            : EmptyRemoteFileCollection.Instance;
+        var files = new ReplicationFileSet(local, remote, maxConcurrentDownloads, logger) { HasPublishedHistory = published };
+        try
+        {
+            await files.InitializeAsync(cancellation).ConfigureAwait(false);
+        }
+        catch
+        {
+            await files.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        return files;
+    }
+
+    /// <summary>False when <see cref="RestoreAsync"/> started a new database: pass a default
+    /// <see cref="ActivationDatabase.RestoredBase"/> then, and the opened database's
+    /// <c>ReplicationRestoredPosition</c> otherwise.</summary>
+    public bool HasPublishedHistory { get; private init; } = true;
+
+    sealed class EmptyRemoteFileCollection : IRemoteFileCollection
+    {
+        public static readonly EmptyRemoteFileCollection Instance = new();
+
+        public async IAsyncEnumerable<RemoteFile> EnumerateAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            await Task.CompletedTask.ConfigureAwait(false);
+            yield break;
+        }
+
+        public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) =>
+            throw new FileNotFoundException("Nothing is published for a new database.");
+    }
+
     /// Use the same logger instance as KeyValueDBOptions.Logger; initialization runs before database opening.
     public IKeyValueDBLogger? Logger { get; set; } = logger;
     public IReplicationFileStorage Local { get; } = local;

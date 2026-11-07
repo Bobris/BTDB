@@ -156,6 +156,11 @@ internal sealed class FileSystemObjectStore : IDisposable
 
     public void DeleteData(string dataFile) => File.Delete(DataPath(dataFile));
 
+    /// <summary>The content file's write time stands for the object's last content write.</summary>
+    public DateTimeOffset GetModified(string dataFile) => File.GetLastWriteTimeUtc(DataPath(dataFile));
+
+    public void SetModified(string dataFile, DateTimeOffset time) => File.SetLastWriteTimeUtc(DataPath(dataFile), time.UtcDateTime);
+
     /// <summary>A fresh content file holding exactly <paramref name="content"/>.</summary>
     public string WriteData(ReadOnlySpan<byte> content)
     {

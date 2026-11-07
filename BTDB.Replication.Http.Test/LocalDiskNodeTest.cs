@@ -62,20 +62,12 @@ public class LocalDiskNodeTest : IDisposable
                 await _files.DisposeAsync();
                 _files = null;
             }
-            IFileCollection files;
-            Restored = await canonical.ResolveRecoveryRootAsync(Genesis, cancellation) != Genesis ||
-                       await canonical.ReadAsync(Genesis.Key, cancellation) != null;
-            if (Restored)
-            {
-                var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, Genesis, cancellation);
-                _files = new(_cache, canonical.Bind(inventory));
-                await _files.InitializeAsync(cancellation);
-                files = _files;
-            }
-            else files = new LocalReplicatedCollection(_cache); // Nothing published yet: a new database.
+            // Restores published history, or starts a new database when nothing is published yet.
+            _files = await ReplicationFileSet.RestoreAsync(_cache, canonical, Genesis, cancellation);
+            Restored = _files.HasPublishedHistory;
             Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
             {
-                FileCollection = files, TransactionLogCapture = _capture, CompactorScheduler = null,
+                FileCollection = _files, TransactionLogCapture = _capture, CompactorScheduler = null,
                 Compression = new NoCompressionStrategy()
             }, cancellation);
             if (Restored)

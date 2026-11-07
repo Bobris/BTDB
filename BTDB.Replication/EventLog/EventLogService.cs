@@ -138,6 +138,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     CancellationTokenSource? _mergeCancellation;
     ulong? _mergedNext;
     DateTimeOffset? _mergeDeadline;
+    ulong? _first; // the owner's first retained offset; only its own passes move it
+    long _firstGeneration; // invalidations of _first, so a value listed before one is not kept
     readonly EventLogMerger _merger;
 
     public EventLogTopic(EventLogService service, string name)
@@ -510,6 +512,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             _mergeCancellation = CancellationTokenSource.CreateLinkedTokenSource(_service.Disposal);
             _mergedNext = null;
             _mergeDeadline = null;
+            _first = null;
+            _firstGeneration++;
         }
         ScheduleHeartbeat(lane);
         ScheduleMerge(lane);
@@ -518,7 +522,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
 
     void ScheduleMerge(EventLogOwnerLane lane)
     {
-        if (_options.MergeFanOut == 0 || _options.MergeLevels == 0) return;
+        if ((_options.MergeFanOut == 0 || _options.MergeLevels == 0) && _options.RetentionOf(Name).IsForever) return;
         lock (_lock)
         {
             if (_lane != lane || _mergeCancellation is not { IsCancellationRequested: false } cancellation) return;
@@ -550,6 +554,11 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
                     {
                         _mergedNext = next;
                         _mergeDeadline = result.NextDeadline;
+                        if (result.Marked != 0 || result.Deleted != 0)
+                        {
+                            _first = null;
+                            _firstGeneration++;
+                        }
                     }
             }
         }
@@ -568,7 +577,14 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             lane = _lane;
             token = _mergeCancellation?.Token ?? CancellationToken.None;
         }
-        return lane == null ? null : await _merger.RunPassAsync(token).ConfigureAwait(false);
+        if (lane == null) return null;
+        var result = await _merger.RunPassAsync(token).ConfigureAwait(false);
+        lock (_lock)
+        {
+            _first = null;
+            _firstGeneration++;
+        }
+        return result;
     }
 
     void OwnerLost(EventLogOwnerLane lane)
@@ -732,12 +748,27 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         {
             var (lane, hint) = await ServingLaneAsync(true, cancellation).ConfigureAwait(false);
             if (lane == null) return new(false, default, hint);
-            return new(true, new(0, await lane.ValidateAsync(cancellation).ConfigureAwait(false)), null);
+            var next = await lane.ValidateAsync(cancellation).ConfigureAwait(false);
+            return new(true, new(await FirstAsync(lane, cancellation).ConfigureAwait(false), next), null);
         }
         catch (EventLogOwnerLostException)
         {
             return new(false, default, null);
         }
+    }
+
+    async ValueTask<ulong> FirstAsync(EventLogOwnerLane lane, CancellationToken cancellation)
+    {
+        long generation;
+        lock (_lock)
+        {
+            if (_lane == lane && _first is { } known) return known;
+            generation = _firstGeneration;
+        }
+        var first = await _reader.FirstOffsetAsync(cancellation).ConfigureAwait(false);
+        lock (_lock)
+            if (_lane == lane && _firstGeneration == generation) _first = first;
+        return first;
     }
 
     internal async IAsyncEnumerable<EventLogLiveMessage> ServeSubscribeAsync(ulong from,
@@ -816,7 +847,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         }
         // No reachable owner: the storage tail covers every completed receipt.
         var tail = await _reader.FindTailAsync(cancellation).ConfigureAwait(false);
-        return new(0, tail?.NextOffset ?? 0);
+        return tail == null ? default : new(await _reader.FirstOffsetAsync(cancellation).ConfigureAwait(false), tail.NextOffset);
     }
 
     public async IAsyncEnumerable<EventLogRecord> ReadAsync(ulong start, ulong? end = null,

@@ -6,7 +6,6 @@ using BTDB.Replication;
 using BTDB.Replication.Azure;
 using BTDB.Replication.EventLog;
 using BTDB.Replication.EventSourcing;
-using BTDB.Replication.Test;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BTDB.BackendActions.ProcessTests;
@@ -121,22 +120,12 @@ internal sealed class ActionsNode(string nodeId, string endpoint, BlobContainerC
         _db?.Dispose();
         _db = null;
         if (_collection != null) { await _collection.DisposeAsync(); _collection = null; }
-        var restored = false;
-        IFileCollection files;
-        if (await _canonical.ResolveRecoveryRootAsync(Genesis, cancellation) == Genesis &&
-            await _canonical.ReadAsync(Genesis.Key, cancellation) == null)
-            files = new LocalReplicatedCollection(_files);
-        else
-        {
-            var inventory = await CanonicalTrlInventory.DiscoverAsync(_canonical, Genesis, cancellation);
-            _collection = new(_files, _canonical.Bind(inventory));
-            await _collection.InitializeAsync(cancellation);
-            files = _collection;
-            restored = true;
-        }
+        // Restores published history, or starts an empty database that leader genesis initializes.
+        _collection = await ReplicationFileSet.RestoreAsync(_files, _canonical, Genesis, cancellation);
+        var restored = _collection.HasPublishedHistory;
         _db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
-            FileCollection = files, TransactionLogCapture = _capture, CompactorScheduler = null,
+            FileCollection = _collection, TransactionLogCapture = _capture, CompactorScheduler = null,
             Compression = new NoCompressionStrategy(), RequireExplicitTransactions = true
         }, cancellation);
         _objects = new ObjectDB();

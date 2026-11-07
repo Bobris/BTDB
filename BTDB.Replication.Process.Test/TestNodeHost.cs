@@ -8,7 +8,6 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Azure.Storage.Blobs;
 using BTDB.Replication.Azure;
-using BTDB.Replication.Test;
 
 namespace BTDB.Replication.ProcessTests;
 
@@ -66,22 +65,12 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
         database.Db?.Dispose();
         database.Db = null;
         if (database.Collection != null) { await database.Collection.DisposeAsync(); database.Collection = null; }
-        var restored = false;
-        IFileCollection files;
-        if (await database.Storage.ResolveRecoveryRootAsync(Genesis, cancellation) == Genesis &&
-            await database.Storage.ReadAsync(Genesis.Key, cancellation) == null)
-            files = new LocalReplicatedCollection(database.Files);
-        else
-        {
-            var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Canonical, Genesis, cancellation);
-            database.Collection = new(database.Files, database.Canonical.Bind(inventory));
-            await database.Collection.InitializeAsync(cancellation);
-            files = database.Collection;
-            restored = true; // Published history exists; use the recovered boundary after native replay.
-        }
+        // Restores published history (then the recovered boundary is used after native replay) or starts empty.
+        database.Collection = await ReplicationFileSet.RestoreAsync(database.Files, database.Canonical, Genesis, cancellation);
+        var restored = database.Collection.HasPublishedHistory;
         database.Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
-            FileCollection = files, TransactionLogCapture = database.Capture, CompactorScheduler = null,
+            FileCollection = database.Collection, TransactionLogCapture = database.Capture, CompactorScheduler = null,
             Compression = new NoCompressionStrategy(), RequireExplicitTransactions = objects
         }, cancellation);
         if (objects)

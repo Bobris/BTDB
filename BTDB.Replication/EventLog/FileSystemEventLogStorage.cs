@@ -72,6 +72,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
             // A write replaces all metadata, including a deletion mark, like a conditional Put Blob.
             var next = new FileSystemObjectStore.Metadata(FileSystemObjectStore.NewVersion(),
                 _store.WriteData(content.Span), content.Length, sha256, null, owner?.Session, owner?.Endpoint);
+            _store.SetModified(next.DataFile, _time.GetUtcNow());
             _store.Put(key, next);
             if (current != null) _store.DeleteData(current.DataFile);
             return ValueTask.FromResult(new EventLogWriteResult(EventLogWriteOutcome.Applied, next.Version));
@@ -104,12 +105,15 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     {
         ArgumentNullException.ThrowIfNull(prefix);
         cancellation.ThrowIfCancellationRequested();
-        List<(string Key, FileSystemObjectStore.Metadata Metadata)> objects;
-        lock (_store.Lock) objects = _store.List(prefix);
-        foreach (var (key, metadata) in objects)
+        List<EventLogObjectInfo> objects = [];
+        lock (_store.Lock)
+            foreach (var (key, metadata) in _store.List(prefix))
+                objects.Add(new(key, metadata.Version, metadata.Length, metadata.DeleteAfter,
+                    _store.GetModified(metadata.DataFile)));
+        foreach (var info in objects)
         {
             cancellation.ThrowIfCancellationRequested();
-            yield return new(key, metadata.Version, metadata.Length, metadata.DeleteAfter);
+            yield return info;
         }
         await Task.CompletedTask.ConfigureAwait(false);
     }

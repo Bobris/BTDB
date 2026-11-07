@@ -11,7 +11,8 @@ namespace BTDB.Replication.EventLog;
 /// delete. All operations complete synchronously.</summary>
 internal sealed class InMemoryEventLogStorage(TimeProvider? timeProvider = null) : IEventLogStorage
 {
-    sealed record Entry(string Version, byte[] Content, EventLogOwner? Owner, string? Sha256, DateTimeOffset? DeleteAfter);
+    sealed record Entry(string Version, byte[] Content, EventLogOwner? Owner, string? Sha256, DateTimeOffset? DeleteAfter,
+        DateTimeOffset Modified);
 
     readonly object _lock = new();
     readonly SortedDictionary<string, Entry> _objects = new(StringComparer.Ordinal);
@@ -82,7 +83,7 @@ internal sealed class InMemoryEventLogStorage(TimeProvider? timeProvider = null)
             if (expectedVersion == null ? exists : !exists || entry!.Version != expectedVersion)
                 return ValueTask.FromResult(EventLogWriteResult.Rejected);
             var version = NextVersion();
-            _objects[key] = new(version, content.ToArray(), owner, sha256, null);
+            _objects[key] = new(version, content.ToArray(), owner, sha256, null, _time.GetUtcNow());
             return ValueTask.FromResult(new EventLogWriteResult(EventLogWriteOutcome.Applied, version));
         }
     }
@@ -97,7 +98,7 @@ internal sealed class InMemoryEventLogStorage(TimeProvider? timeProvider = null)
             if (!_objects.TryGetValue(key, out var entry) || entry.Version != expectedVersion)
                 return ValueTask.FromResult(EventLogWriteResult.Rejected);
             var version = NextVersion();
-            _objects[key] = entry with { Version = version, Owner = owner };
+            _objects[key] = entry with { Version = version, Owner = owner, Modified = _time.GetUtcNow() };
             return ValueTask.FromResult(new EventLogWriteResult(EventLogWriteOutcome.Applied, version));
         }
     }
@@ -110,7 +111,8 @@ internal sealed class InMemoryEventLogStorage(TimeProvider? timeProvider = null)
         {
             Reads++;
             result = _objects.Where(o => o.Key.StartsWith(prefix, StringComparison.Ordinal))
-                .Select(o => new EventLogObjectInfo(o.Key, o.Value.Version, o.Value.Content.Length, o.Value.DeleteAfter))
+                .Select(o => new EventLogObjectInfo(o.Key, o.Value.Version, o.Value.Content.Length, o.Value.DeleteAfter,
+                    o.Value.Modified))
                 .ToArray();
         }
         foreach (var info in result)
@@ -132,7 +134,7 @@ internal sealed class InMemoryEventLogStorage(TimeProvider? timeProvider = null)
                 return ValueTask.FromResult<string?>(null);
             if (entry.DeleteAfter != null) return ValueTask.FromResult<string?>(entry.Version);
             var next = NextVersion();
-            _objects[key] = entry with { Version = next, DeleteAfter = _time.GetUtcNow() + delay };
+            _objects[key] = entry with { Version = next, DeleteAfter = _time.GetUtcNow() + delay, Modified = _time.GetUtcNow() };
             return ValueTask.FromResult<string?>(next);
         }
     }

@@ -12,7 +12,9 @@ namespace BTDB.Replication.EventLog;
 /// splits <c>k·F^L+1 .. (k+1)·F^L</c> for fan-out F; a group is eligible once a later split exists, so the tail is never
 /// merged. The content is a pure function of the group's records, so concurrent or repeated merges create identical
 /// bytes. An object is garbage once a verified object of a higher level covers it; garbage is marked with a deletion
-/// deadline and deleted only when the deadline passed and it is still covered.
+/// deadline and deleted only when the deadline passed and it is still covered. Retention (<see cref="EventLogRetention"/>)
+/// condemns the oldest part of the history: every object below its first kept split is marked and deleted the same way,
+/// and no group below that split is merged.
 /// </summary>
 internal sealed class EventLogMerger(IEventLogStorage storage, string topic, EventLogOptions options,
     IReplicationScheduler scheduler)
@@ -29,7 +31,9 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
 
     public async ValueTask<PassResult> RunPassAsync(CancellationToken cancellation)
     {
-        if (options.MergeFanOut == 0 || options.MergeLevels == 0) return new(0, 0, 0, null);
+        var merging = options.MergeFanOut != 0 && options.MergeLevels != 0;
+        var retention = options.RetentionOf(topic);
+        if (!merging && retention.IsForever) return new(0, 0, 0, null);
         var splits = new SortedList<ulong, EventLogObjectInfo>();
         var mergedInfos = new List<(EventLogObjectInfo Info, int Level)>();
         await foreach (var info in storage.ListAsync(topic + "/", cancellation).ConfigureAwait(false))
@@ -51,7 +55,9 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
         {
             if (nextDeadline == null || deadline < nextDeadline) nextDeadline = deadline;
         }
-        for (var level = 1; level <= options.MergeLevels; level++)
+        var keepFrom = retention.IsForever ? 0
+            : await KeepFromAsync(retention, splits, merged, now, Due, cancellation).ConfigureAwait(false);
+        for (var level = 1; merging && level <= options.MergeLevels; level++)
         {
             var span = Span(level);
             var groups = new SortedSet<ulong>();
@@ -63,6 +69,7 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
                 var first = group * span + 1;
                 var last = first + span - 1;
                 if (last >= maxSplit) break;
+                if (first < keepFrom) continue; // partly condemned: merging it would carry removed history on
                 if (merged.Any(m => m.Object.Level >= level && m.Object.FirstSplit <= first && m.Object.LastSplit >= last))
                     continue;
                 var result = await MergeGroupAsync(level, first, last, splits, merged, cancellation).ConfigureAwait(false);
@@ -80,7 +87,8 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
         var deleted = 0;
         foreach (var info in splits.Values.Concat(merged.Select(m => m.Info)))
         {
-            if (!await IsGarbageAsync(info, merged, cancellation).ConfigureAwait(false)) continue;
+            if (LastSplit(info, merged) >= keepFrom && !await IsGarbageAsync(info, merged, cancellation).ConfigureAwait(false))
+                continue;
             if (info.DeleteAfter is not { } due)
             {
                 if (await storage.ScheduleDeletionAsync(info.Key, info.Version, options.DeletionDelay, cancellation)
@@ -96,6 +104,44 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
             else Due(now);
         }
         return new(created, marked, deleted, nextDeadline);
+    }
+
+    /// <summary>The first split to keep. The objects that no verified higher-level object covers represent the history
+    /// in split order; retention condemns them oldest first while the topic exceeds its size or the oldest one exceeds
+    /// its age, but never the one holding the latest split, where tail discovery starts and the writable tail follows.
+    /// Objects an earlier pass condemned are already marked, so they no longer count.</summary>
+    async ValueTask<ulong> KeepFromAsync(EventLogRetention retention, SortedList<ulong, EventLogObjectInfo> splits,
+        List<(Merged Object, EventLogObjectInfo Info)> merged, DateTimeOffset now, Action<DateTimeOffset> due,
+        CancellationToken cancellation)
+    {
+        var history = new List<(ulong FirstSplit, EventLogObjectInfo Info)>();
+        foreach (var (id, info) in splits)
+            if (!await IsGarbageAsync(info, merged, cancellation).ConfigureAwait(false)) history.Add((id, info));
+        foreach (var (m, info) in merged)
+            if (!await IsGarbageAsync(info, merged, cancellation).ConfigureAwait(false)) history.Add((m.FirstSplit, info));
+        history.Sort((a, b) => a.FirstSplit.CompareTo(b.FirstSplit));
+        var index = 0;
+        while (index < history.Count - 1 && history[index].Info.DeleteAfter != null) index++;
+        long size = 0;
+        for (var i = index; i < history.Count; i++) size += history[i].Info.Length;
+        for (; index < history.Count - 1; index++)
+        {
+            var info = history[index].Info;
+            DateTimeOffset? expires = retention.MaxAge is { } age && info.LastModified is { } modified ? modified + age : null;
+            if (size <= (retention.MaxBytes ?? long.MaxValue) && !(expires <= now))
+            {
+                if (expires is { } at) due(at);
+                break;
+            }
+            size -= info.Length;
+        }
+        return history[index].FirstSplit;
+    }
+
+    ulong LastSplit(EventLogObjectInfo info, List<(Merged Object, EventLogObjectInfo Info)> merged)
+    {
+        EventLogFormat.TryParseKey(topic, info.Key, out var level, out var number);
+        return level == 0 ? number : merged.First(m => m.Info.Key == info.Key).Object.LastSplit;
     }
 
     ulong Span(int level)

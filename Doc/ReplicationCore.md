@@ -245,6 +245,11 @@ await files.InitializeAsync(cancellation);
 using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions { FileCollection = files }, cancellation);
 ```
 
+`ReplicationFileSet.RestoreAsync(local, storage, genesis, cancellation)` creates and initializes the collection for a
+host. With published TRL history it discovers and binds the canonical inventory. Without it (a new database), it uses
+an empty remote inventory, so initialization discards every cached file and `OpenAsync` creates an empty database whose
+TRLs the leader publishes from genesis. `HasPublishedHistory` tells which; it is true for a constructed collection.
+
 `OpenAsync` reads the initialized remote inventory through `RemoteEnumerate` without fetching file bodies.
 Local-only cache files are not recovery candidates. Its separate `LazyFileCollectionWithFileInfos` caches metadata only when requested;
 `GetFileType` derives types from filename extensions. Replication does not use generation: higher fileIds identify newer

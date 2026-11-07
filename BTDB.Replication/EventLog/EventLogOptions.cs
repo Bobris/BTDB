@@ -3,6 +3,26 @@ using System.Security.Cryptography;
 
 namespace BTDB.Replication.EventLog;
 
+/// <summary>How much history of one topic its owner keeps. Without a limit (<see cref="Forever"/>) the whole history
+/// is kept. With limits, the owner removes whole sealed objects, oldest first, while the topic is larger than
+/// <see cref="MaxBytes"/> or while its oldest object was last written more than <see cref="MaxAge"/> ago (by storage
+/// time, so roughly: a merged object counts from its merge). The latest split always stays, so the first retained
+/// offset never passes the latest split. Removed history first leaves <see cref="EventLogBounds.First"/> and is
+/// deleted after <see cref="EventLogOptions.DeletionDelay"/>, so readers that already passed it finish.</summary>
+public sealed record EventLogRetention(long? MaxBytes = null, TimeSpan? MaxAge = null)
+{
+    /// <summary>Keep the whole history, the default of every topic.</summary>
+    public static EventLogRetention Forever { get; } = new();
+
+    internal bool IsForever => MaxBytes == null && MaxAge == null;
+
+    internal void Validate()
+    {
+        if (MaxBytes is <= 0) throw new ArgumentOutOfRangeException(nameof(MaxBytes));
+        if (MaxAge is { } age && age <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(MaxAge));
+    }
+}
+
 public sealed record EventLogOptions
 {
     /// <summary>Maximum length of an ordinary split, including its header and seal.</summary>
@@ -78,6 +98,14 @@ public sealed record EventLogOptions
     /// storage, while the owner committed nothing since the last pass and no deletion deadline is due.</summary>
     public TimeSpan MergeInterval { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Retention of each topic by name; null, or a null result, keeps the whole history (the default). Only the
+    /// owner applies it, during its background pass every <see cref="MergeInterval"/>, so give every node the same
+    /// function. Keep the whole history of topics that a database rebuilds itself from, such as the data and metadata
+    /// topics of event sourcing.</summary>
+    public Func<string, EventLogRetention?>? Retention { get; init; }
+
+    internal EventLogRetention RetentionOf(string topic) => Retention?.Invoke(topic) ?? EventLogRetention.Forever;
+
     /// <summary>Wall clock for deletion deadlines, which storage persists.</summary>
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
@@ -120,5 +148,6 @@ public sealed record EventLogOptions
         if (RecentCacheBytes < 0) throw new ArgumentOutOfRangeException(nameof(RecentCacheBytes));
         ArgumentNullException.ThrowIfNull(TimeProvider);
         ArgumentNullException.ThrowIfNull(NewSessionId);
+        RetentionOf(topic).Validate();
     }
 }
