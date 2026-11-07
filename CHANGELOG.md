@@ -4,6 +4,18 @@
 
 ### Added
 
+- Replication: local-directory storage for developing an application on one node without Azure.
+  `FileSystemLeaderStorage`, `FileSystemReplicationStorage` and `FileSystemEventLogStorage` implement
+  `IReplicationLeaderStorage`, `IReplicationStorage` and `IEventLogStorage` with the conditional semantics of the
+  Azure adapters, so the application keeps the same hosting, restore and EventLog code and moving to Azure replaces
+  only the storage registrations. One process owns each directory (an exclusive lock file); writes are flushed to
+  disk and opening a directory removes crash leftovers. The new `IBindableReplicationStorage`, implemented by
+  `AzureReplicationStorage` and `FileSystemReplicationStorage`, lets restore code bind an inventory without naming the
+  provider. `AddBTDBReplicationSingleNode` and `AddBTDBEventLogSingleNode` register such a node with the same services
+  but a transport that has no peers, so it needs no endpoint, `Map…` call or ASP.NET Core server and runs in any
+  generic host. `MapBTDBReplication` and `MapBTDBEventLog` now fail with a clear message after a single-node
+  registration, and the HTTP transports are registered as `IReplicationPeerTransport` and `IEventLogPeerTransport`
+  instead of their concrete types. See "Local development on one node" in `Doc/ReplicationHosting.md`.
 - Replication: `ReplicationLeaderChannel`, registered by `AddBTDBReplication`, sends application requests to the
   active leader over the existing authenticated peer session. Every node registers named handlers with `Serve`. They
   run only during the leader session that runs `RunWhileLeaderAsync` callbacks, and their token is cancelled when that

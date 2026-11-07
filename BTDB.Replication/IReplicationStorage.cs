@@ -63,3 +63,13 @@ public interface IReplicationStorage : IRemoteFileCollection
     // keeps its version. False means absent: the caller must allocate a fresh identity, never recreate a retired key.
     ValueTask<bool> ProtectPureValuesAsync(uint fileId, KeyIndexFileSource source, CancellationToken cancellation);
 }
+
+/// <summary>The root adapter of one database's canonical namespace, which creates session bindings. Hosts restore and
+/// maintain through it without naming the provider, so the same code runs on Azure Blob Storage
+/// (<c>AzureReplicationStorage</c>) and on a local directory (<see cref="FileSystemReplicationStorage"/>).</summary>
+public interface IBindableReplicationStorage : IReplicationStorage
+{
+    /// <summary>Create a distinct session view of an inventory discovered from this instance. Omitting authority permits
+    /// restore only, not maintenance. The view keeps its selected TRL versions and authority.</summary>
+    IReplicationStorage Bind(CanonicalTrlInventory inventory, LeaseAuthority? authority = null);
+}

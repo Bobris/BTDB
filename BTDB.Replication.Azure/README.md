@@ -28,7 +28,8 @@ This package includes both database replication and EventLog storage adapters. S
 Construct one data adapter per database with its own nonempty prefix; cleanup lists everything below that prefix.
 Discover the canonical chain with `CanonicalTrlInventory.DiscoverAsync`, then bind it: `storage.Bind(inventory)` for
 restore, `storage.Bind(inventory, authority)` for leader maintenance. Bindings are separate instances whose selected TRL
-versions and authority never change. The [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md) shows the complete wiring.
+versions and authority never change. It implements `IBindableReplicationStorage`, as does the core's local-directory
+`FileSystemReplicationStorage` for single-node development, so restore code need not name the provider. The [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md) shows the complete wiring.
 
 Supply authenticated `BlobClient` / `BlobContainerClient` instances; authentication and container provisioning belong
 to the host. Configure SDK clients with `Retry.MaxRetries = 0`: replication reconciles conditional-write ambiguity

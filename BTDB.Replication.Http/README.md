@@ -32,6 +32,11 @@ The advertised endpoint is an absolute HTTPS origin without credentials, query, 
 on loopback. Requests go to `POST /_btdb/replication`; redirects are rejected. Certificates and routing belong to the
 host. Do not log the Authorization header; the adapter never logs identities, credentials or bodies.
 
+For local development and tests on one machine, `AddBTDBReplicationSingleNode` and `AddBTDBEventLogSingleNode` register
+the same services with a transport that has no peers: no endpoint, no `Map…` call and no ASP.NET Core server, so a
+generic host suffices. Pair them with the core's file-system storages; see
+[local development](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md#local-development-on-one-node).
+
 The optional event log is hosted separately with `services.AddBTDBEventLog(endpoint, apiKey, options)` and
 `app.MapBTDBEventLog()`, served at `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` by `HttpEventLogPeerTransport`;
 see the [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md#event-log).

@@ -20,19 +20,39 @@ public static class EventLogHosting
         ArgumentNullException.ThrowIfNull(services);
         HttpReplicationPeerTransport.ValidateEndpoint(endpoint);
         options ??= new EventLogOptions();
+        var maximumMessageBytes = HttpEventLogPeerTransport.MaximumMessageBytes(options);
+        return AddService(services, endpoint, options, _ => new HttpEventLogPeerTransport(apiKey, maximumMessageBytes));
+    }
+
+    /// <summary>Registers the event log of a node that is the whole cluster, for local development and tests: no peer
+    /// endpoint, no ASP.NET Core server and no <see cref="MapBTDBEventLog"/>. Pair it with storage that one process
+    /// owns, such as <see cref="FileSystemEventLogStorage"/>. Its fixed identity takes over the topics of its previous
+    /// process at once. Moving to a cluster replaces this call with <see cref="AddBTDBEventLog"/>.</summary>
+    public static IServiceCollection AddBTDBEventLogSingleNode(this IServiceCollection services,
+        EventLogOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        return AddService(services, SingleNode.Endpoint, options ?? new EventLogOptions(),
+            _ => new SingleNodeEventLogPeerTransport());
+    }
+
+    static IServiceCollection AddService(IServiceCollection services, string endpoint, EventLogOptions options,
+        Func<IServiceProvider, IEventLogPeerTransport> transport)
+    {
         if (services.Any(d => d.ServiceType == typeof(EventLogService)))
             throw new InvalidOperationException("Register only one event log per host.");
         services.TryAddSingleton<IReplicationScheduler, SystemReplicationScheduler>();
-        var maximumMessageBytes = HttpEventLogPeerTransport.MaximumMessageBytes(options);
-        services.AddSingleton(_ => new HttpEventLogPeerTransport(apiKey, maximumMessageBytes));
+        services.AddSingleton(transport);
         services.AddSingleton(sp => new EventLogService(sp.GetRequiredService<IEventLogStorage>(),
-            sp.GetRequiredService<HttpEventLogPeerTransport>(), endpoint, sp.GetRequiredService<IReplicationScheduler>(),
+            sp.GetRequiredService<IEventLogPeerTransport>(), endpoint, sp.GetRequiredService<IReplicationScheduler>(),
             options));
         services.AddSingleton<IEventLog>(sp => sp.GetRequiredService<EventLogService>());
         return services;
     }
 
     public static IEndpointConventionBuilder MapBTDBEventLog(this IEndpointRouteBuilder endpoints) =>
-        endpoints.ServiceProvider.GetRequiredService<HttpEventLogPeerTransport>()
-            .Map(endpoints, endpoints.ServiceProvider.GetRequiredService<EventLogService>());
+        endpoints.ServiceProvider.GetService<IEventLogPeerTransport>() is HttpEventLogPeerTransport transport
+            ? transport.Map(endpoints, endpoints.ServiceProvider.GetRequiredService<EventLogService>())
+            : throw new InvalidOperationException(
+                "MapBTDBEventLog needs AddBTDBEventLog; a single-node registration has no peer endpoint.");
 }

@@ -46,7 +46,7 @@ and the [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/Replicati
 
 | Project | Contents |
 | --- | --- |
-| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup; the optional `EventLog` of opaque records ([plan](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/EventLogImplementationPlan.md)). |
+| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup; the optional `EventLog` of opaque records ([plan](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/EventLogImplementationPlan.md)); local-directory storage for single-node development ([guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md#local-development-on-one-node)). |
 | [`BTDB.Replication.Http`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Http/README.md) | Peer transport over ASP.NET Core/Kestrel and hosting registration. |
 | [`BTDB.Replication.Azure`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Azure/README.md) | Azure leader record/lease and data storage adapters. |
 | [`BTDB.Replication.EventSourcing`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.EventSourcing/README.md) | Typed event validation, Layer2 data/metadata topics, ambient ObjectDB consumption and restart replay. |

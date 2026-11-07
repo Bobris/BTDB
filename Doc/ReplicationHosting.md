@@ -89,6 +89,60 @@ keeps the lease and waits: the host must continue executing ordered inputs while
 retry validates only newly completed local bytes. Only mismatching bytes or an incompatible local continuation require
 a restart and canonical restore. Enable the activation progress deadline to bound a candidate that stops catching up.
 
+## Local development on one node
+
+The core package also contains local-directory counterparts of the three Azure adapters, for developing and testing an
+application on one machine without Azure or Azurite. They implement the same contracts with the same conditional
+semantics, so the application runs the unchanged hosting, coordinator, restore and EventLog code; moving to Azure
+replaces only the three storage registrations:
+
+| Port | Production | Local development |
+| --- | --- | --- |
+| `IReplicationLeaderStorage` | `AzureLeaderStorage(blob, duration, initialJson)` | `FileSystemLeaderStorage(directory, duration, initialJson)` |
+| `IReplicationStorage` (one per database) | `AzureReplicationStorage(container, prefix)` | `FileSystemReplicationStorage(directory)` |
+| `IEventLogStorage` | `AzureEventLogStorage(container, prefix)` | `FileSystemEventLogStorage(directory)` |
+
+A single node has no peers to reach, so it also needs no peer endpoint. Register it with `AddBTDBReplicationSingleNode`
+and `AddBTDBEventLogSingleNode` instead of `AddBTDBReplication` and `AddBTDBEventLog`. They register the same services
+(`ReplicationStatus`, `ReplicationLeadership`, `ReplicationLeaderChannel`, `ReplicationPresence`,
+`ReplicationApplicationData`, health check, metrics, `IEventLog`) with a transport that connects to nobody, so they run
+in any generic host (a console tool, an integration test) without Kestrel, a port or the `Map…` calls:
+
+```csharp
+// Shared "object storage" directories; the node-local cache stays a separate OnDiskReplicationFileStorage directory.
+var shared = Path.Combine(dataRoot, "shared");
+builder.Services.AddSingleton<IReplicationLeaderStorage>(new FileSystemLeaderStorage(
+    Path.Combine(shared, "leader"), TimeSpan.FromSeconds(15),
+    """{"format":1,"clusterId":"my-cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """));
+builder.Services.AddSingleton<IEventLogStorage>(new FileSystemEventLogStorage(Path.Combine(shared, "eventlog")));
+var mainStorage = new FileSystemReplicationStorage(Path.Combine(shared, "db", "main")); // used by RestoreAsync
+builder.Services.AddBTDBReplicationSingleNode(new ReplicationNodeOptions("my-cluster", "single-node", pollInterval,
+    leaseRetryInterval, requestTimeout, confirmationDuration, applicationGeneration), 1000, TimeSpan.FromMilliseconds(250));
+builder.Services.AddBTDBEventLogSingleNode();
+```
+
+Type the host's database storage as `IBindableReplicationStorage`, which both `AzureReplicationStorage` and
+`FileSystemReplicationStorage` implement, so `RestoreAsync` and `CreateMaintenance` call `Bind` without naming the
+provider. Moving to a cluster then replaces the three storages and the two registrations, and adds the two `Map…`
+calls. To exercise the production HTTP registration locally instead, keep `AddBTDBReplication` and `AddBTDBEventLog`
+with the file-system storages and a loopback endpoint; keep that endpoint fixed across restarts, so the restarted node
+takes over its previous session's EventLog topics at once instead of after `OwnerTimeout`. The single-node event log
+uses a fixed identity for the same reason.
+
+- **Single node only.** Other nodes can neither reach a single-node registration nor be reached by it. Use it only with
+  storage that one process owns, such as the file-system storages: on shared Azure storage it could lead while other
+  nodes cannot follow it.
+- **One node.** One process owns each directory through an exclusive `.lock` file while any instance on it is
+  undisposed; another process fails with `IOException`. The lease therefore lives in memory: a restarted process
+  acquires it at once, while within a process an unrenewed lease expires after its duration as in Azure.
+- **Layout.** Each object is a metadata file under `meta/{key}` naming a content file in `data/`; replacing the
+  metadata file changes the object atomically, and TRL appends extend the content file in place. Every write is
+  flushed to disk. Opening a directory removes crash leftovers (`tmp/` and unreferenced content files). Use one
+  directory per database, as each Azure database needs its own prefix, and treat the content as opaque.
+- **Not a backup format.** The directories mirror the canonical history but use their own layout; copy history
+  between providers by running a node, not by copying files.
+- **Disposal.** Dispose the storages after the host stopped and the application disposed its databases.
+
 ## Restore and application ownership
 
 `RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Discover

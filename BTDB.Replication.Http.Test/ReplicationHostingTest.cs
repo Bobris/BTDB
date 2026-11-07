@@ -22,6 +22,14 @@ using Xunit;
 
 namespace BTDB.Replication.Http.Test;
 
+/// <summary>Tests hosting a replication node: its meters are process-wide, so they never run in parallel.</summary>
+[CollectionDefinition(Name)]
+public sealed class ReplicationHostCollection
+{
+    public const string Name = "Replication hosts";
+}
+
+[Collection(ReplicationHostCollection.Name)]
 public class ReplicationHostingTest
 {
     static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);

@@ -21,7 +21,7 @@ namespace BTDB.Replication.Azure;
 
 /// <summary>Database-scoped canonical TRLs and immutable PVL/KVI storage. Bind a selected inventory and
 /// optional leadership authority for restore and maintenance; each binding retains its own immutable session.</summary>
-public sealed class AzureReplicationStorage : IReplicationStorage
+public sealed class AzureReplicationStorage : IBindableReplicationStorage
 {
     readonly BlobContainerClient container;
     readonly string prefix;
@@ -59,6 +59,9 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         if (!inventory.IsFrom(this)) throw new ArgumentException("Inventory belongs to another storage instance.", nameof(inventory));
         return new(this, inventory, authority);
     }
+
+    IReplicationStorage IBindableReplicationStorage.Bind(CanonicalTrlInventory inventory, LeaseAuthority? authority) =>
+        Bind(inventory, authority);
 
     CanonicalTrlInventory Inventory => canonical ??
         throw new InvalidOperationException("Bind a selected canonical inventory before restoring files.");

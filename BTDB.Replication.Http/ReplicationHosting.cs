@@ -23,10 +23,34 @@ public static class ReplicationHosting
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         HttpReplicationPeerTransport.ValidateEndpoint(options.Endpoint);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumConcurrentPeerRequests);
+        return AddNode(services, options, maximumClockDriftPpm, safetyMargin,
+            _ => new HttpReplicationPeerTransport(maximumConcurrentPeerRequests));
+    }
+
+    /// <summary>Registers a node that is the whole cluster, for local development and tests: the same services as
+    /// <see cref="AddBTDBReplication"/>, but no peer endpoint, so it needs no ASP.NET Core server and no
+    /// <see cref="MapBTDBReplication"/>. Pair it with storage that one process owns, such as
+    /// <see cref="FileSystemLeaderStorage"/>; on storage shared with other nodes it could lead without followers being
+    /// able to reach it. <see cref="ReplicationNodeOptions.Endpoint"/> is only an identity here, for example
+    /// "single-node". Moving to a cluster replaces this call with <see cref="AddBTDBReplication"/>.</summary>
+    public static IServiceCollection AddBTDBReplicationSingleNode(this IServiceCollection services,
+        ReplicationNodeOptions options, int maximumClockDriftPpm, TimeSpan safetyMargin)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Endpoint);
+        return AddNode(services, options, maximumClockDriftPpm, safetyMargin,
+            _ => new SingleNodeReplicationPeerTransport());
+    }
+
+    static IServiceCollection AddNode(IServiceCollection services, ReplicationNodeOptions options,
+        int maximumClockDriftPpm, TimeSpan safetyMargin, Func<IServiceProvider, IReplicationPeerTransport> transport)
+    {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumClockDriftPpm);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maximumClockDriftPpm, 1_000_000);
         ArgumentOutOfRangeException.ThrowIfNegative(safetyMargin.Ticks);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumConcurrentPeerRequests);
         if (services.Any(d => d.ServiceType == typeof(ReplicationNodeCoordinator)))
             throw new InvalidOperationException("Register only one replication node per host.");
 
@@ -39,12 +63,12 @@ public static class ReplicationHosting
         services.AddMetrics();
         services.AddSingleton<ReplicationMetrics>();
         services.AddHealthChecks().AddCheck<ReplicationReadinessCheck>("btdb-replication", tags: new[] { "ready" });
-        services.AddSingleton(_ => new HttpReplicationPeerTransport(maximumConcurrentPeerRequests));
+        services.AddSingleton(transport);
         services.AddSingleton(sp => new LeaseSessionController(sp.GetRequiredService<IReplicationLeaderStorage>(),
             sp.GetRequiredService<IReplicationScheduler>(), maximumClockDriftPpm, safetyMargin));
         services.AddSingleton(sp => new ReplicationNodeCoordinator(options, sp.GetRequiredService<IReplicationNodeHost>(),
             sp.GetRequiredService<IReplicationLeaderStorage>(), sp.GetRequiredService<LeaseSessionController>(),
-            sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
+            sp.GetRequiredService<IReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
             sp.GetRequiredService<ReplicationStatus>(), sp.GetRequiredService<ReplicationLeadership>(),
             sp.GetRequiredService<ReplicationPresence>(), sp.GetRequiredService<ReplicationLeaderChannel>()));
         services.AddSingleton(sp => new ReplicationApplicationData(sp.GetRequiredService<IReplicationLeaderStorage>(),
@@ -55,18 +79,21 @@ public static class ReplicationHosting
     }
 
     public static IEndpointConventionBuilder MapBTDBReplication(this IEndpointRouteBuilder endpoints) =>
-        endpoints.ServiceProvider.GetRequiredService<HttpReplicationPeerTransport>().Map(endpoints);
+        endpoints.ServiceProvider.GetService<IReplicationPeerTransport>() is HttpReplicationPeerTransport transport
+            ? transport.Map(endpoints)
+            : throw new InvalidOperationException(
+                "MapBTDBReplication needs AddBTDBReplication; a single-node registration has no peer endpoint.");
 }
 
-/// <summary>Starts only after the HTTP host is listening. ApplicationStopping fences synchronously even if a
+/// <summary>Starts only after the host started (an HTTP host is then listening). ApplicationStopping fences synchronously even if a
 /// provider ignores cancellation; the hosted task then joins coordinator cleanup without owning application databases.</summary>
 internal sealed class ReplicationHostedService(ReplicationNodeCoordinator coordinator, LeaseSessionController leases,
-    IHostApplicationLifetime lifetime, HttpReplicationPeerTransport transport, ReplicationStatus status, ReplicationMetrics metrics) : BackgroundService
+    IHostApplicationLifetime lifetime, IReplicationPeerTransport transport, ReplicationStatus status, ReplicationMetrics metrics) : BackgroundService
 {
     public override Task StartAsync(CancellationToken cancellationToken)
     {
         _ = metrics; // Instantiate the host-scoped instruments with the worker.
-        if (!transport.IsMapped)
+        if (transport is HttpReplicationPeerTransport { IsMapped: false })
             throw new InvalidOperationException("Call MapBTDBReplication before starting the host.");
         return base.StartAsync(cancellationToken);
     }

@@ -6,7 +6,7 @@ production-qualified yet, see [qualification status](#qualification-status).
 
 | Package | Included functionality | Dependencies |
 | --- | --- | --- |
-| `BTDB.Replication` | Database coordination, publication, restore, checkpoints, cleanup and the optional `BTDB.Replication.EventLog` service and contracts. | `BTDB` at the matching base version. |
+| `BTDB.Replication` | Database coordination, publication, restore, checkpoints, cleanup, the optional `BTDB.Replication.EventLog` service and contracts, and local-directory storage for single-node development. | `BTDB` at the matching base version. |
 | `BTDB.Replication.Http` | ASP.NET Core hosting, peer transport, health checks, metrics, EventLog hosting and transport. | `BTDB.Replication` at the matching version; ASP.NET Core shared framework. |
 | `BTDB.Replication.Azure` | Blob leases, leader records, canonical database storage and EventLog storage. | `BTDB.Replication` at the matching version; Azure Storage SDK. |
 | `BTDB.Replication.EventSourcing` | Typed validation, separate Layer2 data/metadata topics, ambient ObjectDB consumption, result waits, restart replay, post-commit actions and live consumer discovery. | `BTDB.Replication` at the matching version. |
@@ -29,7 +29,10 @@ dotnet add package BTDB.Replication.Azure
 ```
 
 NuGet restores the core and BTDB transitively. Use the same version for all replication packages. If only the
-provider-neutral core is needed, install `BTDB.Replication` alone.
+provider-neutral core is needed, install `BTDB.Replication` alone. For local development on one node, `BTDB.Replication`
+and `BTDB.Replication.Http` suffice: the core's `FileSystem*Storage` classes replace the Azure adapters, and the
+single-node registrations of `BTDB.Replication.Http` need no HTTP server (see
+[local development](ReplicationHosting.md#local-development-on-one-node)).
 
 The [hosting guide](ReplicationHosting.md) covers application-owned database restore, input replay, leader storage,
 shutdown, and the optional EventLog registration. The [Azure adapter README](../BTDB.Replication.Azure/README.md)
