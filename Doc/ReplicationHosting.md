@@ -110,12 +110,14 @@ in any generic host (a console tool, an integration test) without Kestrel, a por
 
 ```csharp
 // Shared "object storage" directories; the node-local cache stays a separate OnDiskReplicationFileStorage directory.
+// Factories, not instances: the container disposes only what it created (see "Disposal" below).
 var shared = Path.Combine(dataRoot, "shared");
-builder.Services.AddSingleton<IReplicationLeaderStorage>(new FileSystemLeaderStorage(
+builder.Services.AddSingleton<IReplicationLeaderStorage>(_ => new FileSystemLeaderStorage(
     Path.Combine(shared, "leader"), TimeSpan.FromSeconds(15),
     """{"format":1,"clusterId":"my-cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """));
-builder.Services.AddSingleton<IEventLogStorage>(new FileSystemEventLogStorage(Path.Combine(shared, "eventlog")));
-var mainStorage = new FileSystemReplicationStorage(Path.Combine(shared, "db", "main")); // used by RestoreAsync
+builder.Services.AddSingleton<IEventLogStorage>(_ => new FileSystemEventLogStorage(Path.Combine(shared, "eventlog")));
+var mainStorage = new FileSystemReplicationStorage(Path.Combine(shared, "db", "main")); // used by RestoreAsync;
+                                                                                         // the host disposes it
 builder.Services.AddBTDBReplicationSingleNode(new ReplicationNodeOptions("my-cluster", "single-node", pollInterval,
     leaseRetryInterval, requestTimeout, confirmationDuration, applicationGeneration), 1000, TimeSpan.FromMilliseconds(250));
 builder.Services.AddBTDBEventLogSingleNode();
@@ -146,7 +148,14 @@ uses a fixed identity for the same reason.
   but not of the machine, where published records could be lost.
 - **Not a backup format.** The directories mirror the canonical history but use their own layout; copy history
   between providers by running a node, not by copying files.
-- **Disposal.** Dispose the storages after the host stopped and the application disposed its databases.
+- **Disposal.** Dispose the storages after the host stopped and the application disposed its databases. A host
+  restarted in the same process (an integration test) otherwise shares the old instances' lock and lease: its first
+  acquisition waits until the abandoned lease expires, a full lease duration. Register the storages with factories
+  (`AddSingleton<T>(_ => new …)`), because a DI container never disposes an instance passed to
+  `AddSingleton(instance)`. Mind the order: the container disposes singletons in reverse creation order, so an
+  application that resolves `IEventLog` lazily is created before the EventLog storage and would be disposed after it.
+  Stop such an application when the host stops (for example as a hosted service registered after
+  `AddBTDBEventLogSingleNode`, which stops first), not only in its `Dispose`.
 
 ## Restore and application ownership
 
