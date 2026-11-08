@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.3.0
+
 ### Added
 
 - Replication: `flushToDisk: false` on `FileSystemLeaderStorage`, `FileSystemReplicationStorage`,
