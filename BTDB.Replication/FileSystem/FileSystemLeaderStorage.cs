@@ -17,11 +17,13 @@ namespace BTDB.Replication;
 /// <param name="duration">Lease duration; 15 seconds matches the Azure recommendation.</param>
 /// <param name="initialJson">The initial cluster JSON, as for <c>AzureLeaderStorage</c>.</param>
 /// <param name="timeProvider">Monotonic timestamps for lease expiry.</param>
+/// <param name="flushToDisk">False skips the disk flush (fsync) of every write, for fast development and tests;
+/// writes then survive a crash of the process but not of the machine.</param>
 public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration, string initialJson,
-    TimeProvider? timeProvider = null) : IReplicationLeaderStorage, IDisposable
+    TimeProvider? timeProvider = null, bool flushToDisk = true) : IReplicationLeaderStorage, IDisposable
 {
     const string Key = "leader.json";
-    readonly FileSystemObjectStore _store = new(directory);
+    readonly FileSystemObjectStore _store = new(directory, flushToDisk);
     readonly TimeSpan _duration = duration > TimeSpan.Zero ? duration
         : throw new ArgumentOutOfRangeException(nameof(duration), "The lease duration must be positive.");
     readonly string _initialJson = initialJson ?? throw new ArgumentNullException(nameof(initialJson));

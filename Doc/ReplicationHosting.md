@@ -139,6 +139,11 @@ uses a fixed identity for the same reason.
   metadata file changes the object atomically, and TRL appends extend the content file in place. Every write is
   flushed to disk. Opening a directory removes crash leftovers (`tmp/` and unreferenced content files). Use one
   directory per database, as each Azure database needs its own prefix, and treat the content as opaque.
+- **Faster without disk flushes.** Every write is flushed to disk by default, so one EventLog commit costs two disk
+  flushes (about 11 ms on macOS, where .NET uses `F_FULLFSYNC`). For development and tests pass `flushToDisk: false` to
+  `FileSystemLeaderStorage`, `FileSystemReplicationStorage`, `FileSystemEventLogStorage` and the node-local
+  `OnDiskReplicationFileStorage`: writes still reach the operating system, so they survive a crash of the process,
+  but not of the machine, where published records could be lost.
 - **Not a backup format.** The directories mirror the canonical history but use their own layout; copy history
   between providers by running a node, not by copying files.
 - **Disposal.** Dispose the storages after the host stopped and the application disposed its databases.

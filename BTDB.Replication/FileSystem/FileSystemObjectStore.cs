@@ -37,8 +37,12 @@ internal sealed class FileSystemObjectStore : IDisposable
     readonly string _meta, _data, _tmp;
     bool _disposed;
 
-    public FileSystemObjectStore(string directory)
+    /// <param name="directory">The store's own directory; created when missing.</param>
+    /// <param name="flushToDisk">False skips the physical disk flush (fsync) of every write. Writes still reach the
+    /// operating system, so they survive a crash of the process but not of the machine. Only for development and tests.</param>
+    public FileSystemObjectStore(string directory, bool flushToDisk = true)
     {
+        FlushToDisk = flushToDisk;
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         var root = Path.GetFullPath(directory);
         _meta = Path.Combine(root, "meta");
@@ -75,6 +79,11 @@ internal sealed class FileSystemObjectStore : IDisposable
     }
 
     public string Root => _shared.Root;
+
+    public bool FlushToDisk { get; }
+
+    /// <summary>Flush to the operating system and, unless disabled, to the disk.</summary>
+    public void Flush(FileStream stream) => stream.Flush(FlushToDisk);
 
     public object Lock
     {
@@ -140,7 +149,7 @@ internal sealed class FileSystemObjectStore : IDisposable
             using (var stream = new FileStream(staged, FileMode.CreateNew, FileAccess.Write))
             {
                 stream.Write(Encode(metadata));
-                stream.Flush(true);
+                Flush(stream);
             }
             File.Move(staged, path, true);
         }
@@ -167,7 +176,7 @@ internal sealed class FileSystemObjectStore : IDisposable
         var name = NewVersion();
         using var stream = new FileStream(DataPath(name), FileMode.CreateNew, FileAccess.Write);
         stream.Write(content);
-        stream.Flush(true);
+        Flush(stream);
         return name;
     }
 
@@ -188,7 +197,7 @@ internal sealed class FileSystemObjectStore : IDisposable
             stream.Write(chunk);
             done += chunk.Length;
         }
-        stream.Flush(true);
+        Flush(stream);
         return dataFile;
     }
 

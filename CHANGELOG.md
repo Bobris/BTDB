@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Added
+
+- Replication: `flushToDisk: false` on `FileSystemLeaderStorage`, `FileSystemReplicationStorage`,
+  `FileSystemEventLogStorage` and `OnDiskReplicationFileStorage` skips the disk flush (fsync) of every write, for fast
+  development and tests. Writes still reach the operating system, so they survive a crash of the process but not of the
+  machine. The default stays durable.
+
 ## 36.2.1
 
 ### Fixed

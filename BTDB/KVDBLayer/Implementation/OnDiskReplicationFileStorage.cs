@@ -31,8 +31,12 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
     volatile Dictionary<uint, File> _files = new();
     FileIdAllocator _fileIdAllocator;
 
-    public OnDiskReplicationFileStorage(string directory)
+    /// <param name="directory">The node-private cache directory; created when missing.</param>
+    /// <param name="flushToDisk">False skips the disk flush (fsync) of <c>HardFlush</c>, for fast development and tests.
+    /// The cache is validated against the remote inventory on restore anyway.</param>
+    public OnDiskReplicationFileStorage(string directory, bool flushToDisk = true)
     {
+        FlushToDisk = flushToDisk;
         _directory = directory;
         Directory.CreateDirectory(directory);
         var files = new Dictionary<uint, File>();
@@ -52,6 +56,8 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
         }
         _files = files;
     }
+
+    public bool FlushToDisk { get; }
 
     public IFileCollectionFile AddFile(string humanHint) => AddFile(humanHint, FileIdParity.Any);
 
@@ -404,7 +410,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
             {
                 if (_removed) return;
                 PersistAndTruncate();
-                _stream.Flush(true);
+                _stream.Flush(_owner.FlushToDisk);
                 // Keep only the appender's current block in memory.
                 MapPersisted(_length);
             }

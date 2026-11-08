@@ -33,9 +33,11 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
 
     /// <param name="directory">This database's own directory; created when missing.</param>
     /// <param name="timeProvider">UTC source of deletion deadlines.</param>
-    public FileSystemReplicationStorage(string directory, TimeProvider? timeProvider = null)
+    /// <param name="flushToDisk">False skips the disk flush (fsync) of every write, for fast development and tests;
+    /// writes then survive a crash of the process but not of the machine.</param>
+    public FileSystemReplicationStorage(string directory, TimeProvider? timeProvider = null, bool flushToDisk = true)
     {
-        _store = new(directory);
+        _store = new(directory, flushToDisk);
         _ownsStore = true;
         _time = timeProvider ?? TimeProvider.System;
     }
@@ -366,7 +368,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
 
         public void Commit(string key)
         {
-            _stream.Flush(true);
+            _store.Flush(_stream);
             _stream.Dispose();
             var sha = Convert.ToHexString(_hash.GetHashAndReset());
             RequireAuthority();

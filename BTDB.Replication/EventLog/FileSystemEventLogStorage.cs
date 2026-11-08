@@ -15,10 +15,13 @@ namespace BTDB.Replication.EventLog;
 /// </summary>
 /// <param name="directory">The event log's own directory; created when missing.</param>
 /// <param name="timeProvider">UTC source of deletion deadlines.</param>
-public sealed class FileSystemEventLogStorage(string directory, TimeProvider? timeProvider = null)
+/// <param name="flushToDisk">False skips the disk flush (fsync) of every write, for fast development and tests:
+/// a commit then costs a file write instead of two disk flushes (about 11 ms on macOS, where .NET uses F_FULLFSYNC).
+/// Writes survive a crash of the process but not of the machine, so a published record could be lost.</param>
+public sealed class FileSystemEventLogStorage(string directory, TimeProvider? timeProvider = null, bool flushToDisk = true)
     : IEventLogStorage, IDisposable
 {
-    readonly FileSystemObjectStore _store = new(directory);
+    readonly FileSystemObjectStore _store = new(directory, flushToDisk);
     readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     static EventLogOwner? Owner(FileSystemObjectStore.Metadata metadata) =>

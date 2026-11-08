@@ -414,6 +414,49 @@ public class FileSystemStorageTest : IDisposable
     }
 
     [Fact]
+    public async Task StoragesWithoutDiskFlushKeepTheSameContractAcrossReopening()
+    {
+        using (var log = new FileSystemEventLogStorage(Dir("log"), flushToDisk: false))
+        {
+            var written = await log.WriteAsync("t/1", null, new byte[] { 1, 2, 3 }, A, null, default);
+            Assert.Equal(EventLogWriteOutcome.Applied, written.Outcome);
+            Assert.Equal(EventLogWriteOutcome.Rejected, (await log.WriteAsync("t/1", null, new byte[] { 9 }, A, null, default)).Outcome);
+        }
+        using (var reopened = new FileSystemEventLogStorage(Dir("log")))
+            Assert.Equal(new byte[] { 1, 2, 3 }, (await reopened.ReadAsync("t/1", default))!.Content.ToArray());
+
+        var time = new ManualClock();
+        using (var leader = new FileSystemLeaderStorage(Dir("leader"), TimeSpan.FromSeconds(15), Initial, time, flushToDisk: false))
+        {
+            var grant = (await leader.AcquireAsync(default))!;
+            Assert.Equal(LeaderWriteOutcome.Applied,
+                await leader.WriteAsync(grant.Handle, (await leader.ReadAsync(default)).Token, "next", default));
+        }
+        using (var leader = new FileSystemLeaderStorage(Dir("leader"), TimeSpan.FromSeconds(15), Initial, time))
+            Assert.Equal("next", (await leader.ReadAsync(default)).Json);
+
+        var authority = Authority();
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using (var raw = new FileSystemReplicationStorage(Dir("db"), time, flushToDisk: false))
+        {
+            using var db = await Open(local, capture);
+            for (ulong i = 1; i <= 10; i++) await Write(db, i);
+            using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
+            Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        }
+        using var canonical = new FileSystemReplicationStorage(Dir("db"), time);
+        using var cache = new OnDiskReplicationFileStorage(Dir("cache"), flushToDisk: false);
+        await using var files = await ReplicationFileSet.RestoreAsync(cache, canonical, new("1.trl", 1));
+        using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = files, CompactorScheduler = null, Compression = new NoCompressionStrategy()
+        });
+        using var transaction = restored.StartReadOnlyTransaction();
+        Assert.Equal(10ul, transaction.GetCommitUlong());
+    }
+
+    [Fact]
     public async Task EventLogListingReportsTheLastContentWriteForRetentionByAge()
     {
         var time = new ManualClock();
