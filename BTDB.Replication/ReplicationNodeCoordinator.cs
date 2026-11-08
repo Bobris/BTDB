@@ -120,6 +120,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly TaskCompletionSource _fatalRestart = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool _restart;
     TimeSpan _nextPresence;
+    ulong _leaderGeneration;
+    PreparedHandoff? _localUpgrade;
 
     public ReplicationNodeRole Role { get; private set; } = ReplicationNodeRole.Restoring;
 
@@ -270,7 +272,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     var candidates = databases.Select(d => _canonicalBase.TryGetValue(d.Name, out var canonical)
                         ? d with { RestoredBase = canonical } : d).ToArray();
                     _leadership = new(new LeaderSelection(records, leases, authority, _candidate), candidates,
-                        PrepareDatabaseAsync, _activationWatchdog == null ? null : _activationWatchdog.Progress);
+                        PrepareDatabaseAsync, _activationWatchdog == null ? null : _activationWatchdog.Progress,
+                        () => RestartToPublishLocalSchema(databases));
                 }
             }
             // Validation, publication backlogs and uploads may legitimately outlast one request timeout. A timeout
@@ -290,6 +293,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (Role == ReplicationNodeRole.Activating) ReportStatus();
             var publishers = await _leadership!.ActivateAsync(cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
+            if (_restart) return;
             if (publishers == null) return;
             _publishers = publishers;
             if (!authority.IsValid) { DropLeadership(); return; }
@@ -404,6 +408,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (term == 0) return;
             var identity = new ReplicationPeerIdentity(options.ClusterId, term, LeaderJson.RequiredString(json, "sessionId"),
                 LeaderJson.RequiredString(json, "peerEndpoint"), LeaderJson.RequiredString(json, "apiKey"));
+            _leaderGeneration = LeaderJson.OptionalUInt64(json, "applicationGeneration");
             _leaderDatabases.Clear();
             _leaderDatabases.UnionWith(LeaderJson.OptionalNames(json, "databaseNames") ?? []);
             _peer = await transport.ConnectAsync(identity, cancellation).ConfigureAwait(false);
@@ -429,7 +434,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
         if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
         await ExchangePresenceAsync(cancellation).ConfigureAwait(false);
-        if (_detached.Count == 0 && host.PreparedUpgrade is { } offer && offer.ApplicationGeneration == options.ApplicationGeneration)
+        // A local schema of a higher generation can be published only by this node, so it asks for the lease by itself.
+        var upgrading = UpgradingWithLocalSchema(databases);
+        if (upgrading) _localUpgrade ??= new(options.ApplicationGeneration, Guid.NewGuid().ToString());
+        if ((_detached.Count == 0 || upgrading) && (host.PreparedUpgrade ?? (upgrading ? _localUpgrade : null)) is { } offer &&
+            offer.ApplicationGeneration == options.ApplicationGeneration)
         {
             leases.ProposeTransfer(offer.TransferId);
             await _peer.OfferHandoffAsync(offer, cancellation).ConfigureAwait(false);
@@ -462,9 +471,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         // Followers come first in the request. From asks the leader for the TRL bytes the comparison still needs,
         // starting after the bytes this session already retains.
         var polled = new List<ReplicationPeerPollRequest>();
-        // A leader is connected, so this node will not publish its own schema write: it left the leader's history.
-        foreach (var (name, following) in _followers.ToArray())
-            if (HasLocalSchema(following.Database, _canonicalBase[name])) Detach(name, following.Follower);
         var followers = _followers.Values.ToArray();
         foreach (var (database, follower, reader) in followers)
         {
@@ -492,6 +498,12 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             var (database, follower, leaderReader) = followers[i];
             var name = database.Name;
             var status = poll.Databases[i];
+            // A leader answered, so this node will not publish its schema in this history unless it takes over.
+            if (HasLocalSchema(database, _canonicalBase[name]))
+            {
+                Detach(name, follower, disqualify: _leaderGeneration >= options.ApplicationGeneration);
+                continue;
+            }
             // A schema commit after the canonical base is never applied or compared; one covered by it is a duplicate.
             if (status.Schema is { } schema && schema > _canonicalBase[name])
             {
@@ -535,11 +547,27 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     static bool HasLocalSchema(ActivationDatabase database, TransactionLogPosition canonical) =>
         database.Capture.NonApplicationCommitted > canonical;
 
+    bool HasDetachedLocalSchema(IReadOnlyList<ActivationDatabase> databases) => databases.Any(database =>
+        _detached.Contains(database.Name) && _canonicalBase.TryGetValue(database.Name, out var canonical) &&
+        HasLocalSchema(database, canonical));
+
+    bool UpgradingWithLocalSchema(IReadOnlyList<ActivationDatabase> databases) =>
+        _leaderGeneration < options.ApplicationGeneration && HasDetachedLocalSchema(databases);
+
+    /// <summary>This node won the lease for its generation, but its local history left the canonical one when it wrote
+    /// the schema. It restarts, restores the frozen published history and leads from there.</summary>
+    bool RestartToPublishLocalSchema(IReadOnlyList<ActivationDatabase> databases)
+    {
+        if (!HasDetachedLocalSchema(databases)) return false;
+        Restart("This node leads its generation and must restore the published history before publishing its schema.");
+        return true;
+    }
+
     /// <summary>The database can no longer match the leader: stop comparing it and never lead with it. It keeps
     /// executing locally.</summary>
-    void Detach(string name, FollowerComparisonSession follower)
+    void Detach(string name, FollowerComparisonSession follower, bool disqualify = true)
     {
-        leases.Disqualify();
+        if (disqualify) leases.Disqualify();
         if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
             _leaderEvidenceUntil = scheduler.Elapsed;
         _detached.Add(name);

@@ -385,9 +385,17 @@ The leader drains grants and transfers through `IReplicationLeaderStorage.Transf
 target proves ownership by renewal and then activates normally.
 
 A node may call `ObjectDB.InitializeRelations` in any role and then run its event loop. If that commits a schema change
-while a leader is connected, the coordinator detaches the database: the node stops comparing it, can no longer lead in
-this session, reports `SchemaDetached` and keeps serving locally. Once the leader has published a schema newer than the
-node's canonical base, the coordinator requests a restart, and the node restores it. A node that writes a schema
+while a leader answers, the coordinator detaches the database: the node stops comparing it, reports `SchemaDetached` and
+keeps serving locally. What happens next depends on the leader's generation:
+
+- **Same or newer generation:** the node can no longer lead in this session. Once the leader has published a schema
+  newer than the node's canonical base, the coordinator requests a restart, and the node restores it.
+- **Older generation:** the node takes over by itself, without `PreparedUpgrade`. It offers a handoff; on receiving the
+  lease it selects its generation, which keeps older nodes from leading, and requests a restart, because its local
+  history left the canonical one. The restarted process restores the frozen history, acquires the lease after expiry
+  and publishes its schema. Other nodes of the new generation wait for that schema and restart to restore it.
+
+A node that writes a schema
 before it knows of any leader stays eligible, and if it wins the lease it publishes that schema itself; on a new
 cluster the other nodes restart to restore it. A host that prefers not to diverge at all calls
 `ObjectDB.TryInitializeRelationsWithoutWriting` and keeps its event loop stopped while that returns false.

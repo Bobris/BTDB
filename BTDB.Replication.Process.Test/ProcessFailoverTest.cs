@@ -506,7 +506,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
     }
 
     [Fact]
-    public async Task UpgradedFollowerExecutingBeforeItsSchemaIsPublishedDetachesWithoutAffectingHistory()
+    public async Task UpgradedFollowerExecutingBeforeItsSchemaIsPublishedTakesOverAndPublishesIt()
     {
         var container = await fixture.ContainerAsync();
         await using var leader = await Node.Start(container, objects: true);
@@ -515,14 +515,13 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         await WaitPublished(container, 5);
         await using var upgraded = await Node.Start(container, generation: 2, objects: true);
         await upgraded.Wait(s => s.Role == "Follower" && s.EventId == 5, "restored upgraded follower");
-        // Executing with the new relation persists its index upgrade locally, which the leader never wrote.
+        // Executing with the new relation persists its index upgrade locally, which the old leader never writes.
         await leader.Orders(6, 5);
         await upgraded.Orders(6, 5);
-        // It stops comparing and keeps working locally until a leader publishes a schema it can restore.
-        await upgraded.Wait(s => s.Detached && s.EventId == 10, "detached upgraded follower");
-        Assert.Equal("Leader", (await leader.Wait(_ => true, "unaffected leader")).Role);
-        await leader.Orders(11, 5);
-        await WaitPublished(container, 15);
+        // It asks for the lease by itself, then restarts to drop the local history before publishing the schema.
+        await upgraded.ExpectRestartExit("This node leads its generation");
+        await using var replacement = await Node.Start(container, generation: 2, objects: true);
+        await replacement.Wait(s => s.Role == "Leader", "upgraded leader");
     }
 
     [Fact]

@@ -11,7 +11,8 @@ namespace BTDB.Replication;
 /// create a new one for a fresh lease. Lease maintenance must run independently. No publisher is exposed until
 /// every supplied required database has been validated and adopted.</summary>
 internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList<ActivationDatabase> databases,
-    Func<ActivationDatabase, LeaseAuthority, CancellationToken, ValueTask>? prepare = null, Action? progress = null) : IDisposable
+    Func<ActivationDatabase, LeaseAuthority, CancellationToken, ValueTask>? prepare = null, Action? progress = null,
+    Func<bool>? abandonAfterSelection = null) : IDisposable
 {
     // Local progress only: selection (1), discovery/validation (2), adoption (3), schema preparation/publication (4).
     // Lexicographic order keeps retrying an earlier database or range from extending the deadline.
@@ -55,6 +56,8 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
             _selected ??= await selection.SelectAsync(cancellation).ConfigureAwait(false);
             if (_selected == null) return null;
             ReportProgress(1, 0, 0, 0, 0);
+            // Selection recorded this node's generation, which keeps older nodes from leading across a restart.
+            if (abandonAfterSelection?.Invoke() == true) return null;
             if (!_selected.Authority.IsValid) throw new InvalidOperationException("Leadership session expired.");
             _publishers ??= await LeadershipActivation.ActivateAsync(_selected, databases, cancellation,
                 progress == null ? null : (stage, database, step, file, offset) => ReportProgress(2 + stage, database, step, file, offset),

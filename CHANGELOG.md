@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Replication: a follower of a higher application generation that writes its schema takes the leadership over from the
+  older leader and publishes the schema. Since 36.5.0 it detached for good, so an upgrade stalled.
+
 ## 36.5.0
 
 ### Changed

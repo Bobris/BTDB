@@ -314,6 +314,7 @@ public partial class ReplicationNodeCoordinatorTest
             using (var read = Db.StartReadOnlyTransaction())
                 lock (_progressLock) _progress = new(read.GetCommitUlong(), Db.ReplicationRestoredPosition.FileId,
                     Db.ReplicationRestoredPosition.Offset);
+            if (SchemaAfterRestore) await Schema();
             return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1),
                 Db.ReplicationRestoredPosition, id => $"{id}.trl")];
         }
@@ -914,6 +915,36 @@ public partial class ReplicationNodeCoordinatorTest
         await leader.Schema();
         cluster.Advance(30);
         Assert.Equal(1, follower.Restarts);
+    }
+
+    [Fact]
+    public async Task HigherGenerationWritingSchemaTakesOverAndPublishesItAfterRestart()
+    {
+        await using var cluster = await Cluster.Create();
+        var old = cluster.Start("old");
+        cluster.Advance(20);
+        await old.Write(2, 2);
+        cluster.Advance(20);
+        var next = cluster.Start("next", generation: 2);
+        var waiting = cluster.Start("waiting", generation: 2);
+        cluster.Advance(20);
+
+        await next.Schema(); // no PreparedUpgrade: the local schema write itself asks for the lease
+        cluster.Advance(60);
+        Assert.Equal(1, old.Storage.Transfers);
+        Assert.NotEqual(ReplicationNodeRole.Leader, old.Coordinator.Role);
+        Assert.Equal(1, next.Restarts);
+        Assert.Equal(2ul, JsonNode.Parse(cluster.Record.Json)!["applicationGeneration"]!.GetValue<ulong>());
+        Assert.Equal(0, waiting.Restarts);
+
+        // The restarted process restores the frozen history; nobody answers, so its schema write stays eligible.
+        var restarted = cluster.Start("restarted", generation: 2, schemaAfterRestore: true);
+        waiting.Paused = true;
+        for (var i = 0; i < 40 && restarted.Coordinator.Role != ReplicationNodeRole.Leader; i++) cluster.Advance(5);
+        Assert.Equal(ReplicationNodeRole.Leader, restarted.Coordinator.Role);
+        Assert.Empty(restarted.Detached);
+        cluster.Advance(40); // the old node reconnects and sees the published schema
+        Assert.Equal(new[] { "main" }, old.Detached);
     }
 
     [Fact]

@@ -410,14 +410,17 @@ public class EventLogOwnerLaneTest
         await Submit(a, 1, 1, Bytes(0));
         // A's next write lands, but its response is delayed until B took over and committed offset 2.
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var hold = true;
         storage.AfterMutation = async _ =>
         {
             if (!hold) return;
             hold = false;
+            held.SetResult();
             await gate.Task;
         };
         var landed = Submit(a, 1, 2, Bytes(1)).AsTask();
+        await held.Task.WaitAsync(TimeSpan.FromSeconds(10)); // the commit loop runs on the thread pool
         var b = await Lane(storage, B, Small(4096));
         Assert.Equal(2ul, await Submit(b, 2, 1, Bytes(2), resumeFrom: 2));
         var validation = a.ValidateAsync(default).AsTask();
