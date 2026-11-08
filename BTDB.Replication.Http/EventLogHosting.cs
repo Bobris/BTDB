@@ -12,7 +12,7 @@ namespace BTDB.Replication.Http;
 /// example AzureEventLogStorage; IReplicationScheduler defaults to <see cref="SystemReplicationScheduler"/>.</summary>
 public static class EventLogHosting
 {
-    /// <param name="endpoint">This node's HTTPS origin as peers reach it (HTTP only on loopback).</param>
+    /// <param name="endpoint">This node's HTTP or HTTPS origin as peers reach it.</param>
     /// <param name="apiKey">Bearer key shared by all nodes of the cluster.</param>
     public static IServiceCollection AddBTDBEventLog(this IServiceCollection services, string endpoint, string apiKey,
         EventLogOptions? options = null)

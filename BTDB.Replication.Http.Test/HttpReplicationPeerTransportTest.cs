@@ -481,11 +481,18 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public void ConnectionAttemptsToAVanishedPeerGiveUpQuickly()
+    {
+        using var handler = PeerHttpHandler.Create();
+        Assert.True(handler.ConnectTimeout <= TimeSpan.FromSeconds(5));
+    }
+
     [Theory]
-    [InlineData("http://example.com")]
+    [InlineData("ftp://example.com")]
     [InlineData("https://user:secret@example.com")]
     [InlineData("https://example.com/path")]
-    public async Task CredentialsRequireHttpsOutsideLoopback(string endpoint)
+    public async Task EndpointMustBeAnHttpOrHttpsOriginWithoutCredentials(string endpoint)
     {
         using var client = new HttpReplicationPeerTransport();
         await Assert.ThrowsAsync<ArgumentException>(() => client.ConnectAsync(new("c", 1, "s", endpoint, "secret"), default).AsTask());

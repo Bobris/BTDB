@@ -31,8 +31,8 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumConcurrentRequests);
         _requests = new(maximumConcurrentRequests);
-        // Never forward a credential-bearing POST to a redirect target. The coordinator supplies the deadline.
-        _client = new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
+        // The coordinator supplies the deadline.
+        _client = new(PeerHttpHandler.Create())
         { Timeout = Timeout.InfiniteTimeSpan };
     }
 
@@ -71,9 +71,9 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
     internal static Uri ValidateEndpoint(string endpoint)
     {
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != "https" && (uri.Scheme != "http" || !uri.IsLoopback)) ||
+            (uri.Scheme != "https" && uri.Scheme != "http") ||
             uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
-            throw new ArgumentException("Peer endpoint must be an HTTPS origin (HTTP is allowed only on loopback).");
+            throw new ArgumentException("Peer endpoint must be an HTTP or HTTPS origin.");
         return uri;
     }
 

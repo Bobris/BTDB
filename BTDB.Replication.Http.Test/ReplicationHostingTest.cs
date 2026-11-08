@@ -419,11 +419,19 @@ public class ReplicationHostingTest
         Assert.Throws<InvalidOperationException>(() => host.App.MapBTDBReplication());
     }
 
+    [Theory]
+    [InlineData("http://node.example:8080")]
+    [InlineData("https://node.example")]
+    public void EndpointMayBePlainHttpOrHttpsOutsideLoopback(string endpoint)
+    {
+        new ServiceCollection().AddBTDBReplication(Options with { Endpoint = endpoint }, 0, TimeSpan.Zero);
+    }
+
     [Fact]
     public void InvalidConfigurationFailsBeforeBuildingTheHost()
     {
         var services = new ServiceCollection();
-        Assert.Throws<ArgumentException>(() => services.AddBTDBReplication(Options with { Endpoint = "http://node.example" }, 0, TimeSpan.Zero));
+        Assert.Throws<ArgumentException>(() => services.AddBTDBReplication(Options with { Endpoint = "ftp://node.example" }, 0, TimeSpan.Zero));
         Assert.Throws<ArgumentException>(() => services.AddBTDBReplication(Options with { ClusterId = " " }, 0, TimeSpan.Zero));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options with { CompactionInterval = TimeSpan.Zero }, 0, TimeSpan.Zero));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 1_000_000, TimeSpan.Zero));

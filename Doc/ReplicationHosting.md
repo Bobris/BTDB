@@ -58,8 +58,8 @@ use them. Qualified on Azure E-series VMs (see [M1Evidence.md](../BTDB.Replicati
   dispatched and at most 15.06 s after it, and the Windows clock resolution must fit in the margin as well.
 - Do not run a node on a host that suspends (laptops, hibernating VMs): the raw clock stops during system suspend. A
   hypervisor freeze of the whole VM may stop every guest clock. Neither can corrupt published history, because every
-  durable effect is conditional at the service; a frozen former leader only wastes requests until it fences. The HTTP endpoint must be an HTTPS origin without a path; HTTP is accepted only on
-loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
+  durable effect is conditional at the service; a frozen former leader only wastes requests until it fences. The HTTP endpoint must be an HTTP or HTTPS origin without a path; plain HTTP
+sends the API key unencrypted, so use it only on a network the host trusts. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
 The Bearer API key is authenticated against the active leader before reading or decoding the request body. The full
@@ -625,8 +625,8 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
     Apply(record.Offset, record.Payload);
 ```
 
-- **Endpoint and authentication.** The endpoint is this node's HTTPS origin as peers reach it (HTTP only on
-  loopback). Peers call `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` with the cluster's bearer key.
+- **Endpoint and authentication.** The endpoint is this node's HTTP or HTTPS origin as peers reach it (plain HTTP
+  only on a network the host trusts). Peers call `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` with the cluster's bearer key.
   Subscriptions are long streamed responses, so disable response buffering and idle timeouts in front of that path.
   The owner queues at most 1024 messages and `SubscriberBufferBytes` (default 64 MiB, one message always fits) for
   each live subscriber; a subscriber falling further behind is disconnected and catches up from storage.

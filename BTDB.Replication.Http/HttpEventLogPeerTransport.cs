@@ -41,8 +41,8 @@ public sealed class HttpEventLogPeerTransport : IEventLogPeerTransport, IDisposa
         _apiKeyText = apiKey;
         _apiKey = Encoding.UTF8.GetBytes(apiKey);
         _maximumMessageBytes = maximum;
-        // Never forward a credential-bearing POST to a redirect target; callers supply deadlines.
-        _client = new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
+        // Callers supply deadlines.
+        _client = new(PeerHttpHandler.Create())
         { Timeout = Timeout.InfiniteTimeSpan };
     }
 

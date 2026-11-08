@@ -28,8 +28,8 @@ cleanup within the host's shutdown deadline. Application databases stay applicat
 cleanup. A requested rebuild or an unexpected worker failure stops the host, even under the `Ignore` background-failure
 policy. No wall-clock scheduler fallback is installed.
 
-The advertised endpoint is an absolute HTTPS origin without credentials, query, fragment or path; HTTP is accepted only
-on loopback. Requests go to `POST /_btdb/replication`; redirects are rejected. Certificates and routing belong to the
+The advertised endpoint is an absolute HTTP or HTTPS origin without credentials, query, fragment or path. Plain HTTP
+sends the API key unencrypted, so use it only on a network the host trusts. Requests go to `POST /_btdb/replication`; redirects are rejected. Certificates and routing belong to the
 host. Do not log the Authorization header; the adapter never logs identities, credentials or bodies.
 
 For local development and tests on one machine, `AddBTDBReplicationSingleNode` and `AddBTDBEventLogSingleNode` register

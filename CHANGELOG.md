@@ -2,6 +2,17 @@
 
 ## [unreleased]
 
+### Changed
+
+- Replication: a peer endpoint may now be plain HTTP outside loopback, for hosts that terminate TLS at a reverse proxy
+  and trust the network between nodes. The API key then crosses that network unencrypted.
+
+### Fixed
+
+- Replication and event log: peer HTTP clients limit a connection attempt to 3 s. When a node's pod went away, attempts
+  to its address were dropped silently and hung for the operating system's timeout, so event log writes stalled about
+  two and a half minutes.
+
 ## 36.5.1
 
 ### Fixed
