@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.5.0
+
 ### Changed
 
 - Replication: a follower that commits a schema change itself (`ObjectDB.InitializeRelations`) now detaches from
