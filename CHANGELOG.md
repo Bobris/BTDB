@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Fixed
+
+- EventLog: storage whose writes complete synchronously, such as `FileSystemEventLogStorage` and
+  `InMemoryEventLogStorage`, no longer gets one write per record. The owner's commit loop ran on the thread that
+  submitted the first record, so with such storage it ran whole commits there, and a publisher (for example
+  `EventPublisher`'s single publication lane) could not queue its next record until the write ended. The loop now
+  always starts on the thread pool, so records published during a write join the next one. A single-node application
+  on the file-system storage measured 83 records/s before, whatever the number of publishers.
+
 ## 36.2.0
 
 ### Added

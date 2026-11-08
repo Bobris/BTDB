@@ -345,7 +345,10 @@ internal sealed class EventLogOwnerLane
             if (_running || _stopReason != null || _queue.Count == 0 && !_installRequested) return;
             _running = true;
         }
-        _ = RunAsync();
+        // Never run the loop on the submitting thread: with storage that completes synchronously (the file system,
+        // in memory) it would run whole commits there, so a publisher could not queue its next record until the write
+        // ended and every write carried one record (measured: 200 writes for 200 records, 83 records/s on macOS).
+        ThreadPool.UnsafeQueueUserWorkItem(static lane => _ = lane.RunAsync(), this, preferLocal: false);
     }
 
     async Task RunAsync()
