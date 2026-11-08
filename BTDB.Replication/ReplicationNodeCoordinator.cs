@@ -462,6 +462,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         // Followers come first in the request. From asks the leader for the TRL bytes the comparison still needs,
         // starting after the bytes this session already retains.
         var polled = new List<ReplicationPeerPollRequest>();
+        // A leader is connected, so this node will not publish its own schema write: it left the leader's history.
+        foreach (var (name, following) in _followers.ToArray())
+            if (HasLocalSchema(following.Database, _canonicalBase[name])) Detach(name, following.Follower);
         var followers = _followers.Values.ToArray();
         foreach (var (database, follower, reader) in followers)
         {
@@ -471,6 +474,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         foreach (var database in databases)
             if (!_canonicalBase.ContainsKey(database.Name) && !_removed.Contains(database.Name) &&
                 _leaderDatabases.Contains(database.Name)) polled.Add(new(database.Name));
+        foreach (var database in databases)
+            if (_detached.Contains(database.Name) && !_removed.Contains(database.Name) && _leaderDatabases.Contains(database.Name) &&
+                _canonicalBase.TryGetValue(database.Name, out var localBase) && HasLocalSchema(database, localBase))
+                polled.Add(new(database.Name));
         if (polled.Count == 0 && (_detached.Count == 0 || _leaderEvidenceUntil > scheduler.Elapsed)) return true;
         var dispatched = scheduler.Elapsed;
         var challenge = checked(++_monitorChallenge);
@@ -488,13 +495,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             // A schema commit after the canonical base is never applied or compared; one covered by it is a duplicate.
             if (status.Schema is { } schema && schema > _canonicalBase[name])
             {
-                leases.Disqualify();
-                if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
-                    _leaderEvidenceUntil = scheduler.Elapsed;
-                _detached.Add(name);
-                follower.Close();
-                _followers.Remove(name);
-                host.SchemaDetached(name);
+                Detach(name, follower);
                 continue;
             }
             try
@@ -513,14 +514,48 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 AdvanceCanonicalBase(database, compared < published ? compared : published);
         }
         for (var i = followers.Length; i < polled.Count; i++)
-            if (poll.Databases[i].Progress != null)
-            { Restart("New database initialization is published; restore its fixed input cursor."); return false; }
+        {
+            var answer = poll.Databases[i];
+            if (!_canonicalBase.TryGetValue(polled[i].Database, out var canonical))
+            {
+                if (answer.Progress == null) continue;
+                Restart("New database initialization is published; restore its fixed input cursor.");
+                return false;
+            }
+            // Only a schema the leader already stored can be restored; until then this node keeps working locally.
+            if (answer.Schema is not { } published || published <= canonical || answer.Published is not { } stored ||
+                stored < published) continue;
+            Restart("The leader published the schema this node wrote locally; restore it.");
+            return false;
+        }
         return true;
+    }
+
+    /// <summary>The database committed a schema (a commit leaving CommitUlong unchanged) past its canonical history.</summary>
+    static bool HasLocalSchema(ActivationDatabase database, TransactionLogPosition canonical) =>
+        database.Capture.NonApplicationCommitted > canonical;
+
+    /// <summary>The database can no longer match the leader: stop comparing it and never lead with it. It keeps
+    /// executing locally.</summary>
+    void Detach(string name, FollowerComparisonSession follower)
+    {
+        leases.Disqualify();
+        if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
+            _leaderEvidenceUntil = scheduler.Elapsed;
+        _detached.Add(name);
+        follower.Close();
+        _followers.Remove(name);
+        host.SchemaDetached(name);
     }
 
     async ValueTask PrepareDatabaseAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)
     {
-        if (database.RestoredBase.FileId == 0 && database.Capture.Completed.FileId == 0)
+        // A schema written before this node knew of any leader may precede the initialization: it has no cursor yet.
+        var localSchemaOnly = false;
+        if (database.RestoredBase.FileId == 0 && database.Capture.Completed.FileId != 0)
+            using (var read = database.Database.StartReadOnlyTransaction())
+                localSchemaOnly = read.GetCommitUlong() == 0;
+        if (database.RestoredBase.FileId == 0 && (database.Capture.Completed.FileId == 0 || localSchemaOnly))
         {
             var cursor = await host.CaptureInitializationCursorAsync(database.Name, cancellation).ConfigureAwait(false);
             if (!authority.IsValid) throw new InvalidOperationException("Initialization requires selected authority.");

@@ -44,7 +44,7 @@ Scenarios:
   old nodes detach, an upgraded replacement restores the schema commit and compares. Under continuous input the
   upgraded node lags after the handoff; its activation deadline restarts it, it restores the frozen published history
   and becomes leader while old nodes stay out. An upgraded follower that executes before its schema is published
-  diverges and restarts without affecting published history.
+  detaches and keeps working locally without affecting published history.
 - **Partial multi-database activation.** With two databases, a lease winner whose second database lags behind the
   published history stays `Activating` and adopts and publishes nothing, while local input continues; once the lagging
   input is applied both databases activate and publish.

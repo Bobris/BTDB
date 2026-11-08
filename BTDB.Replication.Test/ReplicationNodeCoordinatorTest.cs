@@ -45,9 +45,10 @@ public partial class ReplicationNodeCoordinatorTest
             return cluster;
         }
 
-        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0, bool smallLogs = false, bool leaderChannel = false)
+        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0, bool smallLogs = false, bool leaderChannel = false, bool schemaAfterRestore = false)
         {
             var host = new Host(this, name);
+            host.SchemaAfterRestore = schemaAfterRestore;
             host.ServesLeaderChannel = leaderChannel;
             host.Generation = generation;
             host.InputEnd = inputEnd;
@@ -258,6 +259,7 @@ public partial class ReplicationNodeCoordinatorTest
         public bool Paused { set => _scope.Paused = value; }
         public ulong Generation = 1;
         public bool CoordinatesMain = true;
+        public bool SchemaAfterRestore;
         public readonly List<string> Removed = new();
 
         public Host(Cluster cluster, string name)
@@ -293,6 +295,7 @@ public partial class ReplicationNodeCoordinatorTest
                     FileCollection = new LocalReplicatedCollection(Files), TransactionLogCapture = Capture,
                     Compression = new NoCompressionStrategy(), CompactorScheduler = null
                 }, cancellation);
+                if (SchemaAfterRestore) await Schema();
                 if (!CoordinatesMain) return [];
                 return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1), default,
                     id => $"{id}.trl")];
@@ -879,6 +882,51 @@ public partial class ReplicationNodeCoordinatorTest
         Assert.Empty(follower.Detached);
         Assert.Equal(0, follower.Restarts);
         Assert.Equal(3ul, Assert.Single(follower.Status.Current.Databases).Compared?.EventId);
+    }
+
+    [Fact]
+    public async Task FollowerWritingSchemaDetachesAndRestartsOnlyAfterTheLeaderStoredOne()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        cluster.Advance(20);
+        await leader.Write(2, 2);
+        cluster.Advance(20);
+        var follower = cluster.Start("follower");
+        cluster.Advance(20);
+        Assert.Empty(follower.Detached);
+
+        await follower.Schema(rollback: true); // nothing was committed: still following
+        cluster.Advance(10);
+        Assert.Empty(follower.Detached);
+
+        await follower.Schema();
+        cluster.Advance(10);
+        Assert.Equal(new[] { "main" }, follower.Detached);
+        Assert.False(follower.Status.Current.Ready);
+        var attempts = follower.Storage.Acquires;
+        await follower.Write(3, 9); // local work goes on, and differs from the leader's without any restart
+        await leader.Write(3, 3);
+        cluster.Advance(30);
+        Assert.Equal(0, follower.Restarts);
+        Assert.Equal(attempts, follower.Storage.Acquires); // it never contends with this history
+
+        await leader.Schema();
+        cluster.Advance(30);
+        Assert.Equal(1, follower.Restarts);
+    }
+
+    [Fact]
+    public async Task SchemaWrittenBeforeAnyLeaderIsKnownCanStillLead()
+    {
+        await using var cluster = new Cluster(); // nothing published: a new cluster
+        var node = cluster.Start("node", schemaAfterRestore: true); // on a new cluster every node may do this
+        cluster.Advance(40);
+        Assert.Equal(ReplicationNodeRole.Leader, node.Coordinator.Role);
+        Assert.Empty(node.Detached);
+        Assert.Equal(0, node.Restarts);
+        Assert.Equal(1, node.Initializations); // the schema written first does not lose the input cursor
+        Assert.Equal(42ul, await cluster.RestoreEvent());
     }
 
     [Fact]

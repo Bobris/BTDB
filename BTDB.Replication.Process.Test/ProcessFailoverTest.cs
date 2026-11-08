@@ -506,7 +506,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
     }
 
     [Fact]
-    public async Task UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory()
+    public async Task UpgradedFollowerExecutingBeforeItsSchemaIsPublishedDetachesWithoutAffectingHistory()
     {
         var container = await fixture.ContainerAsync();
         await using var leader = await Node.Start(container, objects: true);
@@ -518,7 +518,8 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         // Executing with the new relation persists its index upgrade locally, which the leader never wrote.
         await leader.Orders(6, 5);
         await upgraded.Orders(6, 5);
-        await upgraded.ExpectRestartExit("Follower native history diverged");
+        // It stops comparing and keeps working locally until a leader publishes a schema it can restore.
+        await upgraded.Wait(s => s.Detached && s.EventId == 10, "detached upgraded follower");
         Assert.Equal("Leader", (await leader.Wait(_ => true, "unaffected leader")).Role);
         await leader.Orders(11, 5);
         await WaitPublished(container, 15);

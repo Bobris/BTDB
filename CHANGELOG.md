@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Changed
+
+- Replication: a follower that commits a schema change itself (`ObjectDB.InitializeRelations`) now detaches from
+  split-brain comparison instead of diverging, keeps serving locally, and requests a restart once the leader has
+  published a newer schema. A schema written before any leader is known stays eligible to lead.
+
 ### Fixed
 
 - Replication: a node whose replication stopped no longer waits for a presence exchange that can never happen.

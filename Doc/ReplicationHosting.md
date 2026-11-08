@@ -384,12 +384,13 @@ Only an offer of a higher generation than the leader's starts a handoff; among e
 The leader drains grants and transfers through `IReplicationLeaderStorage.TransferAsync` (Azure native lease Change); the
 target proves ownership by renewal and then activates normally.
 
-An upgraded build whose relations change the persisted schema (for example a new secondary index) must not execute
-events before its schema is published, neither as a follower nor while activating: its first writer would persist the
-upgrade locally, and the node would diverge and restart (published history stays intact). Start its event loop only
-after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema: a follower
-calls `ObjectDB.TryInitializeRelationsWithoutWriting` after restore and starts its event loop only when that returns
-true. While it returns false, the follower keeps its loop stopped and restores again later (or waits to lead).
+A node may call `ObjectDB.InitializeRelations` in any role and then run its event loop. If that commits a schema change
+while a leader is connected, the coordinator detaches the database: the node stops comparing it, can no longer lead in
+this session, reports `SchemaDetached` and keeps serving locally. Once the leader has published a schema newer than the
+node's canonical base, the coordinator requests a restart, and the node restores it. A node that writes a schema
+before it knows of any leader stays eligible, and if it wins the lease it publishes that schema itself; on a new
+cluster the other nodes restart to restore it. A host that prefers not to diverge at all calls
+`ObjectDB.TryInitializeRelationsWithoutWriting` and keeps its event loop stopped while that returns false.
 
 Rolling schema upgrade under continuous input:
 
@@ -407,7 +408,7 @@ Rolling schema upgrade under continuous input:
 Leadership pauses for about one lease duration plus the restore; input received meanwhile is replayed from retention.
 
 `SchemaDetached` is called when the leader announces a schema commit beyond the follower's canonical base, before
-comparison. Report that database as local-only and keep serving its ordinary reads/writes; the node can no longer
+comparison, or when the follower commits a schema of its own (above). Report that database as local-only and keep serving its ordinary reads/writes; the node can no longer
 become leader in this session. `DatabaseRemoved` means the selected database set no longer contains the database;
 it stays application-owned and continues locally.
 
