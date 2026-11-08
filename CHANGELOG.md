@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.2.1
+
 ### Fixed
 
 - EventLog: storage whose writes complete synchronously, such as `FileSystemEventLogStorage` and
