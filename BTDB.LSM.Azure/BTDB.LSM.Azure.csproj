@@ -6,7 +6,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.LSM.Azure</PackageId>
-        <Version>36.5.0</Version>
+        <Version>36.5.1</Version>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

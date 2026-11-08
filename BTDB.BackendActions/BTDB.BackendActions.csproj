@@ -8,7 +8,7 @@
         <IsAotCompatible>true</IsAotCompatible>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.BackendActions</PackageId>
-        <Version>36.5.0</Version>
+        <Version>36.5.1</Version>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>https://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

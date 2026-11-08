@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.5.1
+
 ### Fixed
 
 - Replication: a follower of a higher application generation that writes its schema takes the leadership over from the
