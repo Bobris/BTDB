@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.4.0
+
 ### Added
 
 - ObjectDB: `TryInitializeRelationsWithoutWriting` registers relations only when the database already holds their
