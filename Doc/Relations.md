@@ -94,6 +94,11 @@ different interfaces claiming the same persisted name are rejected. Already regi
 factories registered with `RegisterCustomRelation`) are preserved and skipped. Register custom factories before
 calling this method; include all ordinary relation interfaces in the startup list.
 
+`TryInitializeRelationsWithoutWriting` takes the same list but never writes. When the database already holds every
+schema and index exactly, it registers the relations and returns true. Otherwise it registers nothing and returns
+false. A database that may change only by applying the same transactions as another one (a replication follower)
+uses it: writing the schema itself would make it diverge from the leader that publishes it.
+
 Call this method before other transactions or concurrent registration. A failed initialization rolls back its database
 changes and discards the new registrations, allowing a retry. Creation callbacks must keep database writes inside
 the supplied transaction; external side effects cannot be rolled back. Await initialization before using the database.

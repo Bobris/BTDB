@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+- ObjectDB: `TryInitializeRelationsWithoutWriting` registers relations only when the database already holds their
+  schemas and secondary indexes, and otherwise writes and registers nothing and returns false. A replication follower
+  uses it to start applying events once its restored history contains its build's schema.
+
 ## 36.3.0
 
 ### Added

@@ -86,6 +86,15 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
     /// </summary>
     ValueTask InitializeRelations(IEnumerable<Type> relationTypes);
 
+    /// <summary>
+    /// Like <see cref="InitializeRelations"/>, but never writes: registers the relations and returns true when the
+    /// database already holds their schemas and secondary indexes, otherwise registers nothing and returns false.
+    /// For a replication follower, whose database may only change by applying the same events as its leader: it can
+    /// start applying them once its restored history contains this build's schema (published by a leader running
+    /// <see cref="InitializeRelations"/>), and must wait or restore again while this returns false.
+    /// </summary>
+    ValueTask<bool> TryInitializeRelationsWithoutWriting(IEnumerable<Type> relationTypes);
+
     void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
 
     bool AllowAutoRegistrationOfRelations { get; set; }

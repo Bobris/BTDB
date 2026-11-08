@@ -155,6 +155,50 @@ public class ObjectDbInitializeRelationsTest : ObjectDbTestBase
     }
 
     [Fact]
+    public async Task WithoutWritingRegistersOnlyWhenTheSchemaIsAlreadyPersisted()
+    {
+        // A fresh database lacks the schemas: nothing is written and nothing is registered.
+        _countingDb.Starts.Clear();
+        Assert.False(await _db.TryInitializeRelationsWithoutWriting([typeof(IItems), typeof(IOtherItems)]));
+        Assert.Equal(["read"], _countingDb.Starts);
+        using (var tr = _db.StartReadOnlyTransaction())
+            Assert.ThrowsAny<Exception>(() => tr.GetRelation<IItems>());
+
+        // Once a leader persisted them, a follower registers them with one read transaction.
+        await _db.InitializeRelations([typeof(IItems), typeof(IOtherItems)]);
+        using (var tr = await _db.StartWritingTransaction(7ul))
+        {
+            tr.GetRelation<IItems>().Upsert(new Item { Id = 1, Name = "one" });
+            tr.Commit();
+        }
+        ReopenDb(new DBOptions().WithoutAutoRegistrationOfRelations());
+        _countingDb.Starts.Clear();
+        Assert.True(await _db.TryInitializeRelationsWithoutWriting([typeof(IItems), typeof(IOtherItems)]));
+        Assert.Equal(["read"], _countingDb.Starts);
+        using (var tr = _db.StartReadOnlyTransaction())
+        {
+            Assert.Equal(7ul, tr.GetCommitUlong());
+            Assert.Equal("one", Assert.Single(tr.GetRelation<IItems>()).Name);
+        }
+
+        // A changed schema (a new secondary index) still needs a writer: the follower registers nothing.
+        ReopenDb(new DBOptions().WithoutAutoRegistrationOfRelations());
+        _countingDb.Starts.Clear();
+        Assert.False(await _db.TryInitializeRelationsWithoutWriting([typeof(IIndexedItems)]));
+        Assert.Equal(["read"], _countingDb.Starts);
+        using (var tr = _db.StartReadOnlyTransaction())
+            Assert.ThrowsAny<Exception>(() => tr.GetRelation<IIndexedItems>());
+        // The ordinary call still upgrades it afterwards, and then the read-only call succeeds.
+        await _db.InitializeRelations([typeof(IIndexedItems)]);
+        ReopenDb(new DBOptions().WithoutAutoRegistrationOfRelations());
+        _countingDb.Starts.Clear();
+        Assert.True(await _db.TryInitializeRelationsWithoutWriting([typeof(IIndexedItems)]));
+        Assert.Equal(["read"], _countingDb.Starts);
+        using (var tr = _db.StartReadOnlyTransaction())
+            Assert.Equal(1ul, tr.GetRelation<IIndexedItems>().FindByName("one").Id);
+    }
+
+    [Fact]
     public async Task RepairsSecondaryIndexesWithoutSchemaChanges()
     {
         await _db.InitializeRelations([typeof(IIndexedItems)]);

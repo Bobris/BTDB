@@ -323,8 +323,30 @@ public class ObjectDB : IObjectDB
         await _initializeRelationsLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            while (!await TryInitializeRelations(types).ConfigureAwait(false))
+            while (await TryInitializeRelations(types).ConfigureAwait(false) != true)
             {
+            }
+        }
+        finally
+        {
+            _initializeRelationsLock.Release();
+        }
+    }
+
+    public async ValueTask<bool> TryInitializeRelationsWithoutWriting(IEnumerable<Type> relationTypes)
+    {
+        ArgumentNullException.ThrowIfNull(relationTypes);
+        var types = relationTypes.ToArray();
+        await _initializeRelationsLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            while (true)
+            {
+                switch (await TryInitializeRelations(types, false).ConfigureAwait(false))
+                {
+                    case null: return false;
+                    case true: return true;
+                }
             }
         }
         finally
@@ -336,8 +358,9 @@ public class ObjectDB : IObjectDB
     readonly SemaphoreSlim _initializeRelationsLock = new(1, 1);
 
     /// False when relations or factories registered meanwhile, by InitRelation or RegisterCustomRelation, changed
-    /// what this call copied; publishing its copy would drop them, so it starts again.
-    async ValueTask<bool> TryInitializeRelations(Type[] relationTypes)
+    /// what this call copied; publishing its copy would drop them, so it starts again. Null when writing is not
+    /// allowed and the database needs a schema or index change; nothing is registered then.
+    async ValueTask<bool?> TryInitializeRelations(Type[] relationTypes, bool allowWriting = true)
     {
         var previousRelations = _relationsInfo;
         var previousFactories = RelationFactories;
@@ -366,6 +389,11 @@ public class ObjectDB : IObjectDB
 
         if (!needsWriting)
             return TryPublishRelations(previousRelations, version, previousFactories, relations, factories);
+        if (!allowWriting)
+        {
+            relations.Retire(); // an unpublished copy; the current registry stays as it was
+            return null;
+        }
 
         using var write = (IInternalObjectDBTransaction)await StartWritingTransaction().ConfigureAwait(false);
         // Publish all factories together so OnCreate can access any relation in this registration set.

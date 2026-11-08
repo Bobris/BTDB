@@ -387,7 +387,9 @@ target proves ownership by renewal and then activates normally.
 An upgraded build whose relations change the persisted schema (for example a new secondary index) must not execute
 events before its schema is published, neither as a follower nor while activating: its first writer would persist the
 upgrade locally, and the node would diverge and restart (published history stays intact). Start its event loop only
-after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema.
+after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema: a follower
+calls `ObjectDB.TryInitializeRelationsWithoutWriting` after restore and starts its event loop only when that returns
+true. While it returns false, the follower keeps its loop stopped and restores again later (or waits to lead).
 
 Rolling schema upgrade under continuous input:
 
