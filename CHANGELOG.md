@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.5.2
+
 ### Changed
 
 - Replication: a peer endpoint may now be plain HTTP outside loopback, for hosts that terminate TLS at a reverse proxy
