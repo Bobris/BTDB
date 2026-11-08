@@ -595,8 +595,13 @@ public partial class ReplicationNodeCoordinatorTest
             Assert.Equal(expected, view.Members);
         }
 
+        var waiting = follower.Presence.RefreshAsync(); // needs an exchange, which the stopping node never makes
         follower.Cancellation.Cancel(); // a stopped node expires without withdrawing
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower.Run);
+        // Stopped replication ends waiting refreshes at once (EventCluster withdraws on shutdown and would otherwise
+        // wait its whole timeout), and later ones return the last view, settling.
+        Assert.True((await waiting.WaitAsync(TimeSpan.FromSeconds(10))).Settling);
+        Assert.True((await follower.Presence.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(10))).Settling);
         cluster.Advance(60);
         Assert.Equal(new Dictionary<string, string> { [leader == b ? "b" : "c"] = leader == b ? "B" : "C" },
             leader.Presence.Current.Members);

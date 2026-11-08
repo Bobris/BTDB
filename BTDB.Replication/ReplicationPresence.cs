@@ -50,6 +50,7 @@ public sealed class ReplicationPresence
     TimeSpan? _receivedAt;
     ulong _taken, _answered;
     TaskCompletionSource _exchanged = NewSignal();
+    bool _stopped;
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -90,8 +91,8 @@ public sealed class ReplicationPresence
         get
         {
             lock (_lock)
-                return _board != null || _scheduler is { } scheduler && _receivedAt is { } received &&
-                    scheduler.Elapsed - received <= _timeout;
+                return !_stopped && (_board != null || _scheduler is { } scheduler && _receivedAt is { } received &&
+                    scheduler.Elapsed - received <= _timeout);
         }
     }
 
@@ -112,7 +113,8 @@ public sealed class ReplicationPresence
     }
 
     /// <summary>The view after an exchange with the leader that started after this call, so it carries every earlier
-    /// <see cref="Announce"/>; at once on the leader itself. While no leader answers, this waits until cancellation.</summary>
+    /// <see cref="Announce"/>; at once on the leader itself. While no leader answers, this waits until cancellation.
+    /// Once this node's replication stopped, nothing can be exchanged any more: it returns the last view, settling.</summary>
     public async Task<ReplicationPresenceSnapshot> RefreshAsync(CancellationToken cancellation = default)
     {
         ulong target;
@@ -126,7 +128,7 @@ public sealed class ReplicationPresence
             Task exchanged;
             lock (_lock)
             {
-                if (_board != null || _answered >= target) break;
+                if (_board != null || _answered >= target || _stopped) break;
                 exchanged = _exchanged.Task;
             }
             await exchanged.WaitAsync(cancellation).ConfigureAwait(false);
@@ -142,7 +144,23 @@ public sealed class ReplicationPresence
                 throw new InvalidOperationException("Presence belongs to another replication node.");
             _scheduler = scheduler;
             _timeout = timeout;
+            _stopped = false;
         }
+    }
+
+    /// <summary>This node's replication stopped (host shutdown or restart): it exchanges nothing more, so it is not
+    /// reachable and waiting refreshes return at once. The leader expires this node after the presence timeout.</summary>
+    internal void Stop()
+    {
+        TaskCompletionSource exchanged;
+        lock (_lock)
+        {
+            _stopped = true;
+            _receivedAt = null;
+            exchanged = _exchanged;
+            _exchanged = NewSignal();
+        }
+        exchanged.TrySetResult();
     }
 
     /// <summary>Whether a follower should exchange now: its value changed, a refresh waits, or the interval passed.</summary>

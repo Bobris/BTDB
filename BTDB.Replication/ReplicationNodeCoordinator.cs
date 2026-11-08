@@ -144,7 +144,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         applicationLeadership?.BindGeneration(options.ApplicationGeneration);
         presence?.Bind(scheduler, options.PresenceTimeout);
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
-        using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); });
+        using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); presence?.Stop(); });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         Task? maintenance = null;
         Task? localMaintenance = null;
@@ -216,6 +216,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (Volatile.Read(ref _recoveryState) == 1) await _fatalRestart.Task.ConfigureAwait(false);
             status?.Stop();
             applicationLeadership?.Stop();
+            presence?.Stop();
             lifetime.Cancel();
             leases.Close();
             Disconnect();

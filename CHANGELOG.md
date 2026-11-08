@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Replication: a node whose replication stopped no longer waits for a presence exchange that can never happen.
+  `ReplicationPresence.RefreshAsync` now returns at once (with a settling view) after the coordinator stops. Before,
+  disposing an `EventPublisher` with an `EventCluster` during host shutdown waited the whole
+  `EventClusterOptions.RequestTimeout` (10 s), because `ApplicationStopping` had already stopped coordination.
+
 ## 36.4.0
 
 ### Added
