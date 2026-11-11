@@ -2672,31 +2672,24 @@ static class Interpreter
         return length;
     }
 
-    // Mirrors MemReader.ReadStringOrdered without allocating: each char is a VUInt32 of its code point + 1, a zero
-    // ends the string and null is a single OrderedNullMarker.
+    // Decodes like MemReader.ReadStringOrdered into the reused buffer, taking its vectorized path for ASCII runs.
     static int DecodeOrderedStringChars(ref MemReader reader, ref char[]? buffer)
     {
         buffer ??= new char[16];
-        var length = 0;
-        while (true)
+        ref var bufferRef = ref MemoryMarshal.GetArrayDataReference(buffer);
+        var value = reader.ReadStringOrderedAsSpan(ref bufferRef, buffer.Length);
+        ref var valueRef = ref MemoryMarshal.GetReference(value);
+        // Null comes back as a span without a reference; an empty string may point anywhere.
+        if (Unsafe.IsNullRef(ref valueRef)) return -1;
+        if (value.Length != 0 && !Unsafe.AreSame(ref valueRef, ref bufferRef))
         {
-            var c = reader.ReadVUInt32();
-            if (c == 0) return length;
-            if (c == OrderedNullMarker && length == 0) return -1;
-            c--;
-            if (buffer.Length < length + 2) Array.Resize(ref buffer, buffer.Length * 2);
-            if (c > 0xffff)
-            {
-                if (c > 0x10ffff) throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
-                c -= 0x10000;
-                buffer[length++] = (char)((c >> 10) + 0xD800);
-                buffer[length++] = (char)((c & 0x3FF) + 0xDC00);
-            }
-            else
-            {
-                buffer[length++] = (char)c;
-            }
+            // The reader outgrew the buffer into an array of its own; keep one that big for the next rows.
+            var grown = new char[Math.Max(value.Length, buffer.Length * 2)];
+            value.CopyTo(grown);
+            buffer = grown;
         }
+
+        return value.Length;
     }
 
     static unsafe void StringFromCaptured(ref InterpreterCtx ctx, uint pc)

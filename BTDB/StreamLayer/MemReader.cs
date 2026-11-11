@@ -667,6 +667,23 @@ public struct MemReader
         writer.WriteByteZero();
     }
 
+    // Skips an ordered string made only of chars 0..126, which a key stores as one byte (char + 1) each, and returns
+    // those bytes without the terminator. Any other string, or one not whole in the buffer, is left unread.
+    internal bool TryReadSimpleStringOrderedBytes(out ReadOnlySpan<byte> encoded)
+    {
+        var span = PeekTillEnd();
+        var end = span.IndexOfAnyExceptInRange((byte)1, (byte)0x7f);
+        if (end < 0 || span[end] != 0)
+        {
+            encoded = default;
+            return false;
+        }
+
+        encoded = span[..end];
+        Current += end + 1;
+        return true;
+    }
+
     unsafe ReadOnlySpan<byte> PeekTillEnd()
     {
         return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)Current),
@@ -770,7 +787,7 @@ public struct MemReader
         if (fastSkip.WasEnd)
         {
             Current += (nint)fastSkip.Count;
-            return len == 0 ? "" : new(charBuf[..(int)len]);
+            return charBuf[..(int)len];
         }
 
         if (fastSkip.Count == 0)

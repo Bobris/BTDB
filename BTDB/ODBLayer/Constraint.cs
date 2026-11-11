@@ -563,7 +563,7 @@ public static partial class Constraint
             value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.EndsWith(value));
 
         public static Constraint<string> Contains(string value) =>
-            value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.Ordinal));
+            value == "" ? Any : new ConstraintStringContains(value);
 
         public static Constraint<string> ContainsCaseInsensitive(string value) =>
             value == ""
@@ -893,6 +893,35 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
         Span<char> bufStr = stackalloc char[512];
         var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
         return AsMatchResult(_predicate(realStr));
+    }
+}
+
+public class ConstraintStringContains : ConstraintNoPrefix<string>
+{
+    readonly string _value;
+
+    // The value as a key stores it when all its chars are single bytes there, so a key made of such chars is searched
+    // without decoding it. Null when the value has another char, which such a key cannot contain.
+    readonly byte[]? _encoded;
+
+    public ConstraintStringContains(string value)
+    {
+        _value = value;
+        if (value.AsSpan().ContainsAnyExceptInRange('\0', (char)126)) return;
+        _encoded = new byte[value.Length];
+        for (var i = 0; i < value.Length; i++) _encoded[i] = (byte)(value[i] + 1);
+    }
+
+    public override bool IsSimpleExact() => false;
+
+    [SkipLocalsInit]
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.TryReadSimpleStringOrderedBytes(out var encoded))
+            return AsMatchResult(_encoded != null && encoded.IndexOf(_encoded) >= 0);
+        Span<char> bufStr = stackalloc char[512];
+        var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
+        return AsMatchResult(realStr.Contains(_value, StringComparison.Ordinal));
     }
 }
 

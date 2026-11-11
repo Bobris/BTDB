@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Optimized
+
+- `MemReader.ReadStringOrderedAsSpan` no longer allocates a string when the value fits into the caller-provided buffer;
+  it returns a span over that buffer.
+- Reading ordered strings now takes the vectorized path for ASCII runs on arm64 too; it was SSE2 only, so arm64 decoded
+  byte by byte. `Constraint.String.EndsWith` and `Contains` scans run about 2 to 5 times faster there.
+- Relation queries decode ordered string fields for `string` operations through the same vectorized path.
+- `Constraint.String.Contains` searches a key made only of chars 0..126 in its encoded bytes without decoding it.
+
 ## 35.13.0
 
 ### Added
