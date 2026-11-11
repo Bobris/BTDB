@@ -136,6 +136,35 @@ public class StreamLayerCoverageTest
     }
 
     [Fact]
+    public void ReadStringOrderedAsSpanDoesNotAllocateWhenStringFitsIntoProvidedBuffer()
+    {
+        const int count = 1000;
+        const string value = "recipient.name@example.com";
+        var data = Bytes((ref MemWriter w) =>
+        {
+            for (var i = 0; i < count; i++) w.WriteStringOrdered(value);
+        });
+        Span<char> buf = stackalloc char[512];
+        for (var round = 0; round < 2; round++)
+        {
+            var r = Reader(data);
+            var matches = 0;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < count; i++)
+            {
+                var str = r.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(buf), buf.Length);
+                if (str.SequenceEqual(value)) matches++;
+            }
+
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(count, matches);
+            Assert.True(r.Eof);
+            // first round is warm up
+            if (round == 1) Assert.Equal(0, allocated);
+        }
+    }
+
+    [Fact]
     public void VarIntOverflowsAreDetected()
     {
         var big = Bytes((ref MemWriter w) => w.WriteVInt64(long.MaxValue));

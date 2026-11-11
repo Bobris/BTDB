@@ -1152,7 +1152,7 @@ public static class PackUnpack
         nuint count = 0;
         var len = (nuint)span.Length;
         ref var ptr = ref MemoryMarshal.GetReference(span);
-        if (BitConverter.IsLittleEndian || !Sse2.IsSupported) goto last;
+        if (BitConverter.IsLittleEndian) goto last;
         lastBytes:
         while (len > 0)
         {
@@ -1175,12 +1175,12 @@ public static class PackUnpack
         }
 
 
-        if (Vector128.IsHardwareAccelerated && Sse2.IsSupported)
+        // Cross-platform vectors, so AdvSimd (arm64) takes this path as well as SSE2.
+        if (Vector128.IsHardwareAccelerated)
         {
             var all80 = Vector128.Create((byte)0x80);
             var all7f = Vector128.Create((byte)0x7f);
             var all01 = Vector128.Create((byte)0x01);
-            var all00 = Vector128<byte>.Zero;
 
             while (len >= 16)
             {
@@ -1189,13 +1189,10 @@ public static class PackUnpack
                 var value = Vector128.LoadUnsafe(ref ptr);
 
                 // It is ok to do more work than needed => buffer will be cropped by actual used size
-                var finalValue = Sse2.SubtractSaturate(value, all01);
-                var low = Sse2.UnpackLow(finalValue, all00);
-                low.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)), 2 * targetOfs);
-
-                var high = Sse2.UnpackHigh(finalValue, all00);
-                high.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)),
-                    2 * targetOfs + 16);
+                var finalValue = value - all01;
+                ref var target = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(targetBuf));
+                Vector128.WidenLower(finalValue).StoreUnsafe(ref target, targetOfs);
+                Vector128.WidenUpper(finalValue).StoreUnsafe(ref target, targetOfs + 8);
 
                 var hb = value & all80;
                 if (hb == Vector128<byte>.Zero)
@@ -1237,9 +1234,9 @@ public static class PackUnpack
                 var value = Unsafe.ReadUnaligned<ulong>(ref ptr);
 
                 // It is ok to do more work than needed => buffer will be cropped by actual used size
-                var finalValue = Sse2.SubtractSaturate(Vector128.Create<ulong>(value).AsByte(), all01);
-                var low = Sse2.UnpackLow(finalValue, all00);
-                low.StoreUnsafe(ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(targetBuf)), 2 * targetOfs);
+                var finalValue = Vector128.CreateScalarUnsafe(value).AsByte() - all01;
+                Vector128.WidenLower(finalValue).StoreUnsafe(
+                    ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(targetBuf)), targetOfs);
 
                 var skip = DetectLengthOfSimpleCharacters(value);
                 count += skip.Count;
