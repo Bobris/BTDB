@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.14.0
+
 ### Optimized
 
 - `MemReader.ReadStringOrderedAsSpan` no longer allocates a string when the value fits into the caller-provided buffer;
