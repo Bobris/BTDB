@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Releaser: the `BTDB.zip` source archive attached to GitHub releases now contains only git-tracked files under
+  `BTDB/`. It had picked up the git-ignored Lean build outputs under `BTDB/Proofs`, which grew it from about 0.7 MB to
+  11.7 MB.
+
 ## 36.6.0
 
 ### Optimized

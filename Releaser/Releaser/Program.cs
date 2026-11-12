@@ -143,7 +143,7 @@ static class Program
 
         foreach (var project in PackageProjects)
             PackProject(projDir, project);
-        ZipBTDBSources(projDir);
+        ZipBTDBSources(projDir, gitrepo);
         BuildODbDump(projDir);
         PublishPackages(projDir, newVersion, nugetToken);
 
@@ -231,17 +231,21 @@ static class Program
         throw new OperationCanceledException("Upload Asset " + fileName + " failed");
     }
 
-    static void ZipBTDBSources(string projDir)
+    // Zips only files tracked by git under BTDB/, so git-ignored build outputs (bin, obj, Lean proof builds)
+    // stay out of the source archive. Files are copied from the working tree to include the updated csproj version.
+    static void ZipBTDBSources(string projDir, LibGit2Sharp.Repository gitrepo)
     {
-        var source = projDir + "/BTDB";
+        const string sourcePrefix = "BTDB/";
         var releaseSources = projDir + "/artifacts/bin/BTDB/release/Sources";
-        foreach (var fn in Directory.GetFiles(source, "*.*", SearchOption.AllDirectories).ToList())
+        foreach (var entry in gitrepo.Index)
         {
-            var relfn = fn.Substring(source.Length + 1);
-            if (relfn.StartsWith("bin")) continue;
-            if (relfn.StartsWith("obj")) continue;
-            Directory.CreateDirectory(Path.GetDirectoryName(releaseSources + "/" + relfn)!);
-            File.Copy(fn, releaseSources + "/" + relfn);
+            if (!entry.Path.StartsWith(sourcePrefix, StringComparison.Ordinal)) continue;
+            var relfn = entry.Path[sourcePrefix.Length..];
+            var fn = Path.Combine(projDir, entry.Path);
+            if (!File.Exists(fn)) continue;
+            var target = Path.Combine(releaseSources, relfn);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(fn, target);
         }
 
         System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources,
