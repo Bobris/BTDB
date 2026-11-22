@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 36.7.0
+
 ### Added
 
 - Replication: `IVersionedBlob`, a single blob read whole and replaced whole under a version condition
