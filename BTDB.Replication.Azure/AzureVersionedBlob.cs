@@ -26,8 +26,8 @@ public sealed class AzureVersionedBlob(BlobClient blob) : IVersionedBlob
             var result = await _blob.DownloadContentAsync(cancellation).ConfigureAwait(false);
             return new(result.Value.Details.ETag.ToString(), result.Value.Content.ToMemory());
         }
-        catch (RequestFailedException error) when (error.Status == 404 && !IsMissingContainer(error)) { return null; }
         catch (RequestFailedException error) when (IsMissingContainer(error)) { throw MissingContainer(error); }
+        catch (RequestFailedException error) when (error.Status == 404) { return null; }
         catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
         { throw new IOException("Azure versioned blob read failed.", error); }
     }

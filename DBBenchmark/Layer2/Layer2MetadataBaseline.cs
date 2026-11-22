@@ -231,7 +231,7 @@ public static class Layer2MetadataBaseline
         // clone with its owner's callbacks and unchanged items is the original itself. Descriptors use the callbacks
         // only for the type mapper and converters, which the twin shares.
         var twin = NewDeserializer(w.Mapper);
-        var unshared = default(UnsharedStats);
+        UnsharedStats unshared = null!;
         var sharedAfterUse = deserializerAfterUse;
         var unsharedApplied = Retained(() =>
         {

@@ -69,6 +69,7 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
             _types[id - Layer2Metadata.FirstTypeId] = Decode(id);
             _built.Add(id);
         }
+        EnsureStructuralAcyclic();
         // Types referred to before they were built hold placeholders; replace them, inside inline types too.
         var mapped = new HashSet<ITypeDescriptor>(ReferenceEqualityComparer.Instance);
         var created = new HashSet<ITypeDescriptor>(ReferenceEqualityComparer.Instance);
@@ -90,6 +91,46 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
         foreach (var (_, descriptor) in _created) descriptor.MapNestedTypes(d => d);
     }
 
+    // Structural types cannot contain themselves without a class in between; a damaged file can encode a cycle
+    // of standalone structural records, which would recurse infinitely while computing names.
+    void EnsureStructuralAcyclic()
+    {
+        Dictionary<ITypeDescriptor, byte>? state = null;
+        Stack<(ITypeDescriptor Descriptor, int Child)>? stack = null;
+        foreach (var id in _built)
+        {
+            var root = _types[id - Layer2Metadata.FirstTypeId]!;
+            if (!Layer2Encoding.IsStructural(root)) continue;
+            state ??= new(ReferenceEqualityComparer.Instance);
+            if (state.ContainsKey(root)) continue;
+            stack ??= new();
+            state[root] = 1;
+            stack.Push((root, 0));
+            while (stack.Count > 0)
+            {
+                var (current, childIndex) = stack.Pop();
+                if (childIndex == Layer2Encoding.ChildCount(current))
+                {
+                    state[current] = 2;
+                    continue;
+                }
+                stack.Push((current, childIndex + 1));
+                var child = Layer2Encoding.Child(current, childIndex);
+                if (child is PlaceHolderDescriptor placeHolder)
+                    child = _types[placeHolder.TypeId - Layer2Metadata.FirstTypeId]!;
+                if (!Layer2Encoding.IsStructural(child)) continue;
+                if (state.TryGetValue(child, out var childState))
+                {
+                    if (childState == 1)
+                        throw new InvalidDataException("Layer2 metadata has a cyclic structural type.");
+                    continue;
+                }
+                state[child] = 1;
+                stack.Push((child, 0));
+            }
+        }
+    }
+
     ITypeDescriptor Decode(int typeId)
     {
         var record = _metadata.Record(typeId);
@@ -106,7 +147,7 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
                 for (var i = 0; i < count; i++)
                 {
                     var fieldName = String(ref reader);
-                    fields.Add(new(fieldName, Reference(record, ref reader, 0)));
+                    fields.Add(new(fieldName, Reference(ref reader, 0)));
                 }
                 result = new ObjectTypeDescriptor(callbacks, name, fields);
                 break;
@@ -131,12 +172,12 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
             {
                 // A structural type stored on its own: the same payload as inline, so the same shared descriptor.
                 var tag = Layer2Encoding.Tag(category);
-                var children = Payload(category, record, ref reader, 0);
+                var children = Payload(category, ref reader, 0);
+                if (!reader.AtEnd) throw new InvalidDataException("Layer2 metadata record has trailing bytes.");
                 var key = new byte[record.Length];
                 record.CopyTo(key);
                 key[0] = (byte)tag;
-                result = Structural(key, category, children);
-                break;
+                return Structural(key, category, children);
             }
         }
         if (!reader.AtEnd) throw new InvalidDataException("Layer2 metadata record has trailing bytes.");
@@ -150,14 +191,14 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
         return _strings[id] ??= _metadata.String(id);
     }
 
-    ITypeDescriptor Reference(ReadOnlySpan<byte> record, ref Layer2Reader reader, int depth)
+    ITypeDescriptor Reference(ref Layer2Reader reader, int depth)
     {
         var start = reader.Position;
         var reference = reader.ReadId();
         if (reference < Layer2Encoding.InlineTags)
         {
             var category = Layer2Encoding.CategoryOfTag(reference);
-            var children = Payload(category, record, ref reader, depth + 1);
+            var children = Payload(category, ref reader, depth);
             return Structural(reader.Consumed(start).ToArray(), category, children);
         }
         var id = reference - Layer2Encoding.InlineTags;
@@ -168,7 +209,7 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
         return new PlaceHolderDescriptor(id);
     }
 
-    ITypeDescriptor[] Payload(TypeCategory category, ReadOnlySpan<byte> record, ref Layer2Reader reader, int depth)
+    ITypeDescriptor[] Payload(TypeCategory category, ref Layer2Reader reader, int depth)
     {
         if (depth > Layer2Encoding.MaxInlineDepth)
             throw new InvalidDataException("Layer2 metadata record nests inline types too deep.");
@@ -178,8 +219,9 @@ sealed class Layer2DescriptorDecoder(ITypeDescriptorCallbacks callbacks)
             TypeCategory.Dictionary => 2,
             _ => reader.ReadCount()
         };
+        if (count == 0) throw new InvalidDataException("Layer2 metadata record has an empty tuple.");
         var children = new ITypeDescriptor[count];
-        for (var i = 0; i < count; i++) children[i] = Reference(record, ref reader, depth);
+        for (var i = 0; i < count; i++) children[i] = Reference(ref reader, depth + 1);
         return children;
     }
 

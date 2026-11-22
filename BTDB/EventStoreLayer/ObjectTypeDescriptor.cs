@@ -937,6 +937,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     }
 
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => _fields;
+    internal ReadOnlySpan<KeyValuePair<string, ITypeDescriptor>> FieldSpan => _fields.AsReadOnlySpan();
 
     public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {

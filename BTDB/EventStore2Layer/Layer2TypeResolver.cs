@@ -67,7 +67,7 @@ sealed class Layer2TypeResolver
         switch (entry)
         {
             case ObjectTypeDescriptor o:
-                foreach (var field in o.Fields) Collect(field.Value);
+                foreach (var field in o.FieldSpan) Collect(field.Value);
                 break;
             case EnumTypeDescriptor:
                 break;
@@ -163,11 +163,12 @@ sealed class Layer2TypeResolver
         var ordered = order.Select(i => group[i]).ToArray();
         for (var i = 0; i < ordered.Length; i++) members[ordered[i]] = i;
         var encodings = ordered.Select(member => Canonical(member, members, false)).ToArray();
-        var concatenated = new ArrayBufferWriter<byte>();
-        foreach (var encoding in encodings) concatenated.WriteName(encoding);
-        var groupHash = new byte[8];
-        BinaryPrimitives.WriteUInt64LittleEndian(groupHash, XxHash64.Hash(concatenated.WrittenSpan));
-        var keys = Enumerable.Range(0, ordered.Length).Select(i => (uint)XxHash64.Hash(groupHash, (ulong)i)).ToArray();
+        _scratch.Clear();
+        foreach (var encoding in encodings) _scratch.WriteName(encoding);
+        Span<byte> groupHash = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt64LittleEndian(groupHash, XxHash64.Hash(_scratch.WrittenSpan));
+        var keys = new uint[ordered.Length];
+        for (var i = 0; i < ordered.Length; i++) keys[i] = (uint)XxHash64.Hash(groupHash, (ulong)i);
         foreach (var first in _builder.TypesWithKey(keys[0]))
         {
             if (!_builder.ContainsType(first + ordered.Length - 1)) continue;
@@ -189,118 +190,116 @@ sealed class Layer2TypeResolver
 
     byte[] Canonical(ITypeDescriptor descriptor, Dictionary<ITypeDescriptor, int>? group, bool masked)
     {
-        var writer = new ArrayBufferWriter<byte>();
+        _scratch.Clear();
         var category = Layer2Encoding.Category(descriptor);
-        writer.WriteByte((byte)category);
+        _scratch.WriteByte((byte)category);
         switch (descriptor)
         {
             case ObjectTypeDescriptor o:
-                writer.WriteName(o.Name);
-                var fields = o.Fields.ToList();
-                writer.WriteVUInt((ulong)fields.Count);
+                _scratch.WriteName(o.Name);
+                var fields = o.FieldSpan;
+                _scratch.WriteVUInt((ulong)fields.Length);
                 foreach (var (name, type) in fields)
                 {
-                    writer.WriteName(name);
-                    CanonicalRef(writer, type, group, masked);
+                    _scratch.WriteName(name);
+                    CanonicalRef(type, group, masked);
                 }
                 break;
             case EnumTypeDescriptor e:
-                writer.WriteName(e.Name);
-                writer.WriteVUInt(Layer2Encoding.EnumHeader(e));
+                _scratch.WriteName(e.Name);
+                _scratch.WriteVUInt(Layer2Encoding.EnumHeader(e));
                 foreach (var (name, value) in e.Pairs)
                 {
-                    writer.WriteName(name);
-                    if (e.Signed) writer.WriteVInt((long)value);
-                    else writer.WriteVUInt(value);
+                    _scratch.WriteName(name);
+                    if (e.Signed) _scratch.WriteVInt((long)value);
+                    else _scratch.WriteVUInt(value);
                 }
                 break;
             default:
-                CanonicalPayload(writer, descriptor, group, masked);
+                CanonicalPayload(descriptor, group, masked);
                 break;
         }
-        return writer.WrittenSpan.ToArray();
+        return _scratch.WrittenSpan.ToArray();
     }
 
-    void CanonicalPayload(ArrayBufferWriter<byte> writer, ITypeDescriptor structural,
-        Dictionary<ITypeDescriptor, int>? group, bool masked)
+    void CanonicalPayload(ITypeDescriptor structural, Dictionary<ITypeDescriptor, int>? group, bool masked)
     {
         var count = Layer2Encoding.ChildCount(structural);
-        if (structural is TupleTypeDescriptor) writer.WriteVUInt((ulong)count);
-        for (var i = 0; i < count; i++) CanonicalRef(writer, Layer2Encoding.Child(structural, i), group, masked);
+        if (structural is TupleTypeDescriptor) _scratch.WriteVUInt((ulong)count);
+        for (var i = 0; i < count; i++) CanonicalRef(Layer2Encoding.Child(structural, i), group, masked);
     }
 
-    void CanonicalRef(ArrayBufferWriter<byte> writer, ITypeDescriptor type, Dictionary<ITypeDescriptor, int>? group,
-        bool masked)
+    void CanonicalRef(ITypeDescriptor type, Dictionary<ITypeDescriptor, int>? group, bool masked)
     {
         if (Layer2Encoding.TryGetBuiltInId(type, out var id))
-            writer.WriteVUInt((ulong)(id + CanonicalIdBase));
+            _scratch.WriteVUInt((ulong)(id + CanonicalIdBase));
         else if (Layer2Encoding.IsStructural(type))
         {
-            writer.WriteVUInt((ulong)Layer2Encoding.Tag(Layer2Encoding.Category(type)));
-            CanonicalPayload(writer, type, group, masked);
+            _scratch.WriteVUInt((ulong)Layer2Encoding.Tag(Layer2Encoding.Category(type)));
+            CanonicalPayload(type, group, masked);
         }
         else if (group != null && group.TryGetValue(type, out var local))
         {
-            if (masked) writer.WriteVUInt(MaskedRef);
+            if (masked) _scratch.WriteVUInt(MaskedRef);
             else
             {
-                writer.WriteVUInt(LocalRef);
-                writer.WriteVUInt((ulong)local);
+                _scratch.WriteVUInt(LocalRef);
+                _scratch.WriteVUInt((ulong)local);
             }
         }
-        else writer.WriteVUInt((ulong)(_ids[type] + CanonicalIdBase));
+        else _scratch.WriteVUInt((ulong)(_ids[type] + CanonicalIdBase));
     }
 
     byte[] Stored(ITypeDescriptor descriptor)
     {
-        var writer = new ArrayBufferWriter<byte>();
-        writer.WriteByte((byte)Layer2Encoding.Category(descriptor));
+        _scratch.Clear();
+        _scratch.WriteByte((byte)Layer2Encoding.Category(descriptor));
         switch (descriptor)
         {
             case ObjectTypeDescriptor o:
-                writer.WriteVUInt((ulong)_builder.GetOrAddString(o.Name));
-                var fields = o.Fields.ToList();
-                writer.WriteVUInt((ulong)fields.Count);
+                _scratch.WriteVUInt((ulong)_builder.GetOrAddString(o.Name));
+                var fields = o.FieldSpan;
+                _scratch.WriteVUInt((ulong)fields.Length);
                 foreach (var (name, type) in fields)
                 {
-                    writer.WriteVUInt((ulong)_builder.GetOrAddString(name));
-                    StoredRef(writer, type);
+                    _scratch.WriteVUInt((ulong)_builder.GetOrAddString(name));
+                    StoredRef(type);
                 }
                 break;
             case EnumTypeDescriptor e:
-                writer.WriteVUInt((ulong)_builder.GetOrAddString(e.Name));
-                writer.WriteVUInt(Layer2Encoding.EnumHeader(e));
+                _scratch.WriteVUInt((ulong)_builder.GetOrAddString(e.Name));
+                _scratch.WriteVUInt(Layer2Encoding.EnumHeader(e));
                 foreach (var (name, value) in e.Pairs)
                 {
-                    writer.WriteVUInt((ulong)_builder.GetOrAddString(name));
-                    if (e.Signed) writer.WriteVInt((long)value);
-                    else writer.WriteVUInt(value);
+                    _scratch.WriteVUInt((ulong)_builder.GetOrAddString(name));
+                    if (e.Signed) _scratch.WriteVInt((long)value);
+                    else _scratch.WriteVUInt(value);
                 }
                 break;
             default:
-                StoredPayload(writer, descriptor);
+                StoredPayload(descriptor);
                 break;
         }
-        return writer.WrittenSpan.ToArray();
+        return _scratch.WrittenSpan.ToArray();
     }
 
-    void StoredPayload(ArrayBufferWriter<byte> writer, ITypeDescriptor structural)
+    void StoredPayload(ITypeDescriptor structural)
     {
         var count = Layer2Encoding.ChildCount(structural);
-        if (structural is TupleTypeDescriptor) writer.WriteVUInt((ulong)count);
-        for (var i = 0; i < count; i++) StoredRef(writer, Layer2Encoding.Child(structural, i));
+        if (structural is TupleTypeDescriptor) _scratch.WriteVUInt((ulong)count);
+        for (var i = 0; i < count; i++) StoredRef(Layer2Encoding.Child(structural, i));
     }
 
-    void StoredRef(ArrayBufferWriter<byte> writer, ITypeDescriptor type)
+    void StoredRef(ITypeDescriptor type)
     {
         if (Layer2Encoding.TryGetBuiltInId(type, out var id))
-            writer.WriteVUInt((ulong)(id + Layer2Encoding.InlineTags));
+            _scratch.WriteVUInt((ulong)(id + Layer2Encoding.InlineTags));
         else if (Layer2Encoding.IsStructural(type))
         {
-            writer.WriteVUInt((ulong)Layer2Encoding.Tag(Layer2Encoding.Category(type)));
-            StoredPayload(writer, type);
+            _scratch.WriteVUInt((ulong)Layer2Encoding.Tag(Layer2Encoding.Category(type)));
+            StoredPayload(type);
         }
-        else writer.WriteVUInt((ulong)(_ids[type] + Layer2Encoding.InlineTags));
+        else _scratch.WriteVUInt((ulong)(_ids[type] + Layer2Encoding.InlineTags));
     }
 
     // Writes the canonical encoding of a stored record, with references into [groupStart, groupStart + groupCount)
@@ -367,6 +366,7 @@ sealed class Layer2TypeResolver
                 break;
             case TypeCategory.Tuple:
                 count = reader.ReadCount();
+                if (count == 0) throw new InvalidDataException("Layer2 metadata record has an empty tuple.");
                 _scratch.WriteVUInt((ulong)count);
                 break;
             default:

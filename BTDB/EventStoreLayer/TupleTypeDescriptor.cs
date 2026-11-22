@@ -56,15 +56,16 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return Equals(other, null);
     }
 
-    public string Name => _name ??= CreateName();
+    public string Name => (_name ??= CreateName())!;
 
-    string CreateName()
+    string? CreateName()
     {
         var sb = new StringBuilder();
         sb.Append("Tuple<");
         var first = true;
         foreach (var itemDescriptor in _itemDescriptors)
         {
+            if ((itemDescriptor.Name?.Length ?? 0) == 0) return null;
             if (first) first = false;
             else
                 sb.Append(',');
@@ -731,9 +732,20 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
     {
+        var changed = false;
         for (var index = 0; index < _itemDescriptors.Count; index++)
         {
-            _itemDescriptors[index] = map(_itemDescriptors[index]);
+            var mapped = map(_itemDescriptors[index]);
+            if (!ReferenceEquals(mapped, _itemDescriptors[index]))
+            {
+                _itemDescriptors[index] = mapped;
+                changed = true;
+            }
+        }
+        if (changed)
+        {
+            _name = null;
+            ClearMappingToType();
         }
     }
 

@@ -32,6 +32,19 @@
 
 ### Fixed
 
+- EventStoreLayer / EventStore2Layer / EventSourcing: hardened the new Layer2 metadata catalog and codec:
+  - `TupleTypeDescriptor` no longer caches incomplete names or preferred types while an item is a placeholder, fixing
+    decoding of nested `Nullable<ValueTuple<...>>` / `List<ValueTuple<...>>` containing enums or objects.
+  - `Layer2DescriptorDecoder` detects cyclic standalone structural records and empty tuples as `InvalidDataException`
+    instead of overflowing the stack or indexing out of bounds, and `Layer2Metadata.Load` rejects empty binding names,
+    overflowing table ends, and string boundaries splitting UTF-8 code points.
+  - `CatalogEventSerializer.Create` removes unfinished descriptors when `FinishBuildFromType` throws so a later call
+    does not reuse a partial descriptor.
+  - `Layer2EventCodec` always refreshes from the blob when a concurrent refresh advances `_version` without the missing
+    type, and updates `_version` when an existing blob matches the installed metadata (preventing livelock on a
+    pre-created empty blob or a deleted empty blob).
+  - `FileSystemVersionedBlob` disposes its lock file if constructor cleanup fails and removes the staged `.tmp` file
+    only on write failure instead of on every successful move.
 - BTDB.LSM: fixed several edge-case and concurrency bugs:
   - `WriteManifest` no longer increments the manifest sequence before creation succeeds, preventing manifest sequence gaps on transient storage errors.
   - `LsmKeyValueDBCursor.IsValid` and `KeyHasPrefix` now return `false` on a fuzzy/erased cursor (instead of returning `true`, advancing the cursor, or throwing on an erased last key), `EraseUpTo` validates that the target cursor belongs to the same transaction, `FindKeyIndex(prefix, index)` rejects negative/overflowing indexes, and `NotifyRenamed` keeps a `_before` fuzzy cursor on the right side of a renamed key even after its remembered key was erased.

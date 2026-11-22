@@ -234,6 +234,46 @@ public class CatalogEventSerializerTest
         deserializer.Update(metadata);
     }
 
+    [Generate]
+    public class TupleWithEnumHolder
+    {
+        public (Priority, int)? MaybePair { get; set; }
+        public List<(Priority, string)>? Pairs { get; set; }
+    }
+
+    public class InvalidWithDelegate
+    {
+        public int Before { get; set; }
+        public Action? Callback { get; set; }
+        public int After { get; set; }
+    }
+
+    [Fact]
+    public void NullableAndListOfTupleWithEnumRoundTrip()
+    {
+        var metadata = Layer2Metadata.Create("orders");
+        var serializer = new CatalogEventSerializer(metadata);
+        var value = new TupleWithEnumHolder
+        {
+            MaybePair = (Priority.High, 42),
+            Pairs = [(Priority.Low, "a"), (Priority.High, "b")]
+        };
+        var data = Publish(serializer, value, ref metadata);
+        var loaded = Assert.IsType<TupleWithEnumHolder>(Read(metadata, data));
+        Assert.Equal((Priority.High, 42), loaded.MaybePair);
+        Assert.Equal([(Priority.Low, "a"), (Priority.High, "b")], loaded.Pairs);
+    }
+
+    [Fact]
+    public void RepeatedFailedSerializationOfInvalidTypeKeepsThrowing()
+    {
+        var metadata = Layer2Metadata.Create("orders");
+        var serializer = new CatalogEventSerializer(metadata);
+        Assert.Throws<BTDBException>(() => serializer.Serialize(out _, new InvalidWithDelegate { Before = 1, After = 2 }));
+        // A failed FinishBuildFromType must not leave a half-built descriptor cached for subsequent calls.
+        Assert.Throws<BTDBException>(() => serializer.Serialize(out _, new InvalidWithDelegate { Before = 1, After = 2 }));
+    }
+
     [Fact]
     public void DeserializerBuildsOnlyTypesItReads()
     {

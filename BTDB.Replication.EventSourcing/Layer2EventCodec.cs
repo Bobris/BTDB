@@ -71,16 +71,23 @@ internal sealed class Layer2EventCodec(IVersionedBlob blob, string bindingName, 
 
     internal async Task<StoredEvent> DeserializeAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellation)
     {
-        string? version;
         lock (_lock)
-        {
             if (TryDeserialize(bytes, out var available)) return available!;
-            version = _version;
+        // Metadata is written before the data that uses it. Re-check after acquiring _refreshing in case another
+        // refresh already installed the needed type; otherwise read the blob once (a concurrent local write cannot
+        // have satisfied a type written later by another node).
+        await _refreshing.WaitAsync(cancellation).ConfigureAwait(false);
+        try
+        {
+            lock (_lock)
+                if (TryDeserialize(bytes, out var available)) return available!;
+            var (metadata, version) = await ReadAsync(cancellation).ConfigureAwait(false);
+            Install(metadata, version);
+            lock (_lock)
+                return TryDeserialize(bytes, out var stored) ? stored!
+                    : throw new InvalidDataException("Event metadata is missing from the Layer2 metadata file.");
         }
-        await RefreshAsync(version, cancellation).ConfigureAwait(false);
-        lock (_lock)
-            return TryDeserialize(bytes, out var stored) ? stored!
-                : throw new InvalidDataException("Event metadata is missing from the Layer2 metadata file.");
+        finally { _refreshing.Release(); }
     }
 
     bool TryDeserialize(ReadOnlyMemory<byte> bytes, out StoredEvent? stored)
@@ -110,14 +117,16 @@ internal sealed class Layer2EventCodec(IVersionedBlob blob, string bindingName, 
         finally { _refreshing.Release(); }
     }
 
-    // Installs metadata unless the installed one already holds it (a refresh can overtake this node's applied write).
+    // Installs metadata unless the installed one is strictly ahead (a refresh can overtake this node's applied write).
     void Install(Layer2Metadata metadata, string? version)
     {
         lock (_lock)
         {
+            if (version == _version) return;
             var installed = _serializer.Metadata;
-            if (version == _version || installed.TypeCount >= metadata.TypeCount && installed.Extends(metadata)) return;
-            if (!metadata.Extends(installed))
+            if ((installed.TypeCount > metadata.TypeCount || installed.StringCount > metadata.StringCount) &&
+                installed.Extends(metadata)) return;
+            if (version == null || !metadata.Extends(installed))
                 throw new InvalidDataException("The Layer2 metadata file changed other than by appending.");
             _serializer.Update(metadata);
             _deserializer.Update(metadata);

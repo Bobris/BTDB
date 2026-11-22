@@ -51,27 +51,49 @@ public sealed class Layer2Metadata
         _recordEnds = _stringEnds + 4 * StringCount;
         _keyIndex = _recordEnds + 4 * TypeCount;
         _stringBytes = _keyIndex + 8 * TypeCount;
-        var stringLength = CheckEnds(span, _stringEnds, StringCount, false, "string");
+        var stringLength = CheckEnds(span, _stringEnds, StringCount, span.Length - _stringBytes, false, "string");
         _recordBytes = _stringBytes + stringLength;
-        var recordLength = CheckEnds(span, _recordEnds, TypeCount, true, "record");
-        if ((long)_recordBytes + recordLength != span.Length) throw Corrupted("has a wrong length");
+        var recordLength = CheckEnds(span, _recordEnds, TypeCount, span.Length - _recordBytes, true, "record");
+        if (_recordBytes + recordLength != span.Length) throw Corrupted("has a wrong length");
         if (!Utf8.IsValid(span.Slice(_stringBytes, stringLength))) throw Corrupted("has a string that is not UTF-8");
+        for (var i = 0; i < StringCount - 1; i++)
+        {
+            var end = (int)End(_stringEnds, i);
+            if (end < stringLength && (span[_stringBytes + end] & 0xC0) == 0x80)
+                throw Corrupted("has a string that is not UTF-8");
+        }
+        (uint Key, uint Index) previousKey = default;
         for (var i = 0; i < TypeCount; i++)
         {
-            var (key, index) = KeyEntry(i);
-            if (index >= TypeCount) throw Corrupted("has a key index entry of a missing type");
-            if (i > 0 && KeyEntry(i - 1).CompareTo((key, index)) >= 0) throw Corrupted("has an unsorted key index");
+            var entry = KeyEntry(i);
+            if (entry.Index >= TypeCount) throw Corrupted("has a key index entry of a missing type");
+            if (i > 0 && previousKey.CompareTo(entry) >= 0) throw Corrupted("has an unsorted key index");
+            previousKey = entry;
         }
         BindingName = String(0);
+        if (BindingName.Length == 0) throw Corrupted("has an empty binding name");
     }
 
-    static int CheckEnds(ReadOnlySpan<byte> span, int offset, int count, bool nonEmpty, string what)
+    Layer2Metadata(byte[] bytes, int stringCount, int typeCount, int stringLength, string bindingName)
+    {
+        _bytes = bytes;
+        StringCount = stringCount;
+        TypeCount = typeCount;
+        _stringEnds = HeaderSize;
+        _recordEnds = _stringEnds + 4 * stringCount;
+        _keyIndex = _recordEnds + 4 * typeCount;
+        _stringBytes = _keyIndex + 8 * typeCount;
+        _recordBytes = _stringBytes + stringLength;
+        BindingName = bindingName;
+    }
+
+    static int CheckEnds(ReadOnlySpan<byte> span, int offset, int count, int maxLength, bool nonEmpty, string what)
     {
         uint previous = 0;
         for (var i = 0; i < count; i++)
         {
             var end = BinaryPrimitives.ReadUInt32LittleEndian(span[(offset + 4 * i)..]);
-            if (end < previous || nonEmpty && end == previous || end > span.Length)
+            if (end < previous || nonEmpty && end == previous || end > (uint)maxLength)
                 throw Corrupted($"has a wrong {what} end offset");
             previous = end;
         }
@@ -95,7 +117,8 @@ public sealed class Layer2Metadata
                 ? segment.Array
                 : file.ToArray());
 
-    internal static Layer2Metadata FromBuilder(byte[] bytes) => new(bytes);
+    internal static Layer2Metadata FromBuilder(byte[] bytes, int stringCount, int typeCount, int stringLength,
+        string bindingName) => new(bytes, stringCount, typeCount, stringLength, bindingName);
 
     /// <summary>The whole file, as read or as it is to be written.</summary>
     public ReadOnlyMemory<byte> Bytes => _bytes;
@@ -109,22 +132,23 @@ public sealed class Layer2Metadata
     /// TypeCount - 1.</summary>
     public int TypeCount { get; }
 
+    internal ReadOnlySpan<byte> StringEndsBytes => _bytes.AsSpan(_stringEnds, 4 * StringCount);
+    internal ReadOnlySpan<byte> RecordEndsBytes => _bytes.AsSpan(_recordEnds, 4 * TypeCount);
+    internal ReadOnlySpan<byte> StringDataBytes => _bytes.AsSpan(_stringBytes, _recordBytes - _stringBytes);
+    internal ReadOnlySpan<byte> RecordDataBytes => _bytes.AsSpan(_recordBytes);
+
     /// <summary>True when this snapshot holds everything <paramref name="previous"/> holds, unchanged, as every
     /// write by an appending writer does.</summary>
     public bool Extends(Layer2Metadata previous)
     {
         ArgumentNullException.ThrowIfNull(previous);
+        if (ReferenceEquals(this, previous)) return true;
         if (StringCount < previous.StringCount || TypeCount < previous.TypeCount) return false;
         var mine = _bytes.AsSpan();
-        var theirs = previous._bytes.AsSpan();
-        return mine.Slice(_stringEnds, 4 * previous.StringCount)
-                   .SequenceEqual(theirs.Slice(previous._stringEnds, 4 * previous.StringCount)) &&
-               mine.Slice(_recordEnds, 4 * previous.TypeCount)
-                   .SequenceEqual(theirs.Slice(previous._recordEnds, 4 * previous.TypeCount)) &&
-               mine.Slice(_stringBytes, previous._recordBytes - previous._stringBytes)
-                   .SequenceEqual(theirs[previous._stringBytes..previous._recordBytes]) &&
-               mine.Slice(_recordBytes, previous._bytes.Length - previous._recordBytes)
-                   .SequenceEqual(theirs[previous._recordBytes..]);
+        return mine.Slice(_stringEnds, 4 * previous.StringCount).SequenceEqual(previous.StringEndsBytes) &&
+               mine.Slice(_recordEnds, 4 * previous.TypeCount).SequenceEqual(previous.RecordEndsBytes) &&
+               mine.Slice(_stringBytes, previous.StringDataBytes.Length).SequenceEqual(previous.StringDataBytes) &&
+               mine.Slice(_recordBytes, previous.RecordDataBytes.Length).SequenceEqual(previous.RecordDataBytes);
     }
 
     public bool ContainsType(int typeId) => typeId >= FirstTypeId && typeId - FirstTypeId < TypeCount;

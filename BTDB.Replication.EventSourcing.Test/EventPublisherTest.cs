@@ -476,6 +476,80 @@ public class EventPublisherTest
         await Assert.ThrowsAsync<InvalidDataException>(() => publisher.DisposeAsync().AsTask());
     }
 
+    [Fact]
+    public async Task PreCreatedEmptyMetadataBlobDoesNotLivelock()
+    {
+        var data = new MemoryTopic("data");
+        var metadata = new InMemoryVersionedBlob();
+        using var db = await TestDatabase.OpenAsync();
+        await using var publisher = db.Publisher(data, metadata, new Handler());
+        await publisher.StartAsync();
+        // Another writer initializes an empty metadata file for the same topic after this publisher saw it missing.
+        await metadata.WriteAsync(null, BTDB.EventStore2Layer.Layer2Metadata.Create("data").Bytes, default);
+        var result = await publisher.PublishAndWaitAsync(new Add { Amount = 5 }).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(result.Success);
+        Assert.Equal(new[] { 5 }, db.Read().Select(e => e.Amount));
+    }
+
+    [Fact]
+    public async Task ConsumerRefreshesWhenConcurrentRefreshAdvancesVersionWithoutNeededType()
+    {
+        var shared = new InMemoryVersionedBlob();
+        var codecB = new Layer2EventCodec(shared, "data", null);
+        await codecB.LoadAsync(default);
+
+        // Node A starts at empty (_version == null).
+        var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStaleRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdNextRead = false;
+        var nodeABlob = new StaleReadBlob(shared, () => holdNextRead, readStarted, releaseStaleRead.Task);
+        var nodeA = new Layer2EventCodec(nodeABlob, "data", null);
+        await nodeA.LoadAsync(default);
+
+        // Node B writes v1 (AddPure) to shared.
+        await codecB.SerializeAsync(new StoredEvent { PublicationId = Guid.NewGuid(), Event = new AddPure { Amount = 1 } },
+            default);
+
+        // Node A tries to publish AddPure against null -> Rejected -> enters RefreshAsync, reads v1, pauses before Install.
+        holdNextRead = true;
+        var nodeASerialize = nodeA.SerializeAsync(
+            new StoredEvent { PublicationId = Guid.NewGuid(), Event = new AddPure { Amount = 2 } }, default);
+        await readStarted.Task;
+        holdNextRead = false;
+
+        // Meanwhile Node B writes v2 (Add) on top of v1 and serializes an Add event.
+        var eventFromB = await codecB.SerializeAsync(
+            new StoredEvent { PublicationId = Guid.NewGuid(), Event = new Add { Amount = 9 } }, default);
+
+        // Node A's consumer tries to deserialize eventFromB while _version is still null and _refreshing is held by
+        // the in-flight v1 refresh. Once that refresh installs v1, _version changes from null to v1 (still lacking Add).
+        var deserialize = nodeA.DeserializeAsync(eventFromB, default);
+        await Task.Yield();
+        releaseStaleRead.SetResult();
+
+        await nodeASerialize;
+        var decoded = await deserialize;
+        Assert.Equal(9, Assert.IsType<Add>(decoded.Event).Amount);
+    }
+
+    sealed class StaleReadBlob(IVersionedBlob inner, Func<bool> shouldHold, TaskCompletionSource readCaptured, Task release)
+        : IVersionedBlob
+    {
+        public async ValueTask<VersionedBlobContent?> ReadAsync(CancellationToken cancellation)
+        {
+            var result = await inner.ReadAsync(cancellation);
+            if (shouldHold())
+            {
+                readCaptured.TrySetResult();
+                await release.WaitAsync(cancellation);
+            }
+            return result;
+        }
+
+        public ValueTask<VersionedBlobWriteResult> WriteAsync(string? expectedVersion, ReadOnlyMemory<byte> content,
+            CancellationToken cancellation) => inner.WriteAsync(expectedVersion, content, cancellation);
+    }
+
     // The internal fault enum cannot appear in a public test's signature.
     public enum VersionedBlobFaultCase
     {

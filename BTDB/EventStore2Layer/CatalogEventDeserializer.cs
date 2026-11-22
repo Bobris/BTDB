@@ -23,6 +23,7 @@ public sealed class CatalogEventDeserializer : ITypeDescriptorCallbacks, ITypeBi
     readonly Lock _lock = new();
     readonly Layer2DescriptorDecoder _decoder;
     readonly ISymmetricCipher _symmetricCipher;
+    volatile Layer2Metadata _metadata;
     Layer2Loader?[] _loaders = [];
     readonly Layer2Loader?[] _builtInLoaders = new Layer2Loader?[Layer2Metadata.FirstTypeId];
 
@@ -36,7 +37,7 @@ public sealed class CatalogEventDeserializer : ITypeDescriptorCallbacks, ITypeBi
         ITypeConverterFactory? typeConverterFactory = null, ITypeConvertorGenerator? typeConvertorGenerator = null,
         ISymmetricCipher? symmetricCipher = null)
     {
-        Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+        _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ConverterFactory = typeConverterFactory ?? new DefaultTypeConverterFactory();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
@@ -45,7 +46,7 @@ public sealed class CatalogEventDeserializer : ITypeDescriptorCallbacks, ITypeBi
     }
 
     /// <summary>The installed metadata.</summary>
-    public Layer2Metadata Metadata { get; private set; }
+    public Layer2Metadata Metadata => _metadata;
 
     /// <summary>Installs newer metadata, which must hold everything the installed metadata holds; types already built
     /// stay valid because type IDs never change.</summary>
@@ -54,10 +55,10 @@ public sealed class CatalogEventDeserializer : ITypeDescriptorCallbacks, ITypeBi
         ArgumentNullException.ThrowIfNull(metadata);
         lock (_lock)
         {
-            if (ReferenceEquals(metadata, Metadata)) return;
-            if (!metadata.Extends(Metadata))
+            if (ReferenceEquals(metadata, _metadata)) return;
+            if (!metadata.Extends(_metadata))
                 throw new ArgumentException("New Layer2 metadata must extend the installed one.", nameof(metadata));
-            Metadata = metadata;
+            _metadata = metadata;
         }
     }
 
@@ -228,7 +229,7 @@ public sealed class CatalogEventDeserializer : ITypeDescriptorCallbacks, ITypeBi
         descriptor.GetPreferredType() ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
 
     public Type LoadAsType(ITypeDescriptor descriptor, Type targetType) =>
-        descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+        descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
 
     public bool PreserveDescriptors { get; set; } = true;
 }

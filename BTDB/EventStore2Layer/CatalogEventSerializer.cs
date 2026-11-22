@@ -154,13 +154,23 @@ public sealed class CatalogEventSerializer : ITypeDescriptorCallbacks, ITypeDesc
             return descriptor;
         }
         descriptor = Layer2Shared.NewDescriptor(this, type, kind, alternative)!;
-        // Registered before it is finished, so a type referring to itself finds it.
+        // Registered before it is finished, so a type referring to itself finds it; removed on failure or throw.
         _descriptors[type] = descriptor;
         if (alternative != null) _descriptors[alternative] = descriptor;
-        if (descriptor.FinishBuildFromType(this)) return descriptor;
-        _descriptors.Remove(type);
-        if (alternative != null) _descriptors.Remove(alternative);
-        return null;
+        var finished = false;
+        try
+        {
+            finished = descriptor.FinishBuildFromType(this);
+            return finished ? descriptor : null;
+        }
+        finally
+        {
+            if (!finished)
+            {
+                _descriptors.Remove(type);
+                if (alternative != null) _descriptors.Remove(alternative);
+            }
+        }
     }
 
     public void StoreEncryptedString(ref MemWriter writer, EncryptedString value) =>

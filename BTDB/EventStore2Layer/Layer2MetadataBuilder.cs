@@ -14,13 +14,22 @@ namespace BTDB.EventStore2Layer;
 sealed class Layer2MetadataBuilder
 {
     readonly Layer2Metadata? _basis;
+    readonly string _bindingName;
     readonly List<byte[]> _newStrings = new();
     readonly List<(byte[]? Record, uint Key)> _newTypes = new();
     Dictionary<string, int>? _stringIds;
 
-    public Layer2MetadataBuilder(Layer2Metadata basis) => _basis = basis;
+    public Layer2MetadataBuilder(Layer2Metadata basis)
+    {
+        _basis = basis;
+        _bindingName = basis.BindingName;
+    }
 
-    public Layer2MetadataBuilder(string bindingName) => _newStrings.Add(Encoding.UTF8.GetBytes(bindingName));
+    public Layer2MetadataBuilder(string bindingName)
+    {
+        _bindingName = bindingName;
+        _newStrings.Add(Encoding.UTF8.GetBytes(bindingName));
+    }
 
     int BasisStrings => _basis?.StringCount ?? 0;
     int BasisTypes => _basis?.TypeCount ?? 0;
@@ -94,9 +103,11 @@ sealed class Layer2MetadataBuilder
         if (_basis != null && _newStrings.Count == 0 && _newTypes.Count == 0) return _basis;
         var stringCount = StringCount;
         var typeCount = TypeCount;
-        long stringLength = 0, recordLength = 0;
-        for (var i = 0; i < stringCount; i++) stringLength += StringUtf8(i).Length;
-        for (var i = 0; i < typeCount; i++) recordLength += Record(Layer2Metadata.FirstTypeId + i).Length;
+        long stringLength = _basis?.StringDataBytes.Length ?? 0;
+        foreach (var value in _newStrings) stringLength += value.Length;
+        long recordLength = _basis?.RecordDataBytes.Length ?? 0;
+        foreach (var (record, _) in _newTypes)
+            recordLength += (record ?? throw new InvalidOperationException("Type record not set yet.")).Length;
         var total = Layer2Metadata.HeaderSize + 4L * stringCount + 12L * typeCount + stringLength + recordLength;
         if (total > Array.MaxLength) throw new InvalidOperationException("Layer2 metadata would be too large.");
         var bytes = new byte[total];
@@ -108,21 +119,35 @@ sealed class Layer2MetadataBuilder
         var table = Layer2Metadata.HeaderSize;
         var data = table + 4 * stringCount + 12 * typeCount;
         uint end = 0;
-        for (var i = 0; i < stringCount; i++, table += 4)
+        if (_basis != null)
         {
-            var value = StringUtf8(i);
+            _basis.StringEndsBytes.CopyTo(span[table..]);
+            table += _basis.StringEndsBytes.Length;
+            _basis.StringDataBytes.CopyTo(span[data..]);
+            end = (uint)_basis.StringDataBytes.Length;
+        }
+        foreach (var value in _newStrings)
+        {
             value.CopyTo(span[(data + (int)end)..]);
             end += (uint)value.Length;
             BinaryPrimitives.WriteUInt32LittleEndian(span[table..], end);
+            table += 4;
         }
         data += (int)end;
         end = 0;
-        for (var i = 0; i < typeCount; i++, table += 4)
+        if (_basis != null)
         {
-            var record = Record(Layer2Metadata.FirstTypeId + i);
-            record.CopyTo(span[(data + (int)end)..]);
+            _basis.RecordEndsBytes.CopyTo(span[table..]);
+            table += _basis.RecordEndsBytes.Length;
+            _basis.RecordDataBytes.CopyTo(span[data..]);
+            end = (uint)_basis.RecordDataBytes.Length;
+        }
+        foreach (var (record, _) in _newTypes)
+        {
+            record!.CopyTo(span[(data + (int)end)..]);
             end += (uint)record.Length;
             BinaryPrimitives.WriteUInt32LittleEndian(span[table..], end);
+            table += 4;
         }
         var keys = new (uint Key, uint Index)[typeCount];
         for (var i = 0; i < BasisTypes; i++) keys[i] = _basis!.KeyEntry(i);
@@ -136,7 +161,7 @@ sealed class Layer2MetadataBuilder
             table += 8;
         }
         BinaryPrimitives.WriteUInt64LittleEndian(span[8..], XxHash64.Hash(span[16..]));
-        return Layer2Metadata.FromBuilder(bytes);
+        return Layer2Metadata.FromBuilder(bytes, stringCount, typeCount, (int)stringLength, _bindingName);
     }
 }
 

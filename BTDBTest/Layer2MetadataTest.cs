@@ -312,6 +312,84 @@ public class Layer2MetadataTest
         Assert.True(resolver.HasNewTypes);
     }
 
+    public class TupleWithNamedItem
+    {
+        public (Color, int)? MaybePair { get; set; }
+        public List<(Color, string)>? Pairs { get; set; }
+    }
+
+    [Fact]
+    public void NullableAndListOfTupleWithNamedItemDecodeWithFullNameAndPreferredType()
+    {
+        var (metadata, ids) = Store(Layer2Metadata.Create("orders"), typeof(TupleWithNamedItem));
+        var decoded = (ObjectTypeDescriptor)NewDecoder().Get(metadata, ids[0]);
+        var fields = decoded.Fields.ToDictionary(f => f.Key, f => f.Value);
+        var colorName = new FullNameTypeMapper().ToName(typeof(Color));
+        Assert.Equal($"Nullable<Tuple<{colorName},VInt32>>", fields["MaybePair"].Name);
+        Assert.True(fields["MaybePair"].Sealed);
+        Assert.Equal(typeof((Color, int)?), fields["MaybePair"].GetPreferredType());
+        Assert.Equal($"List<Tuple<{colorName},String>>", fields["Pairs"].Name);
+        Assert.True(fields["Pairs"].Sealed);
+    }
+
+    [Fact]
+    public void CyclicStandaloneStructuralAndEmptyTupleRecordsThrowInvalidData()
+    {
+        static Layer2Metadata BuildRaw(params byte[][] records)
+        {
+            var builder = new Layer2MetadataBuilder("orders");
+            for (var i = 0; i < records.Length; i++)
+            {
+                var id = builder.ReserveType();
+                builder.SetType(id, records[i], (uint)(i + 1));
+            }
+            return Layer2Metadata.Load(builder.Build().Bytes.ToArray());
+        }
+
+        // Self-cycle: type 50 = List<type 50> (reference 50 + 4 = 54)
+        var selfCycle = BuildRaw([(byte)TypeCategory.List, 54]);
+        var decoder = NewDecoder();
+        Assert.Throws<InvalidDataException>(() => decoder.Get(selfCycle, Layer2Metadata.FirstTypeId));
+        Assert.Equal(0, decoder.StructuralCount);
+
+        // Mutual cycle: type 50 = List<type 51>, type 51 = List<type 50>
+        var mutualCycle = BuildRaw([(byte)TypeCategory.List, 55], [(byte)TypeCategory.List, 54]);
+        decoder = NewDecoder();
+        Assert.Throws<InvalidDataException>(() => decoder.Get(mutualCycle, Layer2Metadata.FirstTypeId));
+        Assert.Equal(0, decoder.StructuralCount);
+
+        // Empty tuple: type 50 = Tuple with 0 items
+        var emptyTuple = BuildRaw([(byte)TypeCategory.Tuple, 0]);
+        decoder = NewDecoder();
+        Assert.Throws<InvalidDataException>(() => decoder.Get(emptyTuple, Layer2Metadata.FirstTypeId));
+        Assert.Equal(0, decoder.StructuralCount);
+    }
+
+    [Fact]
+    public void StringBoundarySplittingUtf8CodePointAndEmptyBindingNameAreRejected()
+    {
+        // Two strings whose combined bytes are valid UTF-8 ("é" = 0xC3 0xA9), split between the two bytes.
+        var split = new byte[24 + 4 * 2 + 2];
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(0), Layer2Metadata.Magic);
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(4), Layer2Metadata.FormatVersion);
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(16), 2); // string count
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(20), 0); // type count
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(24), 1); // string 0 end
+        BinaryPrimitives.WriteUInt32LittleEndian(split.AsSpan(28), 2); // string 1 end
+        split[32] = 0xC3;
+        split[33] = 0xA9;
+        Assert.Throws<InvalidDataException>(() => Layer2Metadata.Load(WithChecksum(split)));
+
+        // Empty binding name (string 0 has length 0).
+        var emptyBinding = new byte[24 + 4];
+        BinaryPrimitives.WriteUInt32LittleEndian(emptyBinding.AsSpan(0), Layer2Metadata.Magic);
+        BinaryPrimitives.WriteUInt32LittleEndian(emptyBinding.AsSpan(4), Layer2Metadata.FormatVersion);
+        BinaryPrimitives.WriteUInt32LittleEndian(emptyBinding.AsSpan(16), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(emptyBinding.AsSpan(20), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(emptyBinding.AsSpan(24), 0);
+        Assert.Throws<InvalidDataException>(() => Layer2Metadata.Load(WithChecksum(emptyBinding)));
+    }
+
     [Fact]
     public void DamagedRecordLeavesNothingHalfBuilt()
     {

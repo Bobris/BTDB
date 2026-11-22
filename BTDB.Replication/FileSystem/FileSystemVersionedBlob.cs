@@ -33,7 +33,8 @@ public sealed class FileSystemVersionedBlob : IVersionedBlob, IDisposable
         _path = Path.GetFullPath(path);
         _staged = _path + ".tmp";
         _flushToDisk = flushToDisk;
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        var directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         try
         {
             _lockFile = new(_path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -43,9 +44,17 @@ public sealed class FileSystemVersionedBlob : IVersionedBlob, IDisposable
             throw new IOException($"File '{_path}' is used by another instance; a versioned blob file has one owner.",
                 error);
         }
-        // Only the owner writes, so a staged file is the leftover of a write that crashed before replacing the blob.
-        File.Delete(_staged);
-        if (File.Exists(_path)) _version = NewVersion();
+        try
+        {
+            // Only the owner writes, so a staged file is the leftover of a write that crashed before replacing the blob.
+            File.Delete(_staged);
+            if (File.Exists(_path)) _version = NewVersion();
+        }
+        catch
+        {
+            _lockFile.Dispose();
+            throw;
+        }
     }
 
     static string NewVersion() => Guid.NewGuid().ToString("N");
@@ -78,7 +87,11 @@ public sealed class FileSystemVersionedBlob : IVersionedBlob, IDisposable
                 }
                 File.Move(_staged, _path, true);
             }
-            finally { File.Delete(_staged); }
+            catch
+            {
+                try { File.Delete(_staged); } catch { }
+                throw;
+            }
             _version = NewVersion();
             return ValueTask.FromResult(new VersionedBlobWriteResult(VersionedBlobWriteOutcome.Applied, _version));
         }

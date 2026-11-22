@@ -17,14 +17,14 @@ namespace BTDB.EventStore2Layer;
 /// catalog <see cref="CatalogEventSerializer"/>/<see cref="CatalogEventDeserializer"/>.</summary>
 static class Layer2Shared
 {
-    internal enum TypeKind { Delegate, Dictionary, List, Indirect, Nullable, Tuple, Object, Enum, UnsupportedValueType }
+    internal enum TypeKind { Unsupported, Dictionary, List, Indirect, Nullable, Tuple, Object, Enum, UnsupportedValueType }
 
     /// <summary>Which descriptor stores a CLR type. A dictionary, list, set, array or nullable is stored as its
     /// <paramref name="alternative"/> specialization, which shares the descriptor.</summary>
     internal static TypeKind KindOf(Type type, out Type? alternative)
     {
         alternative = null;
-        if (type.IsSubclassOf(typeof(Delegate))) return TypeKind.Delegate;
+        if (type.IsSubclassOf(typeof(Delegate))) return TypeKind.Unsupported;
         if (type.IsGenericType)
         {
             alternative = type.SpecializationOf(typeof(IDictionary<,>));
@@ -35,7 +35,7 @@ static class Layer2Shared
             if (type.GetGenericTypeDefinition() == typeof(Nullable<>))
             {
                 alternative = type.SpecializationOf(typeof(Nullable<>));
-                return alternative != null ? TypeKind.Nullable : TypeKind.Delegate;
+                return alternative != null ? TypeKind.Nullable : TypeKind.Unsupported;
             }
             return type.InheritsOrImplements(typeof(ITuple)) ? TypeKind.Tuple : TypeKind.Object;
         }
@@ -127,7 +127,7 @@ static class Layer2Shared
                     .BuildConvertingLoader(loadAsType, typeof(object), converterFactory);
             return (ref MemReader reader, ITypeBinaryDeserializerContext ctx, ITypeDescriptor typeDescriptor) =>
             {
-                object res = null;
+                object res = null!;
                 loader(ref reader, ctx, ref Unsafe.As<object, byte>(ref res));
                 return res;
             };
