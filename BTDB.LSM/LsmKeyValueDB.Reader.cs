@@ -62,9 +62,10 @@ public sealed partial class LsmKeyValueDB
         var manifestSequence = previous.ManifestSequence;
         long nextChunk;
         List<long> missing;
-        // Once the replay moved to a newer manifest, the published state lags it until this round publishes; a failure
-        // then reloads next time, because the newer manifest may be gone by then (BTDB.LSM/Proofs, Refresh.lean).
-        var advanced = false;
+        // Once the replay has been mutated (new manifest or applied WAL chunks), a failure leaves it out of sync
+        // with the published state (or half-applied on a corrupted chunk), so the next refresh reloads cleanly
+        // (BTDB.LSM/Proofs, Refresh.lean).
+        var dirty = false;
         try
         {
             var newer = authoritative
@@ -79,17 +80,23 @@ public sealed partial class LsmKeyValueDB
                 catch (BTDBException)
                 {
                     // The probed manifest is already outdated and its tables deleted; take the newest one.
-                    (manifest, _) = await ReadNewestManifestAsync(_options, cancellation);
+                    var (latest, latestKey) = await ReadNewestManifestAsync(_options, cancellation);
+                    if (latestKey == null) throw;
+                    manifest = latest;
                     version = BuildVersion(_options, _cache, manifest, OpenTables());
                 }
 
+                dirty = true;
                 replay.AdvanceFlushed(manifest);
-                advanced = true;
                 manifestSequence = manifest.Sequence;
                 _lastManifest = manifest;
             }
 
-            if (authoritative) (nextChunk, missing) = await ReplayListedWalAsync(_options, replay, cancellation);
+            if (authoritative)
+            {
+                dirty = true;
+                (nextChunk, missing) = await ReplayListedWalAsync(_options, replay, cancellation);
+            }
             else
             {
                 // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
@@ -106,7 +113,9 @@ public sealed partial class LsmKeyValueDB
                             break;
                         }
 
-                        replay.Apply(number, WalFormat.Decode(content, WalKey(_options.Prefix, number)));
+                        var decoded = WalFormat.Decode(content, WalKey(_options.Prefix, number));
+                        dirty = true;
+                        replay.Apply(number, decoded);
                     }
 
                     if (!complete) break;
@@ -117,7 +126,7 @@ public sealed partial class LsmKeyValueDB
         }
         catch
         {
-            if (advanced) _replayStale = true;
+            if (dirty) _replayStale = true;
             throw;
         }
 
@@ -143,6 +152,7 @@ public sealed partial class LsmKeyValueDB
         var delay = _options.RefreshRetryInterval;
         while (true)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_state.CommitUlong >= commitUlong) return;
             if (!_isWriter && await RefreshAsync(cancellation) >= commitUlong) return;
             await Task.Delay(delay, _options.TimeProvider, cancellation);

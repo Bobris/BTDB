@@ -28,6 +28,8 @@ public sealed class LsmBlockCache : IDisposable
 
     public LsmBlockCache(long capacityBytes, int shardCount = 16)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(capacityBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(shardCount);
         _metadata = new(Math.Max(64 * 1024, capacityBytes / 8));
         _data = new(Math.Max(64 * 1024, capacityBytes - capacityBytes / 8), shardCount);
     }

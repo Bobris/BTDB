@@ -48,17 +48,18 @@ public sealed partial class LsmKeyValueDB
     {
         if (memtable.IsEmpty) return null;
         var created = new List<(ulong FileNumber, long Bytes)>();
+        TableReader? table = null;
         try
         {
             var values = NewValueSeparation(_state.Version, created, pace: false);
-            var table = WriteTable(TableBuilder.Build(memtable.Enumerate().Select(e => values.Apply(e)),
+            table = WriteTable(TableBuilder.Build(memtable.Enumerate().Select(e => values.Apply(e)),
                 memtable.Tombstones, _tableOptions), pace: false);
             values.Finish();
             return (table, created);
         }
         catch
         {
-            DiscardSpilled([], created);
+            DiscardSpilled(table != null ? [table] : [], created);
             throw;
         }
     }
@@ -80,16 +81,22 @@ public sealed partial class LsmKeyValueDB
             var merged = runs.GetRange(0, count);
             var below = snapshot.CreateView([.. runs.Skip(count).Select(r => r.Component)]);
             var created = new List<(ulong FileNumber, long Bytes)>();
+            var createdTables = new List<TableReader>();
             List<TableReader> tables;
             try
             {
                 tables = LsmCompaction.Merge([.. merged.Select(r => r.Component)], below, _compactionOptions,
-                    _tableOptions, content => WriteTable(content, false),
+                    _tableOptions, content =>
+                    {
+                        var written = WriteTable(content, false);
+                        createdTables.Add(written);
+                        return written;
+                    },
                     NewValueSeparation(_state.Version, created, pace: false));
             }
             catch
             {
-                DiscardSpilled([], created);
+                DiscardSpilled(createdTables, created);
                 throw;
             }
 
@@ -137,10 +144,16 @@ public sealed partial class LsmKeyValueDB
                 {
                     ThrowIfWorkerKeepsFailing();
                 }
-                catch (BTDBException) when (IsStarted(request))
+                catch (BTDBException)
                 {
-                    // The commit may have landed. Stop being the writer, which fails the request as possibly
-                    // committed; the next writer reads the outcome from storage.
+                    if (Withdraw(request))
+                    {
+                        request = null;
+                        throw;
+                    }
+
+                    // The worker already started publishing the request, so it may have landed. Stop being the writer,
+                    // which fails the request as possibly committed; the next writer reads the outcome from storage.
                     _ = LoseWriterAsync(new LsmWriterFencedException(
                         "Background work keeps failing while a commit is being published."));
                 }
@@ -165,11 +178,6 @@ public sealed partial class LsmKeyValueDB
     bool Withdraw(IngestRequest request)
     {
         lock (_ingestRequests) return !request.Started && _ingestRequests.Remove(request);
-    }
-
-    bool IsStarted(IngestRequest request)
-    {
-        lock (_ingestRequests) return request.Started;
     }
 
     /// Queues the private objects of a rolled back or failed spilled transaction for deletion; no reader ever saw them.

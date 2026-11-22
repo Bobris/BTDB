@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- BTDB.LSM: fixed several edge-case and concurrency bugs:
+  - `WriteManifest` no longer increments the manifest sequence before creation succeeds, preventing manifest sequence gaps on transient storage errors.
+  - `LsmKeyValueDBCursor.IsValid` and `KeyHasPrefix` now return `false` on a fuzzy/erased cursor (instead of returning `true`, advancing the cursor, or throwing on an erased last key), `EraseUpTo` validates that the target cursor belongs to the same transaction, `FindKeyIndex(prefix, index)` rejects negative/overflowing indexes, and `NotifyRenamed` keeps a `_before` fuzzy cursor on the right side of a renamed key even after its remembered key was erased.
+  - `CommitSpilledTransaction` now withdraws an unstarted ingest request atomically on worker timeout instead of racing `RunIngest` and releasing the writer slot while the commit is still publishing; failed spill writes/merges also discard tables already created before the failure.
+  - `CheckLeaseDeadline` now fences immediately when `RenewLeaseAsync` definitively returns `false`, stores the lease deadline atomically, and `AcquireWriterLeaseAsync` releases the lease on failure/cancellation after acquiring it; `BecomeWriterAsync` starts background writer services before setting `_isWriter`.
+  - `CreateKvi` and `Compact` now honor cancellation while waiting for flushes, `Compact` no longer hangs if the writer lease is lost right after checkpointing, `Compact` rewrites mostly dead value files even when a single non-L0 table remains, and `RequestWork`/`AppendWal` check `_options.BackgroundCompaction` rather than `_worker == null`/`_walUploader == null`.
+  - `CreateChunkAsync` now backs off exponentially on `Ambiguous` responses with missing objects instead of tight-spinning, `WalReplay.Apply` and `CatchUpAsync` reload instead of skipping a corrupted WAL chunk on subsequent refreshes, and `OpenAsync`/`Dispose` always release owned native arenas and block cache on failure.
+  - Hardened decoding of corrupted `RawBlock`, `BloomFilter`, and `ValueFileWriter.VerifyRecord` inputs to throw `BTDBException`, prevented `int` overflow in `DataBlockBuilder.Finish`, validated `LsmBlockCache` constructor arguments, and fixed `AzureLsmStorage` / `FileSystemLsmStorage` zero-length `ReadRange` handling and `AzureLsmStorage.ListAsync` transient retries.
 - Releaser: the `BTDB.zip` source archive attached to GitHub releases now contains only git-tracked files under
   `BTDB/`. It had picked up the git-ignored Lean build outputs under `BTDB/Proofs`, which grew it from about 0.7 MB to
   11.7 MB.

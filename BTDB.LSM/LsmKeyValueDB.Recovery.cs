@@ -49,7 +49,6 @@ public sealed partial class LsmKeyValueDB
 
         public void Apply(long number, WalChunk chunk)
         {
-            NextChunk = number + 1;
             // A predecessor's chunk that landed after a newer writer's epoch marker is not history. Chunks are
             // ordered by the epochs of earlier chunks only, never by the manifest's epoch. When it took one of the
             // newer writer's own names, that writer was fenced there, and its later chunks follow a missing one
@@ -62,6 +61,7 @@ public sealed partial class LsmKeyValueDB
                     DropPartial();
                 }
 
+                NextChunk = number + 1;
                 return;
             }
 
@@ -76,10 +76,16 @@ public sealed partial class LsmKeyValueDB
             if (chunk.EpochMarker)
             {
                 DropPartial();
+                NextChunk = number + 1;
                 return;
             }
 
-            if (_broken) return;
+            if (_broken)
+            {
+                NextChunk = number + 1;
+                return;
+            }
+
             GenerationFirstChunk.TryAdd(chunk.Generation, (number, chunk.Epoch));
             foreach (var part in chunk.Parts)
             {
@@ -106,6 +112,8 @@ public sealed partial class LsmKeyValueDB
 
                 Metadata = WalRecordBuilder.Replay(Memtable!, record);
             }
+
+            NextChunk = number + 1;
         }
 
         void DropPartial()

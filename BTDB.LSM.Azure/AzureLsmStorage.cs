@@ -124,10 +124,19 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
     public async ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination,
         CancellationToken cancellation)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
         await ReadWithRetry(async () =>
         {
             try
             {
+                if (destination.Length == 0)
+                {
+                    var properties = await container.GetBlobClient(key).GetPropertiesAsync(cancellationToken: cancellation);
+                    if (offset > properties.Value.ContentLength)
+                        throw new EndOfStreamException($"Range beyond the end of {key}");
+                    return true;
+                }
+
                 var response = await container.GetBlobClient(key).DownloadStreamingAsync(
                     new BlobDownloadOptions { Range = new HttpRange(offset, destination.Length) }, cancellation);
                 await using var stream = response.Value.Content;
@@ -148,11 +157,20 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
     /// Synchronous ranged read through the SDK's synchronous pipeline (HttpClient.Send), not sync-over-async.
     public void ReadRange(string key, long offset, Span<byte> destination)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
         var length = destination.Length;
         var buffer = ReadWithRetry(() =>
         {
             try
             {
+                if (length == 0)
+                {
+                    var properties = container.GetBlobClient(key).GetProperties();
+                    if (offset > properties.Value.ContentLength)
+                        throw new EndOfStreamException($"Range beyond the end of {key}");
+                    return [];
+                }
+
                 var response = container.GetBlobClient(key).DownloadStreaming(
                     new BlobDownloadOptions { Range = new HttpRange(offset, length) });
                 using var stream = response.Value.Content;
@@ -175,8 +193,24 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
     public async IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix,
         [EnumeratorCancellation] CancellationToken cancellation)
     {
-        await foreach (var item in container.GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix, cancellation))
-            yield return new(item.Name, item.Properties.ContentLength ?? 0);
+        string? continuation = null;
+        while (true)
+        {
+            var token = continuation;
+            var page = await ReadWithRetry(async () =>
+            {
+                await using var enumerator = container
+                    .GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix, cancellation)
+                    .AsPages(token)
+                    .GetAsyncEnumerator(cancellation);
+                return await enumerator.MoveNextAsync() ? enumerator.Current : null;
+            }, cancellation);
+            if (page == null) yield break;
+            foreach (var item in page.Values)
+                yield return new(item.Name, item.Properties.ContentLength ?? 0);
+            if (string.IsNullOrEmpty(page.ContinuationToken)) yield break;
+            continuation = page.ContinuationToken;
+        }
     }
 
     public async ValueTask DeleteAsync(string key, CancellationToken cancellation)

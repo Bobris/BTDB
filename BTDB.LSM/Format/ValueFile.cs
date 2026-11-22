@@ -1,6 +1,5 @@
 using System;
 using BTDB.Buffer;
-using BTDB.KVDBLayer;
 
 namespace BTDB.LSM.Format;
 
@@ -56,11 +55,6 @@ sealed class ValueFileWriter(Func<ulong> allocateFileNumber, long targetFileSize
         _content = null;
     }
 
-    public static byte[] VerifyRecord(ReadOnlySpan<byte> record, string objectName)
-    {
-        var value = record[..^8];
-        if (XxHash64.Hash(value) != BitConverter.ToUInt64(record[^8..]))
-            throw new BTDBException($"Value in {objectName} has a checksum mismatch.");
-        return value.ToArray();
-    }
+    public static byte[] VerifyRecord(ReadOnlySpan<byte> record, string objectName) =>
+        LsmChecksum.Verify(record, objectName).ToArray();
 }

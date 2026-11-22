@@ -68,7 +68,7 @@ sealed class DataBlockBuilder(int restartInterval)
         var written = false;
         if (compress && payload.Length > 64)
         {
-            var compressed = new byte[payload.Length * 7 / 8];
+            var compressed = new byte[(int)((long)payload.Length * 7 / 8)];
             var length = SnappyCompress.Compress(compressed, payload);
             if (length > 0)
             {
@@ -101,13 +101,16 @@ readonly ref struct RawBlock
 
     public RawBlock(ReadOnlySpan<byte> data)
     {
+        if (data.Length < DataBlockBuilder.TrailerSize) throw LsmDecoder.Corrupted();
         _data = data;
         var trailer = new LsmDecoder(data, data.Length - DataBlockBuilder.TrailerSize);
         RestartInterval = trailer.ReadInt32();
         RestartCount = trailer.ReadInt32();
         Count = trailer.ReadInt32();
+        if (RestartInterval <= 0 || RestartCount < 0 || Count < 0 ||
+            (long)RestartCount * 8 > data.Length - DataBlockBuilder.TrailerSize)
+            throw LsmDecoder.Corrupted();
         _restartsStart = data.Length - DataBlockBuilder.TrailerSize - RestartCount * 8;
-        if (_restartsStart < 0 || RestartInterval <= 0) throw LsmDecoder.Corrupted();
     }
 
     public int Count { get; }
@@ -238,6 +241,7 @@ readonly ref struct RawBlock
     public static byte[] Decode(ReadOnlySpan<byte> stored, string objectName)
     {
         var payloadWithType = LsmChecksum.Verify(stored, objectName);
+        if (payloadWithType.Length == 0) throw LsmDecoder.Corrupted();
         var type = payloadWithType[^1];
         var payload = payloadWithType[..^1];
         return type switch

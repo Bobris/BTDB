@@ -67,6 +67,25 @@ public class AzureLsmStorageTest(BlobStorageFixture fixture) : IClassFixture<Blo
     }
 
     [Fact]
+    public async Task ZeroLengthReadRangeValidatesExistenceAndOffset()
+    {
+        var storage = await Storage();
+        await storage.CreateAsync("short", new byte[10], default);
+        storage.ReadRange("short", 0, Span<byte>.Empty);
+        storage.ReadRange("short", 10, Span<byte>.Empty);
+        await storage.ReadRangeAsync("short", 10, Memory<byte>.Empty, default);
+        Assert.Throws<EndOfStreamException>(() => storage.ReadRange("short", 11, Span<byte>.Empty));
+        await Assert.ThrowsAsync<EndOfStreamException>(async () =>
+            await storage.ReadRangeAsync("short", 11, Memory<byte>.Empty, default));
+        Assert.Throws<FileNotFoundException>(() => storage.ReadRange("missing", 0, Span<byte>.Empty));
+        await Assert.ThrowsAsync<FileNotFoundException>(async () =>
+            await storage.ReadRangeAsync("missing", 0, Memory<byte>.Empty, default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => storage.ReadRange("short", -1, Span<byte>.Empty));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await storage.ReadRangeAsync("short", -1, Memory<byte>.Empty, default));
+    }
+
+    [Fact]
     public async Task ListIsOrderedByKeyAndDeleteAndPutWork()
     {
         var storage = await Storage();

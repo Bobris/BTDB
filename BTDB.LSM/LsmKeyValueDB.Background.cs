@@ -48,7 +48,7 @@ public sealed partial class LsmKeyValueDB
 
     void RequestWork()
     {
-        if (_worker == null) RunAllWork();
+        if (!_options.BackgroundCompaction) RunAllWork();
         else _workSignal.Release();
     }
 
@@ -96,7 +96,7 @@ public sealed partial class LsmKeyValueDB
                     NotifyProgress();
                     try
                     {
-                        await Task.Delay(backoff, stop);
+                        await Task.Delay(backoff, _options.TimeProvider, stop);
                     }
                     catch (OperationCanceledException)
                     {
@@ -148,15 +148,16 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    async Task WaitForFlushesAsync()
+    async Task WaitForFlushesAsync(CancellationToken cancellation = default)
     {
         while (_state.Immutables.Length > 0)
         {
+            cancellation.ThrowIfCancellationRequested();
             var progress = _progress.Task;
             if (_state.Immutables.Length == 0) break;
             if (!_isWriter) throw new LsmWriterFencedException("The writer lease was lost before the flush finished.");
             ThrowIfWorkerKeepsFailing();
-            await Task.WhenAny(progress, Task.Delay(100));
+            await Task.WhenAny(progress, Task.Delay(100, cancellation));
         }
     }
 
@@ -247,7 +248,9 @@ public sealed partial class LsmKeyValueDB
     void CompactAllNow()
     {
         var state = _state;
-        if (state.Version.AllTables().Count() <= 1 && state.Version.Level0.Length == 0) return;
+        if (state.Version.AllTables().Count() <= 1 && state.Version.Level0.Length == 0 &&
+            !state.Version.ValueFiles.Keys.Any(f => state.Version.LiveValueRatio(f) < _compactionOptions.ValueGcThreshold))
+            return;
         Logger?.CompactionStart(0);
         var created = new List<(ulong FileNumber, long Bytes)>();
         var (version, obsolete) = LsmCompaction.CompactAll(state.Version, _compactionOptions, _tableOptions,
@@ -400,7 +403,7 @@ public sealed partial class LsmKeyValueDB
         }
         var manifest = new LsmManifest
         {
-            Sequence = ++_manifestSequence, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
+            Sequence = previous.Sequence + 1, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = version.LevelCount, WriterEpoch = _epoch,
             WriterSession = _writerSession, FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk,
             WalStartEpoch = walStartEpoch,
@@ -536,6 +539,7 @@ public sealed partial class LsmKeyValueDB
             {
                 var o = _obsoleteObjects[i];
                 if (o.ObsoleteAt > oldestLive ||
+                    o.Since != DateTimeOffset.MinValue &&
                     now - o.Since < (o.Kind == LsmObjectKind.Manifest ? ManifestRetention : grace)) continue;
                 _obsoleteObjects.RemoveAt(i);
                 // Never delete what the current version references, whatever led to the entry.

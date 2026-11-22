@@ -221,8 +221,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
     {
-        if (!FindFirstKey(prefix)) return false;
-        if (!FindKeyIndex(GetKeyIndex() + index)) return false;
+        if (index < 0 || !FindFirstKey(prefix)) return Fail();
+        var startIndex = GetKeyIndex();
+        if (index >= Tr.View.Count - startIndex) return Fail();
+        if (!FindKeyIndex(startIndex + index)) return false;
         return _key.AsSpan().StartsWith(prefix) || Fail();
     }
 
@@ -239,14 +241,13 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
     {
-        if (_key == null) return false;
-        EnsureCurrent();
+        if (_key == null || IsRemovedNow()) return false;
         return _key.AsSpan().StartsWith(prefix);
     }
 
     public void Invalidate() => Fail();
 
-    public bool IsValid() => _key != null;
+    public bool IsValid() => _key != null && !IsRemovedNow();
 
     /// The current value, read from its value file on first access when separated.
     ReadOnlyMemory<byte> Value => _resolvedValue ??= Tr.Db.Resolve(_value);
@@ -333,6 +334,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         EnsureCurrent();
         Tr.Erase(_key!);
         _removed = true;
+        _stamp = Tr.ModificationStamp;
         _index = -1;
     }
 
@@ -340,12 +342,16 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         EnsureCurrent();
         var target = (LsmKeyValueDBCursor)to;
+        if (target.Tr != Tr) throw new ArgumentException("Cursor must belong to the same transaction.", nameof(to));
         target.EnsureCurrent();
         if (LsmKeys.Compare(target._key, _key) < 0) return 0;
         var count = Tr.EraseRange(_key!, target._key!);
+        var stamp = Tr.ModificationStamp;
         _removed = true;
+        _stamp = stamp;
         _index = -1;
         target._removed = true;
+        target._stamp = stamp;
         target._index = -1;
         return count;
     }
@@ -379,7 +385,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
             return;
         }
 
-        if (_before) return;
+        // A cursor right before a still-live key cannot lie between oldKey and newKey (oldKey is the only live key
+        // with the prefix). If its key was erased meanwhile, it behaves like an erased cursor and must move if the
+        // rename crosses it.
+        if (_before && !_key.AsSpan().SequenceEqual(newKey) && Tr.View.TryGet(_key, out _)) return;
         var grew = LsmKeys.Compare(oldKey, newKey) < 0;
         if (grew ? LsmKeys.Compare(_key, oldKey) <= 0 || LsmKeys.Compare(_key, newKey) > 0
                 : LsmKeys.Compare(_key, newKey) < 0 || LsmKeys.Compare(_key, oldKey) >= 0) return;

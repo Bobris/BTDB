@@ -22,7 +22,23 @@ public sealed partial class LsmKeyValueDB
     volatile bool _holdsLease;
     long _epoch;
     ulong _writerSession;
-    DateTimeOffset _leaseDeadline;
+    long _leaseDeadlineTicks;
+
+    DateTimeOffset LeaseDeadline => new(Interlocked.Read(ref _leaseDeadlineTicks), TimeSpan.Zero);
+
+    void SetLeaseDeadline(DateTimeOffset deadline) =>
+        Interlocked.Exchange(ref _leaseDeadlineTicks, deadline.UtcTicks);
+
+    void AdvanceLeaseDeadline(DateTimeOffset deadline)
+    {
+        var target = deadline.UtcTicks;
+        while (true)
+        {
+            var current = Interlocked.Read(ref _leaseDeadlineTicks);
+            if (target <= current) return;
+            if (Interlocked.CompareExchange(ref _leaseDeadlineTicks, target, current) == current) return;
+        }
+    }
 
     string LockKey => _options.Prefix + "LOCK";
 
@@ -55,7 +71,7 @@ public sealed partial class LsmKeyValueDB
                         if (await _storage.TryAcquireLeaseAsync(LockKey, _leaseId, _options.LeaseDuration,
                                 cancellation))
                         {
-                            _leaseDeadline = requested + _options.LeaseDuration - _options.LeaseSafetyMargin;
+                            SetLeaseDeadline(requested + _options.LeaseDuration - _options.LeaseSafetyMargin);
                             _holdsLease = true;
                             break;
                         }
@@ -85,7 +101,18 @@ public sealed partial class LsmKeyValueDB
         }
         catch
         {
-            _holdsLease = false;
+            if (_holdsLease)
+            {
+                _holdsLease = false;
+                try
+                {
+                    await _storage.ReleaseLeaseAsync(LockKey, _leaseId, CancellationToken.None);
+                }
+                catch
+                {
+                }
+            }
+
             throw;
         }
         finally
@@ -106,7 +133,6 @@ public sealed partial class LsmKeyValueDB
         _epoch = Math.Max(replay.MaxEpoch, manifest.WriterEpoch) + 1;
         // Another takeover from the same state computes the same epoch; its fencing manifest must differ from ours.
         _writerSession = _options.WriterSession ?? (ulong)Random.Shared.NextInt64(long.MinValue, long.MaxValue);
-        _manifestSequence = manifest.Sequence;
         // Every writer session numbers new files from its own range, so they never collide with files a predecessor
         // created but did not publish.
         _nextFileNumber = Math.Max(manifest.NextFileNumber, FirstFileNumber(_epoch));
@@ -142,9 +168,10 @@ public sealed partial class LsmKeyValueDB
         }
 
         // Only now is the manifest final: a failed attempt may have seen objects a predecessor then published.
+        // Start background services before exposing _isWriter so concurrent writers never miss the new signal.
         _orphanScanDue = true;
-        _isWriter = true;
         StartWriterServices();
+        _isWriter = true;
         RequestWork();
     }
 
@@ -286,6 +313,8 @@ public sealed partial class LsmKeyValueDB
         _walUploader = null;
         _worker = null;
         _leaseRenewer = null;
+        _writerStop?.Dispose();
+        _writerStop = null;
     }
 
     async Task RenewLeaseLoop(CancellationToken stop)
@@ -316,12 +345,12 @@ public sealed partial class LsmKeyValueDB
             {
                 Logger?.LogWarning("BTDB.LSM lease renewal failed: " + ex.Message);
                 renewed = false;
-                if (_options.TimeProvider.GetUtcNow() < _leaseDeadline) continue;
+                if (_options.TimeProvider.GetUtcNow() < LeaseDeadline) continue;
             }
 
             if (renewed)
             {
-                _leaseDeadline = requested + _options.LeaseDuration - _options.LeaseSafetyMargin;
+                AdvanceLeaseDeadline(requested + _options.LeaseDuration - _options.LeaseSafetyMargin);
                 continue;
             }
 
@@ -337,9 +366,11 @@ public sealed partial class LsmKeyValueDB
     {
         if (!_holdsLease) throw new LsmWriterFencedException("This instance does not hold the writer lease.");
         var now = _options.TimeProvider.GetUtcNow();
-        if (now > _leaseDeadline - _options.LeaseDuration / 3)
+        var deadline = LeaseDeadline;
+        if (now > deadline - _options.LeaseDuration / 3)
         {
             bool renewed;
+            var transientError = false;
             try
             {
                 renewed = _storage.RenewLeaseAsync(LockKey, _leaseId, _options.LeaseDuration, CancellationToken.None)
@@ -349,14 +380,17 @@ public sealed partial class LsmKeyValueDB
             {
                 Logger?.LogWarning("BTDB.LSM lease renewal failed: " + ex.Message);
                 renewed = false;
+                transientError = true;
             }
 
-            if (renewed) _leaseDeadline = now + _options.LeaseDuration - _options.LeaseSafetyMargin;
-            else if (_options.TimeProvider.GetUtcNow() <= _leaseDeadline) return;
-            else throw new LsmWriterFencedException("The writer lease could not be renewed.");
+            if (renewed) AdvanceLeaseDeadline(now + _options.LeaseDuration - _options.LeaseSafetyMargin);
+            else if (transientError && _options.TimeProvider.GetUtcNow() <= LeaseDeadline) return;
+            else throw new LsmWriterFencedException(transientError
+                ? "The writer lease could not be renewed."
+                : "The writer lease was lost.");
         }
 
-        if (_options.TimeProvider.GetUtcNow() > _leaseDeadline)
+        if (_options.TimeProvider.GetUtcNow() > LeaseDeadline)
             throw new LsmWriterFencedException("The writer lease deadline passed.");
     }
 

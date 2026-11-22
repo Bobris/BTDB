@@ -23,7 +23,7 @@ public sealed partial class LsmKeyValueDB
     readonly Dictionary<long, (long Chunk, long Epoch)> _generationFirstChunk = new();
     readonly CommitLingerEstimator? _walLinger;
     readonly long _walClockOrigin = Stopwatch.GetTimestamp();
-    SemaphoreSlim _walSignal = new(0);
+    volatile SemaphoreSlim _walSignal = new(0);
     List<EncodedChunk>? _walInFlight;
     int _walInFlightRecords;
     long _walInFlightBytes;
@@ -38,12 +38,13 @@ public sealed partial class LsmKeyValueDB
     {
         lock (_walLock)
         {
+            if (!_isWriter) return;
             _walPending.Add(new(generation, transactionNumber, record));
             _walPendingBytes += record.Length;
             _walLinger?.Arrival(WalClock);
         }
 
-        if (_walUploader == null) UploadWalAsync().AsTask().GetAwaiter().GetResult();
+        if (!_options.BackgroundCompaction) UploadWalAsync().AsTask().GetAwaiter().GetResult();
         else _walSignal.Release();
     }
 
@@ -257,9 +258,16 @@ public sealed partial class LsmKeyValueDB
     async ValueTask CreateChunkAsync(long number, byte[] content)
     {
         var key = WalKey(_options.Prefix, number);
-        while (true)
+        var backoff = TimeSpan.FromMilliseconds(20);
+        for (var attempt = 0;; attempt++)
         {
             CheckLeaseDeadline();
+            if (attempt > 0)
+            {
+                await Task.Delay(backoff, _options.TimeProvider);
+                backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, TimeSpan.FromSeconds(2).Ticks));
+            }
+
             var outcome = await _storage.CreateAsync(key, content, CancellationToken.None);
             if (outcome == LsmWriteOutcome.Applied) return;
             var existing = await _storage.TryReadAsync(key, CancellationToken.None);

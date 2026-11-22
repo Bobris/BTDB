@@ -38,7 +38,6 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     volatile LsmState _state;
     LsmKeyValueDBTransaction? _writingTransaction;
     LsmManifest _lastManifest;
-    long _manifestSequence;
     ulong _nextFileNumber;
     volatile bool _disposed;
 
@@ -67,7 +66,6 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             loaded.Manifest.Sequence);
         _replay = loaded.Replay;
         _lastManifest = loaded.Manifest;
-        _manifestSequence = loaded.Manifest.Sequence;
         _nextFileNumber = loaded.Manifest.NextFileNumber;
         _durableTransaction = loaded.Metadata.TransactionNumber;
         if (options.AdaptiveWalLingerMax > TimeSpan.Zero) _walLinger = new(options.AdaptiveWalLingerMax);
@@ -82,9 +80,19 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     {
         options.Validate();
         var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
-        var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
-        if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);
-        return db;
+        LsmKeyValueDB? db = null;
+        try
+        {
+            db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
+            if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);
+            return db;
+        }
+        catch
+        {
+            if (db != null) db.Dispose();
+            else if (options.BlockCache == null) cache.Dispose();
+            throw;
+        }
     }
 
     static string TableKey(string prefix, ulong fileNumber) => $"{prefix}tables/{fileNumber:D16}.sst";
@@ -117,14 +125,37 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     /// Waits for the writer lease if this instance is not the writer yet, and while flushes, level 0 compaction or WAL
     /// uploads are too far behind. inBatch is ignored: every commit is published (ImplementationPlan.md, D4).
-    public async ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
+    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false) =>
+        StartWritingTransactionAsync(CancellationToken.None);
+
+    async ValueTask<IKeyValueDBTransaction> StartWritingTransactionAsync(CancellationToken cancellation)
     {
         while (true)
         {
+            cancellation.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_isWriter) await AcquireWriterLeaseAsync();
-            await WaitWhileStalledAsync();
-            var transaction = (LsmKeyValueDBTransaction)await TakeWriterSlotAsync();
+            if (!_isWriter) await AcquireWriterLeaseAsync(cancellation);
+            await WaitWhileStalledAsync(cancellation: cancellation);
+            var waiting = TakeWriterSlotAsync();
+            LsmKeyValueDBTransaction transaction;
+            if (cancellation.CanBeCanceled)
+            {
+                try
+                {
+                    transaction = (LsmKeyValueDBTransaction)await waiting.WaitAsync(cancellation);
+                }
+                catch (OperationCanceledException)
+                {
+                    _ = waiting.ContinueWith(t => t.Result.Dispose(), CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+                    throw;
+                }
+            }
+            else
+            {
+                transaction = (LsmKeyValueDBTransaction)await waiting;
+            }
+
             // The writer role may have been released or lost while this transaction waited for the slot.
             if (_isWriter && transaction.WriterEpoch == _epoch) return transaction;
             transaction.Dispose();
@@ -158,7 +189,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     StallReason Stall()
     {
-        if (_worker == null || !_isWriter) return StallReason.None;
+        if (!_options.BackgroundCompaction || !_isWriter) return StallReason.None;
         var state = _state;
         if (state.Immutables.Length >= _options.MaxImmutableMemtables) return StallReason.SealedMemtables;
         if (state.Version.Level0Runs.Length >= _options.Level0StopWritesTrigger) return StallReason.Level0;
@@ -172,16 +203,17 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     /// Waits while flushes, level 0 compaction or WAL uploads are too far behind; synchronously for an upgrade from
     /// a read transaction, which cannot await (the returned ValueTask is then already complete).
-    async ValueTask WaitWhileStalledAsync(bool synchronous = false)
+    async ValueTask WaitWhileStalledAsync(bool synchronous = false, CancellationToken cancellation = default)
     {
         while (Stall() is var reason && reason != StallReason.None && !_disposed)
         {
+            cancellation.ThrowIfCancellationRequested();
             var start = Stopwatch.GetTimestamp();
             var progress = _progress.Task;
             if (IsStalled())
             {
                 if (synchronous) progress.Wait(TimeSpan.FromMilliseconds(100));
-                else await Task.WhenAny(progress, Task.Delay(100));
+                else await Task.WhenAny(progress, Task.Delay(100, cancellation));
             }
 
             CountStall(reason, start);
@@ -290,7 +322,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     internal void TransactionDisposed(LsmKeyValueDBTransaction transaction)
     {
         _transactions.TryRemove(transaction, out _);
-        if (_worker == null) DeleteObsoleteObjects();
+        if (!_options.BackgroundCompaction) DeleteObsoleteObjects();
         else ReleaseRetiredArenas();
     }
 
@@ -351,7 +383,13 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     {
         await CheckpointAsync(cancellation);
         var request = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (_fullCompactionRequests) _fullCompactionRequests.Add(request);
+        lock (_fullCompactionRequests)
+        {
+            if (!_isWriter)
+                throw new LsmWriterFencedException("The writer lease was lost before the compaction ran.");
+            _fullCompactionRequests.Add(request);
+        }
+
         RequestWork();
         await request.Task.WaitAsync(cancellation);
         return false;
@@ -364,7 +402,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     async ValueTask CheckpointAsync(CancellationToken cancellation)
     {
-        var transaction = (LsmKeyValueDBTransaction)await StartWritingTransaction();
+        var transaction = (LsmKeyValueDBTransaction)await StartWritingTransactionAsync(cancellation);
         try
         {
             RotateHoldingWriter();
@@ -374,7 +412,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             transaction.Dispose();
         }
 
-        await WaitForFlushesAsync();
+        await WaitForFlushesAsync(cancellation);
     }
 
     public ulong? PreserveHistoryUpToCommitUlong
@@ -416,23 +454,28 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             _disposed = true;
         }
 
-        _modeLock.Wait();
         try
         {
-            if (_isWriter) StepDownAsync().GetAwaiter().GetResult();
+            _modeLock.Wait();
+            try
+            {
+                if (_isWriter) StepDownAsync().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                _modeLock.Release();
+            }
         }
         finally
         {
-            _modeLock.Release();
+            foreach (var request in TakeFullCompactionRequests()) request.TrySetCanceled();
+
+            DeleteObsoleteObjects();
+            var state = _state;
+            state.Memtable.Arena?.Dispose();
+            foreach (var sealedMemtable in state.Immutables) sealedMemtable.Memtable.Arena?.Dispose();
+            if (_options.BlockCache == null) _cache.Dispose();
         }
-
-        foreach (var request in TakeFullCompactionRequests()) request.TrySetCanceled();
-
-        DeleteObsoleteObjects();
-        var state = _state;
-        state.Memtable.Arena?.Dispose();
-        foreach (var sealedMemtable in state.Immutables) sealedMemtable.Memtable.Arena?.Dispose();
-        if (_options.BlockCache == null) _cache.Dispose();
     }
 
     /// Simulates a crash for tests: background work stops, nothing pending is uploaded or flushed and the lease is

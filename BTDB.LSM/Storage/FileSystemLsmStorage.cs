@@ -130,6 +130,13 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
         {
             using var handle = File.OpenHandle(PathOf(key), FileMode.Open, FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
+            if (destination.Length == 0)
+            {
+                if (offset > RandomAccess.GetLength(handle))
+                    throw new EndOfStreamException($"Range beyond the end of {key}");
+                return;
+            }
+
             var done = 0;
             while (done < destination.Length)
             {

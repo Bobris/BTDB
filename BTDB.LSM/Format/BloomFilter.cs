@@ -34,7 +34,9 @@ sealed class BloomFilter
     {
         var decoder = new LsmDecoder(data);
         var hashCount = decoder.ReadVUInt32();
-        return new(decoder.ReadByteArray(), hashCount);
+        var bits = decoder.ReadByteArray();
+        if (hashCount <= 0 || bits.Length == 0) throw LsmDecoder.Corrupted();
+        return new(bits, hashCount);
     }
 
     public static ulong Hash(ReadOnlySpan<byte> key) => XxHash64.Hash(key);
