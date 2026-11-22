@@ -163,6 +163,7 @@ public class ObjectDbMemberShapesTest(ITestOutputHelper output) : ObjectDbTestBa
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void HiddenBasePropertyOfEventIsNotStored(EventLayer layer)
     {
         var e = new HidingEvent { X = "derived", Other = 5 };

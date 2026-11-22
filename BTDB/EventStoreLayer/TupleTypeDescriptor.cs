@@ -42,11 +42,14 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
-    TupleTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor[] typeDescriptors)
+    internal TupleTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor[] typeDescriptors)
     {
         _typeSerializers = typeSerializers;
         _itemDescriptors.AddRange(typeDescriptors);
     }
+
+    internal int ItemCount => (int)_itemDescriptors.Count;
+    internal ITypeDescriptor Item(int index) => _itemDescriptors[index];
 
     public bool Equals(ITypeDescriptor other)
     {

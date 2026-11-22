@@ -3,13 +3,16 @@ using System.Collections.Generic;
 namespace SimpleTester;
 
 #nullable disable
+[BTDB.Generate]
 public class TestKlass0
 {
     public List<string> Prop0_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass1
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -17,6 +20,7 @@ public class TestKlass1
     public Dictionary<int, LocalClass0> Prop1_0 { get; set; }
     public List<string> Prop1_1 { get; set; }
     public List<string> Prop1_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -24,8 +28,10 @@ public class TestKlass1
     public Dictionary<int, List<LocalClass3>> Prop1_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass2
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -34,13 +40,16 @@ public class TestKlass2
     public TestKlass0 Prop2_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass3
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop3_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -48,14 +57,17 @@ public class TestKlass3
     public Dictionary<int, LocalClass1> Prop3_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass4
 {
     public List<string> Prop4_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop4_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -63,8 +75,10 @@ public class TestKlass4
     public Dictionary<int, LocalClass2> Prop4_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass5
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -72,6 +86,7 @@ public class TestKlass5
     public Dictionary<int, List<LocalClass0>> Prop5_0 { get; set; }
     public TestKlass0 Prop5_1 { get; set; }
     public List<string> Prop5_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -79,8 +94,10 @@ public class TestKlass5
     public Dictionary<int, List<LocalClass3>> Prop5_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass6
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -89,23 +106,28 @@ public class TestKlass6
     public List<string> Prop6_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass7
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop7_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop7_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop7_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -113,13 +135,16 @@ public class TestKlass7
     public Dictionary<int, LocalClass3> Prop7_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass8
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop8_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -127,15 +152,18 @@ public class TestKlass8
     public Dictionary<int, List<LocalClass1>> Prop8_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass9
 {
     public TestKlass4 Prop9_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop9_1 { get; set; }
     public List<string> Prop9_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -143,15 +171,18 @@ public class TestKlass9
     public Dictionary<int, List<LocalClass3>> Prop9_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass10
 {
     public List<string> Prop10_0 { get; set; }
     public List<string> Prop10_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop10_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -159,9 +190,11 @@ public class TestKlass10
     public Dictionary<int, LocalClass3> Prop10_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass11
 {
     public TestKlass3 Prop11_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -170,6 +203,7 @@ public class TestKlass11
     public TestKlass3 Prop11_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass12
 {
     public List<string> Prop12_0 { get; set; }
@@ -178,6 +212,7 @@ public class TestKlass12
     public List<string> Prop12_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass13
 {
     public TestKlass1 Prop13_0 { get; set; }
@@ -185,14 +220,17 @@ public class TestKlass13
     public List<string> Prop13_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass14
 {
     public List<string> Prop14_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop14_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -200,10 +238,12 @@ public class TestKlass14
     public Dictionary<int, List<LocalClass2>> Prop14_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass15
 {
     public TestKlass1 Prop15_0 { get; set; }
     public TestKlass6 Prop15_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -212,8 +252,10 @@ public class TestKlass15
     public List<string> Prop15_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass16
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -224,6 +266,7 @@ public class TestKlass16
     public TestKlass7 Prop16_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass17
 {
     public List<string> Prop17_0 { get; set; }
@@ -231,19 +274,23 @@ public class TestKlass17
     public TestKlass10 Prop17_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass18
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop18_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop18_1 { get; set; }
     public TestKlass0 Prop18_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -251,8 +298,10 @@ public class TestKlass18
     public Dictionary<int, List<LocalClass3>> Prop18_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass19
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -261,15 +310,18 @@ public class TestKlass19
     public List<string> Prop19_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass20
 {
     public TestKlass2 Prop20_0 { get; set; }
     public List<string> Prop20_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass21
 {
     public List<string> Prop21_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -278,20 +330,24 @@ public class TestKlass21
     public List<string> Prop21_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass22
 {
     public TestKlass5 Prop22_0 { get; set; }
     public List<string> Prop22_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass23
 {
     public TestKlass3 Prop23_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop23_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -300,23 +356,28 @@ public class TestKlass23
     public List<string> Prop23_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass24
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop24_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop24_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop24_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -324,8 +385,10 @@ public class TestKlass24
     public Dictionary<int, List<LocalClass3>> Prop24_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass25
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -335,20 +398,24 @@ public class TestKlass25
     public TestKlass3 Prop25_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass26
 {
     public List<string> Prop26_0 { get; set; }
     public TestKlass2 Prop26_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass27
 {
     public List<string> Prop27_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop27_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -357,8 +424,10 @@ public class TestKlass27
     public TestKlass22 Prop27_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass28
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -369,14 +438,17 @@ public class TestKlass28
     public TestKlass2 Prop28_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass29
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop29_0 { get; set; }
     public TestKlass0 Prop29_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -385,14 +457,17 @@ public class TestKlass29
     public TestKlass6 Prop29_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass30
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop30_0 { get; set; }
     public TestKlass17 Prop30_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -400,9 +475,11 @@ public class TestKlass30
     public Dictionary<int, LocalClass2> Prop30_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass31
 {
     public List<string> Prop31_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -410,13 +487,16 @@ public class TestKlass31
     public Dictionary<int, LocalClass1> Prop31_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass32
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop32_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -424,9 +504,11 @@ public class TestKlass32
     public Dictionary<int, List<LocalClass1>> Prop32_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass33
 {
     public List<string> Prop33_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -434,14 +516,17 @@ public class TestKlass33
     public Dictionary<int, List<LocalClass1>> Prop33_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass34
 {
     public List<string> Prop34_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop34_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -450,13 +535,16 @@ public class TestKlass34
     public List<string> Prop34_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass35
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop35_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -464,18 +552,22 @@ public class TestKlass35
     public Dictionary<int, List<LocalClass1>> Prop35_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass36
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop36_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop36_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -483,20 +575,24 @@ public class TestKlass36
     public Dictionary<int, LocalClass2> Prop36_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass37
 {
     public List<string> Prop37_0 { get; set; }
     public List<string> Prop37_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass38
 {
     public TestKlass27 Prop38_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop38_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -505,8 +601,10 @@ public class TestKlass38
     public List<string> Prop38_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass39
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -514,6 +612,7 @@ public class TestKlass39
     public Dictionary<int, LocalClass0> Prop39_0 { get; set; }
     public List<string> Prop39_1 { get; set; }
     public List<string> Prop39_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -521,9 +620,11 @@ public class TestKlass39
     public Dictionary<int, LocalClass3> Prop39_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass40
 {
     public List<string> Prop40_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -532,13 +633,16 @@ public class TestKlass40
     public List<string> Prop40_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass41
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop41_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -546,8 +650,10 @@ public class TestKlass41
     public Dictionary<int, List<LocalClass1>> Prop41_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass42
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -556,9 +662,11 @@ public class TestKlass42
     public List<string> Prop42_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass43
 {
     public TestKlass4 Prop43_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -567,9 +675,11 @@ public class TestKlass43
     public List<string> Prop43_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass44
 {
     public TestKlass19 Prop44_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -579,8 +689,10 @@ public class TestKlass44
     public TestKlass6 Prop44_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass45
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -589,18 +701,22 @@ public class TestKlass45
     public TestKlass4 Prop45_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass46
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop46_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop46_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -608,14 +724,17 @@ public class TestKlass46
     public Dictionary<int, LocalClass2> Prop46_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass47
 {
     public List<string> Prop47_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop47_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -623,8 +742,10 @@ public class TestKlass47
     public Dictionary<int, List<LocalClass2>> Prop47_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass48
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -634,15 +755,18 @@ public class TestKlass48
     public TestKlass32 Prop48_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass49
 {
     public List<string> Prop49_0 { get; set; }
     public TestKlass25 Prop49_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop49_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -650,12 +774,14 @@ public class TestKlass49
     public Dictionary<int, LocalClass3> Prop49_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass50
 {
     public List<string> Prop50_0 { get; set; }
     public List<string> Prop50_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass51
 {
     public TestKlass31 Prop51_0 { get; set; }
@@ -663,6 +789,7 @@ public class TestKlass51
     public List<string> Prop51_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass52
 {
     public TestKlass31 Prop52_0 { get; set; }
@@ -670,8 +797,10 @@ public class TestKlass52
     public TestKlass30 Prop52_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass53
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -680,8 +809,10 @@ public class TestKlass53
     public TestKlass34 Prop53_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass54
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -692,10 +823,12 @@ public class TestKlass54
     public TestKlass1 Prop54_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass55
 {
     public List<string> Prop55_0 { get; set; }
     public List<string> Prop55_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -704,8 +837,10 @@ public class TestKlass55
     public TestKlass42 Prop55_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass56
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -714,9 +849,11 @@ public class TestKlass56
     public TestKlass6 Prop56_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass57
 {
     public TestKlass26 Prop57_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -724,13 +861,16 @@ public class TestKlass57
     public Dictionary<int, List<LocalClass1>> Prop57_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass58
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop58_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -738,9 +878,11 @@ public class TestKlass58
     public Dictionary<int, LocalClass1> Prop58_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass59
 {
     public List<string> Prop59_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -748,8 +890,10 @@ public class TestKlass59
     public Dictionary<int, LocalClass1> Prop59_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass60
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -758,9 +902,11 @@ public class TestKlass60
     public List<string> Prop60_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass61
 {
     public TestKlass24 Prop61_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -768,16 +914,19 @@ public class TestKlass61
     public Dictionary<int, LocalClass1> Prop61_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass62
 {
     public List<string> Prop62_0 { get; set; }
     public TestKlass15 Prop62_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass63
 {
     public List<string> Prop63_0 { get; set; }
     public TestKlass59 Prop63_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -785,8 +934,10 @@ public class TestKlass63
     public Dictionary<int, List<LocalClass2>> Prop63_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass64
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -794,6 +945,7 @@ public class TestKlass64
     public Dictionary<int, LocalClass0> Prop64_0 { get; set; }
     public TestKlass53 Prop64_1 { get; set; }
     public List<string> Prop64_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -801,9 +953,11 @@ public class TestKlass64
     public Dictionary<int, LocalClass3> Prop64_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass65
 {
     public TestKlass45 Prop65_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -812,14 +966,17 @@ public class TestKlass65
     public TestKlass7 Prop65_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass66
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop66_0 { get; set; }
     public List<string> Prop66_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -827,9 +984,11 @@ public class TestKlass66
     public Dictionary<int, List<LocalClass2>> Prop66_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass67
 {
     public List<string> Prop67_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -838,9 +997,11 @@ public class TestKlass67
     public TestKlass8 Prop67_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass68
 {
     public List<string> Prop68_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -848,8 +1009,10 @@ public class TestKlass68
     public Dictionary<int, LocalClass1> Prop68_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass69
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -858,15 +1021,18 @@ public class TestKlass69
     public TestKlass5 Prop69_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass70
 {
     public List<string> Prop70_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop70_1 { get; set; }
     public List<string> Prop70_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -874,18 +1040,22 @@ public class TestKlass70
     public Dictionary<int, List<LocalClass3>> Prop70_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass71
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop71_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop71_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -893,9 +1063,11 @@ public class TestKlass71
     public Dictionary<int, List<LocalClass2>> Prop71_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass72
 {
     public List<string> Prop72_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -904,10 +1076,12 @@ public class TestKlass72
     public TestKlass10 Prop72_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass73
 {
     public TestKlass15 Prop73_0 { get; set; }
     public List<string> Prop73_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -915,8 +1089,10 @@ public class TestKlass73
     public Dictionary<int, LocalClass2> Prop73_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass74
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -927,19 +1103,23 @@ public class TestKlass74
     public List<string> Prop74_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass75
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop75_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop75_1 { get; set; }
     public TestKlass34 Prop75_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -947,8 +1127,10 @@ public class TestKlass75
     public Dictionary<int, LocalClass3> Prop75_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass76
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -958,9 +1140,11 @@ public class TestKlass76
     public List<string> Prop76_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass77
 {
     public List<string> Prop77_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -968,21 +1152,25 @@ public class TestKlass77
     public Dictionary<int, List<LocalClass1>> Prop77_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass78
 {
     public TestKlass58 Prop78_0 { get; set; }
     public List<string> Prop78_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass79
 {
     public TestKlass9 Prop79_0 { get; set; }
     public TestKlass10 Prop79_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop79_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -990,9 +1178,11 @@ public class TestKlass79
     public Dictionary<int, List<LocalClass3>> Prop79_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass80
 {
     public List<string> Prop80_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1000,9 +1190,11 @@ public class TestKlass80
     public Dictionary<int, LocalClass1> Prop80_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass81
 {
     public TestKlass38 Prop81_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1010,13 +1202,16 @@ public class TestKlass81
     public Dictionary<int, LocalClass1> Prop81_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass82
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop82_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1025,13 +1220,16 @@ public class TestKlass82
     public TestKlass61 Prop82_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass83
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop83_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1039,23 +1237,28 @@ public class TestKlass83
     public Dictionary<int, LocalClass1> Prop83_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass84
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop84_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop84_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop84_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1063,8 +1266,10 @@ public class TestKlass84
     public Dictionary<int, List<LocalClass3>> Prop84_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass85
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1073,19 +1278,23 @@ public class TestKlass85
     public List<string> Prop85_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass86
 {
     public List<string> Prop86_0 { get; set; }
     public TestKlass12 Prop86_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass87
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop87_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1093,13 +1302,16 @@ public class TestKlass87
     public Dictionary<int, List<LocalClass1>> Prop87_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass88
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop88_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1107,9 +1319,11 @@ public class TestKlass88
     public Dictionary<int, LocalClass1> Prop88_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass89
 {
     public TestKlass88 Prop89_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1118,23 +1332,28 @@ public class TestKlass89
     public TestKlass46 Prop89_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass90
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop90_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop90_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop90_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1142,9 +1361,11 @@ public class TestKlass90
     public Dictionary<int, List<LocalClass3>> Prop90_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass91
 {
     public List<string> Prop91_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1152,6 +1373,7 @@ public class TestKlass91
     public Dictionary<int, LocalClass1> Prop91_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass92
 {
     public List<string> Prop92_0 { get; set; }
@@ -1160,9 +1382,11 @@ public class TestKlass92
     public TestKlass71 Prop92_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass93
 {
     public TestKlass47 Prop93_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1170,15 +1394,18 @@ public class TestKlass93
     public Dictionary<int, List<LocalClass1>> Prop93_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass94
 {
     public List<string> Prop94_0 { get; set; }
     public List<string> Prop94_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop94_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1186,15 +1413,18 @@ public class TestKlass94
     public Dictionary<int, List<LocalClass3>> Prop94_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass95
 {
     public List<string> Prop95_0 { get; set; }
     public TestKlass55 Prop95_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop95_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1202,14 +1432,17 @@ public class TestKlass95
     public Dictionary<int, LocalClass3> Prop95_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass96
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop96_0 { get; set; }
     public List<string> Prop96_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1218,10 +1451,12 @@ public class TestKlass96
     public TestKlass35 Prop96_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass97
 {
     public List<string> Prop97_0 { get; set; }
     public TestKlass7 Prop97_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1229,18 +1464,22 @@ public class TestKlass97
     public Dictionary<int, LocalClass2> Prop97_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass98
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop98_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop98_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1248,19 +1487,23 @@ public class TestKlass98
     public Dictionary<int, LocalClass2> Prop98_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass99
 {
     public TestKlass45 Prop99_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop99_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop99_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1268,14 +1511,17 @@ public class TestKlass99
     public Dictionary<int, List<LocalClass3>> Prop99_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass100
 {
     public List<string> Prop100_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop100_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1283,6 +1529,7 @@ public class TestKlass100
     public Dictionary<int, LocalClass2> Prop100_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass101
 {
     public TestKlass81 Prop101_0 { get; set; }
@@ -1290,11 +1537,13 @@ public class TestKlass101
     public List<string> Prop101_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass102
 {
     public TestKlass94 Prop102_0 { get; set; }
     public List<string> Prop102_1 { get; set; }
     public List<string> Prop102_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1302,14 +1551,17 @@ public class TestKlass102
     public Dictionary<int, List<LocalClass3>> Prop102_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass103
 {
     public TestKlass41 Prop103_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop103_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1318,14 +1570,17 @@ public class TestKlass103
     public List<string> Prop103_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass104
 {
     public TestKlass100 Prop104_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop104_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1334,13 +1589,16 @@ public class TestKlass104
     public TestKlass87 Prop104_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass105
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop105_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1348,19 +1606,23 @@ public class TestKlass105
     public Dictionary<int, LocalClass1> Prop105_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass106
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop106_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop106_1 { get; set; }
     public List<string> Prop106_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1368,8 +1630,10 @@ public class TestKlass106
     public Dictionary<int, List<LocalClass3>> Prop106_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass107
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1378,9 +1642,11 @@ public class TestKlass107
     public TestKlass57 Prop107_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass108
 {
     public List<string> Prop108_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1388,9 +1654,11 @@ public class TestKlass108
     public Dictionary<int, List<LocalClass1>> Prop108_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass109
 {
     public List<string> Prop109_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1400,20 +1668,24 @@ public class TestKlass109
     public List<string> Prop109_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass110
 {
     public List<string> Prop110_0 { get; set; }
     public List<string> Prop110_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass111
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop111_0 { get; set; }
     public TestKlass107 Prop111_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1421,13 +1693,16 @@ public class TestKlass111
     public Dictionary<int, LocalClass2> Prop111_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass112
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop112_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1436,10 +1711,12 @@ public class TestKlass112
     public List<string> Prop112_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass113
 {
     public List<string> Prop113_0 { get; set; }
     public List<string> Prop113_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1448,13 +1725,16 @@ public class TestKlass113
     public TestKlass26 Prop113_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass114
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop114_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1462,13 +1742,16 @@ public class TestKlass114
     public Dictionary<int, List<LocalClass1>> Prop114_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass115
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop115_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1478,15 +1761,18 @@ public class TestKlass115
     public List<string> Prop115_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass116
 {
     public TestKlass110 Prop116_0 { get; set; }
     public List<string> Prop116_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop116_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1494,18 +1780,22 @@ public class TestKlass116
     public Dictionary<int, LocalClass3> Prop116_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass117
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop117_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop117_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1513,10 +1803,12 @@ public class TestKlass117
     public Dictionary<int, List<LocalClass2>> Prop117_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass118
 {
     public List<string> Prop118_0 { get; set; }
     public TestKlass80 Prop118_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1524,15 +1816,18 @@ public class TestKlass118
     public Dictionary<int, LocalClass2> Prop118_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass119
 {
     public List<string> Prop119_0 { get; set; }
     public List<string> Prop119_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop119_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1540,13 +1835,16 @@ public class TestKlass119
     public Dictionary<int, LocalClass3> Prop119_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass120
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop120_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1556,10 +1854,12 @@ public class TestKlass120
     public TestKlass78 Prop120_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass121
 {
     public List<string> Prop121_0 { get; set; }
     public TestKlass68 Prop121_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1568,13 +1868,16 @@ public class TestKlass121
     public TestKlass60 Prop121_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass122
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop122_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1582,8 +1885,10 @@ public class TestKlass122
     public Dictionary<int, LocalClass1> Prop122_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass123
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1591,6 +1896,7 @@ public class TestKlass123
     public Dictionary<int, List<LocalClass0>> Prop123_0 { get; set; }
     public List<string> Prop123_1 { get; set; }
     public TestKlass1 Prop123_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1598,9 +1904,11 @@ public class TestKlass123
     public Dictionary<int, LocalClass3> Prop123_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass124
 {
     public List<string> Prop124_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1609,25 +1917,30 @@ public class TestKlass124
     public TestKlass67 Prop124_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass125
 {
     public TestKlass73 Prop125_0 { get; set; }
     public List<string> Prop125_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass126
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop126_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop126_1 { get; set; }
     public TestKlass13 Prop126_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1635,18 +1948,22 @@ public class TestKlass126
     public Dictionary<int, List<LocalClass3>> Prop126_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass127
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop127_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop127_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1655,9 +1972,11 @@ public class TestKlass127
     public List<string> Prop127_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass128
 {
     public List<string> Prop128_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1666,14 +1985,17 @@ public class TestKlass128
     public TestKlass65 Prop128_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass129
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop129_0 { get; set; }
     public TestKlass58 Prop129_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1681,13 +2003,16 @@ public class TestKlass129
     public Dictionary<int, LocalClass2> Prop129_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass130
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop130_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1695,9 +2020,11 @@ public class TestKlass130
     public Dictionary<int, List<LocalClass1>> Prop130_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass131
 {
     public List<string> Prop131_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1705,8 +2032,10 @@ public class TestKlass131
     public Dictionary<int, List<LocalClass1>> Prop131_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass132
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1716,14 +2045,17 @@ public class TestKlass132
     public List<string> Prop132_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass133
 {
     public List<string> Prop133_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop133_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1731,19 +2063,23 @@ public class TestKlass133
     public Dictionary<int, LocalClass2> Prop133_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass134
 {
     public List<string> Prop134_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop134_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop134_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1751,25 +2087,30 @@ public class TestKlass134
     public Dictionary<int, List<LocalClass3>> Prop134_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass135
 {
     public List<string> Prop135_0 { get; set; }
     public List<string> Prop135_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass136
 {
     public TestKlass11 Prop136_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop136_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop136_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1777,24 +2118,29 @@ public class TestKlass136
     public Dictionary<int, LocalClass3> Prop136_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass137
 {
     public List<string> Prop137_0 { get; set; }
     public TestKlass17 Prop137_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass138
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop138_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop138_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1803,9 +2149,11 @@ public class TestKlass138
     public TestKlass87 Prop138_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass139
 {
     public List<string> Prop139_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1813,8 +2161,10 @@ public class TestKlass139
     public Dictionary<int, List<LocalClass1>> Prop139_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass140
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1822,6 +2172,7 @@ public class TestKlass140
     public Dictionary<int, List<LocalClass0>> Prop140_0 { get; set; }
     public TestKlass139 Prop140_1 { get; set; }
     public TestKlass132 Prop140_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1829,10 +2180,12 @@ public class TestKlass140
     public Dictionary<int, LocalClass3> Prop140_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass141
 {
     public TestKlass125 Prop141_0 { get; set; }
     public List<string> Prop141_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1840,8 +2193,10 @@ public class TestKlass141
     public Dictionary<int, LocalClass2> Prop141_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass142
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1850,8 +2205,10 @@ public class TestKlass142
     public List<string> Prop142_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass143
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1860,8 +2217,10 @@ public class TestKlass143
     public List<string> Prop143_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass144
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1870,14 +2229,17 @@ public class TestKlass144
     public TestKlass139 Prop144_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass145
 {
     public TestKlass63 Prop145_0 { get; set; }
     public List<string> Prop145_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass146
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -1886,13 +2248,16 @@ public class TestKlass146
     public TestKlass37 Prop146_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass147
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop147_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1900,15 +2265,18 @@ public class TestKlass147
     public Dictionary<int, LocalClass1> Prop147_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass148
 {
     public List<string> Prop148_0 { get; set; }
     public List<string> Prop148_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass149
 {
     public TestKlass141 Prop149_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -1917,19 +2285,23 @@ public class TestKlass149
     public TestKlass17 Prop149_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass150
 {
     public List<string> Prop150_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop150_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop150_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1937,19 +2309,23 @@ public class TestKlass150
     public Dictionary<int, LocalClass3> Prop150_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass151
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop151_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop151_1 { get; set; }
     public TestKlass37 Prop151_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -1957,18 +2333,22 @@ public class TestKlass151
     public Dictionary<int, List<LocalClass3>> Prop151_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass152
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop152_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop152_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -1976,23 +2356,28 @@ public class TestKlass152
     public Dictionary<int, LocalClass2> Prop152_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass153
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop153_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop153_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop153_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2000,18 +2385,22 @@ public class TestKlass153
     public Dictionary<int, List<LocalClass3>> Prop153_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass154
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop154_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop154_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2019,14 +2408,17 @@ public class TestKlass154
     public Dictionary<int, LocalClass2> Prop154_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass155
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop155_0 { get; set; }
     public List<string> Prop155_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2035,15 +2427,18 @@ public class TestKlass155
     public List<string> Prop155_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass156
 {
     public List<string> Prop156_0 { get; set; }
     public List<string> Prop156_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop156_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2051,19 +2446,23 @@ public class TestKlass156
     public Dictionary<int, List<LocalClass3>> Prop156_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass157
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop157_0 { get; set; }
     public List<string> Prop157_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop157_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2071,25 +2470,30 @@ public class TestKlass157
     public Dictionary<int, List<LocalClass3>> Prop157_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass158
 {
     public TestKlass70 Prop158_0 { get; set; }
     public TestKlass145 Prop158_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass159
 {
     public TestKlass78 Prop159_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop159_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop159_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2097,9 +2501,11 @@ public class TestKlass159
     public Dictionary<int, List<LocalClass3>> Prop159_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass160
 {
     public List<string> Prop160_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2108,10 +2514,12 @@ public class TestKlass160
     public List<string> Prop160_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass161
 {
     public TestKlass123 Prop161_0 { get; set; }
     public TestKlass110 Prop161_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2119,8 +2527,10 @@ public class TestKlass161
     public Dictionary<int, LocalClass2> Prop161_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass162
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2129,23 +2539,28 @@ public class TestKlass162
     public TestKlass45 Prop162_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass163
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop163_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop163_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop163_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2153,19 +2568,23 @@ public class TestKlass163
     public Dictionary<int, List<LocalClass3>> Prop163_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass164
 {
     public List<string> Prop164_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop164_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop164_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2173,19 +2592,23 @@ public class TestKlass164
     public Dictionary<int, LocalClass3> Prop164_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass165
 {
     public TestKlass119 Prop165_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop165_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop165_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2193,8 +2616,10 @@ public class TestKlass165
     public Dictionary<int, List<LocalClass3>> Prop165_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass166
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2204,8 +2629,10 @@ public class TestKlass166
     public List<string> Prop166_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass167
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2214,8 +2641,10 @@ public class TestKlass167
     public List<string> Prop167_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass168
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2224,14 +2653,17 @@ public class TestKlass168
     public TestKlass47 Prop168_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass169
 {
     public List<string> Prop169_0 { get; set; }
     public TestKlass90 Prop169_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass170
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2240,13 +2672,16 @@ public class TestKlass170
     public TestKlass35 Prop170_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass171
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop171_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2254,9 +2689,11 @@ public class TestKlass171
     public Dictionary<int, LocalClass1> Prop171_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass172
 {
     public List<string> Prop172_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2264,9 +2701,11 @@ public class TestKlass172
     public Dictionary<int, List<LocalClass1>> Prop172_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass173
 {
     public TestKlass116 Prop173_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2275,15 +2714,18 @@ public class TestKlass173
     public List<string> Prop173_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass174
 {
     public List<string> Prop174_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop174_1 { get; set; }
     public TestKlass68 Prop174_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2291,10 +2733,12 @@ public class TestKlass174
     public Dictionary<int, LocalClass3> Prop174_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass175
 {
     public TestKlass114 Prop175_0 { get; set; }
     public TestKlass86 Prop175_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2302,8 +2746,10 @@ public class TestKlass175
     public Dictionary<int, LocalClass2> Prop175_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass176
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2312,8 +2758,10 @@ public class TestKlass176
     public TestKlass107 Prop176_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass177
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2322,23 +2770,28 @@ public class TestKlass177
     public TestKlass138 Prop177_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass178
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop178_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop178_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop178_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2346,20 +2799,24 @@ public class TestKlass178
     public Dictionary<int, List<LocalClass3>> Prop178_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass179
 {
     public TestKlass42 Prop179_0 { get; set; }
     public List<string> Prop179_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass180
 {
     public List<string> Prop180_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop180_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2367,6 +2824,7 @@ public class TestKlass180
     public Dictionary<int, LocalClass2> Prop180_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass181
 {
     public TestKlass143 Prop181_0 { get; set; }
@@ -2374,18 +2832,22 @@ public class TestKlass181
     public List<string> Prop181_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass182
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop182_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop182_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2393,6 +2855,7 @@ public class TestKlass182
     public Dictionary<int, List<LocalClass2>> Prop182_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass183
 {
     public TestKlass137 Prop183_0 { get; set; }
@@ -2400,14 +2863,17 @@ public class TestKlass183
     public List<string> Prop183_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass184
 {
     public TestKlass56 Prop184_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop184_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2415,14 +2881,17 @@ public class TestKlass184
     public Dictionary<int, LocalClass2> Prop184_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass185
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop185_0 { get; set; }
     public List<string> Prop185_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2431,20 +2900,24 @@ public class TestKlass185
     public TestKlass39 Prop185_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass186
 {
     public List<string> Prop186_0 { get; set; }
     public List<string> Prop186_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass187
 {
     public TestKlass118 Prop187_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop187_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2452,8 +2925,10 @@ public class TestKlass187
     public Dictionary<int, List<LocalClass2>> Prop187_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass188
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2463,14 +2938,17 @@ public class TestKlass188
     public List<string> Prop188_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass189
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop189_0 { get; set; }
     public TestKlass12 Prop189_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2479,23 +2957,28 @@ public class TestKlass189
     public TestKlass60 Prop189_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass190
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop190_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop190_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop190_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2503,9 +2986,11 @@ public class TestKlass190
     public Dictionary<int, List<LocalClass3>> Prop190_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass191
 {
     public List<string> Prop191_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2513,13 +2998,16 @@ public class TestKlass191
     public Dictionary<int, List<LocalClass1>> Prop191_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass192
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop192_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2527,8 +3015,10 @@ public class TestKlass192
     public Dictionary<int, List<LocalClass1>> Prop192_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass193
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2536,6 +3026,7 @@ public class TestKlass193
     public Dictionary<int, List<LocalClass0>> Prop193_0 { get; set; }
     public TestKlass32 Prop193_1 { get; set; }
     public List<string> Prop193_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2543,10 +3034,12 @@ public class TestKlass193
     public Dictionary<int, LocalClass3> Prop193_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass194
 {
     public List<string> Prop194_0 { get; set; }
     public List<string> Prop194_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2554,9 +3047,11 @@ public class TestKlass194
     public Dictionary<int, LocalClass2> Prop194_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass195
 {
     public TestKlass15 Prop195_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2566,14 +3061,17 @@ public class TestKlass195
     public List<string> Prop195_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass196
 {
     public List<string> Prop196_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop196_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2581,8 +3079,10 @@ public class TestKlass196
     public Dictionary<int, LocalClass2> Prop196_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass197
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2591,13 +3091,16 @@ public class TestKlass197
     public List<string> Prop197_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass198
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop198_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2606,13 +3109,16 @@ public class TestKlass198
     public List<string> Prop198_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass199
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop199_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2620,9 +3126,11 @@ public class TestKlass199
     public Dictionary<int, List<LocalClass1>> Prop199_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass200
 {
     public TestKlass111 Prop200_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2632,18 +3140,22 @@ public class TestKlass200
     public TestKlass143 Prop200_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass201
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop201_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop201_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2651,23 +3163,28 @@ public class TestKlass201
     public Dictionary<int, LocalClass2> Prop201_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass202
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop202_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop202_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop202_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2675,8 +3192,10 @@ public class TestKlass202
     public Dictionary<int, LocalClass3> Prop202_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass203
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2685,15 +3204,18 @@ public class TestKlass203
     public List<string> Prop203_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass204
 {
     public TestKlass145 Prop204_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop204_1 { get; set; }
     public List<string> Prop204_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2701,13 +3223,16 @@ public class TestKlass204
     public Dictionary<int, List<LocalClass3>> Prop204_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass205
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop205_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2715,19 +3240,23 @@ public class TestKlass205
     public Dictionary<int, LocalClass1> Prop205_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass206
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop206_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop206_1 { get; set; }
     public TestKlass121 Prop206_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2735,9 +3264,11 @@ public class TestKlass206
     public Dictionary<int, LocalClass3> Prop206_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass207
 {
     public TestKlass108 Prop207_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2745,13 +3276,16 @@ public class TestKlass207
     public Dictionary<int, List<LocalClass1>> Prop207_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass208
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop208_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2761,8 +3295,10 @@ public class TestKlass208
     public TestKlass190 Prop208_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass209
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2771,19 +3307,23 @@ public class TestKlass209
     public List<string> Prop209_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass210
 {
     public TestKlass133 Prop210_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop210_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop210_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2791,6 +3331,7 @@ public class TestKlass210
     public Dictionary<int, List<LocalClass3>> Prop210_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass211
 {
     public TestKlass20 Prop211_0 { get; set; }
@@ -2799,13 +3340,16 @@ public class TestKlass211
     public List<string> Prop211_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass212
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop212_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2813,8 +3357,10 @@ public class TestKlass212
     public Dictionary<int, LocalClass1> Prop212_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass213
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2824,14 +3370,17 @@ public class TestKlass213
     public TestKlass160 Prop213_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass214
 {
     public TestKlass19 Prop214_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop214_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -2839,9 +3388,11 @@ public class TestKlass214
     public Dictionary<int, LocalClass2> Prop214_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass215
 {
     public TestKlass192 Prop215_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2849,8 +3400,10 @@ public class TestKlass215
     public Dictionary<int, List<LocalClass1>> Prop215_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass216
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2860,8 +3413,10 @@ public class TestKlass216
     public List<string> Prop216_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass217
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2872,9 +3427,11 @@ public class TestKlass217
     public TestKlass42 Prop217_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass218
 {
     public List<string> Prop218_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2882,9 +3439,11 @@ public class TestKlass218
     public Dictionary<int, List<LocalClass1>> Prop218_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass219
 {
     public List<string> Prop219_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2893,8 +3452,10 @@ public class TestKlass219
     public List<string> Prop219_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass220
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2903,13 +3464,16 @@ public class TestKlass220
     public List<string> Prop220_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass221
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop221_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2919,15 +3483,18 @@ public class TestKlass221
     public TestKlass119 Prop221_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass222
 {
     public TestKlass172 Prop222_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop222_1 { get; set; }
     public TestKlass57 Prop222_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -2935,6 +3502,7 @@ public class TestKlass222
     public Dictionary<int, LocalClass3> Prop222_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass223
 {
     public TestKlass7 Prop223_0 { get; set; }
@@ -2942,13 +3510,16 @@ public class TestKlass223
     public List<string> Prop223_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass224
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop224_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2957,8 +3528,10 @@ public class TestKlass224
     public TestKlass125 Prop224_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass225
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2968,13 +3541,16 @@ public class TestKlass225
     public List<string> Prop225_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass226
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop226_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -2983,8 +3559,10 @@ public class TestKlass226
     public List<string> Prop226_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass227
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -2993,14 +3571,17 @@ public class TestKlass227
     public List<string> Prop227_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass228
 {
     public List<string> Prop228_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop228_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3009,8 +3590,10 @@ public class TestKlass228
     public List<string> Prop228_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass229
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3018,6 +3601,7 @@ public class TestKlass229
     public Dictionary<int, List<LocalClass0>> Prop229_0 { get; set; }
     public List<string> Prop229_1 { get; set; }
     public TestKlass170 Prop229_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3025,10 +3609,12 @@ public class TestKlass229
     public Dictionary<int, LocalClass3> Prop229_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass230
 {
     public List<string> Prop230_0 { get; set; }
     public TestKlass108 Prop230_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3036,10 +3622,12 @@ public class TestKlass230
     public Dictionary<int, LocalClass2> Prop230_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass231
 {
     public TestKlass156 Prop231_0 { get; set; }
     public List<string> Prop231_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3047,8 +3635,10 @@ public class TestKlass231
     public Dictionary<int, List<LocalClass2>> Prop231_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass232
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3057,6 +3647,7 @@ public class TestKlass232
     public List<string> Prop232_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass233
 {
     public TestKlass183 Prop233_0 { get; set; }
@@ -3064,14 +3655,17 @@ public class TestKlass233
     public TestKlass73 Prop233_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass234
 {
     public List<string> Prop234_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop234_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3080,19 +3674,23 @@ public class TestKlass234
     public List<string> Prop234_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass235
 {
     public TestKlass184 Prop235_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop235_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop235_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3100,14 +3698,17 @@ public class TestKlass235
     public Dictionary<int, LocalClass3> Prop235_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass236
 {
     public List<string> Prop236_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop236_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3115,11 +3716,13 @@ public class TestKlass236
     public Dictionary<int, List<LocalClass2>> Prop236_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass237
 {
     public TestKlass53 Prop237_0 { get; set; }
     public TestKlass221 Prop237_1 { get; set; }
     public TestKlass55 Prop237_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3127,13 +3730,16 @@ public class TestKlass237
     public Dictionary<int, LocalClass3> Prop237_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass238
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop238_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3141,6 +3747,7 @@ public class TestKlass238
     public Dictionary<int, LocalClass1> Prop238_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass239
 {
     public List<string> Prop239_0 { get; set; }
@@ -3148,14 +3755,17 @@ public class TestKlass239
     public TestKlass13 Prop239_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass240
 {
     public List<string> Prop240_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop240_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3163,13 +3773,16 @@ public class TestKlass240
     public Dictionary<int, List<LocalClass2>> Prop240_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass241
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop241_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3177,18 +3790,22 @@ public class TestKlass241
     public Dictionary<int, List<LocalClass1>> Prop241_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass242
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop242_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop242_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3197,9 +3814,11 @@ public class TestKlass242
     public TestKlass228 Prop242_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass243
 {
     public List<string> Prop243_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3208,8 +3827,10 @@ public class TestKlass243
     public List<string> Prop243_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass244
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3219,9 +3840,11 @@ public class TestKlass244
     public List<string> Prop244_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass245
 {
     public TestKlass171 Prop245_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3229,10 +3852,12 @@ public class TestKlass245
     public Dictionary<int, List<LocalClass1>> Prop245_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass246
 {
     public TestKlass134 Prop246_0 { get; set; }
     public List<string> Prop246_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3241,19 +3866,23 @@ public class TestKlass246
     public List<string> Prop246_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass247
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop247_0 { get; set; }
     public TestKlass53 Prop247_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop247_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3261,6 +3890,7 @@ public class TestKlass247
     public Dictionary<int, List<LocalClass3>> Prop247_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass248
 {
     public TestKlass75 Prop248_0 { get; set; }
@@ -3268,16 +3898,19 @@ public class TestKlass248
     public List<string> Prop248_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass249
 {
     public List<string> Prop249_0 { get; set; }
     public TestKlass152 Prop249_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass250
 {
     public List<string> Prop250_0 { get; set; }
     public TestKlass19 Prop250_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3285,6 +3918,7 @@ public class TestKlass250
     public Dictionary<int, List<LocalClass2>> Prop250_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass251
 {
     public TestKlass123 Prop251_0 { get; set; }
@@ -3292,14 +3926,17 @@ public class TestKlass251
     public List<string> Prop251_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass252
 {
     public TestKlass104 Prop252_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop252_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3307,6 +3944,7 @@ public class TestKlass252
     public Dictionary<int, List<LocalClass2>> Prop252_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass253
 {
     public TestKlass248 Prop253_0 { get; set; }
@@ -3314,8 +3952,10 @@ public class TestKlass253
     public List<string> Prop253_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass254
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3324,18 +3964,22 @@ public class TestKlass254
     public TestKlass224 Prop254_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass255
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop255_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop255_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3343,13 +3987,16 @@ public class TestKlass255
     public Dictionary<int, List<LocalClass2>> Prop255_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass256
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop256_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3357,8 +4004,10 @@ public class TestKlass256
     public Dictionary<int, List<LocalClass1>> Prop256_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass257
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3369,18 +4018,22 @@ public class TestKlass257
     public List<string> Prop257_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass258
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop258_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop258_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3388,13 +4041,16 @@ public class TestKlass258
     public Dictionary<int, LocalClass2> Prop258_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass259
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop259_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3402,8 +4058,10 @@ public class TestKlass259
     public Dictionary<int, List<LocalClass1>> Prop259_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass260
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3412,8 +4070,10 @@ public class TestKlass260
     public TestKlass81 Prop260_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass261
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3423,8 +4083,10 @@ public class TestKlass261
     public List<string> Prop261_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass262
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3435,11 +4097,13 @@ public class TestKlass262
     public TestKlass180 Prop262_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass263
 {
     public TestKlass98 Prop263_0 { get; set; }
     public TestKlass93 Prop263_1 { get; set; }
     public List<string> Prop263_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3447,10 +4111,12 @@ public class TestKlass263
     public Dictionary<int, List<LocalClass3>> Prop263_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass264
 {
     public TestKlass189 Prop264_0 { get; set; }
     public TestKlass261 Prop264_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3458,13 +4124,16 @@ public class TestKlass264
     public Dictionary<int, LocalClass2> Prop264_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass265
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop265_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3472,8 +4141,10 @@ public class TestKlass265
     public Dictionary<int, List<LocalClass1>> Prop265_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass266
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3482,8 +4153,10 @@ public class TestKlass266
     public TestKlass212 Prop266_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass267
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3493,14 +4166,17 @@ public class TestKlass267
     public List<string> Prop267_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass268
 {
     public List<string> Prop268_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop268_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3508,15 +4184,18 @@ public class TestKlass268
     public Dictionary<int, List<LocalClass2>> Prop268_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass269
 {
     public TestKlass111 Prop269_0 { get; set; }
     public TestKlass195 Prop269_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop269_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3524,13 +4203,16 @@ public class TestKlass269
     public Dictionary<int, LocalClass3> Prop269_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass270
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop270_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3538,6 +4220,7 @@ public class TestKlass270
     public Dictionary<int, LocalClass1> Prop270_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass271
 {
     public List<string> Prop271_0 { get; set; }
@@ -3545,13 +4228,16 @@ public class TestKlass271
     public TestKlass160 Prop271_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass272
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop272_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3560,6 +4246,7 @@ public class TestKlass272
     public TestKlass116 Prop272_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass273
 {
     public List<string> Prop273_0 { get; set; }
@@ -3568,15 +4255,18 @@ public class TestKlass273
     public TestKlass84 Prop273_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass274
 {
     public TestKlass207 Prop274_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop274_1 { get; set; }
     public TestKlass257 Prop274_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3584,13 +4274,16 @@ public class TestKlass274
     public Dictionary<int, LocalClass3> Prop274_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass275
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop275_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3598,19 +4291,23 @@ public class TestKlass275
     public Dictionary<int, LocalClass1> Prop275_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass276
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop276_0 { get; set; }
     public List<string> Prop276_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop276_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3618,9 +4315,11 @@ public class TestKlass276
     public Dictionary<int, LocalClass3> Prop276_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass277
 {
     public TestKlass182 Prop277_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3628,18 +4327,22 @@ public class TestKlass277
     public Dictionary<int, LocalClass1> Prop277_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass278
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop278_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop278_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3647,10 +4350,12 @@ public class TestKlass278
     public Dictionary<int, List<LocalClass2>> Prop278_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass279
 {
     public TestKlass100 Prop279_0 { get; set; }
     public List<string> Prop279_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3658,14 +4363,17 @@ public class TestKlass279
     public Dictionary<int, List<LocalClass2>> Prop279_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass280
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop280_0 { get; set; }
     public TestKlass206 Prop280_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3673,14 +4381,17 @@ public class TestKlass280
     public Dictionary<int, LocalClass2> Prop280_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass281
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop281_0 { get; set; }
     public TestKlass65 Prop281_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3688,14 +4399,17 @@ public class TestKlass281
     public Dictionary<int, List<LocalClass2>> Prop281_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass282
 {
     public List<string> Prop282_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop282_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3703,19 +4417,23 @@ public class TestKlass282
     public Dictionary<int, List<LocalClass2>> Prop282_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass283
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop283_0 { get; set; }
     public TestKlass164 Prop283_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop283_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3723,14 +4441,17 @@ public class TestKlass283
     public Dictionary<int, LocalClass3> Prop283_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass284
 {
     public TestKlass93 Prop284_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop284_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3738,8 +4459,10 @@ public class TestKlass284
     public Dictionary<int, List<LocalClass2>> Prop284_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass285
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3747,6 +4470,7 @@ public class TestKlass285
     public Dictionary<int, LocalClass0> Prop285_0 { get; set; }
     public List<string> Prop285_1 { get; set; }
     public TestKlass52 Prop285_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3754,18 +4478,22 @@ public class TestKlass285
     public Dictionary<int, LocalClass3> Prop285_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass286
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop286_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop286_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3773,15 +4501,18 @@ public class TestKlass286
     public Dictionary<int, LocalClass2> Prop286_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass287
 {
     public List<string> Prop287_0 { get; set; }
     public TestKlass98 Prop287_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass288
 {
     public TestKlass120 Prop288_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3791,19 +4522,23 @@ public class TestKlass288
     public TestKlass48 Prop288_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass289
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop289_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop289_1 { get; set; }
     public TestKlass148 Prop289_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3811,8 +4546,10 @@ public class TestKlass289
     public Dictionary<int, LocalClass3> Prop289_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass290
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3822,13 +4559,16 @@ public class TestKlass290
     public List<string> Prop290_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass291
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop291_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3836,14 +4576,17 @@ public class TestKlass291
     public Dictionary<int, List<LocalClass1>> Prop291_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass292
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop292_0 { get; set; }
     public List<string> Prop292_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3852,13 +4595,16 @@ public class TestKlass292
     public TestKlass60 Prop292_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass293
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop293_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3868,13 +4614,16 @@ public class TestKlass293
     public TestKlass288 Prop293_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass294
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop294_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3882,29 +4631,35 @@ public class TestKlass294
     public Dictionary<int, LocalClass1> Prop294_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass295
 {
     public List<string> Prop295_0 { get; set; }
     public TestKlass87 Prop295_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass296
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop296_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop296_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop296_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3912,14 +4667,17 @@ public class TestKlass296
     public Dictionary<int, List<LocalClass3>> Prop296_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass297
 {
     public TestKlass7 Prop297_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop297_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -3928,6 +4686,7 @@ public class TestKlass297
     public TestKlass213 Prop297_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass298
 {
     public List<string> Prop298_0 { get; set; }
@@ -3936,11 +4695,13 @@ public class TestKlass298
     public List<string> Prop298_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass299
 {
     public TestKlass129 Prop299_0 { get; set; }
     public List<string> Prop299_1 { get; set; }
     public TestKlass166 Prop299_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -3948,8 +4709,10 @@ public class TestKlass299
     public Dictionary<int, LocalClass3> Prop299_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass300
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -3958,6 +4721,7 @@ public class TestKlass300
     public List<string> Prop300_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass301
 {
     public List<string> Prop301_0 { get; set; }
@@ -3966,13 +4730,16 @@ public class TestKlass301
     public List<string> Prop301_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass302
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop302_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -3980,6 +4747,7 @@ public class TestKlass302
     public Dictionary<int, List<LocalClass1>> Prop302_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass303
 {
     public TestKlass113 Prop303_0 { get; set; }
@@ -3988,18 +4756,22 @@ public class TestKlass303
     public TestKlass60 Prop303_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass304
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop304_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop304_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4007,23 +4779,28 @@ public class TestKlass304
     public Dictionary<int, List<LocalClass2>> Prop304_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass305
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop305_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop305_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop305_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4031,14 +4808,17 @@ public class TestKlass305
     public Dictionary<int, List<LocalClass3>> Prop305_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass306
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop306_0 { get; set; }
     public List<string> Prop306_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4046,6 +4826,7 @@ public class TestKlass306
     public Dictionary<int, List<LocalClass2>> Prop306_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass307
 {
     public TestKlass253 Prop307_0 { get; set; }
@@ -4054,6 +4835,7 @@ public class TestKlass307
     public TestKlass5 Prop307_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass308
 {
     public List<string> Prop308_0 { get; set; }
@@ -4061,14 +4843,17 @@ public class TestKlass308
     public TestKlass287 Prop308_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass309
 {
     public List<string> Prop309_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop309_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4076,9 +4861,11 @@ public class TestKlass309
     public Dictionary<int, LocalClass2> Prop309_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass310
 {
     public TestKlass143 Prop310_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4086,14 +4873,17 @@ public class TestKlass310
     public Dictionary<int, LocalClass1> Prop310_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass311
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop311_0 { get; set; }
     public List<string> Prop311_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4101,13 +4891,16 @@ public class TestKlass311
     public Dictionary<int, List<LocalClass2>> Prop311_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass312
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop312_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4116,14 +4909,17 @@ public class TestKlass312
     public List<string> Prop312_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass313
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop313_0 { get; set; }
     public TestKlass169 Prop313_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4131,9 +4927,11 @@ public class TestKlass313
     public Dictionary<int, List<LocalClass2>> Prop313_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass314
 {
     public TestKlass88 Prop314_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4141,8 +4939,10 @@ public class TestKlass314
     public Dictionary<int, LocalClass1> Prop314_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass315
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4153,14 +4953,17 @@ public class TestKlass315
     public List<string> Prop315_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass316
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop316_0 { get; set; }
     public TestKlass28 Prop316_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4168,9 +4971,11 @@ public class TestKlass316
     public Dictionary<int, List<LocalClass2>> Prop316_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass317
 {
     public List<string> Prop317_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4178,6 +4983,7 @@ public class TestKlass317
     public Dictionary<int, LocalClass1> Prop317_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass318
 {
     public List<string> Prop318_0 { get; set; }
@@ -4186,8 +4992,10 @@ public class TestKlass318
     public List<string> Prop318_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass319
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4196,9 +5004,11 @@ public class TestKlass319
     public List<string> Prop319_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass320
 {
     public TestKlass244 Prop320_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4207,6 +5017,7 @@ public class TestKlass320
     public List<string> Prop320_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass321
 {
     public TestKlass93 Prop321_0 { get; set; }
@@ -4214,9 +5025,11 @@ public class TestKlass321
     public TestKlass112 Prop321_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass322
 {
     public List<string> Prop322_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4224,10 +5037,12 @@ public class TestKlass322
     public Dictionary<int, List<LocalClass1>> Prop322_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass323
 {
     public List<string> Prop323_0 { get; set; }
     public TestKlass126 Prop323_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4235,8 +5050,10 @@ public class TestKlass323
     public Dictionary<int, LocalClass2> Prop323_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass324
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4246,9 +5063,11 @@ public class TestKlass324
     public List<string> Prop324_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass325
 {
     public List<string> Prop325_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4257,19 +5076,23 @@ public class TestKlass325
     public List<string> Prop325_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass326
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop326_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop326_1 { get; set; }
     public TestKlass313 Prop326_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4277,14 +5100,17 @@ public class TestKlass326
     public Dictionary<int, LocalClass3> Prop326_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass327
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop327_0 { get; set; }
     public List<string> Prop327_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4292,13 +5118,16 @@ public class TestKlass327
     public Dictionary<int, List<LocalClass2>> Prop327_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass328
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop328_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4306,8 +5135,10 @@ public class TestKlass328
     public Dictionary<int, List<LocalClass1>> Prop328_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass329
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4315,6 +5146,7 @@ public class TestKlass329
     public Dictionary<int, List<LocalClass0>> Prop329_0 { get; set; }
     public List<string> Prop329_1 { get; set; }
     public TestKlass297 Prop329_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4322,13 +5154,16 @@ public class TestKlass329
     public Dictionary<int, LocalClass3> Prop329_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass330
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop330_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4337,19 +5172,23 @@ public class TestKlass330
     public TestKlass56 Prop330_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass331
 {
     public List<string> Prop331_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop331_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop331_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4357,14 +5196,17 @@ public class TestKlass331
     public Dictionary<int, List<LocalClass3>> Prop331_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass332
 {
     public TestKlass274 Prop332_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop332_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4372,14 +5214,17 @@ public class TestKlass332
     public Dictionary<int, List<LocalClass2>> Prop332_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass333
 {
     public List<string> Prop333_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop333_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4387,9 +5232,11 @@ public class TestKlass333
     public Dictionary<int, List<LocalClass2>> Prop333_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass334
 {
     public List<string> Prop334_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4398,14 +5245,17 @@ public class TestKlass334
     public TestKlass33 Prop334_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass335
 {
     public TestKlass144 Prop335_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop335_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4413,10 +5263,12 @@ public class TestKlass335
     public Dictionary<int, List<LocalClass2>> Prop335_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass336
 {
     public TestKlass111 Prop336_0 { get; set; }
     public List<string> Prop336_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4424,8 +5276,10 @@ public class TestKlass336
     public Dictionary<int, List<LocalClass2>> Prop336_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass337
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4434,19 +5288,23 @@ public class TestKlass337
     public TestKlass284 Prop337_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass338
 {
     public List<string> Prop338_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop338_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop338_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4454,13 +5312,16 @@ public class TestKlass338
     public Dictionary<int, LocalClass3> Prop338_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass339
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop339_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4470,8 +5331,10 @@ public class TestKlass339
     public TestKlass136 Prop339_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass340
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4481,13 +5344,16 @@ public class TestKlass340
     public TestKlass259 Prop340_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass341
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop341_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4496,14 +5362,17 @@ public class TestKlass341
     public TestKlass151 Prop341_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass342
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop342_0 { get; set; }
     public List<string> Prop342_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4511,8 +5380,10 @@ public class TestKlass342
     public Dictionary<int, LocalClass2> Prop342_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass343
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4521,15 +5392,18 @@ public class TestKlass343
     public TestKlass284 Prop343_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass344
 {
     public List<string> Prop344_0 { get; set; }
     public List<string> Prop344_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop344_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4537,13 +5411,16 @@ public class TestKlass344
     public Dictionary<int, LocalClass3> Prop344_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass345
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop345_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4553,9 +5430,11 @@ public class TestKlass345
     public TestKlass235 Prop345_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass346
 {
     public List<string> Prop346_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4565,13 +5444,16 @@ public class TestKlass346
     public TestKlass190 Prop346_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass347
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop347_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4579,6 +5461,7 @@ public class TestKlass347
     public Dictionary<int, LocalClass1> Prop347_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass348
 {
     public List<string> Prop348_0 { get; set; }
@@ -4586,11 +5469,13 @@ public class TestKlass348
     public TestKlass256 Prop348_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass349
 {
     public TestKlass4 Prop349_0 { get; set; }
     public List<string> Prop349_1 { get; set; }
     public TestKlass314 Prop349_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4598,9 +5483,11 @@ public class TestKlass349
     public Dictionary<int, List<LocalClass3>> Prop349_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass350
 {
     public TestKlass12 Prop350_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4608,13 +5495,16 @@ public class TestKlass350
     public Dictionary<int, List<LocalClass1>> Prop350_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass351
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop351_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4622,19 +5512,23 @@ public class TestKlass351
     public Dictionary<int, LocalClass1> Prop351_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass352
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop352_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop352_1 { get; set; }
     public TestKlass207 Prop352_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4642,13 +5536,16 @@ public class TestKlass352
     public Dictionary<int, List<LocalClass3>> Prop352_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass353
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop353_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4656,14 +5553,17 @@ public class TestKlass353
     public Dictionary<int, LocalClass1> Prop353_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass354
 {
     public TestKlass64 Prop354_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop354_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4671,9 +5571,11 @@ public class TestKlass354
     public Dictionary<int, List<LocalClass2>> Prop354_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass355
 {
     public List<string> Prop355_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4682,13 +5584,16 @@ public class TestKlass355
     public TestKlass105 Prop355_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass356
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop356_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4696,8 +5601,10 @@ public class TestKlass356
     public Dictionary<int, LocalClass1> Prop356_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass357
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4707,15 +5614,18 @@ public class TestKlass357
     public TestKlass265 Prop357_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass358
 {
     public List<string> Prop358_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop358_1 { get; set; }
     public List<string> Prop358_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4723,8 +5633,10 @@ public class TestKlass358
     public Dictionary<int, List<LocalClass3>> Prop358_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass359
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4733,9 +5645,11 @@ public class TestKlass359
     public TestKlass298 Prop359_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass360
 {
     public List<string> Prop360_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4744,13 +5658,16 @@ public class TestKlass360
     public TestKlass233 Prop360_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass361
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop361_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4760,14 +5677,17 @@ public class TestKlass361
     public TestKlass47 Prop361_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass362
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop362_0 { get; set; }
     public List<string> Prop362_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4775,9 +5695,11 @@ public class TestKlass362
     public Dictionary<int, List<LocalClass2>> Prop362_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass363
 {
     public List<string> Prop363_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4787,15 +5709,18 @@ public class TestKlass363
     public TestKlass78 Prop363_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass364
 {
     public List<string> Prop364_0 { get; set; }
     public TestKlass106 Prop364_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop364_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4803,19 +5728,23 @@ public class TestKlass364
     public Dictionary<int, List<LocalClass3>> Prop364_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass365
 {
     public List<string> Prop365_0 { get; set; }
     public TestKlass66 Prop365_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass366
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop366_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4824,14 +5753,17 @@ public class TestKlass366
     public List<string> Prop366_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass367
 {
     public TestKlass222 Prop367_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop367_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4839,6 +5771,7 @@ public class TestKlass367
     public Dictionary<int, List<LocalClass2>> Prop367_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass368
 {
     public List<string> Prop368_0 { get; set; }
@@ -4847,14 +5780,17 @@ public class TestKlass368
     public TestKlass222 Prop368_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass369
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop369_0 { get; set; }
     public TestKlass278 Prop369_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4862,14 +5798,17 @@ public class TestKlass369
     public Dictionary<int, LocalClass2> Prop369_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass370
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop370_0 { get; set; }
     public List<string> Prop370_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4878,15 +5817,18 @@ public class TestKlass370
     public List<string> Prop370_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass371
 {
     public List<string> Prop371_0 { get; set; }
     public List<string> Prop371_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop371_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4894,19 +5836,23 @@ public class TestKlass371
     public Dictionary<int, LocalClass3> Prop371_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass372
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop372_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop372_1 { get; set; }
     public List<string> Prop372_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -4914,14 +5860,17 @@ public class TestKlass372
     public Dictionary<int, List<LocalClass3>> Prop372_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass373
 {
     public TestKlass186 Prop373_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop373_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4930,8 +5879,10 @@ public class TestKlass373
     public TestKlass114 Prop373_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass374
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4940,8 +5891,10 @@ public class TestKlass374
     public List<string> Prop374_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass375
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -4950,6 +5903,7 @@ public class TestKlass375
     public TestKlass26 Prop375_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass376
 {
     public List<string> Prop376_0 { get; set; }
@@ -4957,9 +5911,11 @@ public class TestKlass376
     public List<string> Prop376_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass377
 {
     public TestKlass155 Prop377_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4969,10 +5925,12 @@ public class TestKlass377
     public TestKlass170 Prop377_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass378
 {
     public List<string> Prop378_0 { get; set; }
     public List<string> Prop378_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -4980,9 +5938,11 @@ public class TestKlass378
     public Dictionary<int, LocalClass2> Prop378_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass379
 {
     public TestKlass101 Prop379_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -4990,15 +5950,18 @@ public class TestKlass379
     public Dictionary<int, LocalClass1> Prop379_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass380
 {
     public TestKlass172 Prop380_0 { get; set; }
     public TestKlass202 Prop380_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass381
 {
     public List<string> Prop381_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5007,25 +5970,30 @@ public class TestKlass381
     public List<string> Prop381_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass382
 {
     public List<string> Prop382_0 { get; set; }
     public TestKlass70 Prop382_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass383
 {
     public TestKlass283 Prop383_0 { get; set; }
     public List<string> Prop383_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass384
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop384_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5034,9 +6002,11 @@ public class TestKlass384
     public List<string> Prop384_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass385
 {
     public List<string> Prop385_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5045,19 +6015,23 @@ public class TestKlass385
     public List<string> Prop385_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass386
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop386_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop386_1 { get; set; }
     public List<string> Prop386_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5065,9 +6039,11 @@ public class TestKlass386
     public Dictionary<int, LocalClass3> Prop386_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass387
 {
     public List<string> Prop387_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5077,14 +6053,17 @@ public class TestKlass387
     public List<string> Prop387_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass388
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop388_0 { get; set; }
     public List<string> Prop388_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5092,13 +6071,16 @@ public class TestKlass388
     public Dictionary<int, List<LocalClass2>> Prop388_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass389
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop389_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5106,13 +6088,16 @@ public class TestKlass389
     public Dictionary<int, List<LocalClass1>> Prop389_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass390
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop390_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5120,20 +6105,24 @@ public class TestKlass390
     public Dictionary<int, List<LocalClass1>> Prop390_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass391
 {
     public List<string> Prop391_0 { get; set; }
     public List<string> Prop391_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass392
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop392_0 { get; set; }
     public List<string> Prop392_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5141,10 +6130,12 @@ public class TestKlass392
     public Dictionary<int, List<LocalClass2>> Prop392_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass393
 {
     public List<string> Prop393_0 { get; set; }
     public TestKlass275 Prop393_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5152,23 +6143,28 @@ public class TestKlass393
     public Dictionary<int, LocalClass2> Prop393_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass394
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop394_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop394_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop394_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5176,8 +6172,10 @@ public class TestKlass394
     public Dictionary<int, List<LocalClass3>> Prop394_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass395
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -5186,19 +6184,23 @@ public class TestKlass395
     public List<string> Prop395_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass396
 {
     public List<string> Prop396_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop396_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop396_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5206,20 +6208,24 @@ public class TestKlass396
     public Dictionary<int, LocalClass3> Prop396_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass397
 {
     public TestKlass211 Prop397_0 { get; set; }
     public List<string> Prop397_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass398
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop398_0 { get; set; }
     public TestKlass241 Prop398_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5227,9 +6233,11 @@ public class TestKlass398
     public Dictionary<int, LocalClass2> Prop398_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass399
 {
     public List<string> Prop399_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5238,6 +6246,7 @@ public class TestKlass399
     public List<string> Prop399_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass400
 {
     public TestKlass6 Prop400_0 { get; set; }
@@ -5245,19 +6254,23 @@ public class TestKlass400
     public TestKlass275 Prop400_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass401
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop401_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop401_1 { get; set; }
     public TestKlass249 Prop401_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5265,9 +6278,11 @@ public class TestKlass401
     public Dictionary<int, LocalClass3> Prop401_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass402
 {
     public List<string> Prop402_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5277,13 +6292,16 @@ public class TestKlass402
     public List<string> Prop402_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass403
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop403_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5293,17 +6311,20 @@ public class TestKlass403
     public List<string> Prop403_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass404
 {
     public TestKlass256 Prop404_0 { get; set; }
     public List<string> Prop404_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass405
 {
     public TestKlass107 Prop405_0 { get; set; }
     public List<string> Prop405_1 { get; set; }
     public TestKlass217 Prop405_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5311,14 +6332,17 @@ public class TestKlass405
     public Dictionary<int, LocalClass3> Prop405_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass406
 {
     public List<string> Prop406_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop406_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5326,13 +6350,16 @@ public class TestKlass406
     public Dictionary<int, List<LocalClass2>> Prop406_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass407
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop407_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5342,18 +6369,22 @@ public class TestKlass407
     public List<string> Prop407_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass408
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop408_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop408_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5361,9 +6392,11 @@ public class TestKlass408
     public Dictionary<int, List<LocalClass2>> Prop408_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass409
 {
     public TestKlass286 Prop409_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5373,18 +6406,22 @@ public class TestKlass409
     public List<string> Prop409_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass410
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop410_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop410_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5393,9 +6430,11 @@ public class TestKlass410
     public List<string> Prop410_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass411
 {
     public TestKlass380 Prop411_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5404,10 +6443,12 @@ public class TestKlass411
     public List<string> Prop411_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass412
 {
     public List<string> Prop412_0 { get; set; }
     public TestKlass80 Prop412_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5416,13 +6457,16 @@ public class TestKlass412
     public List<string> Prop412_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass413
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop413_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5430,14 +6474,17 @@ public class TestKlass413
     public Dictionary<int, LocalClass1> Prop413_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass414
 {
     public TestKlass174 Prop414_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop414_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5446,18 +6493,22 @@ public class TestKlass414
     public List<string> Prop414_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass415
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop415_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop415_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5465,6 +6516,7 @@ public class TestKlass415
     public Dictionary<int, List<LocalClass2>> Prop415_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass416
 {
     public List<string> Prop416_0 { get; set; }
@@ -5472,18 +6524,22 @@ public class TestKlass416
     public TestKlass218 Prop416_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass417
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop417_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop417_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5492,13 +6548,16 @@ public class TestKlass417
     public List<string> Prop417_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass418
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop418_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5508,18 +6567,22 @@ public class TestKlass418
     public List<string> Prop418_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass419
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop419_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop419_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5527,9 +6590,11 @@ public class TestKlass419
     public Dictionary<int, List<LocalClass2>> Prop419_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass420
 {
     public TestKlass146 Prop420_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5538,23 +6603,28 @@ public class TestKlass420
     public TestKlass233 Prop420_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass421
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop421_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop421_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop421_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5562,14 +6632,17 @@ public class TestKlass421
     public Dictionary<int, List<LocalClass3>> Prop421_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass422
 {
     public TestKlass26 Prop422_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop422_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5577,9 +6650,11 @@ public class TestKlass422
     public Dictionary<int, LocalClass2> Prop422_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass423
 {
     public TestKlass283 Prop423_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5587,11 +6662,13 @@ public class TestKlass423
     public Dictionary<int, List<LocalClass1>> Prop423_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass424
 {
     public List<string> Prop424_0 { get; set; }
     public TestKlass191 Prop424_1 { get; set; }
     public TestKlass208 Prop424_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5599,15 +6676,18 @@ public class TestKlass424
     public Dictionary<int, LocalClass3> Prop424_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass425
 {
     public List<string> Prop425_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop425_1 { get; set; }
     public TestKlass424 Prop425_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5615,9 +6695,11 @@ public class TestKlass425
     public Dictionary<int, LocalClass3> Prop425_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass426
 {
     public TestKlass131 Prop426_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5625,6 +6707,7 @@ public class TestKlass426
     public Dictionary<int, List<LocalClass1>> Prop426_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass427
 {
     public TestKlass413 Prop427_0 { get; set; }
@@ -5632,9 +6715,11 @@ public class TestKlass427
     public TestKlass217 Prop427_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass428
 {
     public TestKlass314 Prop428_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5643,15 +6728,18 @@ public class TestKlass428
     public TestKlass386 Prop428_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass429
 {
     public List<string> Prop429_0 { get; set; }
     public TestKlass420 Prop429_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass430
 {
     public TestKlass427 Prop430_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5659,18 +6747,22 @@ public class TestKlass430
     public Dictionary<int, List<LocalClass1>> Prop430_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass431
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop431_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop431_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5679,23 +6771,28 @@ public class TestKlass431
     public List<string> Prop431_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass432
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop432_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop432_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop432_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5703,13 +6800,16 @@ public class TestKlass432
     public Dictionary<int, List<LocalClass3>> Prop432_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass433
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop433_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5717,18 +6817,22 @@ public class TestKlass433
     public Dictionary<int, List<LocalClass1>> Prop433_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass434
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop434_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop434_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5736,19 +6840,23 @@ public class TestKlass434
     public Dictionary<int, List<LocalClass2>> Prop434_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass435
 {
     public TestKlass279 Prop435_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop435_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop435_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5756,8 +6864,10 @@ public class TestKlass435
     public Dictionary<int, List<LocalClass3>> Prop435_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass436
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -5766,18 +6876,22 @@ public class TestKlass436
     public List<string> Prop436_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass437
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop437_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop437_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5786,13 +6900,16 @@ public class TestKlass437
     public TestKlass383 Prop437_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass438
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop438_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5800,6 +6917,7 @@ public class TestKlass438
     public Dictionary<int, List<LocalClass1>> Prop438_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass439
 {
     public TestKlass82 Prop439_0 { get; set; }
@@ -5807,14 +6925,17 @@ public class TestKlass439
     public List<string> Prop439_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass440
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop440_0 { get; set; }
     public List<string> Prop440_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5822,6 +6943,7 @@ public class TestKlass440
     public Dictionary<int, List<LocalClass2>> Prop440_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass441
 {
     public List<string> Prop441_0 { get; set; }
@@ -5829,9 +6951,11 @@ public class TestKlass441
     public List<string> Prop441_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass442
 {
     public TestKlass88 Prop442_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5840,23 +6964,28 @@ public class TestKlass442
     public List<string> Prop442_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass443
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop443_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop443_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop443_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5864,14 +6993,17 @@ public class TestKlass443
     public Dictionary<int, List<LocalClass3>> Prop443_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass444
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop444_0 { get; set; }
     public List<string> Prop444_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5880,9 +7012,11 @@ public class TestKlass444
     public TestKlass322 Prop444_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass445
 {
     public List<string> Prop445_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -5890,18 +7024,22 @@ public class TestKlass445
     public Dictionary<int, List<LocalClass1>> Prop445_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass446
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop446_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop446_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5910,19 +7048,23 @@ public class TestKlass446
     public List<string> Prop446_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass447
 {
     public TestKlass85 Prop447_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop447_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop447_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -5930,10 +7072,12 @@ public class TestKlass447
     public Dictionary<int, LocalClass3> Prop447_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass448
 {
     public List<string> Prop448_0 { get; set; }
     public TestKlass130 Prop448_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5941,18 +7085,22 @@ public class TestKlass448
     public Dictionary<int, LocalClass2> Prop448_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass449
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop449_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop449_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -5961,6 +7109,7 @@ public class TestKlass449
     public TestKlass447 Prop449_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass450
 {
     public List<string> Prop450_0 { get; set; }
@@ -5968,8 +7117,10 @@ public class TestKlass450
     public List<string> Prop450_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass451
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -5978,25 +7129,30 @@ public class TestKlass451
     public List<string> Prop451_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass452
 {
     public List<string> Prop452_0 { get; set; }
     public TestKlass158 Prop452_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass453
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop453_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop453_1 { get; set; }
     public List<string> Prop453_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6004,9 +7160,11 @@ public class TestKlass453
     public Dictionary<int, List<LocalClass3>> Prop453_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass454
 {
     public List<string> Prop454_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6014,9 +7172,11 @@ public class TestKlass454
     public Dictionary<int, List<LocalClass1>> Prop454_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass455
 {
     public TestKlass83 Prop455_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6024,13 +7184,16 @@ public class TestKlass455
     public Dictionary<int, LocalClass1> Prop455_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass456
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop456_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6039,14 +7202,17 @@ public class TestKlass456
     public TestKlass125 Prop456_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass457
 {
     public TestKlass151 Prop457_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop457_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6055,14 +7221,17 @@ public class TestKlass457
     public TestKlass58 Prop457_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass458
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop458_0 { get; set; }
     public List<string> Prop458_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6070,22 +7239,26 @@ public class TestKlass458
     public Dictionary<int, List<LocalClass2>> Prop458_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass459
 {
     public TestKlass314 Prop459_0 { get; set; }
     public TestKlass95 Prop459_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass460
 {
     public List<string> Prop460_0 { get; set; }
     public List<string> Prop460_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass461
 {
     public List<string> Prop461_0 { get; set; }
     public TestKlass449 Prop461_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6094,8 +7267,10 @@ public class TestKlass461
     public List<string> Prop461_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass462
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6106,10 +7281,12 @@ public class TestKlass462
     public List<string> Prop462_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass463
 {
     public TestKlass164 Prop463_0 { get; set; }
     public TestKlass399 Prop463_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6118,8 +7295,10 @@ public class TestKlass463
     public TestKlass386 Prop463_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass464
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6127,6 +7306,7 @@ public class TestKlass464
     public Dictionary<int, LocalClass0> Prop464_0 { get; set; }
     public TestKlass260 Prop464_1 { get; set; }
     public List<string> Prop464_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6134,15 +7314,18 @@ public class TestKlass464
     public Dictionary<int, LocalClass3> Prop464_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass465
 {
     public List<string> Prop465_0 { get; set; }
     public TestKlass156 Prop465_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass466
 {
     public List<string> Prop466_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6151,8 +7334,10 @@ public class TestKlass466
     public List<string> Prop466_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass467
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6163,23 +7348,28 @@ public class TestKlass467
     public TestKlass223 Prop467_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass468
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop468_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop468_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop468_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6187,14 +7377,17 @@ public class TestKlass468
     public Dictionary<int, LocalClass3> Prop468_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass469
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop469_0 { get; set; }
     public List<string> Prop469_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6202,10 +7395,12 @@ public class TestKlass469
     public Dictionary<int, List<LocalClass2>> Prop469_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass470
 {
     public List<string> Prop470_0 { get; set; }
     public List<string> Prop470_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6213,8 +7408,10 @@ public class TestKlass470
     public Dictionary<int, LocalClass2> Prop470_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass471
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6223,13 +7420,16 @@ public class TestKlass471
     public TestKlass195 Prop471_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass472
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop472_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6237,9 +7437,11 @@ public class TestKlass472
     public Dictionary<int, LocalClass1> Prop472_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass473
 {
     public TestKlass170 Prop473_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6247,8 +7449,10 @@ public class TestKlass473
     public Dictionary<int, LocalClass1> Prop473_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass474
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6257,13 +7461,16 @@ public class TestKlass474
     public List<string> Prop474_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass475
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop475_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6272,14 +7479,17 @@ public class TestKlass475
     public TestKlass40 Prop475_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass476
 {
     public List<string> Prop476_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop476_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6288,8 +7498,10 @@ public class TestKlass476
     public List<string> Prop476_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass477
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6297,6 +7509,7 @@ public class TestKlass477
     public Dictionary<int, List<LocalClass0>> Prop477_0 { get; set; }
     public TestKlass75 Prop477_1 { get; set; }
     public TestKlass50 Prop477_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6304,19 +7517,23 @@ public class TestKlass477
     public Dictionary<int, List<LocalClass3>> Prop477_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass478
 {
     public TestKlass439 Prop478_0 { get; set; }
     public List<string> Prop478_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass479
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop479_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6324,8 +7541,10 @@ public class TestKlass479
     public Dictionary<int, List<LocalClass1>> Prop479_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass480
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6335,10 +7554,12 @@ public class TestKlass480
     public List<string> Prop480_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass481
 {
     public List<string> Prop481_0 { get; set; }
     public TestKlass346 Prop481_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6347,8 +7568,10 @@ public class TestKlass481
     public TestKlass309 Prop481_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass482
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6359,18 +7582,22 @@ public class TestKlass482
     public List<string> Prop482_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass483
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop483_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop483_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6378,8 +7605,10 @@ public class TestKlass483
     public Dictionary<int, LocalClass2> Prop483_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass484
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6389,6 +7618,7 @@ public class TestKlass484
     public TestKlass48 Prop484_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass485
 {
     public List<string> Prop485_0 { get; set; }
@@ -6396,6 +7626,7 @@ public class TestKlass485
     public TestKlass135 Prop485_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass486
 {
     public TestKlass424 Prop486_0 { get; set; }
@@ -6404,9 +7635,11 @@ public class TestKlass486
     public TestKlass52 Prop486_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass487
 {
     public List<string> Prop487_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6415,10 +7648,12 @@ public class TestKlass487
     public TestKlass431 Prop487_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass488
 {
     public List<string> Prop488_0 { get; set; }
     public TestKlass430 Prop488_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6426,13 +7661,16 @@ public class TestKlass488
     public Dictionary<int, List<LocalClass2>> Prop488_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass489
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop489_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6442,9 +7680,11 @@ public class TestKlass489
     public TestKlass477 Prop489_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass490
 {
     public TestKlass55 Prop490_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6452,13 +7692,16 @@ public class TestKlass490
     public Dictionary<int, LocalClass1> Prop490_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass491
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop491_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6466,14 +7709,17 @@ public class TestKlass491
     public Dictionary<int, LocalClass1> Prop491_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass492
 {
     public TestKlass179 Prop492_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop492_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6482,11 +7728,13 @@ public class TestKlass492
     public TestKlass491 Prop492_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass493
 {
     public TestKlass119 Prop493_0 { get; set; }
     public List<string> Prop493_1 { get; set; }
     public List<string> Prop493_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6494,13 +7742,16 @@ public class TestKlass493
     public Dictionary<int, LocalClass3> Prop493_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass494
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop494_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6508,14 +7759,17 @@ public class TestKlass494
     public Dictionary<int, List<LocalClass1>> Prop494_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass495
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop495_0 { get; set; }
     public List<string> Prop495_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6524,9 +7778,11 @@ public class TestKlass495
     public List<string> Prop495_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass496
 {
     public TestKlass24 Prop496_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6534,8 +7790,10 @@ public class TestKlass496
     public Dictionary<int, List<LocalClass1>> Prop496_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass497
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6544,13 +7802,16 @@ public class TestKlass497
     public List<string> Prop497_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass498
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop498_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6559,6 +7820,7 @@ public class TestKlass498
     public List<string> Prop498_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass499
 {
     public List<string> Prop499_0 { get; set; }
@@ -6566,18 +7828,22 @@ public class TestKlass499
     public TestKlass268 Prop499_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass500
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop500_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop500_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6585,18 +7851,22 @@ public class TestKlass500
     public Dictionary<int, List<LocalClass2>> Prop500_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass501
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop501_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop501_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6604,8 +7874,10 @@ public class TestKlass501
     public Dictionary<int, LocalClass2> Prop501_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass502
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6615,14 +7887,17 @@ public class TestKlass502
     public TestKlass324 Prop502_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass503
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop503_0 { get; set; }
     public List<string> Prop503_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6630,14 +7905,17 @@ public class TestKlass503
     public Dictionary<int, List<LocalClass2>> Prop503_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass504
 {
     public List<string> Prop504_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop504_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6646,10 +7924,12 @@ public class TestKlass504
     public List<string> Prop504_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass505
 {
     public List<string> Prop505_0 { get; set; }
     public List<string> Prop505_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6658,9 +7938,11 @@ public class TestKlass505
     public TestKlass406 Prop505_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass506
 {
     public TestKlass2 Prop506_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6669,13 +7951,16 @@ public class TestKlass506
     public List<string> Prop506_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass507
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop507_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6684,10 +7969,12 @@ public class TestKlass507
     public List<string> Prop507_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass508
 {
     public List<string> Prop508_0 { get; set; }
     public TestKlass161 Prop508_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6696,18 +7983,22 @@ public class TestKlass508
     public TestKlass32 Prop508_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass509
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop509_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop509_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6715,14 +8006,17 @@ public class TestKlass509
     public Dictionary<int, LocalClass2> Prop509_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass510
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop510_0 { get; set; }
     public List<string> Prop510_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6730,13 +8024,16 @@ public class TestKlass510
     public Dictionary<int, List<LocalClass2>> Prop510_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass511
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop511_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6746,13 +8043,16 @@ public class TestKlass511
     public TestKlass159 Prop511_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass512
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop512_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6760,8 +8060,10 @@ public class TestKlass512
     public Dictionary<int, List<LocalClass1>> Prop512_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass513
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6769,6 +8071,7 @@ public class TestKlass513
     public Dictionary<int, List<LocalClass0>> Prop513_0 { get; set; }
     public List<string> Prop513_1 { get; set; }
     public TestKlass168 Prop513_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6776,8 +8079,10 @@ public class TestKlass513
     public Dictionary<int, List<LocalClass3>> Prop513_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass514
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6786,16 +8091,19 @@ public class TestKlass514
     public TestKlass484 Prop514_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass515
 {
     public List<string> Prop515_0 { get; set; }
     public TestKlass273 Prop515_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass516
 {
     public TestKlass336 Prop516_0 { get; set; }
     public TestKlass279 Prop516_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6804,13 +8112,16 @@ public class TestKlass516
     public List<string> Prop516_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass517
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop517_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6818,13 +8129,16 @@ public class TestKlass517
     public Dictionary<int, List<LocalClass1>> Prop517_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass518
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop518_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6832,19 +8146,23 @@ public class TestKlass518
     public Dictionary<int, LocalClass1> Prop518_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass519
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop519_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop519_1 { get; set; }
     public TestKlass261 Prop519_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6852,18 +8170,22 @@ public class TestKlass519
     public Dictionary<int, LocalClass3> Prop519_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass520
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop520_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop520_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6871,19 +8193,23 @@ public class TestKlass520
     public Dictionary<int, List<LocalClass2>> Prop520_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass521
 {
     public TestKlass420 Prop521_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop521_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop521_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6891,9 +8217,11 @@ public class TestKlass521
     public Dictionary<int, LocalClass3> Prop521_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass522
 {
     public TestKlass256 Prop522_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6903,8 +8231,10 @@ public class TestKlass522
     public TestKlass212 Prop522_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass523
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6913,6 +8243,7 @@ public class TestKlass523
     public TestKlass276 Prop523_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass524
 {
     public List<string> Prop524_0 { get; set; }
@@ -6920,24 +8251,29 @@ public class TestKlass524
     public TestKlass204 Prop524_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass525
 {
     public List<string> Prop525_0 { get; set; }
     public TestKlass93 Prop525_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass526
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop526_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop526_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -6946,8 +8282,10 @@ public class TestKlass526
     public TestKlass23 Prop526_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass527
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -6956,9 +8294,11 @@ public class TestKlass527
     public TestKlass387 Prop527_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass528
 {
     public List<string> Prop528_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -6966,19 +8306,23 @@ public class TestKlass528
     public Dictionary<int, LocalClass1> Prop528_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass529
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop529_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop529_1 { get; set; }
     public TestKlass258 Prop529_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -6986,6 +8330,7 @@ public class TestKlass529
     public Dictionary<int, List<LocalClass3>> Prop529_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass530
 {
     public List<string> Prop530_0 { get; set; }
@@ -6993,19 +8338,23 @@ public class TestKlass530
     public List<string> Prop530_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass531
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop531_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop531_1 { get; set; }
     public List<string> Prop531_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7013,14 +8362,17 @@ public class TestKlass531
     public Dictionary<int, LocalClass3> Prop531_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass532
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop532_0 { get; set; }
     public List<string> Prop532_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7028,14 +8380,17 @@ public class TestKlass532
     public Dictionary<int, LocalClass2> Prop532_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass533
 {
     public TestKlass276 Prop533_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop533_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7043,13 +8398,16 @@ public class TestKlass533
     public Dictionary<int, List<LocalClass2>> Prop533_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass534
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop534_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7057,6 +8415,7 @@ public class TestKlass534
     public Dictionary<int, List<LocalClass1>> Prop534_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass535
 {
     public TestKlass495 Prop535_0 { get; set; }
@@ -7064,14 +8423,17 @@ public class TestKlass535
     public TestKlass342 Prop535_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass536
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop536_0 { get; set; }
     public TestKlass411 Prop536_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7079,23 +8441,28 @@ public class TestKlass536
     public Dictionary<int, LocalClass2> Prop536_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass537
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop537_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop537_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop537_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7103,9 +8470,11 @@ public class TestKlass537
     public Dictionary<int, LocalClass3> Prop537_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass538
 {
     public TestKlass292 Prop538_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7115,6 +8484,7 @@ public class TestKlass538
     public TestKlass438 Prop538_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass539
 {
     public TestKlass295 Prop539_0 { get; set; }
@@ -7122,14 +8492,17 @@ public class TestKlass539
     public TestKlass132 Prop539_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass540
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop540_0 { get; set; }
     public List<string> Prop540_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7137,19 +8510,23 @@ public class TestKlass540
     public Dictionary<int, List<LocalClass2>> Prop540_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass541
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop541_0 { get; set; }
     public List<string> Prop541_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop541_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7157,19 +8534,23 @@ public class TestKlass541
     public Dictionary<int, LocalClass3> Prop541_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass542
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop542_0 { get; set; }
     public TestKlass245 Prop542_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop542_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7177,14 +8558,17 @@ public class TestKlass542
     public Dictionary<int, LocalClass3> Prop542_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass543
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop543_0 { get; set; }
     public List<string> Prop543_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7193,9 +8577,11 @@ public class TestKlass543
     public TestKlass47 Prop543_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass544
 {
     public List<string> Prop544_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7203,13 +8589,16 @@ public class TestKlass544
     public Dictionary<int, List<LocalClass1>> Prop544_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass545
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop545_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7218,9 +8607,11 @@ public class TestKlass545
     public TestKlass338 Prop545_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass546
 {
     public TestKlass170 Prop546_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7228,15 +8619,18 @@ public class TestKlass546
     public Dictionary<int, LocalClass1> Prop546_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass547
 {
     public List<string> Prop547_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop547_1 { get; set; }
     public List<string> Prop547_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7244,8 +8638,10 @@ public class TestKlass547
     public Dictionary<int, List<LocalClass3>> Prop547_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass548
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7253,6 +8649,7 @@ public class TestKlass548
     public Dictionary<int, List<LocalClass0>> Prop548_0 { get; set; }
     public TestKlass135 Prop548_1 { get; set; }
     public List<string> Prop548_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7260,8 +8657,10 @@ public class TestKlass548
     public Dictionary<int, LocalClass3> Prop548_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass549
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7270,8 +8669,10 @@ public class TestKlass549
     public TestKlass218 Prop549_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass550
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7280,13 +8681,16 @@ public class TestKlass550
     public List<string> Prop550_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass551
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop551_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7294,9 +8698,11 @@ public class TestKlass551
     public Dictionary<int, List<LocalClass1>> Prop551_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass552
 {
     public List<string> Prop552_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7304,6 +8710,7 @@ public class TestKlass552
     public Dictionary<int, LocalClass1> Prop552_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass553
 {
     public List<string> Prop553_0 { get; set; }
@@ -7311,13 +8718,16 @@ public class TestKlass553
     public TestKlass76 Prop553_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass554
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop554_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7325,13 +8735,16 @@ public class TestKlass554
     public Dictionary<int, List<LocalClass1>> Prop554_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass555
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop555_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7340,19 +8753,23 @@ public class TestKlass555
     public List<string> Prop555_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass556
 {
     public List<string> Prop556_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop556_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop556_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7360,23 +8777,28 @@ public class TestKlass556
     public Dictionary<int, List<LocalClass3>> Prop556_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass557
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop557_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop557_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop557_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7384,10 +8806,12 @@ public class TestKlass557
     public Dictionary<int, LocalClass3> Prop557_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass558
 {
     public List<string> Prop558_0 { get; set; }
     public List<string> Prop558_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7395,23 +8819,28 @@ public class TestKlass558
     public Dictionary<int, List<LocalClass2>> Prop558_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass559
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop559_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop559_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop559_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7419,14 +8848,17 @@ public class TestKlass559
     public Dictionary<int, LocalClass3> Prop559_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass560
 {
     public TestKlass183 Prop560_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop560_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7435,19 +8867,23 @@ public class TestKlass560
     public List<string> Prop560_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass561
 {
     public TestKlass127 Prop561_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop561_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop561_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7455,8 +8891,10 @@ public class TestKlass561
     public Dictionary<int, List<LocalClass3>> Prop561_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass562
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7465,18 +8903,22 @@ public class TestKlass562
     public TestKlass276 Prop562_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass563
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop563_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop563_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7484,19 +8926,23 @@ public class TestKlass563
     public Dictionary<int, LocalClass2> Prop563_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass564
 {
     public List<string> Prop564_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop564_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop564_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7504,11 +8950,13 @@ public class TestKlass564
     public Dictionary<int, List<LocalClass3>> Prop564_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass565
 {
     public TestKlass468 Prop565_0 { get; set; }
     public TestKlass83 Prop565_1 { get; set; }
     public TestKlass477 Prop565_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7516,8 +8964,10 @@ public class TestKlass565
     public Dictionary<int, LocalClass3> Prop565_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass566
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7526,6 +8976,7 @@ public class TestKlass566
     public List<string> Prop566_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass567
 {
     public List<string> Prop567_0 { get; set; }
@@ -7533,13 +8984,16 @@ public class TestKlass567
     public List<string> Prop567_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass568
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop568_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7547,19 +9001,23 @@ public class TestKlass568
     public Dictionary<int, LocalClass1> Prop568_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass569
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop569_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop569_1 { get; set; }
     public List<string> Prop569_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7567,9 +9025,11 @@ public class TestKlass569
     public Dictionary<int, List<LocalClass3>> Prop569_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass570
 {
     public List<string> Prop570_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7577,16 +9037,19 @@ public class TestKlass570
     public Dictionary<int, LocalClass1> Prop570_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass571
 {
     public List<string> Prop571_0 { get; set; }
     public TestKlass344 Prop571_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass572
 {
     public List<string> Prop572_0 { get; set; }
     public List<string> Prop572_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7594,9 +9057,11 @@ public class TestKlass572
     public Dictionary<int, List<LocalClass2>> Prop572_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass573
 {
     public TestKlass488 Prop573_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7606,13 +9071,16 @@ public class TestKlass573
     public TestKlass145 Prop573_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass574
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop574_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7620,8 +9088,10 @@ public class TestKlass574
     public Dictionary<int, List<LocalClass1>> Prop574_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass575
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7630,9 +9100,11 @@ public class TestKlass575
     public TestKlass145 Prop575_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass576
 {
     public TestKlass407 Prop576_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7641,9 +9113,11 @@ public class TestKlass576
     public TestKlass114 Prop576_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass577
 {
     public TestKlass303 Prop577_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7651,14 +9125,17 @@ public class TestKlass577
     public Dictionary<int, LocalClass1> Prop577_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass578
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop578_0 { get; set; }
     public List<string> Prop578_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7666,14 +9143,17 @@ public class TestKlass578
     public Dictionary<int, LocalClass2> Prop578_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass579
 {
     public List<string> Prop579_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop579_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7681,6 +9161,7 @@ public class TestKlass579
     public Dictionary<int, List<LocalClass2>> Prop579_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass580
 {
     public List<string> Prop580_0 { get; set; }
@@ -7688,8 +9169,10 @@ public class TestKlass580
     public TestKlass309 Prop580_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass581
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7698,20 +9181,24 @@ public class TestKlass581
     public List<string> Prop581_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass582
 {
     public TestKlass299 Prop582_0 { get; set; }
     public List<string> Prop582_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass583
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop583_0 { get; set; }
     public TestKlass339 Prop583_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7719,19 +9206,23 @@ public class TestKlass583
     public Dictionary<int, LocalClass2> Prop583_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass584
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop584_0 { get; set; }
     public List<string> Prop584_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop584_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7739,24 +9230,29 @@ public class TestKlass584
     public Dictionary<int, LocalClass3> Prop584_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass585
 {
     public List<string> Prop585_0 { get; set; }
     public TestKlass256 Prop585_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass586
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop586_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop586_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7765,9 +9261,11 @@ public class TestKlass586
     public List<string> Prop586_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass587
 {
     public TestKlass251 Prop587_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7777,9 +9275,11 @@ public class TestKlass587
     public TestKlass102 Prop587_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass588
 {
     public List<string> Prop588_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7788,9 +9288,11 @@ public class TestKlass588
     public TestKlass15 Prop588_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass589
 {
     public TestKlass18 Prop589_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7798,9 +9300,11 @@ public class TestKlass589
     public Dictionary<int, List<LocalClass1>> Prop589_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass590
 {
     public TestKlass556 Prop590_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7809,13 +9313,16 @@ public class TestKlass590
     public TestKlass316 Prop590_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass591
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop591_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7825,13 +9332,16 @@ public class TestKlass591
     public TestKlass252 Prop591_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass592
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop592_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7839,8 +9349,10 @@ public class TestKlass592
     public Dictionary<int, LocalClass1> Prop592_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass593
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7848,6 +9360,7 @@ public class TestKlass593
     public Dictionary<int, LocalClass0> Prop593_0 { get; set; }
     public List<string> Prop593_1 { get; set; }
     public TestKlass82 Prop593_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7855,13 +9368,16 @@ public class TestKlass593
     public Dictionary<int, List<LocalClass3>> Prop593_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass594
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop594_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7870,8 +9386,10 @@ public class TestKlass594
     public TestKlass584 Prop594_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass595
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7880,15 +9398,18 @@ public class TestKlass595
     public TestKlass188 Prop595_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass596
 {
     public List<string> Prop596_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop596_1 { get; set; }
     public TestKlass392 Prop596_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7896,23 +9417,28 @@ public class TestKlass596
     public Dictionary<int, LocalClass3> Prop596_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass597
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop597_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop597_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop597_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -7920,14 +9446,17 @@ public class TestKlass597
     public Dictionary<int, List<LocalClass3>> Prop597_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass598
 {
     public TestKlass97 Prop598_0 { get; set; }
     public TestKlass51 Prop598_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass599
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -7936,14 +9465,17 @@ public class TestKlass599
     public List<string> Prop599_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass600
 {
     public List<string> Prop600_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop600_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7951,9 +9483,11 @@ public class TestKlass600
     public Dictionary<int, List<LocalClass2>> Prop600_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass601
 {
     public List<string> Prop601_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -7963,14 +9497,17 @@ public class TestKlass601
     public TestKlass65 Prop601_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass602
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop602_0 { get; set; }
     public List<string> Prop602_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -7978,23 +9515,28 @@ public class TestKlass602
     public Dictionary<int, List<LocalClass2>> Prop602_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass603
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop603_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop603_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop603_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8002,13 +9544,16 @@ public class TestKlass603
     public Dictionary<int, List<LocalClass3>> Prop603_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass604
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop604_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8016,8 +9561,10 @@ public class TestKlass604
     public Dictionary<int, List<LocalClass1>> Prop604_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass605
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8028,6 +9575,7 @@ public class TestKlass605
     public List<string> Prop605_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass606
 {
     public List<string> Prop606_0 { get; set; }
@@ -8035,18 +9583,22 @@ public class TestKlass606
     public TestKlass84 Prop606_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass607
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop607_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop607_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8055,9 +9607,11 @@ public class TestKlass607
     public TestKlass450 Prop607_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass608
 {
     public List<string> Prop608_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8065,9 +9619,11 @@ public class TestKlass608
     public Dictionary<int, List<LocalClass1>> Prop608_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass609
 {
     public TestKlass92 Prop609_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8076,10 +9632,12 @@ public class TestKlass609
     public List<string> Prop609_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass610
 {
     public List<string> Prop610_0 { get; set; }
     public List<string> Prop610_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8087,13 +9645,16 @@ public class TestKlass610
     public Dictionary<int, LocalClass2> Prop610_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass611
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop611_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8102,10 +9663,12 @@ public class TestKlass611
     public List<string> Prop611_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass612
 {
     public List<string> Prop612_0 { get; set; }
     public List<string> Prop612_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8113,9 +9676,11 @@ public class TestKlass612
     public Dictionary<int, LocalClass2> Prop612_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass613
 {
     public TestKlass51 Prop613_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8125,9 +9690,11 @@ public class TestKlass613
     public List<string> Prop613_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass614
 {
     public TestKlass508 Prop614_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8135,15 +9702,18 @@ public class TestKlass614
     public Dictionary<int, List<LocalClass1>> Prop614_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass615
 {
     public List<string> Prop615_0 { get; set; }
     public TestKlass17 Prop615_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass616
 {
     public TestKlass162 Prop616_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8152,9 +9722,11 @@ public class TestKlass616
     public List<string> Prop616_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass617
 {
     public List<string> Prop617_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8163,10 +9735,12 @@ public class TestKlass617
     public TestKlass57 Prop617_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass618
 {
     public List<string> Prop618_0 { get; set; }
     public List<string> Prop618_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8174,9 +9748,11 @@ public class TestKlass618
     public Dictionary<int, LocalClass2> Prop618_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass619
 {
     public List<string> Prop619_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8184,8 +9760,10 @@ public class TestKlass619
     public Dictionary<int, LocalClass1> Prop619_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass620
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8194,9 +9772,11 @@ public class TestKlass620
     public TestKlass580 Prop620_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass621
 {
     public List<string> Prop621_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8204,8 +9784,10 @@ public class TestKlass621
     public Dictionary<int, LocalClass1> Prop621_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass622
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8214,8 +9796,10 @@ public class TestKlass622
     public List<string> Prop622_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass623
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8224,9 +9808,11 @@ public class TestKlass623
     public List<string> Prop623_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass624
 {
     public TestKlass159 Prop624_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8234,10 +9820,12 @@ public class TestKlass624
     public Dictionary<int, List<LocalClass1>> Prop624_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass625
 {
     public List<string> Prop625_0 { get; set; }
     public List<string> Prop625_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8246,20 +9834,24 @@ public class TestKlass625
     public TestKlass588 Prop625_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass626
 {
     public TestKlass0 Prop626_0 { get; set; }
     public List<string> Prop626_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass627
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop627_0 { get; set; }
     public TestKlass359 Prop627_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8267,6 +9859,7 @@ public class TestKlass627
     public Dictionary<int, List<LocalClass2>> Prop627_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass628
 {
     public List<string> Prop628_0 { get; set; }
@@ -8274,13 +9867,16 @@ public class TestKlass628
     public TestKlass57 Prop628_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass629
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop629_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8289,10 +9885,12 @@ public class TestKlass629
     public List<string> Prop629_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass630
 {
     public TestKlass262 Prop630_0 { get; set; }
     public List<string> Prop630_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8300,19 +9898,23 @@ public class TestKlass630
     public Dictionary<int, LocalClass2> Prop630_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass631
 {
     public TestKlass5 Prop631_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop631_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop631_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8320,13 +9922,16 @@ public class TestKlass631
     public Dictionary<int, List<LocalClass3>> Prop631_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass632
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop632_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8334,13 +9939,16 @@ public class TestKlass632
     public Dictionary<int, List<LocalClass1>> Prop632_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass633
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop633_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8349,18 +9957,22 @@ public class TestKlass633
     public TestKlass513 Prop633_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass634
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop634_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop634_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8369,19 +9981,23 @@ public class TestKlass634
     public TestKlass26 Prop634_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass635
 {
     public List<string> Prop635_0 { get; set; }
     public List<string> Prop635_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass636
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop636_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8389,19 +10005,23 @@ public class TestKlass636
     public Dictionary<int, LocalClass1> Prop636_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass637
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop637_0 { get; set; }
     public List<string> Prop637_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop637_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8409,14 +10029,17 @@ public class TestKlass637
     public Dictionary<int, LocalClass3> Prop637_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass638
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop638_0 { get; set; }
     public List<string> Prop638_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8425,13 +10048,16 @@ public class TestKlass638
     public List<string> Prop638_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass639
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop639_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8440,6 +10066,7 @@ public class TestKlass639
     public TestKlass318 Prop639_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass640
 {
     public TestKlass88 Prop640_0 { get; set; }
@@ -8447,13 +10074,16 @@ public class TestKlass640
     public List<string> Prop640_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass641
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop641_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8461,11 +10091,13 @@ public class TestKlass641
     public Dictionary<int, List<LocalClass1>> Prop641_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass642
 {
     public TestKlass233 Prop642_0 { get; set; }
     public List<string> Prop642_1 { get; set; }
     public List<string> Prop642_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8473,18 +10105,22 @@ public class TestKlass642
     public Dictionary<int, LocalClass3> Prop642_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass643
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop643_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop643_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8492,9 +10128,11 @@ public class TestKlass643
     public Dictionary<int, List<LocalClass2>> Prop643_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass644
 {
     public TestKlass292 Prop644_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8502,18 +10140,22 @@ public class TestKlass644
     public Dictionary<int, LocalClass1> Prop644_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass645
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop645_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop645_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8521,19 +10163,23 @@ public class TestKlass645
     public Dictionary<int, List<LocalClass2>> Prop645_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass646
 {
     public TestKlass326 Prop646_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop646_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop646_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8541,19 +10187,23 @@ public class TestKlass646
     public Dictionary<int, List<LocalClass3>> Prop646_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass647
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop647_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop647_1 { get; set; }
     public TestKlass186 Prop647_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8561,9 +10211,11 @@ public class TestKlass647
     public Dictionary<int, LocalClass3> Prop647_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass648
 {
     public List<string> Prop648_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8571,9 +10223,11 @@ public class TestKlass648
     public Dictionary<int, List<LocalClass1>> Prop648_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass649
 {
     public List<string> Prop649_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8583,14 +10237,17 @@ public class TestKlass649
     public List<string> Prop649_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass650
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop650_0 { get; set; }
     public TestKlass369 Prop650_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8598,19 +10255,23 @@ public class TestKlass650
     public Dictionary<int, LocalClass2> Prop650_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass651
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop651_0 { get; set; }
     public TestKlass29 Prop651_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop651_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8618,14 +10279,17 @@ public class TestKlass651
     public Dictionary<int, LocalClass3> Prop651_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass652
 {
     public List<string> Prop652_0 { get; set; }
     public List<string> Prop652_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass653
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8634,19 +10298,23 @@ public class TestKlass653
     public List<string> Prop653_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass654
 {
     public TestKlass272 Prop654_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop654_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop654_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8654,14 +10322,17 @@ public class TestKlass654
     public Dictionary<int, List<LocalClass3>> Prop654_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass655
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop655_0 { get; set; }
     public TestKlass373 Prop655_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8669,8 +10340,10 @@ public class TestKlass655
     public Dictionary<int, List<LocalClass2>> Prop655_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass656
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8679,9 +10352,11 @@ public class TestKlass656
     public TestKlass591 Prop656_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass657
 {
     public List<string> Prop657_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8690,8 +10365,10 @@ public class TestKlass657
     public List<string> Prop657_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass658
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8700,8 +10377,10 @@ public class TestKlass658
     public TestKlass195 Prop658_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass659
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8710,14 +10389,17 @@ public class TestKlass659
     public List<string> Prop659_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass660
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop660_0 { get; set; }
     public TestKlass185 Prop660_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8726,14 +10408,17 @@ public class TestKlass660
     public TestKlass7 Prop660_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass661
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop661_0 { get; set; }
     public List<string> Prop661_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8741,18 +10426,22 @@ public class TestKlass661
     public Dictionary<int, List<LocalClass2>> Prop661_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass662
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop662_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop662_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8761,13 +10450,16 @@ public class TestKlass662
     public TestKlass369 Prop662_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass663
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop663_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8775,13 +10467,16 @@ public class TestKlass663
     public Dictionary<int, List<LocalClass1>> Prop663_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass664
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop664_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8789,14 +10484,17 @@ public class TestKlass664
     public Dictionary<int, LocalClass1> Prop664_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass665
 {
     public TestKlass477 Prop665_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop665_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8805,8 +10503,10 @@ public class TestKlass665
     public List<string> Prop665_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass666
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8816,19 +10516,23 @@ public class TestKlass666
     public List<string> Prop666_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass667
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop667_0 { get; set; }
     public List<string> Prop667_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop667_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8836,10 +10540,12 @@ public class TestKlass667
     public Dictionary<int, LocalClass3> Prop667_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass668
 {
     public List<string> Prop668_0 { get; set; }
     public List<string> Prop668_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8847,8 +10553,10 @@ public class TestKlass668
     public Dictionary<int, LocalClass2> Prop668_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass669
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8858,13 +10566,16 @@ public class TestKlass669
     public TestKlass459 Prop669_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass670
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop670_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8873,9 +10584,11 @@ public class TestKlass670
     public TestKlass132 Prop670_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass671
 {
     public TestKlass215 Prop671_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8885,9 +10598,11 @@ public class TestKlass671
     public List<string> Prop671_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass672
 {
     public TestKlass271 Prop672_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -8895,19 +10610,23 @@ public class TestKlass672
     public Dictionary<int, List<LocalClass1>> Prop672_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass673
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop673_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop673_1 { get; set; }
     public TestKlass108 Prop673_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -8915,18 +10634,22 @@ public class TestKlass673
     public Dictionary<int, LocalClass3> Prop673_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass674
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop674_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop674_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8935,8 +10658,10 @@ public class TestKlass674
     public List<string> Prop674_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass675
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8946,14 +10671,17 @@ public class TestKlass675
     public TestKlass391 Prop675_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass676
 {
     public TestKlass86 Prop676_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop676_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8961,10 +10689,12 @@ public class TestKlass676
     public Dictionary<int, List<LocalClass2>> Prop676_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass677
 {
     public TestKlass99 Prop677_0 { get; set; }
     public TestKlass449 Prop677_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8972,8 +10702,10 @@ public class TestKlass677
     public Dictionary<int, List<LocalClass2>> Prop677_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass678
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -8982,14 +10714,17 @@ public class TestKlass678
     public List<string> Prop678_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass679
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop679_0 { get; set; }
     public List<string> Prop679_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -8997,14 +10732,17 @@ public class TestKlass679
     public Dictionary<int, LocalClass2> Prop679_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass680
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop680_0 { get; set; }
     public List<string> Prop680_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9013,9 +10751,11 @@ public class TestKlass680
     public TestKlass405 Prop680_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass681
 {
     public TestKlass469 Prop681_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9023,19 +10763,23 @@ public class TestKlass681
     public Dictionary<int, List<LocalClass1>> Prop681_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass682
 {
     public List<string> Prop682_0 { get; set; }
     public TestKlass414 Prop682_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass683
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop683_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9043,15 +10787,18 @@ public class TestKlass683
     public Dictionary<int, LocalClass1> Prop683_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass684
 {
     public List<string> Prop684_0 { get; set; }
     public List<string> Prop684_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass685
 {
     public TestKlass480 Prop685_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9059,15 +10806,18 @@ public class TestKlass685
     public Dictionary<int, List<LocalClass1>> Prop685_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass686
 {
     public TestKlass645 Prop686_0 { get; set; }
     public List<string> Prop686_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass687
 {
     public TestKlass640 Prop687_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9075,8 +10825,10 @@ public class TestKlass687
     public Dictionary<int, List<LocalClass1>> Prop687_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass688
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9086,8 +10838,10 @@ public class TestKlass688
     public List<string> Prop688_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass689
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9096,13 +10850,16 @@ public class TestKlass689
     public TestKlass366 Prop689_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass690
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop690_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9110,19 +10867,23 @@ public class TestKlass690
     public Dictionary<int, List<LocalClass1>> Prop690_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass691
 {
     public TestKlass591 Prop691_0 { get; set; }
     public List<string> Prop691_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass692
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop692_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9130,15 +10891,18 @@ public class TestKlass692
     public Dictionary<int, List<LocalClass1>> Prop692_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass693
 {
     public List<string> Prop693_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop693_1 { get; set; }
     public TestKlass392 Prop693_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9146,9 +10910,11 @@ public class TestKlass693
     public Dictionary<int, List<LocalClass3>> Prop693_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass694
 {
     public List<string> Prop694_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9156,13 +10922,16 @@ public class TestKlass694
     public Dictionary<int, List<LocalClass1>> Prop694_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass695
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop695_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9170,19 +10939,23 @@ public class TestKlass695
     public Dictionary<int, List<LocalClass1>> Prop695_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass696
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop696_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop696_1 { get; set; }
     public TestKlass574 Prop696_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9190,8 +10963,10 @@ public class TestKlass696
     public Dictionary<int, LocalClass3> Prop696_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass697
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9200,13 +10975,16 @@ public class TestKlass697
     public List<string> Prop697_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass698
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop698_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9214,9 +10992,11 @@ public class TestKlass698
     public Dictionary<int, LocalClass1> Prop698_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass699
 {
     public TestKlass66 Prop699_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9224,14 +11004,17 @@ public class TestKlass699
     public Dictionary<int, LocalClass1> Prop699_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass700
 {
     public TestKlass390 Prop700_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop700_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9240,9 +11023,11 @@ public class TestKlass700
     public TestKlass357 Prop700_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass701
 {
     public TestKlass327 Prop701_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9251,13 +11036,16 @@ public class TestKlass701
     public List<string> Prop701_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass702
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop702_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9265,8 +11053,10 @@ public class TestKlass702
     public Dictionary<int, LocalClass1> Prop702_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass703
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9275,21 +11065,25 @@ public class TestKlass703
     public List<string> Prop703_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass704
 {
     public List<string> Prop704_0 { get; set; }
     public List<string> Prop704_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass705
 {
     public TestKlass533 Prop705_0 { get; set; }
     public TestKlass686 Prop705_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop705_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9297,13 +11091,16 @@ public class TestKlass705
     public Dictionary<int, LocalClass3> Prop705_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass706
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop706_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9312,14 +11109,17 @@ public class TestKlass706
     public List<string> Prop706_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass707
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop707_0 { get; set; }
     public List<string> Prop707_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9328,9 +11128,11 @@ public class TestKlass707
     public List<string> Prop707_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass708
 {
     public List<string> Prop708_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9338,24 +11140,29 @@ public class TestKlass708
     public Dictionary<int, List<LocalClass1>> Prop708_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass709
 {
     public List<string> Prop709_0 { get; set; }
     public TestKlass253 Prop709_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass710
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop710_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop710_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9364,13 +11171,16 @@ public class TestKlass710
     public List<string> Prop710_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass711
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop711_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9379,9 +11189,11 @@ public class TestKlass711
     public TestKlass494 Prop711_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass712
 {
     public TestKlass86 Prop712_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9389,18 +11201,22 @@ public class TestKlass712
     public Dictionary<int, List<LocalClass1>> Prop712_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass713
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop713_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop713_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9408,15 +11224,18 @@ public class TestKlass713
     public Dictionary<int, List<LocalClass2>> Prop713_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass714
 {
     public List<string> Prop714_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop714_1 { get; set; }
     public List<string> Prop714_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9424,14 +11243,17 @@ public class TestKlass714
     public Dictionary<int, LocalClass3> Prop714_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass715
 {
     public List<string> Prop715_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop715_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9439,19 +11261,23 @@ public class TestKlass715
     public Dictionary<int, LocalClass2> Prop715_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass716
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop716_0 { get; set; }
     public TestKlass284 Prop716_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop716_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9459,11 +11285,13 @@ public class TestKlass716
     public Dictionary<int, List<LocalClass3>> Prop716_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass717
 {
     public TestKlass207 Prop717_0 { get; set; }
     public TestKlass704 Prop717_1 { get; set; }
     public List<string> Prop717_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9471,8 +11299,10 @@ public class TestKlass717
     public Dictionary<int, List<LocalClass3>> Prop717_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass718
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9483,18 +11313,22 @@ public class TestKlass718
     public List<string> Prop718_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass719
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop719_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop719_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9503,13 +11337,16 @@ public class TestKlass719
     public TestKlass100 Prop719_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass720
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop720_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9518,15 +11355,18 @@ public class TestKlass720
     public List<string> Prop720_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass721
 {
     public TestKlass103 Prop721_0 { get; set; }
     public List<string> Prop721_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass722
 {
     public TestKlass702 Prop722_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9536,9 +11376,11 @@ public class TestKlass722
     public List<string> Prop722_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass723
 {
     public List<string> Prop723_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9546,9 +11388,11 @@ public class TestKlass723
     public Dictionary<int, List<LocalClass1>> Prop723_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass724
 {
     public List<string> Prop724_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9556,9 +11400,11 @@ public class TestKlass724
     public Dictionary<int, LocalClass1> Prop724_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass725
 {
     public TestKlass313 Prop725_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9567,8 +11413,10 @@ public class TestKlass725
     public TestKlass429 Prop725_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass726
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9577,15 +11425,18 @@ public class TestKlass726
     public TestKlass54 Prop726_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass727
 {
     public TestKlass706 Prop727_0 { get; set; }
     public List<string> Prop727_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass728
 {
     public TestKlass24 Prop728_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9594,19 +11445,23 @@ public class TestKlass728
     public TestKlass707 Prop728_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass729
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop729_0 { get; set; }
     public TestKlass680 Prop729_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop729_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9614,8 +11469,10 @@ public class TestKlass729
     public Dictionary<int, LocalClass3> Prop729_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass730
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9626,13 +11483,16 @@ public class TestKlass730
     public List<string> Prop730_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass731
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop731_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9641,8 +11501,10 @@ public class TestKlass731
     public List<string> Prop731_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass732
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9651,9 +11513,11 @@ public class TestKlass732
     public TestKlass373 Prop732_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass733
 {
     public TestKlass144 Prop733_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9661,19 +11525,23 @@ public class TestKlass733
     public Dictionary<int, List<LocalClass1>> Prop733_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass734
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop734_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop734_1 { get; set; }
     public TestKlass678 Prop734_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9681,10 +11549,12 @@ public class TestKlass734
     public Dictionary<int, List<LocalClass3>> Prop734_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass735
 {
     public TestKlass41 Prop735_0 { get; set; }
     public List<string> Prop735_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9692,10 +11562,12 @@ public class TestKlass735
     public Dictionary<int, List<LocalClass2>> Prop735_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass736
 {
     public TestKlass366 Prop736_0 { get; set; }
     public TestKlass372 Prop736_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9703,8 +11575,10 @@ public class TestKlass736
     public Dictionary<int, List<LocalClass2>> Prop736_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass737
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9713,8 +11587,10 @@ public class TestKlass737
     public TestKlass144 Prop737_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass738
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9723,10 +11599,12 @@ public class TestKlass738
     public List<string> Prop738_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass739
 {
     public TestKlass44 Prop739_0 { get; set; }
     public List<string> Prop739_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9734,18 +11612,22 @@ public class TestKlass739
     public Dictionary<int, LocalClass2> Prop739_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass740
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop740_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop740_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9754,13 +11636,16 @@ public class TestKlass740
     public TestKlass161 Prop740_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass741
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop741_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9768,9 +11653,11 @@ public class TestKlass741
     public Dictionary<int, List<LocalClass1>> Prop741_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass742
 {
     public List<string> Prop742_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9778,14 +11665,17 @@ public class TestKlass742
     public Dictionary<int, List<LocalClass1>> Prop742_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass743
 {
     public TestKlass731 Prop743_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop743_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9794,23 +11684,28 @@ public class TestKlass743
     public List<string> Prop743_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass744
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop744_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop744_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop744_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9818,14 +11713,17 @@ public class TestKlass744
     public Dictionary<int, List<LocalClass3>> Prop744_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass745
 {
     public TestKlass479 Prop745_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop745_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9833,14 +11731,17 @@ public class TestKlass745
     public Dictionary<int, List<LocalClass2>> Prop745_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass746
 {
     public List<string> Prop746_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop746_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9848,15 +11749,18 @@ public class TestKlass746
     public Dictionary<int, List<LocalClass2>> Prop746_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass747
 {
     public List<string> Prop747_0 { get; set; }
     public List<string> Prop747_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass748
 {
     public TestKlass702 Prop748_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9865,8 +11769,10 @@ public class TestKlass748
     public List<string> Prop748_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass749
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9875,9 +11781,11 @@ public class TestKlass749
     public TestKlass130 Prop749_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass750
 {
     public TestKlass246 Prop750_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9885,18 +11793,22 @@ public class TestKlass750
     public Dictionary<int, List<LocalClass1>> Prop750_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass751
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop751_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop751_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9905,19 +11817,23 @@ public class TestKlass751
     public List<string> Prop751_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass752
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop752_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop752_1 { get; set; }
     public TestKlass28 Prop752_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -9925,8 +11841,10 @@ public class TestKlass752
     public Dictionary<int, LocalClass3> Prop752_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass753
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9936,9 +11854,11 @@ public class TestKlass753
     public List<string> Prop753_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass754
 {
     public List<string> Prop754_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -9946,18 +11866,22 @@ public class TestKlass754
     public Dictionary<int, LocalClass1> Prop754_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass755
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop755_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop755_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9965,8 +11889,10 @@ public class TestKlass755
     public Dictionary<int, LocalClass2> Prop755_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass756
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -9975,18 +11901,22 @@ public class TestKlass756
     public List<string> Prop756_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass757
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop757_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop757_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -9994,8 +11924,10 @@ public class TestKlass757
     public Dictionary<int, LocalClass2> Prop757_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass758
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10004,9 +11936,11 @@ public class TestKlass758
     public List<string> Prop758_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass759
 {
     public TestKlass737 Prop759_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10016,6 +11950,7 @@ public class TestKlass759
     public List<string> Prop759_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass760
 {
     public List<string> Prop760_0 { get; set; }
@@ -10023,13 +11958,16 @@ public class TestKlass760
     public TestKlass326 Prop760_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass761
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop761_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10037,18 +11975,22 @@ public class TestKlass761
     public Dictionary<int, List<LocalClass1>> Prop761_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass762
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop762_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop762_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10057,19 +11999,23 @@ public class TestKlass762
     public List<string> Prop762_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass763
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop763_0 { get; set; }
     public List<string> Prop763_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop763_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10077,8 +12023,10 @@ public class TestKlass763
     public Dictionary<int, LocalClass3> Prop763_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass764
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10087,9 +12035,11 @@ public class TestKlass764
     public TestKlass758 Prop764_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass765
 {
     public List<string> Prop765_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10097,10 +12047,12 @@ public class TestKlass765
     public Dictionary<int, LocalClass1> Prop765_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass766
 {
     public TestKlass551 Prop766_0 { get; set; }
     public TestKlass90 Prop766_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10108,8 +12060,10 @@ public class TestKlass766
     public Dictionary<int, LocalClass2> Prop766_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass767
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10118,10 +12072,12 @@ public class TestKlass767
     public List<string> Prop767_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass768
 {
     public List<string> Prop768_0 { get; set; }
     public TestKlass408 Prop768_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10130,19 +12086,23 @@ public class TestKlass768
     public List<string> Prop768_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass769
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop769_0 { get; set; }
     public TestKlass758 Prop769_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop769_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10150,14 +12110,17 @@ public class TestKlass769
     public Dictionary<int, LocalClass3> Prop769_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass770
 {
     public List<string> Prop770_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop770_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10165,9 +12128,11 @@ public class TestKlass770
     public Dictionary<int, LocalClass2> Prop770_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass771
 {
     public TestKlass18 Prop771_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10175,8 +12140,10 @@ public class TestKlass771
     public Dictionary<int, LocalClass1> Prop771_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass772
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10186,19 +12153,23 @@ public class TestKlass772
     public List<string> Prop772_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass773
 {
     public TestKlass6 Prop773_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop773_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop773_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10206,14 +12177,17 @@ public class TestKlass773
     public Dictionary<int, List<LocalClass3>> Prop773_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass774
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop774_0 { get; set; }
     public TestKlass134 Prop774_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10222,8 +12196,10 @@ public class TestKlass774
     public TestKlass291 Prop774_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass775
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10232,8 +12208,10 @@ public class TestKlass775
     public List<string> Prop775_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass776
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10242,14 +12220,17 @@ public class TestKlass776
     public List<string> Prop776_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass777
 {
     public TestKlass9 Prop777_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop777_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10258,8 +12239,10 @@ public class TestKlass777
     public List<string> Prop777_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass778
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10268,10 +12251,12 @@ public class TestKlass778
     public TestKlass362 Prop778_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass779
 {
     public TestKlass245 Prop779_0 { get; set; }
     public TestKlass112 Prop779_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10280,19 +12265,23 @@ public class TestKlass779
     public TestKlass515 Prop779_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass780
 {
     public List<string> Prop780_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop780_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop780_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10300,9 +12289,11 @@ public class TestKlass780
     public Dictionary<int, LocalClass3> Prop780_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass781
 {
     public TestKlass199 Prop781_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10310,8 +12301,10 @@ public class TestKlass781
     public Dictionary<int, LocalClass1> Prop781_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass782
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10319,6 +12312,7 @@ public class TestKlass782
     public Dictionary<int, List<LocalClass0>> Prop782_0 { get; set; }
     public TestKlass154 Prop782_1 { get; set; }
     public TestKlass546 Prop782_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10326,20 +12320,24 @@ public class TestKlass782
     public Dictionary<int, List<LocalClass3>> Prop782_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass783
 {
     public TestKlass707 Prop783_0 { get; set; }
     public TestKlass94 Prop783_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass784
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop784_0 { get; set; }
     public List<string> Prop784_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10347,10 +12345,12 @@ public class TestKlass784
     public Dictionary<int, List<LocalClass2>> Prop784_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass785
 {
     public List<string> Prop785_0 { get; set; }
     public TestKlass205 Prop785_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10358,9 +12358,11 @@ public class TestKlass785
     public Dictionary<int, List<LocalClass2>> Prop785_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass786
 {
     public List<string> Prop786_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10368,9 +12370,11 @@ public class TestKlass786
     public Dictionary<int, LocalClass1> Prop786_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass787
 {
     public List<string> Prop787_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10379,13 +12383,16 @@ public class TestKlass787
     public List<string> Prop787_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass788
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop788_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10393,13 +12400,16 @@ public class TestKlass788
     public Dictionary<int, LocalClass1> Prop788_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass789
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop789_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10408,14 +12418,17 @@ public class TestKlass789
     public List<string> Prop789_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass790
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop790_0 { get; set; }
     public List<string> Prop790_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10424,14 +12437,17 @@ public class TestKlass790
     public List<string> Prop790_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass791
 {
     public TestKlass782 Prop791_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop791_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10439,18 +12455,22 @@ public class TestKlass791
     public Dictionary<int, List<LocalClass2>> Prop791_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass792
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop792_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop792_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10458,15 +12478,18 @@ public class TestKlass792
     public Dictionary<int, LocalClass2> Prop792_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass793
 {
     public List<string> Prop793_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop793_1 { get; set; }
     public TestKlass788 Prop793_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10474,14 +12497,17 @@ public class TestKlass793
     public Dictionary<int, LocalClass3> Prop793_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass794
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop794_0 { get; set; }
     public List<string> Prop794_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10489,6 +12515,7 @@ public class TestKlass794
     public Dictionary<int, LocalClass2> Prop794_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass795
 {
     public TestKlass368 Prop795_0 { get; set; }
@@ -10497,10 +12524,12 @@ public class TestKlass795
     public List<string> Prop795_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass796
 {
     public TestKlass476 Prop796_0 { get; set; }
     public TestKlass72 Prop796_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10508,13 +12537,16 @@ public class TestKlass796
     public Dictionary<int, LocalClass2> Prop796_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass797
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop797_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10523,14 +12555,17 @@ public class TestKlass797
     public TestKlass500 Prop797_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass798
 {
     public TestKlass592 Prop798_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop798_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10539,8 +12574,10 @@ public class TestKlass798
     public List<string> Prop798_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass799
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10549,10 +12586,12 @@ public class TestKlass799
     public List<string> Prop799_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass800
 {
     public TestKlass736 Prop800_0 { get; set; }
     public TestKlass326 Prop800_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10560,11 +12599,13 @@ public class TestKlass800
     public Dictionary<int, LocalClass2> Prop800_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass801
 {
     public List<string> Prop801_0 { get; set; }
     public TestKlass68 Prop801_1 { get; set; }
     public List<string> Prop801_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10572,9 +12613,11 @@ public class TestKlass801
     public Dictionary<int, LocalClass3> Prop801_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass802
 {
     public TestKlass714 Prop802_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10583,14 +12626,17 @@ public class TestKlass802
     public TestKlass521 Prop802_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass803
 {
     public List<string> Prop803_0 { get; set; }
     public List<string> Prop803_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass804
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10599,15 +12645,18 @@ public class TestKlass804
     public TestKlass728 Prop804_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass805
 {
     public List<string> Prop805_0 { get; set; }
     public TestKlass238 Prop805_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop805_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10615,6 +12664,7 @@ public class TestKlass805
     public Dictionary<int, LocalClass3> Prop805_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass806
 {
     public List<string> Prop806_0 { get; set; }
@@ -10622,9 +12672,11 @@ public class TestKlass806
     public List<string> Prop806_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass807
 {
     public List<string> Prop807_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10632,14 +12684,17 @@ public class TestKlass807
     public Dictionary<int, LocalClass1> Prop807_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass808
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop808_0 { get; set; }
     public List<string> Prop808_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10647,8 +12702,10 @@ public class TestKlass808
     public Dictionary<int, LocalClass2> Prop808_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass809
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10659,14 +12716,17 @@ public class TestKlass809
     public List<string> Prop809_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass810
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop810_0 { get; set; }
     public TestKlass477 Prop810_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10674,9 +12734,11 @@ public class TestKlass810
     public Dictionary<int, List<LocalClass2>> Prop810_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass811
 {
     public List<string> Prop811_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10685,14 +12747,17 @@ public class TestKlass811
     public List<string> Prop811_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass812
 {
     public List<string> Prop812_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop812_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10701,6 +12766,7 @@ public class TestKlass812
     public List<string> Prop812_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass813
 {
     public TestKlass241 Prop813_0 { get; set; }
@@ -10708,13 +12774,16 @@ public class TestKlass813
     public List<string> Prop813_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass814
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop814_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10722,8 +12791,10 @@ public class TestKlass814
     public Dictionary<int, List<LocalClass1>> Prop814_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass815
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10731,6 +12802,7 @@ public class TestKlass815
     public Dictionary<int, LocalClass0> Prop815_0 { get; set; }
     public TestKlass475 Prop815_1 { get; set; }
     public TestKlass292 Prop815_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10738,10 +12810,12 @@ public class TestKlass815
     public Dictionary<int, List<LocalClass3>> Prop815_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass816
 {
     public List<string> Prop816_0 { get; set; }
     public List<string> Prop816_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10749,9 +12823,11 @@ public class TestKlass816
     public Dictionary<int, List<LocalClass2>> Prop816_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass817
 {
     public TestKlass270 Prop817_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10759,15 +12835,18 @@ public class TestKlass817
     public Dictionary<int, LocalClass1> Prop817_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass818
 {
     public List<string> Prop818_0 { get; set; }
     public TestKlass499 Prop818_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass819
 {
     public TestKlass65 Prop819_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10775,10 +12854,12 @@ public class TestKlass819
     public Dictionary<int, List<LocalClass1>> Prop819_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass820
 {
     public List<string> Prop820_0 { get; set; }
     public List<string> Prop820_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10786,11 +12867,13 @@ public class TestKlass820
     public Dictionary<int, List<LocalClass2>> Prop820_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass821
 {
     public TestKlass698 Prop821_0 { get; set; }
     public List<string> Prop821_1 { get; set; }
     public TestKlass769 Prop821_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10798,9 +12881,11 @@ public class TestKlass821
     public Dictionary<int, LocalClass3> Prop821_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass822
 {
     public TestKlass716 Prop822_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10808,6 +12893,7 @@ public class TestKlass822
     public Dictionary<int, List<LocalClass1>> Prop822_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass823
 {
     public List<string> Prop823_0 { get; set; }
@@ -10815,8 +12901,10 @@ public class TestKlass823
     public List<string> Prop823_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass824
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10824,6 +12912,7 @@ public class TestKlass824
     public Dictionary<int, LocalClass0> Prop824_0 { get; set; }
     public TestKlass50 Prop824_1 { get; set; }
     public List<string> Prop824_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10831,10 +12920,12 @@ public class TestKlass824
     public Dictionary<int, LocalClass3> Prop824_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass825
 {
     public TestKlass608 Prop825_0 { get; set; }
     public List<string> Prop825_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10842,18 +12933,22 @@ public class TestKlass825
     public Dictionary<int, LocalClass2> Prop825_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass826
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop826_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop826_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10861,15 +12956,18 @@ public class TestKlass826
     public Dictionary<int, LocalClass2> Prop826_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass827
 {
     public TestKlass550 Prop827_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop827_1 { get; set; }
     public TestKlass156 Prop827_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10877,8 +12975,10 @@ public class TestKlass827
     public Dictionary<int, LocalClass3> Prop827_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass828
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10889,13 +12989,16 @@ public class TestKlass828
     public TestKlass530 Prop828_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass829
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop829_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10903,13 +13006,16 @@ public class TestKlass829
     public Dictionary<int, LocalClass1> Prop829_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass830
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop830_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10917,14 +13023,17 @@ public class TestKlass830
     public Dictionary<int, LocalClass1> Prop830_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass831
 {
     public List<string> Prop831_0 { get; set; }
     public List<string> Prop831_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass832
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10934,8 +13043,10 @@ public class TestKlass832
     public TestKlass94 Prop832_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass833
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -10944,15 +13055,18 @@ public class TestKlass833
     public List<string> Prop833_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass834
 {
     public List<string> Prop834_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop834_1 { get; set; }
     public TestKlass521 Prop834_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -10960,10 +13074,12 @@ public class TestKlass834
     public Dictionary<int, LocalClass3> Prop834_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass835
 {
     public TestKlass135 Prop835_0 { get; set; }
     public List<string> Prop835_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10972,13 +13088,16 @@ public class TestKlass835
     public TestKlass666 Prop835_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass836
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop836_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -10986,10 +13105,12 @@ public class TestKlass836
     public Dictionary<int, List<LocalClass1>> Prop836_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass837
 {
     public TestKlass632 Prop837_0 { get; set; }
     public List<string> Prop837_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -10998,14 +13119,17 @@ public class TestKlass837
     public List<string> Prop837_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass838
 {
     public TestKlass316 Prop838_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop838_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11013,10 +13137,12 @@ public class TestKlass838
     public Dictionary<int, LocalClass2> Prop838_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass839
 {
     public TestKlass118 Prop839_0 { get; set; }
     public List<string> Prop839_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11024,13 +13150,16 @@ public class TestKlass839
     public Dictionary<int, List<LocalClass2>> Prop839_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass840
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop840_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11038,6 +13167,7 @@ public class TestKlass840
     public Dictionary<int, LocalClass1> Prop840_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass841
 {
     public TestKlass110 Prop841_0 { get; set; }
@@ -11046,13 +13176,16 @@ public class TestKlass841
     public List<string> Prop841_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass842
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop842_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11061,8 +13194,10 @@ public class TestKlass842
     public TestKlass466 Prop842_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass843
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11073,14 +13208,17 @@ public class TestKlass843
     public TestKlass460 Prop843_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass844
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop844_0 { get; set; }
     public List<string> Prop844_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11088,15 +13226,18 @@ public class TestKlass844
     public Dictionary<int, List<LocalClass2>> Prop844_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass845
 {
     public TestKlass294 Prop845_0 { get; set; }
     public TestKlass18 Prop845_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop845_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11104,23 +13245,28 @@ public class TestKlass845
     public Dictionary<int, List<LocalClass3>> Prop845_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass846
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop846_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop846_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop846_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11128,15 +13274,18 @@ public class TestKlass846
     public Dictionary<int, List<LocalClass3>> Prop846_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass847
 {
     public TestKlass720 Prop847_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop847_1 { get; set; }
     public List<string> Prop847_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11144,15 +13293,18 @@ public class TestKlass847
     public Dictionary<int, List<LocalClass3>> Prop847_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass848
 {
     public List<string> Prop848_0 { get; set; }
     public TestKlass226 Prop848_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop848_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11160,14 +13312,17 @@ public class TestKlass848
     public Dictionary<int, List<LocalClass3>> Prop848_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass849
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop849_0 { get; set; }
     public List<string> Prop849_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11176,14 +13331,17 @@ public class TestKlass849
     public TestKlass280 Prop849_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass850
 {
     public TestKlass540 Prop850_0 { get; set; }
     public List<string> Prop850_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass851
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11192,13 +13350,16 @@ public class TestKlass851
     public TestKlass227 Prop851_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass852
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop852_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11207,9 +13368,11 @@ public class TestKlass852
     public List<string> Prop852_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass853
 {
     public List<string> Prop853_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11218,6 +13381,7 @@ public class TestKlass853
     public List<string> Prop853_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass854
 {
     public TestKlass358 Prop854_0 { get; set; }
@@ -11225,9 +13389,11 @@ public class TestKlass854
     public TestKlass543 Prop854_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass855
 {
     public TestKlass496 Prop855_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11237,10 +13403,12 @@ public class TestKlass855
     public List<string> Prop855_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass856
 {
     public TestKlass516 Prop856_0 { get; set; }
     public List<string> Prop856_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11248,9 +13416,11 @@ public class TestKlass856
     public Dictionary<int, List<LocalClass2>> Prop856_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass857
 {
     public List<string> Prop857_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11259,15 +13429,18 @@ public class TestKlass857
     public TestKlass279 Prop857_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass858
 {
     public TestKlass651 Prop858_0 { get; set; }
     public TestKlass308 Prop858_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop858_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11275,8 +13448,10 @@ public class TestKlass858
     public Dictionary<int, LocalClass3> Prop858_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass859
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11287,6 +13462,7 @@ public class TestKlass859
     public List<string> Prop859_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass860
 {
     public TestKlass596 Prop860_0 { get; set; }
@@ -11294,23 +13470,28 @@ public class TestKlass860
     public TestKlass475 Prop860_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass861
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop861_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop861_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop861_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11318,9 +13499,11 @@ public class TestKlass861
     public Dictionary<int, List<LocalClass3>> Prop861_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass862
 {
     public TestKlass401 Prop862_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11329,20 +13512,24 @@ public class TestKlass862
     public TestKlass736 Prop862_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass863
 {
     public TestKlass153 Prop863_0 { get; set; }
     public List<string> Prop863_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass864
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop864_0 { get; set; }
     public TestKlass238 Prop864_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11350,18 +13537,22 @@ public class TestKlass864
     public Dictionary<int, List<LocalClass2>> Prop864_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass865
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop865_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop865_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11369,13 +13560,16 @@ public class TestKlass865
     public Dictionary<int, List<LocalClass2>> Prop865_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass866
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop866_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11384,14 +13578,17 @@ public class TestKlass866
     public List<string> Prop866_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass867
 {
     public TestKlass384 Prop867_0 { get; set; }
     public TestKlass621 Prop867_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass868
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11401,19 +13598,23 @@ public class TestKlass868
     public TestKlass207 Prop868_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass869
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop869_0 { get; set; }
     public TestKlass236 Prop869_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop869_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11421,25 +13622,30 @@ public class TestKlass869
     public Dictionary<int, LocalClass3> Prop869_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass870
 {
     public TestKlass217 Prop870_0 { get; set; }
     public TestKlass605 Prop870_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass871
 {
     public TestKlass130 Prop871_0 { get; set; }
     public TestKlass4 Prop871_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass872
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop872_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11447,13 +13653,16 @@ public class TestKlass872
     public Dictionary<int, LocalClass1> Prop872_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass873
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop873_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11461,14 +13670,17 @@ public class TestKlass873
     public Dictionary<int, LocalClass1> Prop873_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass874
 {
     public TestKlass392 Prop874_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop874_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11477,14 +13689,17 @@ public class TestKlass874
     public List<string> Prop874_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass875
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop875_0 { get; set; }
     public TestKlass849 Prop875_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11492,6 +13707,7 @@ public class TestKlass875
     public Dictionary<int, LocalClass2> Prop875_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass876
 {
     public List<string> Prop876_0 { get; set; }
@@ -11500,9 +13716,11 @@ public class TestKlass876
     public List<string> Prop876_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass877
 {
     public List<string> Prop877_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11510,10 +13728,12 @@ public class TestKlass877
     public Dictionary<int, LocalClass1> Prop877_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass878
 {
     public TestKlass488 Prop878_0 { get; set; }
     public TestKlass341 Prop878_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11521,8 +13741,10 @@ public class TestKlass878
     public Dictionary<int, List<LocalClass2>> Prop878_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass879
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11532,8 +13754,10 @@ public class TestKlass879
     public List<string> Prop879_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass880
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11541,6 +13765,7 @@ public class TestKlass880
     public Dictionary<int, List<LocalClass0>> Prop880_0 { get; set; }
     public List<string> Prop880_1 { get; set; }
     public List<string> Prop880_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11548,23 +13773,28 @@ public class TestKlass880
     public Dictionary<int, List<LocalClass3>> Prop880_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass881
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop881_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop881_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop881_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11572,23 +13802,28 @@ public class TestKlass881
     public Dictionary<int, LocalClass3> Prop881_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass882
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop882_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop882_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop882_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11596,13 +13831,16 @@ public class TestKlass882
     public Dictionary<int, LocalClass3> Prop882_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass883
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop883_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11610,8 +13848,10 @@ public class TestKlass883
     public Dictionary<int, List<LocalClass1>> Prop883_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass884
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11621,9 +13861,11 @@ public class TestKlass884
     public List<string> Prop884_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass885
 {
     public TestKlass257 Prop885_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11631,10 +13873,12 @@ public class TestKlass885
     public Dictionary<int, List<LocalClass1>> Prop885_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass886
 {
     public List<string> Prop886_0 { get; set; }
     public TestKlass764 Prop886_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11642,6 +13886,7 @@ public class TestKlass886
     public Dictionary<int, LocalClass2> Prop886_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass887
 {
     public TestKlass791 Prop887_0 { get; set; }
@@ -11650,14 +13895,17 @@ public class TestKlass887
     public TestKlass307 Prop887_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass888
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop888_0 { get; set; }
     public List<string> Prop888_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11665,10 +13913,12 @@ public class TestKlass888
     public Dictionary<int, LocalClass2> Prop888_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass889
 {
     public TestKlass726 Prop889_0 { get; set; }
     public List<string> Prop889_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11676,9 +13926,11 @@ public class TestKlass889
     public Dictionary<int, List<LocalClass2>> Prop889_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass890
 {
     public TestKlass52 Prop890_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11687,15 +13939,18 @@ public class TestKlass890
     public TestKlass823 Prop890_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass891
 {
     public List<string> Prop891_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop891_1 { get; set; }
     public List<string> Prop891_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11703,9 +13958,11 @@ public class TestKlass891
     public Dictionary<int, List<LocalClass3>> Prop891_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass892
 {
     public TestKlass351 Prop892_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11713,11 +13970,13 @@ public class TestKlass892
     public Dictionary<int, List<LocalClass1>> Prop892_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass893
 {
     public TestKlass763 Prop893_0 { get; set; }
     public List<string> Prop893_1 { get; set; }
     public TestKlass464 Prop893_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11725,23 +13984,28 @@ public class TestKlass893
     public Dictionary<int, List<LocalClass3>> Prop893_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass894
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop894_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop894_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop894_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11749,13 +14013,16 @@ public class TestKlass894
     public Dictionary<int, List<LocalClass3>> Prop894_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass895
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop895_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11763,25 +14030,30 @@ public class TestKlass895
     public Dictionary<int, LocalClass1> Prop895_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass896
 {
     public List<string> Prop896_0 { get; set; }
     public List<string> Prop896_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass897
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop897_0 { get; set; }
     public TestKlass721 Prop897_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop897_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -11789,9 +14061,11 @@ public class TestKlass897
     public Dictionary<int, List<LocalClass3>> Prop897_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass898
 {
     public TestKlass727 Prop898_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11799,19 +14073,23 @@ public class TestKlass898
     public Dictionary<int, List<LocalClass1>> Prop898_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass899
 {
     public TestKlass248 Prop899_0 { get; set; }
     public List<string> Prop899_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass900
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop900_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11819,10 +14097,12 @@ public class TestKlass900
     public Dictionary<int, LocalClass1> Prop900_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass901
 {
     public TestKlass348 Prop901_0 { get; set; }
     public TestKlass278 Prop901_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11830,10 +14110,12 @@ public class TestKlass901
     public Dictionary<int, LocalClass2> Prop901_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass902
 {
     public TestKlass172 Prop902_0 { get; set; }
     public TestKlass27 Prop902_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11841,14 +14123,17 @@ public class TestKlass902
     public Dictionary<int, LocalClass2> Prop902_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass903
 {
     public TestKlass128 Prop903_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop903_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11856,9 +14141,11 @@ public class TestKlass903
     public Dictionary<int, LocalClass2> Prop903_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass904
 {
     public List<string> Prop904_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11867,9 +14154,11 @@ public class TestKlass904
     public TestKlass116 Prop904_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass905
 {
     public TestKlass838 Prop905_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11877,9 +14166,11 @@ public class TestKlass905
     public Dictionary<int, LocalClass1> Prop905_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass906
 {
     public List<string> Prop906_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11889,14 +14180,17 @@ public class TestKlass906
     public List<string> Prop906_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass907
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop907_0 { get; set; }
     public TestKlass52 Prop907_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11904,24 +14198,29 @@ public class TestKlass907
     public Dictionary<int, List<LocalClass2>> Prop907_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass908
 {
     public TestKlass471 Prop908_0 { get; set; }
     public List<string> Prop908_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass909
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop909_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop909_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -11929,19 +14228,23 @@ public class TestKlass909
     public Dictionary<int, LocalClass2> Prop909_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass910
 {
     public List<string> Prop910_0 { get; set; }
     public TestKlass666 Prop910_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass911
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop911_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11949,13 +14252,16 @@ public class TestKlass911
     public Dictionary<int, LocalClass1> Prop911_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass912
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop912_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11963,6 +14269,7 @@ public class TestKlass912
     public Dictionary<int, List<LocalClass1>> Prop912_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass913
 {
     public List<string> Prop913_0 { get; set; }
@@ -11970,13 +14277,16 @@ public class TestKlass913
     public List<string> Prop913_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass914
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop914_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -11985,8 +14295,10 @@ public class TestKlass914
     public List<string> Prop914_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass915
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -11997,9 +14309,11 @@ public class TestKlass915
     public TestKlass175 Prop915_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass916
 {
     public List<string> Prop916_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12008,14 +14322,17 @@ public class TestKlass916
     public TestKlass172 Prop916_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass917
 {
     public List<string> Prop917_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop917_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12023,6 +14340,7 @@ public class TestKlass917
     public Dictionary<int, List<LocalClass2>> Prop917_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass918
 {
     public List<string> Prop918_0 { get; set; }
@@ -12030,14 +14348,17 @@ public class TestKlass918
     public List<string> Prop918_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass919
 {
     public List<string> Prop919_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop919_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12045,23 +14366,28 @@ public class TestKlass919
     public Dictionary<int, List<LocalClass2>> Prop919_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass920
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop920_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop920_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop920_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12069,19 +14395,23 @@ public class TestKlass920
     public Dictionary<int, List<LocalClass3>> Prop920_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass921
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop921_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop921_1 { get; set; }
     public TestKlass765 Prop921_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12089,19 +14419,23 @@ public class TestKlass921
     public Dictionary<int, List<LocalClass3>> Prop921_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass922
 {
     public List<string> Prop922_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop922_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop922_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12109,24 +14443,29 @@ public class TestKlass922
     public Dictionary<int, List<LocalClass3>> Prop922_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass923
 {
     public List<string> Prop923_0 { get; set; }
     public TestKlass788 Prop923_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass924
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop924_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop924_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12134,8 +14473,10 @@ public class TestKlass924
     public Dictionary<int, LocalClass2> Prop924_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass925
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12144,10 +14485,12 @@ public class TestKlass925
     public TestKlass494 Prop925_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass926
 {
     public TestKlass320 Prop926_0 { get; set; }
     public List<string> Prop926_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12155,8 +14498,10 @@ public class TestKlass926
     public Dictionary<int, LocalClass2> Prop926_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass927
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12165,8 +14510,10 @@ public class TestKlass927
     public List<string> Prop927_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass928
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12175,15 +14522,18 @@ public class TestKlass928
     public List<string> Prop928_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass929
 {
     public List<string> Prop929_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop929_1 { get; set; }
     public List<string> Prop929_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12191,19 +14541,23 @@ public class TestKlass929
     public Dictionary<int, LocalClass3> Prop929_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass930
 {
     public TestKlass58 Prop930_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop930_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop930_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12211,9 +14565,11 @@ public class TestKlass930
     public Dictionary<int, LocalClass3> Prop930_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass931
 {
     public TestKlass240 Prop931_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12221,13 +14577,16 @@ public class TestKlass931
     public Dictionary<int, List<LocalClass1>> Prop931_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass932
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop932_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12235,8 +14594,10 @@ public class TestKlass932
     public Dictionary<int, List<LocalClass1>> Prop932_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass933
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12246,9 +14607,11 @@ public class TestKlass933
     public TestKlass45 Prop933_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass934
 {
     public List<string> Prop934_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12256,20 +14619,24 @@ public class TestKlass934
     public Dictionary<int, LocalClass1> Prop934_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass935
 {
     public TestKlass252 Prop935_0 { get; set; }
     public TestKlass551 Prop935_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass936
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop936_0 { get; set; }
     public List<string> Prop936_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12277,8 +14644,10 @@ public class TestKlass936
     public Dictionary<int, LocalClass2> Prop936_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass937
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12287,14 +14656,17 @@ public class TestKlass937
     public List<string> Prop937_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass938
 {
     public TestKlass734 Prop938_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop938_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12303,19 +14675,23 @@ public class TestKlass938
     public TestKlass717 Prop938_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass939
 {
     public TestKlass681 Prop939_0 { get; set; }
     public TestKlass861 Prop939_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass940
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop940_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12325,10 +14701,12 @@ public class TestKlass940
     public TestKlass116 Prop940_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass941
 {
     public TestKlass62 Prop941_0 { get; set; }
     public TestKlass937 Prop941_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12336,9 +14714,11 @@ public class TestKlass941
     public Dictionary<int, List<LocalClass2>> Prop941_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass942
 {
     public List<string> Prop942_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12346,6 +14726,7 @@ public class TestKlass942
     public Dictionary<int, List<LocalClass1>> Prop942_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass943
 {
     public TestKlass0 Prop943_0 { get; set; }
@@ -12354,8 +14735,10 @@ public class TestKlass943
     public List<string> Prop943_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass944
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12365,12 +14748,14 @@ public class TestKlass944
     public TestKlass228 Prop944_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass945
 {
     public List<string> Prop945_0 { get; set; }
     public List<string> Prop945_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass946
 {
     public List<string> Prop946_0 { get; set; }
@@ -12378,13 +14763,16 @@ public class TestKlass946
     public List<string> Prop946_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass947
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop947_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12393,14 +14781,17 @@ public class TestKlass947
     public TestKlass410 Prop947_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass948
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop948_0 { get; set; }
     public List<string> Prop948_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12408,8 +14799,10 @@ public class TestKlass948
     public Dictionary<int, LocalClass2> Prop948_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass949
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12418,9 +14811,11 @@ public class TestKlass949
     public List<string> Prop949_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass950
 {
     public TestKlass31 Prop950_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12429,8 +14824,10 @@ public class TestKlass950
     public TestKlass352 Prop950_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass951
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12441,13 +14838,16 @@ public class TestKlass951
     public List<string> Prop951_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass952
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop952_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12455,18 +14855,22 @@ public class TestKlass952
     public Dictionary<int, List<LocalClass1>> Prop952_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass953
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop953_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop953_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12474,13 +14878,16 @@ public class TestKlass953
     public Dictionary<int, LocalClass2> Prop953_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass954
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop954_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12489,13 +14896,16 @@ public class TestKlass954
     public TestKlass252 Prop954_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass955
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop955_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12503,8 +14913,10 @@ public class TestKlass955
     public Dictionary<int, List<LocalClass1>> Prop955_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass956
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12512,6 +14924,7 @@ public class TestKlass956
     public Dictionary<int, LocalClass0> Prop956_0 { get; set; }
     public List<string> Prop956_1 { get; set; }
     public TestKlass854 Prop956_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12519,18 +14932,22 @@ public class TestKlass956
     public Dictionary<int, LocalClass3> Prop956_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass957
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop957_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop957_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12538,9 +14955,11 @@ public class TestKlass957
     public Dictionary<int, List<LocalClass2>> Prop957_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass958
 {
     public List<string> Prop958_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12549,10 +14968,12 @@ public class TestKlass958
     public TestKlass356 Prop958_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass959
 {
     public TestKlass296 Prop959_0 { get; set; }
     public List<string> Prop959_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12560,13 +14981,16 @@ public class TestKlass959
     public Dictionary<int, LocalClass2> Prop959_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass960
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop960_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12574,8 +14998,10 @@ public class TestKlass960
     public Dictionary<int, List<LocalClass1>> Prop960_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass961
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12584,14 +15010,17 @@ public class TestKlass961
     public TestKlass490 Prop961_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass962
 {
     public List<string> Prop962_0 { get; set; }
     public List<string> Prop962_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass963
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12602,9 +15031,11 @@ public class TestKlass963
     public TestKlass544 Prop963_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass964
 {
     public List<string> Prop964_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12612,9 +15043,11 @@ public class TestKlass964
     public Dictionary<int, LocalClass1> Prop964_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass965
 {
     public TestKlass72 Prop965_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12623,15 +15056,18 @@ public class TestKlass965
     public TestKlass313 Prop965_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass966
 {
     public List<string> Prop966_0 { get; set; }
     public List<string> Prop966_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop966_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12639,18 +15075,22 @@ public class TestKlass966
     public Dictionary<int, List<LocalClass3>> Prop966_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass967
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop967_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop967_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12659,10 +15099,12 @@ public class TestKlass967
     public List<string> Prop967_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass968
 {
     public List<string> Prop968_0 { get; set; }
     public List<string> Prop968_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12671,6 +15113,7 @@ public class TestKlass968
     public TestKlass141 Prop968_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass969
 {
     public List<string> Prop969_0 { get; set; }
@@ -12678,14 +15121,17 @@ public class TestKlass969
     public TestKlass452 Prop969_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass970
 {
     public List<string> Prop970_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop970_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12693,13 +15139,16 @@ public class TestKlass970
     public Dictionary<int, List<LocalClass2>> Prop970_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass971
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop971_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12709,15 +15158,18 @@ public class TestKlass971
     public List<string> Prop971_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass972
 {
     public List<string> Prop972_0 { get; set; }
     public TestKlass34 Prop972_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass2>> Prop972_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12725,8 +15177,10 @@ public class TestKlass972
     public Dictionary<int, List<LocalClass3>> Prop972_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass973
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12736,10 +15190,12 @@ public class TestKlass973
     public List<string> Prop973_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass974
 {
     public TestKlass324 Prop974_0 { get; set; }
     public TestKlass766 Prop974_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12747,19 +15203,23 @@ public class TestKlass974
     public Dictionary<int, LocalClass2> Prop974_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass975
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, LocalClass0> Prop975_0 { get; set; }
     public List<string> Prop975_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop975_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12767,14 +15227,17 @@ public class TestKlass975
     public Dictionary<int, LocalClass3> Prop975_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass976
 {
     public List<string> Prop976_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop976_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12783,10 +15246,12 @@ public class TestKlass976
     public TestKlass620 Prop976_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass977
 {
     public TestKlass31 Prop977_0 { get; set; }
     public TestKlass553 Prop977_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12795,9 +15260,11 @@ public class TestKlass977
     public List<string> Prop977_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass978
 {
     public TestKlass591 Prop978_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12806,15 +15273,18 @@ public class TestKlass978
     public TestKlass705 Prop978_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass979
 {
     public TestKlass179 Prop979_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop979_1 { get; set; }
     public TestKlass532 Prop979_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12822,9 +15292,11 @@ public class TestKlass979
     public Dictionary<int, List<LocalClass3>> Prop979_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass980
 {
     public TestKlass148 Prop980_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12833,19 +15305,23 @@ public class TestKlass980
     public List<string> Prop980_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass981
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop981_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop981_1 { get; set; }
     public TestKlass21 Prop981_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12853,8 +15329,10 @@ public class TestKlass981
     public Dictionary<int, LocalClass3> Prop981_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass982
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12863,15 +15341,18 @@ public class TestKlass982
     public TestKlass473 Prop982_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass983
 {
     public TestKlass312 Prop983_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop983_1 { get; set; }
     public TestKlass889 Prop983_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12879,10 +15360,12 @@ public class TestKlass983
     public Dictionary<int, LocalClass3> Prop983_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass984
 {
     public TestKlass680 Prop984_0 { get; set; }
     public List<string> Prop984_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12890,14 +15373,17 @@ public class TestKlass984
     public Dictionary<int, LocalClass2> Prop984_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass985
 {
     public List<string> Prop985_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, LocalClass1> Prop985_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
@@ -12906,9 +15392,11 @@ public class TestKlass985
     public List<string> Prop985_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass986
 {
     public TestKlass985 Prop986_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12916,15 +15404,18 @@ public class TestKlass986
     public Dictionary<int, List<LocalClass1>> Prop986_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass987
 {
     public TestKlass594 Prop987_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass1>> Prop987_1 { get; set; }
     public TestKlass631 Prop987_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12932,13 +15423,16 @@ public class TestKlass987
     public Dictionary<int, LocalClass3> Prop987_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass988
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop988_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12946,8 +15440,10 @@ public class TestKlass988
     public Dictionary<int, List<LocalClass1>> Prop988_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass989
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
@@ -12957,11 +15453,13 @@ public class TestKlass989
     public List<string> Prop989_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass990
 {
     public List<string> Prop990_0 { get; set; }
     public TestKlass349 Prop990_1 { get; set; }
     public TestKlass932 Prop990_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }
@@ -12969,21 +15467,25 @@ public class TestKlass990
     public Dictionary<int, LocalClass3> Prop990_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass991
 {
     public List<string> Prop991_0 { get; set; }
     public TestKlass966 Prop991_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass992
 {
     public List<string> Prop992_0 { get; set; }
     public List<string> Prop992_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass993
 {
     public TestKlass872 Prop993_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -12992,9 +15494,11 @@ public class TestKlass993
     public TestKlass614 Prop993_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass994
 {
     public TestKlass710 Prop994_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -13004,13 +15508,16 @@ public class TestKlass994
     public TestKlass457 Prop994_3 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass995
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop995_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -13018,9 +15525,11 @@ public class TestKlass995
     public Dictionary<int, List<LocalClass1>> Prop995_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass996
 {
     public TestKlass964 Prop996_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -13028,19 +15537,23 @@ public class TestKlass996
     public Dictionary<int, LocalClass1> Prop996_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass997
 {
     public TestKlass950 Prop997_0 { get; set; }
     public TestKlass57 Prop997_1 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass998
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop998_0 { get; set; }
+    [BTDB.Generate]
     public class LocalClass1
     {
         public LocalClass1 Self { get; set; }
@@ -13049,19 +15562,23 @@ public class TestKlass998
     public List<string> Prop998_2 { get; set; }
 }
 
+[BTDB.Generate]
 public class TestKlass999
 {
+    [BTDB.Generate]
     public class LocalClass0
     {
         public LocalClass0 Self { get; set; }
     }
     public Dictionary<int, List<LocalClass0>> Prop999_0 { get; set; }
     public TestKlass66 Prop999_1 { get; set; }
+    [BTDB.Generate]
     public class LocalClass2
     {
         public LocalClass2 Self { get; set; }
     }
     public Dictionary<int, LocalClass2> Prop999_2 { get; set; }
+    [BTDB.Generate]
     public class LocalClass3
     {
         public LocalClass3 Self { get; set; }

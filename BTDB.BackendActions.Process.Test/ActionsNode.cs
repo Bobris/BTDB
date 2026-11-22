@@ -178,7 +178,8 @@ internal sealed class ActionsNode(string nodeId, string endpoint, BlobContainerC
             var dispatcher = new EventDispatcher();
             _actions.RegisterEvents(dispatcher);
             var log = services.GetRequiredService<IEventLog>();
-            var publisher = new EventPublisher(_objects!, log.GetTopic("data"), log.GetTopic("metadata"), dispatcher,
+            var publisher = new EventPublisher(_objects!, log.GetTopic("data"),
+                new AzureVersionedBlob(container.GetBlobClient("events/data.layer2")), dispatcher,
                 new() { Cluster = new EventCluster(nodeId, services.GetRequiredService<ReplicationPresence>()) }, _capture);
             await publisher.StartAsync(_stopping.Token);
             Volatile.Write(ref _publisher, publisher);

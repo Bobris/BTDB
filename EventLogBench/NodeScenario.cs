@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Replication;
 using BTDB.Replication.EventLog;
 using BTDB.Replication.EventSourcing;
 
@@ -32,14 +33,17 @@ public sealed class NodeScenario : IAsyncDisposable
     ObjectDB? _objects;
     EventPublisher? _publisher;
     TopicProbe? _probe;
+    readonly Func<string, IVersionedBlob> _metadataBlob;
 
     public object? Breakdown => _probe?.Summary();
 
-    public NodeScenario(ScenarioSpec spec, int self, EventLogService log, string dataRoot)
+    public NodeScenario(ScenarioSpec spec, int self, EventLogService log, string dataRoot,
+        Func<string, IVersionedBlob> metadataBlob)
     {
         _spec = spec;
         _self = self;
         _log = log;
+        _metadataBlob = metadataBlob;
         _dataDirectory = Path.Combine(dataRoot, spec.Topic);
         _delivered = new SeqTimes[spec.Nodes];
         for (var i = 0; i < _delivered.Length; i++) _delivered[i] = new();
@@ -74,7 +78,7 @@ public sealed class NodeScenario : IAsyncDisposable
         await _objects.InitializeRelations([typeof(IBenchRows)]);
         _probe = new TopicProbe(_log.GetTopic(_spec.Topic + "-d"));
         var handler = new BenchHandler { Visible = (p, s) => Delivered(p, s), Probe = _probe };
-        _publisher = new EventPublisher(_objects, _probe, _log.GetTopic(_spec.Topic + "-m"),
+        _publisher = new EventPublisher(_objects, _probe, _metadataBlob(_spec.Topic + "-d"),
             new EventDispatcher().Register<BenchEvent, BenchResult>(handler));
         await _publisher.StartAsync(cancellation);
         _consumer = _publisher.Completion;

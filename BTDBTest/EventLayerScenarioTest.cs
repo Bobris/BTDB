@@ -9,7 +9,7 @@ public class EventLayerScenarioNoEmitTest
     {
         var data = new TheoryData<string, EventLayer>();
         foreach (var name in EventLayerScenarios.All.Keys.OrderBy(n => n))
-        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2 })
+        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2, EventLayer.Catalog })
             data.Add(name, layer);
         return data;
     }
@@ -46,7 +46,7 @@ public class EventLayerScenarioEmitTest
         var data = new TheoryData<string, EventLayer>();
         // IL generated loaders cannot convert item types of collections (e.g. List<int> to long[])
         foreach (var name in EventLayerScenarios.All.Keys.Where(n => n != "ChangedFieldTypes").OrderBy(n => n))
-        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2 })
+        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2, EventLayer.Catalog })
             data.Add(name, layer);
         return data;
     }

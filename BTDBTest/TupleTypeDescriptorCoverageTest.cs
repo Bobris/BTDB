@@ -34,6 +34,7 @@ public class TupleTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void TupleWithEnumItemRoundTrips(EventLayer layer)
     {
         var value = new TupleWithEnum { Pair = (Color.Blue, 42), List = [(Color.Green, "g")] };
@@ -53,6 +54,7 @@ public class TupleTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ReferenceTupleRoundTrips(EventLayer layer)
     {
         var value = new ReferenceTuple
@@ -76,6 +78,7 @@ public class TupleTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void TupleWithUnknownTypeCanBeReadDynamically(EventLayer layer)
     {
         var value = new TupleWithObject { Pair = (7, new Payload { Name = "x", Value = 8 }) };
@@ -101,6 +104,7 @@ public class TupleTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void TupleWithUnregisteredPreferredTypeCanBeReadDynamically(EventLayer layer)
     {
         var g = Guid.Parse("00112233-4455-6677-8899-aabbccddeeff");

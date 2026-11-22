@@ -50,7 +50,7 @@ public class EventFailureTest
     sealed class PoisonFixture
     {
         internal readonly MemoryTopic Data = new("data");
-        internal readonly MemoryTopic Metadata = new("metadata");
+        internal readonly InMemoryVersionedBlob Metadata = new();
         internal readonly LeaderData Decisions = new();
         internal readonly InMemoryEventLogStorage Attempts = new();
         internal readonly List<(ulong EventId, string Reason)> Skipped = new();
@@ -97,7 +97,7 @@ public class EventFailureTest
     public async Task DeterministicFailureRollsBackOnlyItsEventAndConsumptionContinues()
     {
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         using var db = await TestDatabase.OpenAsync();
         var failed = new List<(ulong, Type)>();
         var handler = new Handler { FailDeterministically = true };
@@ -144,7 +144,7 @@ public class EventFailureTest
         // A custom policy can make any exception fatal.
         var data = new MemoryTopic("data");
         using var db = await TestDatabase.OpenAsync();
-        var publisher = new EventPublisher(db.Objects, data, new MemoryTopic("metadata"),
+        var publisher = new EventPublisher(db.Objects, data, new InMemoryVersionedBlob(),
             new Handler { FailDeterministically = true }.Dispatcher(),
             new() { TimeProvider = new FixedTime(), IsFatalConsumeException = _ => true }, db.Capture);
         await publisher.StartAsync();

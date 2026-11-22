@@ -1,3 +1,4 @@
+using BTDB.Replication;
 using Xunit;
 
 namespace BTDB.BackendActions.Test;
@@ -5,7 +6,7 @@ namespace BTDB.BackendActions.Test;
 public class ActionHostTest : IAsyncLifetime
 {
     readonly MemoryTopic _data = new("data");
-    readonly MemoryTopic _metadata = new("metadata");
+    readonly InMemoryVersionedBlob _metadata = new();
     readonly TestTime _time = new();
     readonly FakeCluster _cluster = new() { Leader = "a" };
     readonly List<(CancellationTokenSource Stop, Task Run)> _hosts = new();

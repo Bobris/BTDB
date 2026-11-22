@@ -21,8 +21,8 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     readonly bool _flags;
     readonly List<KeyValuePair<string, ulong>> _pairs;
 
-    EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type? type, string name, bool signed, bool flags,
-        List<KeyValuePair<string, ulong>> pairs)
+    internal EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type? type, string name, bool signed,
+        bool flags, List<KeyValuePair<string, ulong>> pairs)
     {
         _typeSerializers = typeSerializers;
         _type = type;
@@ -93,6 +93,9 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     }
 
     public string Name => _name;
+    internal bool Signed => _signed;
+    internal bool Flags => _flags;
+    internal IReadOnlyList<KeyValuePair<string, ulong>> Pairs => _pairs;
 
     public bool FinishBuildFromType(ITypeDescriptorFactory factory)
     {

@@ -46,7 +46,9 @@ public enum EventLayer
 {
     Mapping,
     Store1,
-    Store2
+    Store2,
+    /// EventStore2Layer CatalogEventSerializer/CatalogEventDeserializer over Layer2Metadata.
+    Catalog
 }
 
 public static class EventLayerRoundTripHelper
@@ -61,6 +63,7 @@ public static class EventLayerRoundTripHelper
             EventLayer.Store1 => RoundTrip1(value, writeMapper, readMapper, CreateOptions(cipher),
                 CreateOptions(cipher)),
             EventLayer.Store2 => RoundTrip2(value, writeMapper, readMapper, cipher: cipher),
+            EventLayer.Catalog => RoundTripCatalog(value, writeMapper, readMapper, cipher: cipher),
             _ => throw new ArgumentOutOfRangeException(nameof(layer))
         };
     }
@@ -94,6 +97,46 @@ public static class EventLayerRoundTripHelper
         {
             Assert.False(deserializer.Deserialize(out _, data));
             deserializer.ProcessMetadataLog(meta);
+        }
+
+        Assert.True(deserializer.Deserialize(out var result, data));
+        return result;
+    }
+
+    /// Serializes using CatalogEventSerializer, writing the proposed metadata like a publisher, and deserializes by a
+    /// fresh CatalogEventDeserializer that first misses the types and then installs the metadata.
+    public static object? RoundTripCatalog(object? value, ITypeNameMapper? writeMapper = null,
+        ITypeNameMapper? readMapper = null, ITypeConverterFactory? converterFactory = null,
+        ITypeConvertorGenerator? convertorGenerator = null, ISymmetricCipher? cipher = null)
+    {
+        var empty = Layer2Metadata.Create("round-trip");
+        var serializer = new CatalogEventSerializer(empty, writeMapper, symmetricCipher: cipher);
+        var data = serializer.Serialize(out var newMetadata, value).ToAsyncSafe();
+        var metadata = empty;
+        if (newMetadata != null)
+        {
+            Assert.Equal(0, data.Length);
+            metadata = Layer2Metadata.Load(newMetadata.Bytes.ToArray());
+            serializer.Update(metadata);
+            data = serializer.Serialize(out newMetadata, value).ToAsyncSafe();
+            Assert.Null(newMetadata);
+        }
+
+        // Repeated serialization, also by a restarted writer, must produce identical bytes (encryption uses a random
+        // nonce) and find every type without proposing metadata.
+        if (cipher == null)
+        {
+            Assert.Equal(data.ToByteArray(), serializer.Serialize(out _, value).ToByteArray());
+            var restarted = new CatalogEventSerializer(metadata, writeMapper);
+            Assert.Equal(data.ToByteArray(), restarted.Serialize(out var proposed, value).ToByteArray());
+            Assert.Null(proposed);
+        }
+
+        var deserializer = new CatalogEventDeserializer(empty, readMapper, converterFactory, convertorGenerator, cipher);
+        if (!ReferenceEquals(metadata, empty))
+        {
+            Assert.False(deserializer.Deserialize(out _, data));
+            deserializer.Update(metadata);
         }
 
         Assert.True(deserializer.Deserialize(out var result, data));

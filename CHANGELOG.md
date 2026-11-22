@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+### Added
+
+- Replication: `IVersionedBlob`, a single blob read whole and replaced whole under a version condition
+  (Applied/Rejected/Ambiguous), with `AzureVersionedBlob` (Block Blob, ETag conditions),
+  `FileSystemVersionedBlob` (one local file owned by one instance through a `.lock` file, atomic replace, version kept
+  only in memory) and `InMemoryVersionedBlob` for tests. It holds the Layer2 event metadata of
+  `BTDB.Replication.EventSourcing`.
+- EventStore2Layer: `Layer2Metadata`, an immutable Layer2 metadata file kept in its serialized form: interned
+  strings, records with lists, dictionaries, nullables and tuples written inline, a sorted shape-key index and one
+  checksum. It loads without parsing (0.1–0.6 ms for about 2,500–3,000 types, where applying the same metadata log
+  takes 230–280 ms).
+- EventStore2Layer: `CatalogEventSerializer` and `CatalogEventDeserializer` write and read the data format of
+  `EventSerializer`/`EventDeserializer` with type IDs from a `Layer2Metadata` file instead of a metadata log. The
+  serializer resolves a CLR type by shape the first time it meets it and returns all new types of an event as one
+  proposed metadata file to write before the data; a restarted writer finds its types again without growing the
+  file. The deserializer builds a type only when data first uses it.
+
+### Changed
+
+- BTDB.Replication.EventSourcing (breaking, not released before): `EventPublisher` takes the Layer2 metadata as an
+  `IVersionedBlob` instead of a metadata topic: `new EventPublisher(database, dataTopic, metadataBlob, dispatcher, …)`.
+  The file is bound to the data topic's name, read once at startup and written conditionally with all new types of
+  an event before its data; a consumer missing a type reads it once. A restarted publisher writes no metadata for
+  known types, and a file of another topic or data whose types are missing stops the publisher with
+  `InvalidDataException`.
+- EventStore2Layer: `EventSerializer` and `EventDeserializer` share choosing descriptors for CLR types, building
+  savers and loaders, and encrypted strings with the catalog classes; their behavior is unchanged.
+
 ### Fixed
 
 - BTDB.LSM: fixed several edge-case and concurrency bugs:

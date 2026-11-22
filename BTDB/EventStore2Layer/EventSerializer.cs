@@ -79,38 +79,8 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
     }
 
-    Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type)
-    {
-        // A value that knows its descriptor, loaded without its type, has none of the members emitted code reads.
-        if (IFieldHandler.UseNoEmitForDescriptors || typeof(IKnowDescriptor).IsAssignableFrom(type))
-#pragma warning disable CS0162 // Unreachable code detected
-        {
-            var saver = typeof(object) == type
-                ? descriptor.GenerateSave(type, ConverterFactory)
-                : descriptor.BuildConvertingSaver(typeof(object), type, ConverterFactory);
-            return (ref MemWriter writer, ITypeBinarySerializerContext ctx, object value) =>
-            {
-                saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref value));
-            };
-        }
-        else
-        {
-            var method =
-                ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
-            var il = method.Generator;
-            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
-            {
-                ilgen.Ldarg(2);
-                if (type != typeof(object))
-                {
-                    ilgen.UnboxAny(type);
-                }
-            }, type);
-            il.Ret();
-            return method.Create();
-        }
-#pragma warning restore CS0162 // Unreachable code detected
-    }
+    Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type) =>
+        Layer2Shared.BuildComplexSaver(descriptor, type, ConverterFactory);
 
     struct ObjectSerializerCtx
     {
@@ -419,130 +389,29 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     {
         if (_typeOrDescriptor2Info.TryGetValue(type, out var result)) return result.Descriptor;
         if (_typeOrDescriptor2InfoNew.TryGetValue(type, out result)) return result.Descriptor;
-        ITypeDescriptor desc = null;
-        Type typeAlternative = null;
         if (_forbidSerializationOfLazyDBObjects && type.InheritsOrImplements(typeof(IAmLazyDBObject)))
         {
             throw new BTDBException("Lazy DB object serialization is forbidden. Type: " + type.ToSimpleName());
         }
 
-        if (!type.IsSubclassOf(typeof(Delegate)))
+        var kind = Layer2Shared.KindOf(type, out var typeAlternative);
+        if (kind == Layer2Shared.TypeKind.Indirect) return null;
+        if (typeAlternative != null && type != typeAlternative)
         {
-            if (type.IsGenericType)
+            if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
             {
-                typeAlternative = type.SpecializationOf(typeof(IDictionary<,>));
-                if (typeAlternative != null)
-                {
-                    if (type != typeAlternative)
-                    {
-                        if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
-                        {
-                            _typeOrDescriptor2Info[type] = result;
-                            return result.Descriptor;
-                        }
-
-                        if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
-                        {
-                            _typeOrDescriptor2InfoNew[type] = result;
-                            return result.Descriptor;
-                        }
-                    }
-
-                    desc = new DictionaryTypeDescriptor(this, typeAlternative);
-                }
-                else
-                {
-                    typeAlternative = type.SpecializationOf(typeof(IList<>)) ??
-                                      type.SpecializationOf(typeof(ISet<>));
-                    if (typeAlternative != null)
-                    {
-                        if (type != typeAlternative)
-                        {
-                            if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
-                            {
-                                _typeOrDescriptor2Info[type] = result;
-                                return result.Descriptor;
-                            }
-
-                            if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
-                            {
-                                _typeOrDescriptor2InfoNew[type] = result;
-                                return result.Descriptor;
-                            }
-                        }
-
-                        desc = new ListTypeDescriptor(this, typeAlternative);
-                    }
-                    else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
-                    {
-                        return null;
-                    }
-                    else if (type.GetGenericTypeDefinition() == typeof(Nullable<>))
-                    {
-                        typeAlternative = type.SpecializationOf(typeof(Nullable<>));
-                        if (typeAlternative != null)
-                        {
-                            if (type != typeAlternative)
-                            {
-                                if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
-                                {
-                                    _typeOrDescriptor2Info[type] = result;
-                                    return result.Descriptor;
-                                }
-
-                                if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
-                                {
-                                    _typeOrDescriptor2InfoNew[type] = result;
-                                    return result.Descriptor;
-                                }
-                            }
-
-                            desc = new NullableTypeDescriptor(this, typeAlternative);
-                        }
-                    }
-                    else if (type.InheritsOrImplements(typeof(ITuple)))
-                    {
-                        desc = new TupleTypeDescriptor(this, type);
-                    }
-                    else
-                    {
-                        desc = new ObjectTypeDescriptor(this, type, null);
-                    }
-                }
+                _typeOrDescriptor2Info[type] = result;
+                return result.Descriptor;
             }
-            else if (type.IsArray)
-            {
-                typeAlternative = type.SpecializationOf(typeof(IList<>));
-                Debug.Assert(typeAlternative != null && type != typeAlternative);
-                if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
-                {
-                    _typeOrDescriptor2Info[type] = result;
-                    return result.Descriptor;
-                }
 
-                if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
-                {
-                    _typeOrDescriptor2InfoNew[type] = result;
-                    return result.Descriptor;
-                }
-
-                desc = new ListTypeDescriptor(this, typeAlternative);
-            }
-            else if (type.IsEnum)
+            if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
             {
-                desc = new EnumTypeDescriptor(this, type);
-            }
-            else if (type.IsValueType)
-            {
-                throw new BTDBException($"Unsupported value type {type.Name}.");
-            }
-            else
-            {
-                desc = new ObjectTypeDescriptor(this, type, null);
+                _typeOrDescriptor2InfoNew[type] = result;
+                return result.Descriptor;
             }
         }
 
-        if (desc == null) throw new BTDBException("Don't know how to serialize type " + type.ToSimpleName());
+        var desc = Layer2Shared.NewDescriptor(this, type, kind, typeAlternative)!;
         result = new()
         {
             Id = 0,
@@ -836,18 +705,6 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         saver(ref writer, this, obj);
     }
 
-    [SkipLocalsInit]
-    public void StoreEncryptedString(ref MemWriter outerWriter, EncryptedString value)
-    {
-        Span<byte> buf = stackalloc byte[2048];
-        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
-        writer.WriteString(value);
-        var plain = writer.GetSpan();
-        var encSize = _symmetricCipher.CalcEncryptedSizeFor(plain);
-        outerWriter.WriteVUInt32((uint)encSize + 1);
-        var enc = outerWriter.BlockWriteToSpan(encSize, out var needToBeWritten);
-        _symmetricCipher.Encrypt(plain, enc);
-        if (needToBeWritten)
-            outerWriter.WriteBlock(enc);
-    }
+    public void StoreEncryptedString(ref MemWriter outerWriter, EncryptedString value) =>
+        Layer2Shared.StoreEncryptedString(ref outerWriter, value, _symmetricCipher);
 }

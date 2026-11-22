@@ -10,6 +10,7 @@
         <Compile Include="../BTDB.Replication.Test/LocalReplicatedCollection.cs" Link="LocalReplicatedCollection.cs" />
         <Compile Include="../BTDB.Replication.Test/EventLog/EventLogTestKit.cs" Link="EventLog/EventLogTestKit.cs" />
         <Compile Include="../BTDB.Replication.Test/EventLog/InProcessEventLogTransport.cs" Link="EventLog/InProcessEventLogTransport.cs" />
+        <Compile Include="../BTDB.Replication.Test/VersionedBlobContract.cs" Link="VersionedBlobContract.cs" />
         <PackageReference Include="Azure.Identity" Version="1.21.0"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0"/>
         <PackageReference Include="xunit" Version="2.9.3"/>

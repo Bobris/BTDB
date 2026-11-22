@@ -11,6 +11,9 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
 - `AzureEventLogStorage` (`IEventLogStorage`): the optional event log's topics as Block Blobs: one conditional Put
   Blob per commit with atomic owner metadata, staged uploads above 64 MiB, and delayed conditional cleanup of merged
   history. See [ObjectStorages.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md#event-log-topics).
+- `AzureVersionedBlob` (`IVersionedBlob`): one Block Blob read whole and replaced whole with `If-Match` /
+  `If-None-Match: *`; the version is the ETag. See
+  [ObjectStorages.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md#versioned-blobs).
 
 ## Install
 

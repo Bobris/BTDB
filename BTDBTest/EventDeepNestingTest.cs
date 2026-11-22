@@ -50,6 +50,7 @@ public class EventDeepNestingTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void TooDeepToStoreFailsWithException(EventLayer layer)
     {
         var error = RunWithStack(1024 * 1024, () => RoundTrip(layer, Chain(100_000)));

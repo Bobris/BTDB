@@ -28,6 +28,7 @@ public class EventLayerEmitModeTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ListOfValueTuplesWithNonSealedItemCanBeSerialized(EventLayer layer)
     {
         RunWithEmitMode(false, () =>
@@ -46,6 +47,7 @@ public class EventLayerEmitModeTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ListOfTuplesWithUnknownItemTypeCanBeReadDynamically(EventLayer layer)
     {
         RunWithEmitMode(false, () =>
@@ -77,6 +79,7 @@ public class EventLayerEmitModeTest
     [Theory]
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void UIntUpgradedToLongKeepsValue(EventLayer layer)
     {
         RunWithEmitMode(false, () =>
@@ -110,7 +113,9 @@ public class EventLayerEmitModeTest
     [InlineData(EventLayer.Store1, false)]
     [InlineData(EventLayer.Store1, true)]
     [InlineData(EventLayer.Store2, false)]
+    [InlineData(EventLayer.Catalog, false)]
     [InlineData(EventLayer.Store2, true)]
+    [InlineData(EventLayer.Catalog, true)]
     public void TuplesWithStructItemsRoundTrip(EventLayer layer, bool useNoEmit)
     {
         RunWithEmitMode(useNoEmit, () =>
@@ -144,6 +149,7 @@ public class EventLayerEmitModeTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ItemsOfAnUnmappedTypeAreReported(EventLayer layer)
     {
         RunWithEmitMode(true, () =>
@@ -162,6 +168,7 @@ public class EventLayerEmitModeTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void CollectionAndConversionFixesHoldWithEmit(EventLayer layer)
     {
         RunWithEmitMode(false, () =>

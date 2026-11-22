@@ -19,7 +19,7 @@ public class EventClusterTest
         using var b = await TestDatabase.OpenAsync();
         await using var network = new PresenceNetwork("a", "b");
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var ac = new EventCluster("a", network.Node("a"));
         var bc = new EventCluster("b", network.Node("b"));
         await using var ap = a.Publisher(data, metadata, new Handler(), ac);
@@ -59,8 +59,8 @@ public class EventClusterTest
         await using var network = new PresenceNetwork("a", "b");
         var ac = new EventCluster("a", network.Node("a"));
         var bc = new EventCluster("b", network.Node("b"));
-        await using var ap = a.Publisher(new MemoryTopic("a"), new MemoryTopic("am"), new Handler(), ac);
-        await using var bp = b.Publisher(new MemoryTopic("b"), new MemoryTopic("bm"), new Handler(), bc);
+        await using var ap = a.Publisher(new MemoryTopic("a"), new InMemoryVersionedBlob(), new Handler(), ac);
+        await using var bp = b.Publisher(new MemoryTopic("b"), new InMemoryVersionedBlob(), new Handler(), bc);
         await Task.WhenAll(ap.StartAsync(), bp.StartAsync());
         await Until(() => !ac.Current.Settling && !bc.Current.Settling);
         Assert.Equal(new[] { "a", "b" }, ap.Cluster.LiveNodeIds);
@@ -82,16 +82,16 @@ public class EventClusterTest
         using var b = await TestDatabase.OpenAsync();
         using var c = await TestDatabase.OpenAsync();
         await using var network = new PresenceNetwork("leader", "x", "y");
-        await using var leader = a.Publisher(new MemoryTopic("l"), new MemoryTopic("lm"), new Handler(),
+        await using var leader = a.Publisher(new MemoryTopic("l"), new InMemoryVersionedBlob(), new Handler(),
             new EventCluster("leader", network.Node("leader")));
         var oldCluster = new EventCluster("node", network.Node("x"));
-        await using var old = b.Publisher(new MemoryTopic("a"), new MemoryTopic("am"), new Handler(), oldCluster);
+        await using var old = b.Publisher(new MemoryTopic("a"), new InMemoryVersionedBlob(), new Handler(), oldCluster);
         await Task.WhenAll(leader.StartAsync(), old.StartAsync());
         Assert.Equal(new[] { "leader", "node" }, leader.Cluster.LiveNodeIds);
         network.Crash("x");
         await Until(() => leader.Cluster.LiveNodeIds.Count == 1);
         var replacementCluster = new EventCluster("node", network.Node("y"));
-        await using var replacement = c.Publisher(new MemoryTopic("b"), new MemoryTopic("bm"), new Handler(), replacementCluster);
+        await using var replacement = c.Publisher(new MemoryTopic("b"), new InMemoryVersionedBlob(), new Handler(), replacementCluster);
         await replacement.StartAsync();
         await old.DisposeAsync(); // its late withdrawal concerns only its own node
         Assert.Equal(new[] { "leader", "node" }, (await replacementCluster.RefreshAsync()).LiveNodeIds);
@@ -104,18 +104,18 @@ public class EventClusterTest
         using var b = await TestDatabase.OpenAsync();
         await using var network = new PresenceNetwork("x", "y");
         var ac = new EventCluster("node", network.Node("x"));
-        await using var ap = a.Publisher(new MemoryTopic("a"), new MemoryTopic("am"), new Handler(), ac);
+        await using var ap = a.Publisher(new MemoryTopic("a"), new InMemoryVersionedBlob(), new Handler(), ac);
         await ap.StartAsync();
-        var duplicate = b.Publisher(new MemoryTopic("b"), new MemoryTopic("bm"), new Handler(),
+        var duplicate = b.Publisher(new MemoryTopic("b"), new InMemoryVersionedBlob(), new Handler(),
             new EventCluster("node", network.Node("y")));
         await Assert.ThrowsAsync<InvalidOperationException>(() => duplicate.StartAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => duplicate.DisposeAsync().AsTask());
-        var shared = b.Publisher(new MemoryTopic("c"), new MemoryTopic("cm"), new Handler(),
+        var shared = b.Publisher(new MemoryTopic("c"), new InMemoryVersionedBlob(), new Handler(),
             new EventCluster("other", network.Node("x")));
         await Assert.ThrowsAsync<InvalidOperationException>(() => shared.StartAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => shared.DisposeAsync().AsTask());
         Assert.Equal(new[] { "node" }, (await ac.RefreshAsync()).LiveNodeIds);
-        Assert.Throws<InvalidOperationException>(() => b.Publisher(new MemoryTopic("d"), new MemoryTopic("dm"), new Handler(), ac));
+        Assert.Throws<InvalidOperationException>(() => b.Publisher(new MemoryTopic("d"), new InMemoryVersionedBlob(), new Handler(), ac));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class EventClusterTest
         using var db = await TestDatabase.OpenAsync();
         await using var network = new PresenceNetwork("node");
         var cluster = new EventCluster("node", network.Node("node"));
-        var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), new Handler { Fail = true }, cluster);
+        var publisher = db.Publisher(new MemoryTopic("data"), new InMemoryVersionedBlob(), new Handler { Fail = true }, cluster);
         await publisher.StartAsync();
         Assert.Equal(new[] { "node" }, cluster.Current.LiveNodeIds);
         var publishing = publisher.PublishAsync(new AddPure { Amount = -1 }).AsTask();
@@ -142,7 +142,7 @@ public class EventClusterTest
         var cluster = new EventCluster("node", network.Node("node"),
             new EventClusterOptions { RequestTimeout = TimeSpan.FromMilliseconds(100) });
         network.Crash("node");
-        await using var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), new Handler(), cluster);
+        await using var publisher = db.Publisher(new MemoryTopic("data"), new InMemoryVersionedBlob(), new Handler(), cluster);
         await publisher.StartAsync().WaitAsync(Wait);
         Assert.True(publisher.Cluster.Settling);
         Assert.Empty(publisher.Cluster.LiveNodeIds);

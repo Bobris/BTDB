@@ -23,6 +23,7 @@ public class NullableTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void NullablesCanBeReadDynamically(EventLayer layer)
     {
         var g = Guid.Parse("00112233-4455-6677-8899-aabbccddeeff");
@@ -48,6 +49,7 @@ public class NullableTypeDescriptorCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void RemovedNullableFieldsAreSkipped(EventLayer layer)
     {
         var value = new LargeNullables { Dec = 2.5m, G = Guid.NewGuid(), I = 3, T = (4, "four") };

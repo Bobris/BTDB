@@ -108,6 +108,7 @@ public class RawDataLayoutTest : ObjectDbTestBase
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void NullableDateTimeOffsetRoundTripsInEvents(EventLayer layer)
     {
         var value = new DateTimeOffset(new DateTime(2025, 3, 4, 5, 6, 7), TimeSpan.FromHours(3));

@@ -32,12 +32,14 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
     }
 
-    NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
+    internal NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
     {
         _convertorGenerator = typeSerializers.ConvertorGenerator;
         _typeSerializers = typeSerializers;
         InitFromItemDescriptor(itemDesc);
     }
+
+    internal ITypeDescriptor ItemDescriptor => _itemDescriptor!;
 
     void InitFromItemDescriptor(ITypeDescriptor descriptor)
     {

@@ -12,7 +12,7 @@ public class PostCommitTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var handler = new Handler { Fail = failLast };
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
@@ -69,7 +69,7 @@ public class PostCommitTest
         using var a = await TestDatabase.OpenAsync();
         using var b = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var ah = new Handler();
         var bh = new Handler();
         var aActions = 0;
@@ -95,7 +95,7 @@ public class PostCommitTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var handler = new Handler();
         var remaining = false;
         handler.Consuming = _ =>

@@ -18,13 +18,13 @@ public class AzureEventSourcingTest(BlobStorageFixture blobs) : IClassFixture<Bl
     }
 
     [Fact]
-    public async Task RealEventLogStoresSeparateTopicsAndColdObjectDbReplaysThem()
+    public async Task RealEventLogAndMetadataBlobReplayIntoAColdObjectDb()
     {
         var container = await blobs.ContainerAsync();
         await using var log = new EventLogService(new AzureEventLogStorage(container, "application"), new NoPeers(),
             "http://127.0.0.1:5100", new SystemReplicationScheduler(), new() { MergeFanOut = 0 });
         var data = log.GetTopic("events");
-        var metadata = log.GetTopic("metadata");
+        var metadata = new AzureVersionedBlob(container.GetBlobClient("application/events.layer2"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var network = new PresenceNetwork("a", "b");
         var ac = new EventCluster("a", network.Node("a"));
@@ -52,7 +52,9 @@ public class AzureEventSourcingTest(BlobStorageFixture blobs) : IClassFixture<Bl
         }
         Assert.Empty((await ac.RefreshAsync(timeout.Token)).LiveNodeIds);
         Assert.Equal(2ul, (await data.GetBoundsAsync(timeout.Token)).Next);
-        Assert.True((await metadata.GetBoundsAsync(timeout.Token)).Next > 0);
+        var file = BTDB.EventStore2Layer.Layer2Metadata.Load((await metadata.ReadAsync(timeout.Token))!.Content);
+        Assert.Equal("events", file.BindingName);
+        Assert.Equal(4, file.TypeCount); // StoredEvent, Event, Add and AddPure
         using var cold = await TestDatabase.OpenAsync();
         var handler = new Handler();
         await using var replay = cold.Publisher(data, metadata, handler);

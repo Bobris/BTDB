@@ -5,6 +5,7 @@ using BTDB;
 using BTDB.BackendActions;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Replication;
 using BTDB.Replication.EventLog;
 using BTDB.Replication.EventSourcing;
 
@@ -148,8 +149,7 @@ static class Program
         dispatcher.Register<AddToSum>(new AddToSumHandler(actions));
         dispatcher.Register<ChunkedPart>(new ChunkedPartHandler());
         actions.RegisterEvents(dispatcher);
-        await using var publisher = new EventPublisher(objects, new MemoryTopic("data"), new MemoryTopic("metadata"),
-            dispatcher);
+        await using var publisher = new EventPublisher(objects, new MemoryTopic("data"), new InMemoryVersionedBlob(), dispatcher);
         await publisher.StartAsync(stopping.Token);
 
         // Cutover first: an action of the old system that ran twice before.

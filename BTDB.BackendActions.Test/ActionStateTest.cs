@@ -1,4 +1,5 @@
 using System.Text;
+using BTDB.Replication;
 using BTDB.Replication.EventSourcing;
 using Xunit;
 
@@ -7,7 +8,7 @@ namespace BTDB.BackendActions.Test;
 public class ActionStateTest
 {
     readonly MemoryTopic _data = new("data");
-    readonly MemoryTopic _metadata = new("metadata");
+    readonly InMemoryVersionedBlob _metadata = new();
     readonly TestTime _time = new();
 
     Task<Node> Start(int batch = 32) => Node.StartAsync(_data, _metadata, _time, batch);

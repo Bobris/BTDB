@@ -17,7 +17,7 @@ public class EventPublisherTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var handler = new Handler();
         await using var publisher = db.Publisher(data, metadata, handler);
         await publisher.StartAsync();
@@ -29,7 +29,7 @@ public class EventPublisherTest
             Assert.False(Ambient.IsReplay);
             Assert.Equal(0ul, ev.EventId);
             Assert.Equal(0, data.Count);
-            Assert.Equal(0, metadata.Count);
+            Assert.Equal(0, metadata.Writes);
             Assert.Empty(Ambient.Relation<IEntries>());
         };
         var rejected = publisher.PublishAndWaitAsync(new Add { Amount = 0 });
@@ -38,7 +38,7 @@ public class EventPublisherTest
         handler.Validating = _ => throw new ArgumentException("Invalid event");
         Assert.Throws<ArgumentException>(() => { _ = publisher.PublishAndWaitAsync(new Add { Amount = 1 }); });
         Assert.Equal(0, data.Count);
-        Assert.Equal(0, metadata.Count);
+        Assert.Equal(0, metadata.Writes);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class EventPublisherTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         await using var publisher = new EventPublisher(db.Objects, data, metadata, new Handler().Dispatcher(),
             new() { TimeProvider = new FixedTime(), MaximumEventSize = 10 }, db.Capture);
         await publisher.StartAsync();
@@ -62,7 +62,7 @@ public class EventPublisherTest
     public async Task BufferedBytesBoundTheReadAhead()
     {
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         using (var source = await TestDatabase.OpenAsync())
         await using (var publisher = source.Publisher(data, metadata, new Handler()))
         {
@@ -95,24 +95,24 @@ public class EventPublisherTest
     }
 
     [Fact]
-    public async Task SeparateTopicsReuseMetadataAndReturnVisibleLocalResults()
+    public async Task MetadataIsWrittenOnceAndLocalResultsAreVisible()
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var handler = new Handler();
         await using var publisher = db.Publisher(data, metadata, handler);
         await publisher.StartAsync();
         var ev = new Add { Amount = 2 };
         var first = await publisher.PublishAndWaitAsync(ev);
-        var metadataCount = metadata.Count;
+        var metadataCount = metadata.Writes;
         var second = await publisher.PublishAndWaitAsync(new Add { Amount = 3 });
         Assert.True(first.Success);
         Assert.Equal(1ul, first.EventId);
         Assert.Equal(first.EventId, ev.EventId);
         Assert.Equal(2ul, second.EventId);
-        Assert.True(metadataCount > 0);
-        Assert.Equal(metadataCount, metadata.Count);
+        Assert.Equal(1, metadataCount);
+        Assert.Equal(metadataCount, metadata.Writes);
         Assert.Equal(2, data.Count);
         Assert.Equal(new[] { 2, 3 }, db.Read().Select(e => e.Amount));
         Assert.All(handler.Seen, s => Assert.False(s.Replay));
@@ -128,7 +128,7 @@ public class EventPublisherTest
         using var canonical = a.CopyCanonicalBase();
         using var b = await TestDatabase.OpenAsync(canonical);
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var ah = new Handler();
         var bh = new Handler();
         await using var ap = a.Publisher(data, metadata, ah, batch: 1);
@@ -141,7 +141,7 @@ public class EventPublisherTest
         await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(20));
         await UntilAsync(() => ap.LastAppliedEventId == 40 && bp.LastAppliedEventId == 40);
         Assert.Equal(40, data.Count);
-        Assert.True(metadata.Count < data.Count);
+        Assert.True(metadata.Writes < data.Count);
         Assert.Equal(a.Read().Select(e => (e.Id, e.Amount, e.When, e.AllocatedId)),
             b.Read().Select(e => (e.Id, e.Amount, e.When, e.AllocatedId)));
         Assert.Equal(NativeTrl(a), NativeTrl(b));
@@ -152,7 +152,7 @@ public class EventPublisherTest
     public async Task RestartReplaysOnlyTheMissingTailAndColdNodeReplaysHistory()
     {
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         using var files = new InMemoryReplicationFileStorage();
         using (var db = await TestDatabase.OpenAsync(files))
         await using (var publisher = db.Publisher(data, metadata, new Handler()))
@@ -184,21 +184,22 @@ public class EventPublisherTest
     }
 
     [Fact]
-    public async Task MetadataMustBeAppliedBeforeDataPublicationAndBeforeDelayedConsumption()
+    public async Task DataIsPublishedOnlyAfterItsMetadataWriteApplied()
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
-        var appliedGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        metadata.BeforeRead = _ => appliedGate.Task;
+        var metadata = new GatedBlob(new InMemoryVersionedBlob());
+        var writeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        metadata.BeforeWrite = () => writeGate.Task;
         await using var publisher = db.Publisher(data, metadata, new Handler());
         await publisher.StartAsync();
         var pending = publisher.PublishAndWaitAsync(new Add { Amount = 1 });
-        await UntilAsync(() => metadata.Count > 0);
+        await UntilAsync(() => metadata.WriteAttempts > 0);
         Assert.Equal(0, data.Count);
         Assert.False(pending.IsCompleted);
-        appliedGate.SetResult();
+        writeGate.SetResult();
         Assert.True((await pending.WaitAsync(TimeSpan.FromSeconds(10))).Success);
+        Assert.Equal(1, metadata.WriteAttempts);
     }
 
     [Fact]
@@ -206,7 +207,7 @@ public class EventPublisherTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var receiptGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         data.BeforeReceipt = _ => receiptGate.Task;
         await using var publisher = db.Publisher(data, metadata, new Handler());
@@ -223,7 +224,7 @@ public class EventPublisherTest
     public async Task FatalFailureRollsBackOnlyItsEventAndRestartRetriesTheUnconsumedRecord()
     {
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         using var files = new InMemoryReplicationFileStorage();
         using (var db = await TestDatabase.OpenAsync(files))
         {
@@ -251,7 +252,7 @@ public class EventPublisherTest
     {
         using var db = await TestDatabase.OpenAsync();
         var handler = new Handler();
-        await using var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), handler);
+        await using var publisher = db.Publisher(new MemoryTopic("data"), new InMemoryVersionedBlob(), handler);
         await publisher.StartAsync();
         handler.Consuming = _ =>
         {
@@ -269,7 +270,7 @@ public class EventPublisherTest
     public async Task AQueryScopeReadsWhatItPublished()
     {
         using var db = await TestDatabase.OpenAsync();
-        await using var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), new Handler());
+        await using var publisher = db.Publisher(new MemoryTopic("data"), new InMemoryVersionedBlob(), new Handler());
         await publisher.StartAsync();
         using (publisher.StartQuery())
         {
@@ -285,10 +286,10 @@ public class EventPublisherTest
         using var a = await TestDatabase.OpenAsync();
         using var b = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var ah = new Handler();
         await using var ap = a.Publisher(data, metadata, ah);
-        await using var bp = b.Publisher(new MemoryTopic("other-data"), new MemoryTopic("other-meta"), new Handler());
+        await using var bp = b.Publisher(new MemoryTopic("other-data"), new InMemoryVersionedBlob(), new Handler());
         await Task.WhenAll(ap.StartAsync(), bp.StartAsync());
         ah.Consuming = _ =>
         {
@@ -302,16 +303,12 @@ public class EventPublisherTest
         Assert.Throws<InvalidOperationException>(() => Ambient.Relation<IEntries>());
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task MissingRetainedInputFailsStartup(bool pruneMetadata)
+    [Fact]
+    public async Task MissingRetainedInputFailsStartup()
     {
         using var db = await TestDatabase.OpenAsync();
-        var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
-        if (pruneMetadata) metadata.First = 1;
-        else data.First = 1;
+        var data = new MemoryTopic("data") { First = 1 };
+        var metadata = new InMemoryVersionedBlob();
         var publisher = db.Publisher(data, metadata, new Handler());
         await Assert.ThrowsAsync<BTDB.Replication.EventLog.EventLogOffsetNotAvailableException>(() => publisher.StartAsync());
         await Assert.ThrowsAsync<BTDB.Replication.EventLog.EventLogOffsetNotAvailableException>(() => publisher.DisposeAsync().AsTask());
@@ -331,22 +328,29 @@ public class EventPublisherTest
     }
 
     [Fact]
-    public async Task LaggingMetadataConsumerWaitsWithoutApplyingTheDependentData()
+    public async Task ConsumerMissingATypeRefreshesWithoutApplyingTheDependentDataFirst()
     {
         using var a = await TestDatabase.OpenAsync();
         using var canonical = a.CopyCanonicalBase();
         using var b = await TestDatabase.OpenAsync(canonical);
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
-        var delayed = new DelayedTopic(metadata);
+        var metadata = new InMemoryVersionedBlob();
+        var lagging = new GatedBlob(metadata);
         await using var ap = a.Publisher(data, metadata, new Handler());
-        await using var bp = b.Publisher(data, delayed, new Handler());
+        await using var bp = b.Publisher(data, lagging, new Handler());
         await Task.WhenAll(ap.StartAsync(), bp.StartAsync());
+        var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lagging.BeforeRead = () =>
+        {
+            reading.TrySetResult();
+            return release.Task;
+        };
         await ap.PublishAsync(new AddPure { Amount = 5 });
-        await delayed.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(0ul, bp.LastAppliedEventId);
         Assert.Empty(b.Read());
-        delayed.Release.SetResult();
+        release.SetResult();
         await UntilAsync(() => bp.LastAppliedEventId == 1);
         Assert.Equal(NativeTrl(a), NativeTrl(b));
     }
@@ -355,7 +359,7 @@ public class EventPublisherTest
     public async Task FailedEventInTheSameReplayBatchPreservesTheCommittedPrefix()
     {
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         using (var source = await TestDatabase.OpenAsync())
         await using (var publisher = source.Publisher(data, metadata, new Handler()))
         {
@@ -376,26 +380,107 @@ public class EventPublisherTest
     }
 
     [Fact]
-    public async Task ConcurrentMetadataProposalsAreAppliedInTopicOrderBeforeEitherDataWrite()
+    public async Task ConcurrentMetadataProposalsResolveByVersionBeforeEitherDataWrite()
     {
         using var a = await TestDatabase.OpenAsync();
         using var canonical = a.CopyCanonicalBase();
         using var b = await TestDatabase.OpenAsync(canonical);
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var stored = new InMemoryVersionedBlob();
+        var metadata = new GatedBlob(stored);
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        metadata.BeforeRead = _ => gate.Task;
+        metadata.BeforeWrite = () => gate.Task;
         await using var ap = a.Publisher(data, metadata, new Handler());
         await using var bp = b.Publisher(data, metadata, new Handler());
         await Task.WhenAll(ap.StartAsync(), bp.StartAsync());
+        // Both propose against the missing file; the second write is rejected, reads the first and writes the rest.
         var first = ap.PublishAsync(new AddPure { Amount = 4 }).AsTask();
         var second = bp.PublishAndWaitAsync(new Add { Amount = 8 });
-        await UntilAsync(() => metadata.Count == 2);
+        await UntilAsync(() => metadata.WriteAttempts == 2);
         Assert.Equal(0, data.Count);
         gate.SetResult();
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
         await UntilAsync(() => ap.LastAppliedEventId == 2 && bp.LastAppliedEventId == 2);
         Assert.Equal(new[] { 4, 8 }, a.Read().Select(e => e.Amount).Order());
         Assert.Equal(NativeTrl(a), NativeTrl(b));
+        Assert.Equal(3, metadata.WriteAttempts);
+        var file = BTDB.EventStore2Layer.Layer2Metadata.Load((await stored.ReadAsync(default))!.Content);
+        // StoredEvent, Event (its field's declared type), AddPure and Add: no type is stored twice.
+        Assert.Equal(4, file.TypeCount);
+    }
+
+    [Theory]
+    [InlineData(VersionedBlobFaultCase.AmbiguousApplied, 1)]
+    [InlineData(VersionedBlobFaultCase.AmbiguousNotApplied, 2)]
+    [InlineData(VersionedBlobFaultCase.Reject, 2)]
+    public async Task UnresolvedMetadataWriteIsReconciledByReading(VersionedBlobFaultCase fault, int landedWrites)
+    {
+        using var db = await TestDatabase.OpenAsync();
+        var data = new MemoryTopic("data");
+        var stored = new InMemoryVersionedBlob { NextWriteFault = (VersionedBlobFault)fault };
+        await using var publisher = db.Publisher(data, stored, new Handler());
+        await publisher.StartAsync();
+        Assert.True((await publisher.PublishAndWaitAsync(new Add { Amount = 3 })).Success);
+        Assert.Equal(landedWrites, stored.Writes);
+        // A landed ambiguous write is found by shape and not written again.
+        var file = BTDB.EventStore2Layer.Layer2Metadata.Load((await stored.ReadAsync(default))!.Content);
+        Assert.Equal(3, file.TypeCount); // StoredEvent, Event and Add
+        Assert.Equal(new[] { 3 }, db.Read().Select(e => e.Amount));
+    }
+
+    [Fact]
+    public async Task RestartedPublisherWritesNoMetadataForKnownTypes()
+    {
+        var data = new MemoryTopic("data");
+        var metadata = new InMemoryVersionedBlob();
+        using var db = await TestDatabase.OpenAsync();
+        await using (var publisher = db.Publisher(data, metadata, new Handler()))
+        {
+            await publisher.StartAsync();
+            await publisher.PublishAndWaitAsync(new Add { Amount = 1 });
+        }
+        var writes = metadata.Writes;
+        await using var restarted = db.Publisher(data, metadata, new Handler());
+        await restarted.StartAsync();
+        await restarted.PublishAndWaitAsync(new Add { Amount = 2 });
+        Assert.Equal(writes, metadata.Writes);
+        Assert.Equal(new[] { 1, 2 }, db.Read().Select(e => e.Amount));
+    }
+
+    [Fact]
+    public async Task DataWhoseTypesAreMissingAfterARefreshStopsThePublisher()
+    {
+        var data = new MemoryTopic("data");
+        using (var source = await TestDatabase.OpenAsync())
+        await using (var publisher = source.Publisher(data, new InMemoryVersionedBlob(), new Handler()))
+        {
+            await publisher.StartAsync();
+            await publisher.PublishAsync(new AddPure { Amount = 1 });
+        }
+        // Another, empty metadata file of the same topic cannot describe the data.
+        using var db = await TestDatabase.OpenAsync();
+        var publisher2 = db.Publisher(data, new InMemoryVersionedBlob(), new Handler());
+        await Assert.ThrowsAsync<InvalidDataException>(() => publisher2.StartAsync());
+        await Assert.ThrowsAsync<InvalidDataException>(() => publisher2.DisposeAsync().AsTask());
+    }
+
+    [Fact]
+    public async Task MetadataOfAnotherTopicFailsStartup()
+    {
+        var metadata = new InMemoryVersionedBlob();
+        await metadata.WriteAsync(null, BTDB.EventStore2Layer.Layer2Metadata.Create("other").Bytes, default);
+        using var db = await TestDatabase.OpenAsync();
+        var publisher = db.Publisher(new MemoryTopic("data"), metadata, new Handler());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => publisher.StartAsync());
+        Assert.Contains("'other'", error.Message);
+        await Assert.ThrowsAsync<InvalidDataException>(() => publisher.DisposeAsync().AsTask());
+    }
+
+    // The internal fault enum cannot appear in a public test's signature.
+    public enum VersionedBlobFaultCase
+    {
+        Reject = VersionedBlobFault.Reject,
+        AmbiguousNotApplied = VersionedBlobFault.AmbiguousNotApplied,
+        AmbiguousApplied = VersionedBlobFault.AmbiguousApplied
     }
 }

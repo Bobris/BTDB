@@ -48,6 +48,13 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
+    /// <summary>A descriptor loaded from Layer2 metadata, like the one read from a metadata log.</summary>
+    internal ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name,
+        IEnumerable<KeyValuePair<string, ITypeDescriptor>> fields) : this(typeSerializers, name, false, null)
+    {
+        foreach (var field in fields) _fields.Add(field);
+    }
+
     ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed,
         TypeDescriptorOptions? typeDescriptorOptions)
     {

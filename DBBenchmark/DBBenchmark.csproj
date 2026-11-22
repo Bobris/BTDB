@@ -24,4 +24,8 @@
         <PackageReference Include="BenchmarkDotNet" Version="0.15.8"/>
         <PackageReference Include="LightningDB" Version="0.23.0"/>
     </ItemGroup>
+    <ItemGroup>
+        <!-- Generated workload shared with SimpleTester, used by layer2-metadata. -->
+        <Compile Include="..\SimpleTester\ALotOfClasses.cs" Link="Layer2\ALotOfClasses.cs"/>
+    </ItemGroup>
 </Project>

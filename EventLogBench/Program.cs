@@ -80,7 +80,8 @@ public static class Program
             try
             {
                 if (current != null) await current.DisposeAsync();
-                current = new NodeScenario(spec, index, log, dataRoot);
+                current = new NodeScenario(spec, index, log, dataRoot, topic =>
+                    new AzureVersionedBlob(container.GetBlobClient($"{Env("STORAGE_PREFIX")}/{topic}.layer2")));
                 await current.PrepareAsync(cancellation);
                 return Results.Ok(current.Status);
             }

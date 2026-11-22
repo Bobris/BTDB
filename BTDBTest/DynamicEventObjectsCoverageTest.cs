@@ -67,6 +67,7 @@ public class DynamicEventObjectsCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void DynamicObjectToStringIsJsonLike(EventLayer layer)
     {
         var result = RoundTrip(layer, CreateSample(), readMapper: HideAll());
@@ -82,6 +83,7 @@ public class DynamicEventObjectsCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void DynamicObjectSupportsDynamicMemberAccess(EventLayer layer)
     {
         dynamic d = RoundTrip(layer, CreateSample(), readMapper: HideAll())!;
@@ -118,6 +120,7 @@ public class DynamicEventObjectsCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void DynamicEnumBehavesLikeEnum(EventLayer layer)
     {
         var fields = EventLayerScenarios.Fields(RoundTrip(layer, CreateSample(), readMapper: HideAll()));
@@ -158,6 +161,7 @@ public class DynamicEventObjectsCoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void DynamicCollectionsKnowTheirDescriptorsAndPrintAsJson(EventLayer layer)
     {
         var fields = EventLayerScenarios.Fields(RoundTrip(layer, CreateSample(), readMapper: HideAll()));

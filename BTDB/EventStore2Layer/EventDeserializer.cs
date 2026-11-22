@@ -249,52 +249,8 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         }
     }
 
-    Layer2Loader LoaderFactory(ITypeDescriptor descriptor)
-    {
-        if (IFieldHandler.UseNoEmitForDescriptors)
-#pragma warning disable CS0162 // Unreachable code detected
-        {
-            var loadAsType = ObjectLoadType.For(descriptor, LoadAsType(descriptor));
-            var loader = loadAsType == typeof(object)
-                ? descriptor.GenerateLoad(loadAsType, ConverterFactory)
-                : descriptor
-                    .BuildConvertingLoader(loadAsType, typeof(object), ConverterFactory);
-            return (ref MemReader reader, ITypeBinaryDeserializerContext ctx, ITypeDescriptor typeDescriptor) =>
-            {
-                object res = null;
-                loader(ref reader, ctx, ref Unsafe.As<object, byte>(ref res));
-                return res;
-            };
-        }
-        else
-        {
-            var loadAsType = ObjectLoadType.For(descriptor, LoadAsType(descriptor));
-            var methodBuilder = ILBuilder.Instance.NewMethod<Layer2Loader>("DeserializerFor" + descriptor.Name);
-            var il = methodBuilder.Generator;
-            try
-            {
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(2),
-                    loadAsType);
-            }
-            catch (BTDBException ex)
-            {
-                throw new BTDBException("Deserialization of type " + loadAsType.FullName, ex);
-            }
-
-            if (loadAsType.IsValueType)
-            {
-                il.Box(loadAsType);
-            }
-            else if (loadAsType != typeof(object))
-            {
-                il.Castclass(typeof(object));
-            }
-
-            il.Ret();
-            return methodBuilder.Create();
-        }
-#pragma warning restore CS0162 // Unreachable code detected
-    }
+    Layer2Loader LoaderFactory(ITypeDescriptor descriptor) =>
+        Layer2Shared.BuildLoader(descriptor, ObjectLoadType.For(descriptor, LoadAsType(descriptor)), ConverterFactory);
 
     public unsafe bool Deserialize(out object? @object, ByteBuffer buffer)
     {
@@ -431,22 +387,8 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         }
     }
 
-    public unsafe EncryptedString LoadEncryptedString(ref MemReader reader)
-    {
-        var enc = reader.ReadByteArrayAsSpan();
-        var size = _symmetricCipher.CalcPlainSizeFor(enc);
-        var dec = size < 4096 ? stackalloc byte[size] : new byte[size];
-        if (!_symmetricCipher.Decrypt(enc, dec))
-        {
-            throw new CryptographicException();
-        }
-
-        fixed (void* _ = dec)
-        {
-            var r = MemReader.CreateFromPinnedSpan(dec);
-            return r.ReadString();
-        }
-    }
+    public EncryptedString LoadEncryptedString(ref MemReader reader) =>
+        Layer2Shared.LoadEncryptedString(ref reader, _symmetricCipher);
 
     public void SkipEncryptedString(ref MemReader reader)
     {

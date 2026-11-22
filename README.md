@@ -270,6 +270,8 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 - Storage is transactional
 - As storage could be used Azure Page Blobs
 - EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
+- `CatalogEventSerializer`/`CatalogEventDeserializer` write the same event data but keep the metadata in one
+  `Layer2Metadata` file, written whole under a version condition, that loads without parsing
 
 ---
 

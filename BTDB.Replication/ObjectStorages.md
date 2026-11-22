@@ -47,6 +47,7 @@ or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fe
 | `IReplicationLeaderStorage` | `AcquireAsync` (finite lease), `RenewAsync(handle)`, `TransferAsync(current, proposed)` (planned handoff, confirmed by the target's renewal); `ReadAsync` -> body + token; `WriteAsync(leaseHandle, expectedToken, json)` -> `Applied`/`Rejected`/`Ambiguous`. |
 | `IRemoteFileCollection` | `EnumerateAsync` and version-bound `ReadAsync` of `RemoteFile(FileId, FileType, Length, Version, IsSealed, Sha256)`. |
 | `IReplicationStorage` | Canonical TRL `ReadAsync`/`ReadRangeAsync`/`WriteAsync`; `EnsurePureValuesAsync`, `ProtectPureValuesAsync`, `PublishKeyIndexAsync`; `ResolveRecoveryRootAsync`; `EnumerateMaintenanceAsync`, `ScheduleDeletionAsync`, `CancelDeletionAsync`, `DeleteAsync`. |
+| `IVersionedBlob` | `ReadAsync` -> whole content + version, or none; `WriteAsync(expectedVersion or create-if-absent, content)` -> `Applied`/`Rejected`/`Ambiguous`. |
 | `IEventLogStorage` (event log) | `ReadAsync`, `GetPropertiesAsync`, version-bound `ReadRangeAsync`; `WriteAsync(key, expectedVersion or create-if-absent, content, owner, sha256)` and content-preserving `SetOwnerAsync` -> `Applied`/`Rejected`/`Ambiguous`; `ListAsync`, `ScheduleDeletionAsync`, `DeleteAsync`. |
 
 A read returns the listed content or fails; partial success never combines contents. A newer version counts only
@@ -74,6 +75,8 @@ Implemented reconciliation needs no extra operation-identity field:
 - **Canonical TRL**: an applied CAS from the expected version keeps its first `ExpectedLength` bytes, so the publisher
   compares only the intended appended bytes (and length) in bounded chunks, with no hashes.
 - **PVL/KVI**: a lost or rejected create is confirmed by matching length and `btdb_sha256`. Anything else is a `RemoteFileConflictException` that fences the session; never overwrite it.
+- **Versioned blob**: the caller reads after a non-applied write and decides from the content; the Layer2 metadata
+  file serializes again and finds types already written, by another node or by its own landed write, by shape.
 - **Leader record and lease**: after any non-applied selection write, only a reread equal to the exact intended JSON
   (which carries a fresh session ID) confirms it; a lost lease acquire or transfer is confirmed only by renewing the
   proposed lease ID.
@@ -322,6 +325,17 @@ objects record `btdb_sha256`; covered objects get `btdb_delete_after` and are de
 deadline. Status codes 404, 409 and 412 on a mutation are `Rejected`, transient failures `Ambiguous`, with
 `Retry.MaxRetries = 0`. The storage decision and its measurements are in
 [EventLogImplementationPlan.md](EventLogImplementationPlan.md#16-live-gzrs-storage-screening).
+
+### Versioned blobs
+
+`AzureVersionedBlob` keeps one `IVersionedBlob` as a Block Blob named by the caller's `BlobClient`; the version is
+its ETag. A write is one conditional upload (`If-Match`, or `If-None-Match: *` to create) of the whole content; above
+the SDK's single-upload limit the SDK stages blocks and commits them with the same condition. Status codes 404, 409
+and 412 on a write are `Rejected`, transient failures `Ambiguous`, with `Retry.MaxRetries = 0`. A missing container
+throws instead: it would otherwise read as a missing blob whose every create is rejected, a livelock.
+`FileSystemVersionedBlob` is the local counterpart: one file owned by one instance through an exclusive `.lock` file,
+written to a staged file and atomically moved over the target, with a random version kept only in memory (only the
+owner can hold a version). Its writes are never `Ambiguous`.
 
 ### Conditional tail append with Block Blob
 

@@ -7,6 +7,12 @@ class Program
 {
     static void Main(string[] args)
     {
+        if (args.Length > 0 && string.Equals(args[0], "layer2-metadata", StringComparison.OrdinalIgnoreCase))
+        {
+            Layer2.Layer2MetadataBaseline.Run();
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "company-user-role", StringComparison.OrdinalIgnoreCase))
         {
             BenchmarkSwitcher.FromTypes([typeof(CompanyUserRoleScanBenchmark)]).Run(args[1..]);

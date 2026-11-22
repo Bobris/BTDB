@@ -36,6 +36,39 @@ public class Transfer : EventWithResult<Added>
 /// node ends with the same entries and the same native transaction log, and every result names its own entry.</summary>
 public class EventPublisherRandomTest
 {
+    // Delays metadata reads and writes, and makes some writes look lost: rejected without landing, or ambiguous
+    // with or without landing.
+    sealed class JitterBlob(IVersionedBlob inner, int seed) : IVersionedBlob
+    {
+        readonly Random _random = new(seed);
+
+        int Next(int range)
+        {
+            lock (_random) return _random.Next(range);
+        }
+
+        public async ValueTask<VersionedBlobContent?> ReadAsync(CancellationToken cancellation)
+        {
+            if (Next(4) == 0) await Task.Delay(Next(3), cancellation);
+            return await inner.ReadAsync(cancellation);
+        }
+
+        public async ValueTask<VersionedBlobWriteResult> WriteAsync(string? expectedVersion, ReadOnlyMemory<byte> content,
+            CancellationToken cancellation)
+        {
+            if (Next(4) == 0) await Task.Delay(Next(3), cancellation);
+            switch (Next(8))
+            {
+                case 0: return VersionedBlobWriteResult.Rejected;
+                case 1: return VersionedBlobWriteResult.Ambiguous;
+                case 2:
+                    await inner.WriteAsync(expectedVersion, content, cancellation);
+                    return VersionedBlobWriteResult.Ambiguous;
+                default: return await inner.WriteAsync(expectedVersion, content, cancellation);
+            }
+        }
+    }
+
     sealed class JitterTopic(IEventTopic inner, int seed) : IEventTopic
     {
         readonly Random _random = new(seed);
@@ -137,7 +170,7 @@ public class EventPublisherRandomTest
     {
         var random = new Random(seed);
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var first = await TestDatabase.OpenAsync();
         var databases = new List<TestDatabase> { first };
         try
@@ -146,7 +179,7 @@ public class EventPublisherRandomTest
             var handler = new RandomHandler();
             var results = new System.Collections.Concurrent.ConcurrentBag<Added>();
             EventPublisher NewPublisher(int node) => new(databases[node].Objects,
-                new JitterTopic(data, seed * 10 + node), new JitterTopic(metadata, seed * 20 + node),
+                new JitterTopic(data, seed * 10 + node), new JitterBlob(metadata, seed * 20 + node),
                 handler.Dispatcher(), new() { TimeProvider = new FixedTime(), MaximumBatchSize = 1 + random.Next(8) },
                 databases[node].Capture);
 

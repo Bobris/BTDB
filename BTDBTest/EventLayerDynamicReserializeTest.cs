@@ -12,7 +12,7 @@ public class EventLayerDynamicReserializeTest
                      "Primitives", "Enums", "Nullables", "Lists", "Dictionaries", "Tuples", "Bytes", "Secrets",
                      "Everything"
                  })
-        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2 })
+        foreach (var layer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2, EventLayer.Catalog })
             data.Add(name, layer);
         return data;
     }
@@ -27,7 +27,7 @@ public class EventLayerDynamicReserializeTest
         var cipher = EventLayerScenarios.CipherFor(scenario);
         var original = scenario.Create();
         var firstResult = EventLayerRoundTripHelper.RoundTrip(layer, original, cipher: cipher);
-        foreach (var otherLayer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2 })
+        foreach (var otherLayer in new[] { EventLayer.Mapping, EventLayer.Store1, EventLayer.Store2, EventLayer.Catalog })
         {
             var result = EventLayerRoundTripHelper.RoundTrip(otherLayer, firstResult, cipher: cipher);
             Assert.Equal(ObjectGraphDumper.Dump(original), ObjectGraphDumper.Dump(result));

@@ -127,9 +127,11 @@ public class EventSerializerFuzzTest
 
     [Theory]
     [InlineData(EventLayer.Store2, true)]
+    [InlineData(EventLayer.Catalog, true)]
     [InlineData(EventLayer.Store1, true)]
     [InlineData(EventLayer.Mapping, true)]
     [InlineData(EventLayer.Store2, false)]
+    [InlineData(EventLayer.Catalog, false)]
     [InlineData(EventLayer.Store1, false)]
     [InlineData(EventLayer.Mapping, false)]
     public void RandomValuesRoundTrip(EventLayer layer, bool noEmit)

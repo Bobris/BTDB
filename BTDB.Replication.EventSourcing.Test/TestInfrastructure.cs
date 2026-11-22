@@ -106,7 +106,7 @@ internal sealed class TestDatabase : IDisposable
         return transaction.GetRelation<IEntries>().ToArray();
     }
 
-    internal EventPublisher Publisher(IEventTopic data, IEventTopic metadata, Handler handler, EventCluster? cluster = null,
+    internal EventPublisher Publisher(IEventTopic data, IVersionedBlob metadata, Handler handler, EventCluster? cluster = null,
         int batch = 32) => new(Objects, data, metadata, handler.Dispatcher(),
         new() { TimeProvider = new FixedTime(), MaximumBatchSize = batch, Cluster = cluster }, Capture);
 
@@ -158,6 +158,29 @@ internal sealed class DelayedTopic(IEventTopic inner) : IEventTopic
             await Release.Task.WaitAsync(cancellation);
             yield return record;
         }
+    }
+}
+
+// A shared metadata blob whose reads and writes a test can hold; writes are counted when they start.
+internal sealed class GatedBlob(IVersionedBlob inner) : IVersionedBlob
+{
+    internal Func<Task>? BeforeRead;
+    internal Func<Task>? BeforeWrite;
+    int _writeAttempts;
+    internal int WriteAttempts => Volatile.Read(ref _writeAttempts);
+
+    public async ValueTask<VersionedBlobContent?> ReadAsync(CancellationToken cancellation)
+    {
+        if (BeforeRead is { } gate) await gate().WaitAsync(cancellation);
+        return await inner.ReadAsync(cancellation);
+    }
+
+    public async ValueTask<VersionedBlobWriteResult> WriteAsync(string? expectedVersion, ReadOnlyMemory<byte> content,
+        CancellationToken cancellation)
+    {
+        Interlocked.Increment(ref _writeAttempts);
+        if (BeforeWrite is { } gate) await gate().WaitAsync(cancellation);
+        return await inner.WriteAsync(expectedVersion, content, cancellation);
     }
 }
 

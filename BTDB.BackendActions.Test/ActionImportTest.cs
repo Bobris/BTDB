@@ -1,4 +1,5 @@
 using System.Text;
+using BTDB.Replication;
 using BTDB.Replication.EventSourcing;
 using Xunit;
 
@@ -7,7 +8,7 @@ namespace BTDB.BackendActions.Test;
 public class ActionImportTest
 {
     readonly MemoryTopic _data = new("data");
-    readonly MemoryTopic _metadata = new("metadata");
+    readonly InMemoryVersionedBlob _metadata = new();
     readonly TestTime _time = new();
 
     static readonly DateTime Queued = new(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);

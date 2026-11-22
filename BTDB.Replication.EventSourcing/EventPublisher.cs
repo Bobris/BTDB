@@ -58,8 +58,9 @@ public sealed class EventTooLargeException(Type eventType, int size, int maximum
     public int MaximumSize { get; } = maximumSize;
 }
 
-/// <summary>Replays ordered data and metadata EventLog topics into an already restored and schema-initialized ObjectDB.
-/// Does not own the database or topic; stop this publisher before disposing either.</summary>
+/// <summary>Replays an ordered EventLog data topic into an already restored and schema-initialized ObjectDB, with
+/// Layer2 metadata in one versioned blob. Does not own the database, topic or blob; stop this publisher before
+/// disposing any of them.</summary>
 public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 {
     sealed class Pending(Event original)
@@ -69,12 +70,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     }
 
     readonly IEventTopic _topic;
-    readonly IEventTopic _metadataTopic;
     readonly Layer2EventCodec _codec;
-    readonly object _metadataLock = new();
     readonly SemaphoreSlim _publishing = new(1);
-    TaskCompletionSource _metadataChanged = NewSignal();
-    ulong _metadataNext;
     readonly object _bufferLock = new();
     long _bufferedBytes;
     TaskCompletionSource _bufferReleased = NewSignal();
@@ -101,14 +98,14 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     ulong _replayEnd;
     int _started, _disposed;
 
-    public EventPublisher(IObjectDB database, IEventTopic dataTopic, IEventTopic metadataTopic, IEventDispatcher dispatcher,
+    /// <param name="metadata">The Layer2 metadata file of the data topic, shared by every node; it is bound to the
+    /// topic's name and created on the first publication.</param>
+    public EventPublisher(IObjectDB database, IEventTopic dataTopic, IVersionedBlob metadata, IEventDispatcher dispatcher,
         EventPublisherOptions? options = null, TransactionLogCapture? capture = null)
     {
         Database = database ?? throw new ArgumentNullException(nameof(database));
         _topic = dataTopic ?? throw new ArgumentNullException(nameof(dataTopic));
-        _metadataTopic = metadataTopic ?? throw new ArgumentNullException(nameof(metadataTopic));
-        if (dataTopic.Name == metadataTopic.Name)
-            throw new ArgumentException("Data and metadata must use different topics.", nameof(metadataTopic));
+        ArgumentNullException.ThrowIfNull(metadata);
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _options = options ?? new();
         if (_options.MaximumBatchSize <= 0 || _options.BufferedEvents <= 0 || _options.BufferedBytes <= 0 ||
@@ -128,7 +125,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 poison.Attempts);
         }
         if (dispatcher is EventDispatcher typed) typed.Freeze();
-        _codec = new(_options.TypeNameMapper);
+        _codec = new(metadata, dataTopic.Name, _options.TypeNameMapper);
         _capture = capture;
         _lifetime = _stop.Token;
         _options.Cluster?.Attach();
@@ -216,21 +213,11 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             await _publishing.WaitAsync(linked.Token).ConfigureAwait(false);
             try
             {
-                while (true)
-                {
-                    byte[] bytes;
-                    bool metadata;
-                    lock (_metadataLock) bytes = _codec.Serialize(stored, out metadata);
-                    if (!metadata)
-                    {
-                        if (bytes.Length > _options.MaximumEventSize)
-                            throw new EventTooLargeException(stored.Event.GetType(), bytes.Length, _options.MaximumEventSize);
-                        writing = _topic.PublishAsync(bytes, linked.Token);
-                        break;
-                    }
-                    var metadataOffset = await _metadataTopic.PublishAsync(bytes, linked.Token).ConfigureAwait(false);
-                    await WaitForMetadataAsync(checked(metadataOffset + 1), linked.Token).ConfigureAwait(false);
-                }
+                // New types are written to the metadata file before the data that uses them.
+                var bytes = await _codec.SerializeAsync(stored, linked.Token).ConfigureAwait(false);
+                if (bytes.Length > _options.MaximumEventSize)
+                    throw new EventTooLargeException(stored.Event.GetType(), bytes.Length, _options.MaximumEventSize);
+                writing = _topic.PublishAsync(bytes, linked.Token);
             }
             finally { _publishing.Release(); }
             var offset = await writing.ConfigureAwait(false);
@@ -267,17 +254,13 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     async Task RunAsync()
     {
-        Task? reading = null, metadataReading = null;
+        Task? reading = null;
         try
         {
             using (var read = Database.StartReadOnlyTransaction()) Volatile.Write(ref _lastApplied, read.GetCommitUlong());
             Applied();
             UpdateProgress();
-            var metadataBounds = await _metadataTopic.GetBoundsAsync(_lifetime).ConfigureAwait(false);
-            if (metadataBounds.First != 0)
-                throw new EventLogOffsetNotAvailableException("Retain the complete Layer2 metadata topic.");
-            metadataReading = ReadMetadataAsync();
-            await WaitForMetadataAsync(metadataBounds.Next, _lifetime).ConfigureAwait(false);
+            await _codec.LoadAsync(_lifetime).ConfigureAwait(false);
             var bounds = await _topic.GetBoundsAsync(_lifetime).ConfigureAwait(false);
             if (_lastApplied < bounds.First || _lastApplied > bounds.Next)
                 throw new EventLogOffsetNotAvailableException("The database cursor is outside retained EventLog history.");
@@ -404,7 +387,6 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             Applied(); // waiters see the stop
             foreach (var pending in _pending.Values)
                 pending.Completion.TrySetException(_fault ?? new OperationCanceledException("Event publisher stopped."));
-            if (metadataReading != null) await metadataReading.ConfigureAwait(false);
             if (reading != null)
                 try { await reading.ConfigureAwait(false); }
                 catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
@@ -430,56 +412,6 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    async Task ReadMetadataAsync()
-    {
-        try
-        {
-            await foreach (var record in _metadataTopic.ReadAsync(0, null, _lifetime).ConfigureAwait(false))
-            {
-                TaskCompletionSource applied;
-                lock (_metadataLock)
-                {
-                    if (record.Offset != _metadataNext) throw new InvalidDataException("Nonconsecutive metadata input.");
-                    _codec.ApplyMetadata(record.Payload);
-                    _metadataNext = checked(record.Offset + 1);
-                    applied = _metadataChanged;
-                    _metadataChanged = NewSignal();
-                }
-                applied.TrySetResult();
-            }
-            throw new EndOfStreamException("The metadata topic stopped following live records.");
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        catch (Exception error) { Fail(error); }
-    }
-
-    async Task WaitForMetadataAsync(ulong next, CancellationToken cancellation)
-    {
-        while (true)
-        {
-            Task changed;
-            lock (_metadataLock)
-            {
-                if (_metadataNext >= next) return;
-                changed = _metadataChanged.Task;
-            }
-            await changed.WaitAsync(cancellation).ConfigureAwait(false);
-        }
-    }
-
-    async Task<StoredEvent> DeserializeAsync(ReadOnlyMemory<byte> bytes)
-    {
-        lock (_metadataLock)
-            if (_codec.TryDeserialize(bytes, out var available)) return available!;
-        // Every data publication follows its durable metadata publication. Catch up to the metadata end observed
-        // after this data record; still missing descriptors then mean corruption, not an indefinite live wait.
-        var bounds = await _metadataTopic.GetBoundsAsync(_lifetime).ConfigureAwait(false);
-        await WaitForMetadataAsync(bounds.Next, _lifetime).ConfigureAwait(false);
-        lock (_metadataLock)
-            return _codec.TryDeserialize(bytes, out var stored) ? stored!
-                : throw new InvalidDataException("Event metadata is missing from the metadata topic.");
-    }
-
     // Deserializes ahead of consumption so it overlaps with the consumer's transactions. EventDeserializer copies
     // all event data (including ReadOnlyMemory<byte> fields), so the payload need not outlive the enumerator step.
     async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent? Stored, int Size)> writer, ulong start)
@@ -492,7 +424,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 await ReserveBufferAsync(size).ConfigureAwait(false);
                 // A skipped event is never deserialized: its record may be what crashes the process.
                 var stored = _skips.ContainsKey(record.Offset + 1) ? null
-                    : await DeserializeAsync(record.Payload).ConfigureAwait(false);
+                    : await _codec.DeserializeAsync(record.Payload, _lifetime).ConfigureAwait(false);
                 await writer.WriteAsync((record.Offset, stored, size), _lifetime).ConfigureAwait(false);
             }
             writer.TryComplete(new EndOfStreamException("The data topic stopped following live records."));

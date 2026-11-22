@@ -81,7 +81,7 @@ internal sealed class Node : IAsyncDisposable
         KeyValues = keyValues;
     }
 
-    internal static async Task<Node> StartAsync(MemoryTopic data, MemoryTopic metadata, TimeProvider time,
+    internal static async Task<Node> StartAsync(MemoryTopic data, IVersionedBlob metadata, TimeProvider time,
         int batch = 32, InMemoryReplicationFileStorage? files = null, int? maximumEventSize = null,
         Action<BackendActions, Recorder>? register = null)
     {

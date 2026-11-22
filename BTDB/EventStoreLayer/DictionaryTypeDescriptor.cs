@@ -40,13 +40,16 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
     }
 
-    DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor keyDesc,
+    internal DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor keyDesc,
         ITypeDescriptor valueDesc)
     {
         _convertorGenerator = typeSerializers.ConvertorGenerator;
         _typeSerializers = typeSerializers;
         InitFromKeyValueDescriptors(keyDesc, valueDesc);
     }
+
+    internal ITypeDescriptor KeyDescriptor => _keyDescriptor!;
+    internal ITypeDescriptor ValueDescriptor => _valueDescriptor!;
 
     void InitFromKeyValueDescriptors(ITypeDescriptor keyDescriptor, ITypeDescriptor valueDescriptor)
     {

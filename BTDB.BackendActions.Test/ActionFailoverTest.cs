@@ -1,3 +1,4 @@
+using BTDB.Replication;
 using Xunit;
 
 namespace BTDB.BackendActions.Test;
@@ -6,7 +7,7 @@ namespace BTDB.BackendActions.Test;
 public class ActionFailoverTest : IAsyncLifetime
 {
     readonly MemoryTopic _data = new("data");
-    readonly MemoryTopic _metadata = new("metadata");
+    readonly InMemoryVersionedBlob _metadata = new();
     readonly TestTime _time = new();
     readonly FakeCluster _cluster = new() { Leader = "a" };
     readonly Dictionary<string, Node> _nodes = new();

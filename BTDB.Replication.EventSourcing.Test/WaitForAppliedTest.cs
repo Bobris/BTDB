@@ -9,7 +9,7 @@ public class WaitForAppliedTest
     {
         using var db = await TestDatabase.OpenAsync();
         var data = new MemoryTopic("data");
-        var metadata = new MemoryTopic("metadata");
+        var metadata = new InMemoryVersionedBlob();
         var publisher = db.Publisher(data, metadata, new Handler());
         var first = publisher.WaitForAppliedAsync(1); // waiting before the start is fine
         await publisher.StartAsync();

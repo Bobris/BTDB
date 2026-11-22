@@ -38,7 +38,8 @@ namespace SimpleTester
     void GenerateClass(int i)
     {
         _sb!.Append($@"
-    public class TestKlass{i} 
+    [BTDB.Generate]
+    public class TestKlass{i}
     {{");
         _sbInst!.Append($@"
         yield return new TestKlass{i} {{");
@@ -65,6 +66,7 @@ namespace SimpleTester
                     break;
                 case 2:
                     _sb.Append($@"
+        [BTDB.Generate]
         public class LocalClass{j} {{
             public LocalClass{j} Self {{ get; set; }}
         }}
@@ -74,6 +76,7 @@ namespace SimpleTester
                     break;
                 case 3:
                     _sb.Append($@"
+        [BTDB.Generate]
         public class LocalClass{j} {{
             public LocalClass{j} Self {{ get; set; }}
         }}

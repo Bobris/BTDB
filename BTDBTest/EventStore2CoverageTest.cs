@@ -325,6 +325,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void WideNullableMemberLoadsAsPlain(EventLayer layer)
     {
         var offset = new DateTimeOffset(2020, 1, 2, 3, 4, 5, TimeSpan.FromHours(2));
@@ -349,6 +350,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ReadOnlyIPAddressStoresAsObject(EventLayer layer)
     {
         var read = (WithUntypedAddresses)RoundTrip(layer, new WithUntypedAddresses
@@ -375,6 +377,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ReadOnlyAndImmutableListsStore(EventLayer layer)
     {
         var read = (WithReadOnlyViews)RoundTrip(layer, new WithReadOnlyViews
@@ -407,6 +410,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void ListDeclaredOnlyAsReadOnlyLoads(EventLayer layer)
     {
         var read = (ReadOnlyOnlyParent)RoundTrip(layer, new ReadOnlyOnlyParent
@@ -438,6 +442,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void OtherDictionariesStore(EventLayer layer)
     {
         var read = (WithOtherDictionaries)RoundTrip(layer, new WithOtherDictionaries
@@ -468,6 +473,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void DictionaryInObjectMemberLoads(EventLayer layer)
     {
         var read = (WithDictionaryInObject)RoundTrip(layer,
@@ -488,6 +494,7 @@ public class EventStore2CoverageTest
     [InlineData(EventLayer.Mapping)]
     [InlineData(EventLayer.Store1)]
     [InlineData(EventLayer.Store2)]
+    [InlineData(EventLayer.Catalog)]
     public void NestedListInObjectMemberLoads(EventLayer layer)
     {
         var read = (WithNestedListInObject)RoundTrip(layer,

@@ -94,13 +94,14 @@ a restart and canonical restore. Enable the activation progress deadline to boun
 The core package also contains local-directory counterparts of the three Azure adapters, for developing and testing an
 application on one machine without Azure or Azurite. They implement the same contracts with the same conditional
 semantics, so the application runs the unchanged hosting, coordinator, restore and EventLog code; moving to Azure
-replaces only the three storage registrations:
+replaces only the storage registrations (the fourth only with EventSourcing):
 
 | Port | Production | Local development |
 | --- | --- | --- |
 | `IReplicationLeaderStorage` | `AzureLeaderStorage(blob, duration, initialJson)` | `FileSystemLeaderStorage(directory, duration, initialJson)` |
 | `IReplicationStorage` (one per database) | `AzureReplicationStorage(container, prefix)` | `FileSystemReplicationStorage(directory)` |
 | `IEventLogStorage` | `AzureEventLogStorage(container, prefix)` | `FileSystemEventLogStorage(directory)` |
+| `IVersionedBlob` (EventSourcing metadata, one per data topic) | `AzureVersionedBlob(blobClient)` | `FileSystemVersionedBlob(path)` |
 
 A single node has no peers to reach, so it also needs no peer endpoint. Register it with `AddBTDBReplicationSingleNode`
 and `AddBTDBEventLogSingleNode` instead of `AddBTDBReplication` and `AddBTDBEventLog`. They register the same services

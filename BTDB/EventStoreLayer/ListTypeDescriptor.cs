@@ -37,12 +37,14 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
     }
 
-    ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
+    internal ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
     {
         _convertGenerator = typeSerializers.ConvertorGenerator;
         _typeSerializers = typeSerializers;
         InitFromItemDescriptor(itemDesc);
     }
+
+    internal ITypeDescriptor ItemDescriptor => _itemDescriptor!;
 
     void InitFromItemDescriptor(ITypeDescriptor descriptor)
     {

@@ -1,9 +1,9 @@
 # Typed event publishing over replication and EventLog
 
 `BTDB.Replication.EventSourcing` supplies the application execution layer above the provider-neutral replication and
-EventLog contracts. It consumes one data topic into one ObjectDB and shares a separate Layer2 metadata topic with
-all publishers and consumers of that data topic. HTTP and Azure are supplied by the existing adapters; this package
-does not depend on either.
+EventLog contracts. It consumes one data topic into one ObjectDB and shares one Layer2 metadata file, an
+`IVersionedBlob`, with all publishers and consumers of that data topic. HTTP and Azure are supplied by the existing
+adapters; this package does not depend on either.
 
 ## Handler API
 
@@ -70,34 +70,41 @@ Validation does not run again during replay. Do not mutate or reuse the event ob
 
 An event whose serialized form exceeds `EventPublisherOptions.MaximumEventSize` fails its publication with
 `EventTooLargeException` (event type, size and limit) without writing data; metadata for a new event type may already
-be published. The default matches the EventLog default `MaxRecordSize` of 51 MiB, which admits 50 MiB payloads; keep
+be written. The default matches the EventLog default `MaxRecordSize` of 51 MiB, which admits 50 MiB payloads; keep
 it at most the data topic's `MaxRecordSize`.
 
-## Data and metadata topics
+## Data topic and metadata file
 
-Use distinct topics, for example `application-events` and `application-metadata`. They must belong to the same
-application history; never reuse a metadata topic from an unrelated data stream. All instances use the same type-name
-mapping and compatible handlers. `EventPublisherOptions.TypeNameMapper` supports persisted type names and upgrades.
+Use one data topic, for example `application-events`, and one Layer2 metadata file for it: an `IVersionedBlob` that
+is read whole and replaced whole under a version condition. In production use `AzureVersionedBlob` on a blob next to
+the EventLog, for example `application/application-events.layer2`; for a single local node use
+`FileSystemVersionedBlob`, which one process owns. The file is bound to the data topic's name: a file of another topic
+fails startup with `InvalidDataException`. All instances use the same type-name mapping and compatible handlers.
+`EventPublisherOptions.TypeNameMapper` supports persisted type names and upgrades.
 
-The flow uses a streaming Layer2 serializer:
+The flow uses `CatalogEventSerializer` and `CatalogEventDeserializer` over the file:
 
-1. At startup, read the metadata topic from offset zero and apply records in order to both `EventSerializer` and
-   `EventDeserializer`; continue following new metadata.
-2. Serialize the validated event. If Layer2 returns new metadata, append those bytes to the metadata topic and wait
-   until that actual offset has been applied locally. Then serialize again.
+1. At startup, read the file once; a missing file is empty metadata. Nothing follows the file afterwards.
+2. Serialize the validated event. When it uses types the file lacks, the serializer proposes the file with all of them
+   appended; write it on condition of the version read. Applied: install it and serialize again. Rejected (another
+   node wrote first) or Ambiguous (the outcome is unknown): read the file, install it and serialize again. Types are
+   found by shape, so the ones another node or this node's own landed write stored are not written again.
 3. Append only the resulting Layer2 data bytes to the data topic. Serialize and dispatch local publications in one
    lane, releasing it once the data write is dispatched so independent receipts can be batched by EventLog.
-4. A consumer missing a descriptor catches up to the metadata end observed after the data record before decoding
-   again. An unresolved descriptor at that boundary is an invalid record, rather than an unlimited live wait.
+4. A consumer meeting a type the installed file lacks reads the file once (concurrent misses share the read).
+   Metadata is durable before any data that uses it, so a type still missing then means damaged data, and the
+   publisher stops with `InvalidDataException`.
 
-Do not optimistically apply proposed metadata: concurrent publishers may introduce different types or propose the
-same descriptors, and their committed metadata-topic order selects the shared Layer2 IDs. The concurrency and delayed
-metadata tests exercise this ordering. Existing event types reuse descriptors; metadata is not repeated per event.
+Proposed metadata is never used before its write applied, and the file only grows: type IDs never change. Existing
+event types reuse their stored types, also after a restart; metadata is not repeated per event. The file keeps names
+interned and loads without parsing, and a deserializer builds only the types it reads. The format and its
+measurements are in [Layer2MetadataFilePlan.md](../BTDB.Replication.EventSourcing/Layer2MetadataFilePlan.md).
 
-Keep the full metadata topic from offset zero, including across database checkpoint restore. Data may be retained
-from a later offset only when every supported canonical restore and replay cursor can still reach it. Startup fails
-if metadata was pruned or the database cursor is outside retained data bounds. Topics are supplied through
-`IEventTopic`; the existing EventLog service owns storage durability, transport and ambiguous-write reconciliation.
+Keep the file for as long as the data topic exists, including across database checkpoint restore, and change it only
+through publishers: a file that changed other than by appending stops the publisher. Data may be retained from a
+later offset only when every supported canonical restore and replay cursor can still reach it. Startup fails if the
+database cursor is outside retained data bounds. The data topic is supplied through `IEventTopic`; the EventLog
+service owns its durability, transport and ambiguous-write reconciliation.
 
 The serialized data envelope contains the event and a publication correlation GUID. Consumption can finish before
 the data append's receipt reaches the publisher; correlation binds that committed result to the original local caller
@@ -115,8 +122,8 @@ Supply an ObjectDB after canonical restore and relation/schema initialization. I
 | ObjectDB `CommitUlong = 0` | No application event consumed. |
 | ObjectDB `CommitUlong = k` | Resume reading data at offset `k`. |
 
-This keeps zero available for genesis and avoids committing the first event with an unchanged cursor. Data and metadata
-offsets are independent; metadata never changes the database's application cursor.
+This keeps zero available for genesis and avoids committing the first event with an unchanged cursor. The metadata
+file never changes the database's application cursor.
 
 Every event uses `StartWritingTransaction(eventId, inBatch: true)`, and commits its state and cursor atomically.
 `MaximumBatchSize` bounds each group of buffered events; `FinishTransactionBatchAfterCurrentTransaction` then makes
@@ -132,8 +139,8 @@ only after that history is visible. During catch-up `Ambient.IsReplay` is true. 
 are live and have `IsReplay` false on every instance. Cancellation of the `StartAsync` wait does not dispose the
 publisher; dispose it to stop its workers.
 
-After restart, create a new publisher over the restored ObjectDB and the same topics. It rebuilds Layer2 metadata
-from the complete metadata topic and consumes only the missing data tail. Canonical checkpoint/TRL may lag recent
+After restart, create a new publisher over the restored ObjectDB, the same data topic and the same metadata file. It
+reads the file once and consumes only the missing data tail. Canonical checkpoint/TRL may lag recent
 local commits: replay regenerates that tail from the durable EventLog. Never take the cursor from an unverified local
 cache or a process-local counter.
 
@@ -196,7 +203,7 @@ Configure an `EventCluster` for each publisher to discover consumers that finish
 // The node's ReplicationPresence is registered by AddBTDBReplication. Each running instance has its own node ID.
 var presence = app.Services.GetRequiredService<ReplicationPresence>();
 var cluster = new EventCluster(nodeId, presence);
-await using var publisher = new EventPublisher(database, dataTopic, metadataTopic, dispatcher,
+await using var publisher = new EventPublisher(database, dataTopic, metadataBlob, dispatcher,
     new EventPublisherOptions { Cluster = cluster }, transactionLogCapture);
 await publisher.StartAsync(stopping);
 
@@ -214,7 +221,7 @@ var refreshed = await cluster.RefreshAsync(stopping); // After this node's next 
 
 Supply the same node ID used in the host's `LeaderCandidate.NodeId`. `publisher.SelfNodeId` returns it without
 I/O, and null when no cluster is configured. `LeaderNodeId` is the selected replication
-leader (from its leader document on followers), never data/metadata topic ownership. It is null before a leader is
+leader (from its leader document on followers), never data topic ownership. It is null before a leader is
 selected and can name a leader that is still activating or no longer reachable. The snapshot exposes no lease or peer
 credentials. Use replication's own authority APIs for operations requiring leadership; membership is discovery, not
 fencing.
@@ -333,17 +340,20 @@ Cancellation after publication dispatch can mean the event was stored and may st
 not proof of absence. A new caller retry is a new publication unless the application event contains its own stable
 business deduplication key. Pure events and result events follow the same persistence path.
 
-The publisher owns its workers and ambient scopes. It borrows its database, EventLog topics and handler dispatcher.
-Dispose it before disposing ObjectDB or EventLog; disposal waits for input workers and propagates a worker fault.
+The publisher owns its workers and ambient scopes. It borrows its database, data topic, metadata file and handler
+dispatcher. Dispose it before disposing ObjectDB, EventLog or a `FileSystemVersionedBlob`; disposal waits for input workers and propagates a worker fault.
 `Completion` remains observable after startup. Observe publication tasks rather than discarding failures.
 
 ## Verification
 
 `dotnet test BTDB.Replication.EventSourcing.Test/BTDB.Replication.EventSourcing.Test.csproj -c Release` exercises
-synchronous validation, separate-topic descriptor reuse, concurrent publishers, isolated ambient contexts, native
-batch visibility, different batch sizes, delayed metadata, consumption before a receipt, restart, cold replay,
-rollback and missing retained input. Lower-level EventLog, replication, HTTP and Azure tests remain in their owning
-suites. The wrapper's Azure integration test uses the real EventLog service and Azure storage adapter with an isolated
+synchronous validation, metadata written once and reused, concurrent publishers whose metadata writes race,
+rejected and ambiguous metadata writes, a consumer refreshing the file before dependent data, damaged data and a
+file of another topic, isolated ambient contexts, native batch visibility, different batch sizes, consumption before
+a receipt, restart without new metadata, cold replay, rollback and missing retained input; the randomized test also
+injects rejected and ambiguous metadata writes. Lower-level EventLog, replication, HTTP and Azure tests remain in their owning
+suites. The wrapper's Azure integration test uses the real EventLog service, the Azure storage adapter and
+`AzureVersionedBlob` with an isolated
 Azurite process (or the existing fixture's explicitly configured live account). These checks support application
 integration; they do not close production-application qualification B3.
 The suite also checks post-commit ordering and visibility, automatic replay suppression, rolled-back registrations,

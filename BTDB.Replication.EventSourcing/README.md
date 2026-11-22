@@ -1,7 +1,7 @@
 # BTDB.Replication.EventSourcing
 
 A .NET 10 package that connects typed application events to BTDB EventLog and an already restored replicated
-ObjectDB. Its API follows the SkillShare shape: synchronous `Validate`, ordered `Consume`, `PureEvent`,
+ObjectDB, with Layer2 event metadata in one versioned file. Its API follows the SkillShare shape: synchronous `Validate`, ordered `Consume`, `PureEvent`,
 `EventWithResult<TResult>`, `PublishAsync`, `PublishAndWaitAsync`, and an ambient query/transaction context.
 
 Prepared for the next release. After publication:
@@ -18,13 +18,14 @@ metadata for event subclasses and ObjectDB relations used by BTDB's default impl
 ## Compose
 
 ```csharp
+using BTDB.Replication.Azure;
 using BTDB.Replication.EventSourcing;
 
 // database has already finished canonical restore and this generation's relation initialization.
 var dispatcher = new EventDispatcher().Register<Increment, Incremented>(new IncrementHandler());
 await using var publisher = new EventPublisher(database,
     eventLog.GetTopic("application-events"),
-    eventLog.GetTopic("application-metadata"), dispatcher,
+    new AzureVersionedBlob(container.GetBlobClient("application/application-events.layer2")), dispatcher,
     new EventPublisherOptions { MaximumBatchSize = 32 }, transactionLogCapture);
 await publisher.StartAsync(stopping);
 var result = await publisher.PublishAndWaitAsync(new Increment { Amount = 5 }, stopping);
@@ -35,7 +36,7 @@ using (publisher.StartQuery())
 }
 ```
 
-`Validate` runs on the caller's stack against a local read-only snapshot before publishing to either topic.
+`Validate` runs on the caller's stack against a local read-only snapshot before anything is written.
 `Consume` runs on every instance in data-topic order. `StartAsync` catches up from the ObjectDB commit cursor, then
 follows live events. `Ambient.IsReplay` is true for history captured at startup and false for later live events on
 every instance. Each event has its own transaction inside a bounded native BTDB virtual batch; local publication
@@ -50,9 +51,10 @@ Set `EventPublisherOptions.Cluster` to an `EventCluster(nodeId, replicationPrese
 replay to the selected replication leader through the node's `ReplicationPresence`, withdraw on shutdown and expire
 after a crash. Membership adds no shared-storage requests and no event topic; use the host's node ID.
 
-Layer2 uses two separate topics: metadata is applied in topic order to both serializer
-and deserializer before dependent data is written or consumed. Metadata is retained from offset zero; data replay
-starts at the database cursor. The publisher owns its workers, but the application owns the database, schemas, input
+Layer2 metadata is one file shared by all instances, bound to the data topic's name: an `IVersionedBlob`
+(`AzureVersionedBlob`, or `FileSystemVersionedBlob` for a single local node). A publication writes the new types of
+its event conditionally before its data; a consumer missing a type reads the file once. Keep the file as long as the
+data topic; data replay starts at the database cursor. The publisher owns its workers, but the application owns the database, schemas, input
 retention, replication host and external effects. Observe `Completion` and stop the publisher before disposing its
 database or EventLog service.
 
