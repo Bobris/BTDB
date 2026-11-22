@@ -200,16 +200,17 @@ public sealed class LsmProcessTest : IDisposable
         await using var reader = Reader();
         Assert.False(await second.Sees(l => l == "WRITER", TimeSpan.FromSeconds(1)));
         first.Kill();
+        await first.WaitForExit(); // Drain all durable acknowledgements printed before the kill.
         var lastDurable = first.LastDurable();
         Assert.True(lastDurable >= 40);
         await second.Expect(l => l == "WRITER", "WRITER from the second writer after the lease expired", 20);
-        var taken = await second.ExpectDurable(lastDurable + 1);
-        // The first durable commit of the second writer follows every durable commit of the first one.
-        Assert.True(taken > lastDurable);
-        await second.ExpectDurable(lastDurable + 30);
-        await SeenConsistent(reader, lastDurable + 30);
+        // A commit can reach storage just before the first writer is killed and never print its acknowledgement.
+        var firstTaken = await second.ExpectDurable(0);
+        Assert.True(firstTaken > lastDurable);
+        var secondDurable = await second.ExpectDurable(firstTaken + 29);
+        await SeenConsistent(reader, secondDurable);
         Assert.Equal("a", await Owner(reader, lastDurable));
-        Assert.Equal("b", await Owner(reader, lastDurable + 30));
+        Assert.Equal("b", await Owner(reader, secondDurable));
         second.Send("STOP");
         await second.WaitForExit();
         Assert.Equal(0, second.ExitCode);

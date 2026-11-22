@@ -30,6 +30,14 @@ public class LsmConcurrencyTest
         return value;
     }
 
+    [Fact]
+    public async Task CalcStatsRejectsADisposedDatabase()
+    {
+        var db = await LsmKeyValueDB.OpenAsync(new() { Storage = new InMemoryLsmStorage() });
+        db.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => db.CalcStats());
+    }
+
     [Theory]
     [InlineData(true, 0)]
     [InlineData(true, 600)]

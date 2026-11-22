@@ -348,12 +348,22 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     public string CalcStats()
     {
-        var state = _state;
+        LsmState state;
+        long keyCount, memtableEntries, memtableBytes;
+        lock (_obsoleteObjects)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            // Read the native counters while retired memtable arenas cannot be released.
+            state = _state;
+            keyCount = state.CreateView(state.Memtable).Count;
+            memtableEntries = state.Memtable.EntryCount;
+            memtableBytes = state.Memtable.ApproximateBytes;
+        }
         var builder = new StringBuilder();
         builder.Append("Writer:").Append(_isWriter).Append(" epoch ").Append(_epoch).AppendLine();
-        builder.Append("KeyValueCount:").Append(state.CreateView(state.Memtable).Count).AppendLine();
-        builder.Append("MemtableEntries:").Append(state.Memtable.EntryCount).AppendLine();
-        builder.Append("MemtableBytes:").Append(state.Memtable.ApproximateBytes).AppendLine();
+        builder.Append("KeyValueCount:").Append(keyCount).AppendLine();
+        builder.Append("MemtableEntries:").Append(memtableEntries).AppendLine();
+        builder.Append("MemtableBytes:").Append(memtableBytes).AppendLine();
         builder.Append("MemtableGeneration:").Append(state.MemtableGeneration).AppendLine();
         builder.Append("SealedMemtables:").Append(state.Immutables.Length).AppendLine();
         builder.Append("DurableTransaction:").Append(_durableTransaction).AppendLine();
@@ -491,9 +501,12 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             foreach (var request in TakeFullCompactionRequests()) request.TrySetCanceled();
 
             DeleteObsoleteObjects();
-            var state = _state;
-            state.Memtable.Arena?.Dispose();
-            foreach (var sealedMemtable in state.Immutables) sealedMemtable.Memtable.Arena?.Dispose();
+            lock (_obsoleteObjects)
+            {
+                var state = _state;
+                state.Memtable.Arena?.Dispose();
+                foreach (var sealedMemtable in state.Immutables) sealedMemtable.Memtable.Arena?.Dispose();
+            }
             if (_options.BlockCache == null) _cache.Dispose();
         }
     }

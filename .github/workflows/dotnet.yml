@@ -27,7 +27,8 @@ jobs:
             -   name: Build
                 run: dotnet build --no-restore
             -   name: Test
-                run: dotnet test --no-build --verbosity normal
+                # Lease timing and process failover tests need a responsive emulator and child processes.
+                run: dotnet test --no-build --verbosity normal -m:1
 
     aot-query-smoke:
         runs-on: ubuntu-latest

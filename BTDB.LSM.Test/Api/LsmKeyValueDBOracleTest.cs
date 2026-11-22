@@ -55,23 +55,16 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         var random = new Random(seed);
         var storage = new InMemoryLsmStorage();
         using var expectedDb = new BTreeKeyValueDB(new InMemoryFileCollection());
-        var actualDb = await LsmKeyValueDB.OpenAsync(new()
+        using var cache = new LsmBlockCache(32 * 1024);
+        using var actualDb = await LsmKeyValueDB.OpenAsync(new()
         {
             Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = memtableSize, BlockSize = blockSize, RestartInterval = 2, IndexPartitionSize = 48,
             PointDeleteRangeLimit = pointDeleteRangeLimit, Level0CompactionTrigger = 3, LevelBaseBytes = 4096,
             LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
-            ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = new LsmBlockCache(32 * 1024),
+            ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = cache,
             MaxTransactionMemory = maxTransactionMemory
         });
-        try
-        {
-            Run(random, expectedDb, actualDb, operations);
-        }
-        finally
-        {
-            actualDb.Dispose();
-        }
-
+        Run(random, expectedDb, actualDb, operations);
         output.WriteLine(actualDb.CalcStats());
     }
 

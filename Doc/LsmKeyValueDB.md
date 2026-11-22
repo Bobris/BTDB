@@ -145,6 +145,9 @@ Resident memory is roughly:
 Writers wait (stall) when sealed memtables, level 0 tables or WAL bytes exceed their limits, until background flush,
 compaction or upload catches up.
 
+Call `CalcStats()` while the database is open. It can read the memtable counters during background flushes and
+compactions. Calling it after disposal throws `ObjectDisposedException`.
+
 ## Large transactions
 
 A writing transaction can be practically unlimited in size. Once it holds more than `MaxTransactionMemory` memtable

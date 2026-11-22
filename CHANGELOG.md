@@ -32,6 +32,8 @@
 
 ### Fixed
 
+- BTDB.LSM: `CalcStats()` now protects native memtable counters during background reclamation and throws
+  `ObjectDisposedException` when called after disposal.
 - File-system replication storage now finishes writes under its directory lock before disposal releases ownership.
   An immediate restart can recover the directory without racing a write from the previous instance.
 - Fixed Windows test failures caused by open file collections and CRLF statistics output. The process failover
