@@ -10,10 +10,10 @@ namespace BTDBTest;
 /// Replay stops at transaction log content it cannot apply, as after a crash, and keeps the transactions before it.
 public class TransactionLogDamageTest
 {
-    static KeyValueDBOptions Options(string directory) => new()
+    static KeyValueDBOptions Options(IFileCollection files, uint fileSplitSize = int.MaxValue) => new()
     {
-        FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
-        CompactorScheduler = null
+        FileCollection = files, Compression = new NoCompressionStrategy(),
+        CompactorScheduler = null, FileSplitSize = fileSplitSize
     };
 
     [Theory]
@@ -26,7 +26,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
                 {
@@ -45,7 +46,8 @@ public class TransactionLogDamageTest
             content[at + field] = damage;
             File.WriteAllBytes(log, content);
 
-            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var reopenedFiles = new OnDiskFileCollection(directory);
+            using var reopened = new BTreeKeyValueDB(Options(reopenedFiles));
             using var read = reopened.StartReadOnlyTransaction();
             using var check = read.CreateCursor();
             Assert.True(check.FindExactKey([1]));
@@ -69,7 +71,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
                 foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
                 {
                     using var tr = await db.StartWritingTransaction();
@@ -87,7 +90,8 @@ public class TransactionLogDamageTest
             File.WriteAllBytes(log, [.. content[..at], .. writer.GetSpan().ToArray(), .. content[(at + 1)..]]);
 
             var before = GC.GetAllocatedBytesForCurrentThread();
-            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var reopenedFiles = new OnDiskFileCollection(directory);
+            using var reopened = new BTreeKeyValueDB(Options(reopenedFiles));
             Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 64 << 20);
             using var read = reopened.StartReadOnlyTransaction();
             using var check = read.CreateCursor();
@@ -110,7 +114,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
                 foreach (var (key, value) in new (byte, byte)[] { (1, 2), (3, 4), (5, 6) })
                 {
                     using var tr = await db.StartWritingTransaction();
@@ -126,7 +131,8 @@ public class TransactionLogDamageTest
                 content[i] == 0x81 && content[i + 1] == 0x81 && content[i + 2] == 3 && content[i + 3] == 4);
             File.WriteAllBytes(log, content[..(at + 4)]); // after the command writing key 3, before its commit
 
-            using (var reopened = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var reopened = new BTreeKeyValueDB(Options(disk)))
             {
                 using var tr = await reopened.StartWritingTransaction();
                 using var cursor = tr.CreateCursor();
@@ -134,7 +140,8 @@ public class TransactionLogDamageTest
                 tr.Commit();
             }
 
-            using var again = new BTreeKeyValueDB(Options(directory));
+            using var reopenedFiles = new OnDiskFileCollection(directory);
+            using var again = new BTreeKeyValueDB(Options(reopenedFiles));
             using var read = again.StartReadOnlyTransaction();
             using var check = read.CreateCursor();
             Assert.True(check.FindExactKey([1]));
@@ -156,9 +163,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            var options = Options(directory);
-            options.FileSplitSize = 1024;
-            using (var db = new BTreeKeyValueDB(options))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk, 1024)))
                 for (var i = 0; i < 12; i++)
                 {
                     using var tr = await db.StartWritingTransaction();
@@ -176,7 +182,11 @@ public class TransactionLogDamageTest
             first[23] = (byte)(0x80 | logs.Length);
             File.WriteAllBytes(logs[0], first);
             await Assert.ThrowsAsync<BTDBException>(() =>
-                Task.Run(() => new BTreeKeyValueDB(Options(directory)).Dispose()).WaitAsync(TimeSpan.FromSeconds(20)));
+                Task.Run(() =>
+                {
+                    using var disk = new OnDiskFileCollection(directory);
+                    using var db = new BTreeKeyValueDB(Options(disk));
+                }).WaitAsync(TimeSpan.FromSeconds(20)));
         }
         finally
         {
@@ -191,7 +201,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 using (var tr = await db.StartWritingTransaction())
                 {
@@ -216,7 +227,8 @@ public class TransactionLogDamageTest
             content[at] = 5;
             File.WriteAllBytes(log, content);
 
-            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var reopenedFiles = new OnDiskFileCollection(directory);
+            using var reopened = new BTreeKeyValueDB(Options(reopenedFiles));
             using var read = reopened.StartReadOnlyTransaction();
             using var check = read.CreateCursor();
             Assert.True(check.FindExactKey([7, 2]));
@@ -238,7 +250,8 @@ public class TransactionLogDamageTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 using (var tr = await db.StartWritingTransaction())
                 {
@@ -261,7 +274,8 @@ public class TransactionLogDamageTest
                 content[i] == 10 && content[i + 1] == 3 && content[i + 2] == 77);
             File.WriteAllBytes(log, [.. content[..(at + 1)], .. index, .. content[(at + 2)..]]);
 
-            using var reopened = new BTreeKeyValueDB(Options(directory));
+            using var reopenedFiles = new OnDiskFileCollection(directory);
+            using var reopened = new BTreeKeyValueDB(Options(reopenedFiles));
             using var read = reopened.StartReadOnlyTransaction();
             using var check = read.CreateCursor();
             Assert.True(check.FindExactKey([1]));

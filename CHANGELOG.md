@@ -21,7 +21,7 @@
 
 ### Changed
 
-- BTDB.Replication.EventSourcing (breaking, not released before): `EventPublisher` takes the Layer2 metadata as an
+- BTDB.Replication.EventSourcing (breaking change from 36.6.0): `EventPublisher` takes the Layer2 metadata as an
   `IVersionedBlob` instead of a metadata topic: `new EventPublisher(database, dataTopic, metadataBlob, dispatcher, …)`.
   The file is bound to the data topic's name, read once at startup and written conditionally with all new types of
   an event before its data; a consumer missing a type reads it once. A restarted publisher writes no metadata for
@@ -31,6 +31,11 @@
   savers and loaders, and encrypted strings with the catalog classes; their behavior is unchanged.
 
 ### Fixed
+
+- File-system replication storage now finishes writes under its directory lock before disposal releases ownership.
+  An immediate restart can recover the directory without racing a write from the previous instance.
+- Fixed Windows test failures caused by open file collections and CRLF statistics output. The process failover
+  test now kills its node after the first TRL block is on disk, and CI can execute the BackendActions NativeAOT smoke script.
 
 - EventStoreLayer / EventStore2Layer / EventSourcing: hardened the new Layer2 metadata catalog and codec:
   - `TupleTypeDescriptor` no longer caches incomplete names or preferred types while an item is a placeholder, fixing

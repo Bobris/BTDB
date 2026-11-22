@@ -30,7 +30,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     public ValueTask<EventLogBlob?> ReadAsync(string key, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             return ValueTask.FromResult(current == null ? null
@@ -41,7 +41,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     public ValueTask<EventLogBlobProperties?> GetPropertiesAsync(string key, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             return ValueTask.FromResult(current == null ? null
@@ -53,7 +53,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
         CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null || current.Version != version || offset < 0 ||
@@ -67,7 +67,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
         EventLogOwner? owner, string? sha256, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (expectedVersion == null ? current != null : current == null || current.Version != expectedVersion)
@@ -87,7 +87,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     {
         ArgumentNullException.ThrowIfNull(owner);
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null || current.Version != expectedVersion)
@@ -109,7 +109,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
         ArgumentNullException.ThrowIfNull(prefix);
         cancellation.ThrowIfCancellationRequested();
         List<EventLogObjectInfo> objects = [];
-        lock (_store.Lock)
+        using (_store.EnterLock())
             foreach (var (key, metadata) in _store.List(prefix))
                 objects.Add(new(key, metadata.Version, metadata.Length, metadata.DeleteAfter,
                     _store.GetModified(metadata.DataFile)));
@@ -126,7 +126,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     {
         ArgumentOutOfRangeException.ThrowIfNegative(delay.Ticks);
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null || current.Version != version) return ValueTask.FromResult<string?>(null);
@@ -143,7 +143,7 @@ public sealed class FileSystemEventLogStorage(string directory, TimeProvider? ti
     public ValueTask<bool> DeleteAsync(string key, string version, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null || current.Version != version || current.DeleteAfter is not { } deadline ||

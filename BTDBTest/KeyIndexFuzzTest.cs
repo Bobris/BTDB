@@ -13,9 +13,9 @@ namespace BTDBTest;
 /// database opens with exactly the data committed, replayed from the transaction logs.
 public class KeyIndexFuzzTest
 {
-    static KeyValueDBOptions Options(string directory, bool compressed = false) => new()
+    static KeyValueDBOptions Options(IFileCollection files, bool compressed = false) => new()
     {
-        FileCollection = new OnDiskFileCollection(directory),
+        FileCollection = files,
         Compression = new NoCompressionStrategy(),
         KviCompressionStrategy = new DefaultCompressionKviStrategy(compressed ? 5 : -1, 22, 0),
         CompactorScheduler = null
@@ -34,7 +34,8 @@ public class KeyIndexFuzzTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 for (var t = 0; t < 20; t++)
                 {
@@ -88,7 +89,8 @@ public class KeyIndexFuzzTest
                 File.WriteAllBytes(index, content.ToArray());
                 try
                 {
-                    using var reopened = new BTreeKeyValueDB(Options(directory));
+                    using var disk = new OnDiskFileCollection(directory);
+                    using var reopened = new BTreeKeyValueDB(Options(disk));
                     using var read = reopened.StartReadOnlyTransaction();
                     using var cursor = read.CreateCursor();
                     var keys = new List<byte[]>();
@@ -134,7 +136,8 @@ public class KeyIndexFuzzTest
         try
         {
             var expected = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            using (var db = new BTreeKeyValueDB(Options(directory, compressed)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk, compressed)))
             {
                 for (var t = 0; t < 20; t++)
                 {
@@ -174,7 +177,8 @@ public class KeyIndexFuzzTest
                 File.WriteAllBytes(index, content);
                 try
                 {
-                    using var reopened = new BTreeKeyValueDB(Options(directory, compressed));
+                    using var disk = new OnDiskFileCollection(directory);
+                    using var reopened = new BTreeKeyValueDB(Options(disk, compressed));
                     using var read = reopened.StartReadOnlyTransaction();
                     using var cursor = read.CreateCursor();
                     var actual = new SortedDictionary<string, string>(StringComparer.Ordinal);

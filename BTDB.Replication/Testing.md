@@ -291,7 +291,7 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
   `FollowerCutOffFromItsLeaderNeverTakesOverAndCatchesUpAfterHealing`,
   `NodeKilledDuringRestoreRestoresAgainFromItsPartialLocalFiles` and
   `TakeoverActivatesNoDatabaseUntilEveryDatabaseCaughtUp` cover planned handoff across processes, injected storage and
-  peer partitions, a kill in the middle of a restore and partial multi-database activation.
+  peer partitions, a kill after the first TRL block reaches disk while later ranges are blocked, and partial multi-database activation.
 - `ObjectDbRollbacksInsideVirtualBatchesReplicateAndSurviveFailover`,
   `UpgradedLeaderPublishesItsSchemaDetachingOldFollowersWhileUpgradedReplacementsRestoreIt` and
   `UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory` and

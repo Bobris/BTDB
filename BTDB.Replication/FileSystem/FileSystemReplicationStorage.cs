@@ -75,7 +75,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
     {
         TrlFileName.FileIdFromKey(key);
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             return ValueTask.FromResult(current == null ? null
@@ -89,7 +89,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
         TrlFileName.FileIdFromKey(key);
         cancellation.ThrowIfCancellationRequested();
         if (destination.IsEmpty) return ValueTask.CompletedTask;
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null || current.Version != token || offset + (long)destination.Length > current.Length)
@@ -106,7 +106,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
             throw new ArgumentException("A new TRL cannot have a previous length.");
         if (write.Length < write.ExpectedLength) throw new ArgumentException("Canonical TRLs cannot shrink.");
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(write.Key);
             if (write.ExpectedToken is { } token
@@ -148,7 +148,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
     List<(string Key, FileSystemObjectStore.Metadata Metadata)> ListNative(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock) return _store.List("").Where(o => TryParseFileName(o.Key, out _, out _)).ToList();
+        using (_store.EnterLock()) return _store.List("").Where(o => TryParseFileName(o.Key, out _, out _)).ToList();
     }
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
@@ -206,7 +206,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
         ArgumentOutOfRangeException.ThrowIfNegative(delay.Ticks);
         TrlFileName.ValidateKey(file.Key);
         RequireAuthority(cancellation);
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(file.Key);
             if (current == null || current.Version != file.Version) return ValueTask.FromResult(file);
@@ -222,7 +222,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
     {
         TrlFileName.ValidateKey(file.Key);
         RequireAuthority(cancellation);
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(file.Key);
             if (current == null || current.Version != file.Version)
@@ -239,7 +239,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
         TrlFileName.ValidateKey(file.Key);
         RequireAuthority(cancellation);
         if (file.DeleteAfter is not { } due || _time.GetUtcNow() < due) return ValueTask.CompletedTask;
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(file.Key);
             if (current != null && current.Version == file.Version && current.DeleteAfter is { } deadline &&
@@ -253,7 +253,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
     {
         RequireAuthority(cancellation);
         var key = Key(id, KVFileType.PureValues);
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(key);
             if (current == null) return ValueTask.FromResult(false);
@@ -274,7 +274,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
         cancellation.ThrowIfCancellationRequested();
         if (count == 0) return 0;
         var identity = (file.FileId, file.FileType);
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(Key(file.FileId, file.FileType)) ??
                           throw new IOException("Selected checkpoint file is no longer available.");
@@ -372,7 +372,7 @@ public sealed class FileSystemReplicationStorage : IBindableReplicationStorage, 
             _stream.Dispose();
             var sha = Convert.ToHexString(_hash.GetHashAndReset());
             RequireAuthority();
-            lock (_store.Lock)
+            using (_store.EnterLock())
             {
                 if (_store.Get(key) is { } existing)
                 {

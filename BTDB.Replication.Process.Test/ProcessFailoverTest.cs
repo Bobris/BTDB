@@ -59,7 +59,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         string Diagnostics { get { lock (_diagnostics) return _diagnostics.ToString(); } }
 
         public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null,
-            string? dataDirectory = null, ulong generation = 1, int readDelayMilliseconds = 0, string databases = "main",
+            string? dataDirectory = null, ulong generation = 1, bool pauseRestore = false, string databases = "main",
             bool objects = false, int? activationTimeoutMilliseconds = null)
         {
             var ownsDataDirectory = dataDirectory == null;
@@ -87,14 +87,19 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             else start.Environment.Remove("BTDB_TEST_ACTIVATION_TIMEOUT_MILLISECONDS");
             start.Environment["BTDB_TEST_DATA_DIRECTORY"] = dataDirectory;
             start.Environment["BTDB_TEST_GENERATION"] = generation.ToString();
-            start.Environment["BTDB_TEST_READ_DELAY_MILLISECONDS"] = readDelayMilliseconds.ToString();
+            start.Environment["BTDB_TEST_PAUSE_RESTORE"] = pauseRestore ? "1" : "0";
             start.Environment["BTDB_TEST_DATABASES"] = databases;
             start.Environment["BTDB_TEST_APPLICATION"] = objects ? "objectdb" : "kv";
             var node = new Node(ChildProcess.Start(start)!, dataDirectory, ownsDataDirectory);
             try
             {
-                node.Endpoint = await node._ready.Task.WaitAsync(TimeSpan.FromSeconds(20));
+                node.Endpoint = await node._ready.Task.WaitAsync(TimeSpan.FromMinutes(1));
                 return node;
+            }
+            catch (TimeoutException error)
+            {
+                await node.DisposeAsync();
+                throw new TimeoutException("Node did not report READY: " + node.Diagnostics, error);
             }
             catch { await node.DisposeAsync(); throw; }
         }
@@ -333,10 +338,11 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         var directory = Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
         try
         {
-            await using (var slow = await Node.Start(container, dataDirectory: directory, readDelayMilliseconds: 400))
+            await using (var slow = await Node.Start(container, dataDirectory: directory, pauseRestore: true))
             {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                Assert.Equal("Restoring", (await slow.Wait(_ => true, "restore in progress")).Role);
+                await slow.Wait(s => s.Role == "Restoring" &&
+                    Array.Exists(Directory.GetFiles(directory, "*.trl"), f => new FileInfo(f).Length > 0),
+                    "first restore block on disk", 60);
                 await slow.Kill(); // In the middle of downloading: partial files stay behind.
             }
             Assert.NotEmpty(Directory.EnumerateFiles(directory));

@@ -54,9 +54,10 @@ public class KeyValueDBConcurrentCompactionTest
         Directory.CreateDirectory(directory);
         try
         {
+            using var disk = new OnDiskFileCollection(directory);
             using var db = new BTreeKeyValueDB(new KeyValueDBOptions
             {
-                FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
+                FileCollection = disk, Compression = new NoCompressionStrategy(),
                 CompactorScheduler = null, FileSplitSize = 16 * 1024
             });
             byte[] ValueOf(int account, int version) => Enumerable.Repeat((byte)(account ^ version), 500 + account).ToArray();
@@ -113,14 +114,15 @@ public class KeyValueDBConcurrentCompactionTest
     {
         var directory = Path.Combine(Path.GetTempPath(), "btdb-concurrent-compaction-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        KeyValueDBOptions Options() => new()
+        KeyValueDBOptions Options(IFileCollection disk) => new()
         {
-            FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
+            FileCollection = disk, Compression = new NoCompressionStrategy(),
             CompactorScheduler = null, FileSplitSize = 64 * 1024
         };
         try
         {
-            using (var db = new BTreeKeyValueDB(Options()))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 using (var tr = await db.StartWritingTransaction())
                 {
@@ -181,7 +183,8 @@ public class KeyValueDBConcurrentCompactionTest
                 await db.Compact(CancellationToken.None);
             }
 
-            using (var reopened = new BTreeKeyValueDB(Options()))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var reopened = new BTreeKeyValueDB(Options(disk)))
             using (var tr = reopened.StartReadOnlyTransaction())
                 Assert.Equal(Total, Sum(tr));
         }

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Core.Pipeline;
@@ -24,14 +25,18 @@ namespace BTDB.Replication.ProcessTests;
 sealed class Partition : HttpPipelinePolicy
 {
     public volatile bool Storage, Peers;
-    // BTDB_TEST_READ_DELAY_MILLISECONDS slows every Blob read, so a test can stop a node in the middle of a restore.
-    readonly TimeSpan _readDelay = TimeSpan.FromMilliseconds(
-        int.Parse(Environment.GetEnvironmentVariable("BTDB_TEST_READ_DELAY_MILLISECONDS") ?? "0"));
+    // Let the first range reach disk and hold subsequent ranges until the test kills this process.
+    readonly bool _pauseRestore = Environment.GetEnvironmentVariable("BTDB_TEST_PAUSE_RESTORE") == "1";
 
     public override async ValueTask ProcessAsync(HttpMessage message, ReadOnlyMemory<HttpPipelinePolicy> pipeline)
     {
         if (Storage) throw new IOException("Test partition: Blob storage is unreachable.");
-        if (_readDelay > TimeSpan.Zero && message.Request.Method == RequestMethod.Get) await Task.Delay(_readDelay);
+        if (_pauseRestore && message.Request.Method == RequestMethod.Get &&
+            message.Request.Uri.Path.EndsWith(".trl", StringComparison.Ordinal) &&
+            (message.Request.Headers.TryGetValue("x-ms-range", out var range) ||
+             message.Request.Headers.TryGetValue("Range", out range)) &&
+            !range.StartsWith("bytes=0-", StringComparison.Ordinal))
+            await Task.Delay(Timeout.InfiniteTimeSpan, message.CancellationToken);
         await ProcessNextAsync(message, pipeline);
     }
 

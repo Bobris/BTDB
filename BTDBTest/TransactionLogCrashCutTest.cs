@@ -13,9 +13,9 @@ namespace BTDBTest;
 /// survives the next open, with the state it was made on.
 public class TransactionLogCrashCutTest
 {
-    static KeyValueDBOptions Options(string directory) => new()
+    static KeyValueDBOptions Options(IFileCollection files) => new()
     {
-        FileCollection = new OnDiskFileCollection(directory), Compression = new NoCompressionStrategy(),
+        FileCollection = files, Compression = new NoCompressionStrategy(),
         CompactorScheduler = null, FileSplitSize = 1024
     };
 
@@ -52,7 +52,8 @@ public class TransactionLogCrashCutTest
         {
             var model = new SortedDictionary<string, string>(StringComparer.Ordinal);
             var states = new List<string> { Describe(model) };
-            using (var db = new BTreeKeyValueDB(Options(source)))
+            using (var disk = new OnDiskFileCollection(source))
+            using (var db = new BTreeKeyValueDB(Options(disk)))
             {
                 for (var t = 0; t < 10; t++)
                 {
@@ -100,7 +101,8 @@ public class TransactionLogCrashCutTest
                 }
 
                 string opened;
-                using (var db = new BTreeKeyValueDB(Options(work)))
+                using (var disk = new OnDiskFileCollection(work))
+                using (var db = new BTreeKeyValueDB(Options(disk)))
                 {
                     opened = await Read(db);
                     using var tr = await db.StartWritingTransaction();
@@ -127,7 +129,8 @@ public class TransactionLogCrashCutTest
 
     static async Task<string> ReadAt(string directory)
     {
-        using var db = new BTreeKeyValueDB(Options(directory));
+        using var disk = new OnDiskFileCollection(directory);
+        using var db = new BTreeKeyValueDB(Options(disk));
         return await Read(db);
     }
 }

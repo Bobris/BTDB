@@ -89,7 +89,8 @@ public class ObjectDbCrashSimulationTest
             {
                 KeyValueDBCrashSimulationTest.WriteSnapshot(files, directory, random);
                 string opened;
-                using (var kv = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory))))
+                using (var disk = new OnDiskFileCollection(directory))
+                using (var kv = new BTreeKeyValueDB(Options(disk)))
                 using (var db = new ObjectDB())
                 {
                     db.Open(kv, false);
@@ -111,7 +112,8 @@ public class ObjectDbCrashSimulationTest
                 }
 
                 Assert.True(states.Contains(opened), $"Seed {seed} crash {crash}/{total}: opened rows no commit made");
-                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                using var reopenedFiles = new OnDiskFileCollection(directory);
+                using var again = new BTreeKeyValueDB(Options(reopenedFiles));
                 using var reopened = new ObjectDB();
                 reopened.Open(again, false);
                 using var read = reopened.StartReadOnlyTransaction();

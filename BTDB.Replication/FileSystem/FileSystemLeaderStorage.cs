@@ -34,7 +34,7 @@ public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration,
     public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             Initialize();
             if (_store.LeaseHandle != null && _time.GetTimestamp() < _store.LeaseExpiry)
@@ -50,7 +50,7 @@ public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration,
     public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             if (handle != _store.LeaseHandle) return ValueTask.FromResult<TimeSpan?>(null);
             _store.LeaseExpiry = Expiry();
@@ -62,7 +62,7 @@ public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration,
     {
         ArgumentException.ThrowIfNullOrEmpty(proposedHandle);
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             if (currentHandle != _store.LeaseHandle || _time.GetTimestamp() >= _store.LeaseExpiry)
                 throw new IOException("Lease transfer lost ownership.");
@@ -82,7 +82,7 @@ public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration,
     public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             Initialize();
             var current = _store.Get(Key)!;
@@ -95,7 +95,7 @@ public sealed class FileSystemLeaderStorage(string directory, TimeSpan duration,
     {
         ArgumentNullException.ThrowIfNull(json);
         cancellation.ThrowIfCancellationRequested();
-        lock (_store.Lock)
+        using (_store.EnterLock())
         {
             var current = _store.Get(Key);
             if (leaseHandle != _store.LeaseHandle || current == null || current.Version != expectedToken)

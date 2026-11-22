@@ -267,7 +267,8 @@ public class KeyValueDBCrashSimulationTest
                         await OpenAndCommit(recording);
                         var after = during + "-after";
                         WriteSnapshot(recording, after, random);
-                        using var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(after)));
+                        using var reopenedFiles = new OnDiskFileCollection(after);
+                        using var db = new BTreeKeyValueDB(Options(reopenedFiles));
                         var opened = Dump(db);
                         Assert.True(opened == left || opened == (left.Length == 0 ? "C8=01" : left + ";C8=01"),
                             $"Seed {seed} crash {crash}, then {second} of {recoveryOperations} during recovery: opened " +
@@ -381,12 +382,14 @@ public class KeyValueDBCrashSimulationTest
             try
             {
                 WriteSnapshot(files, directory, random);
-                var opened = await OpenAndCommit(new OnDiskFileCollection(directory));
+                string opened;
+                using (var disk = new OnDiskFileCollection(directory)) opened = await OpenAndCommit(disk);
                 var acknowledged = durable ? done.FindLastIndex(d => d <= files.CrashAt) : 0;
                 Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
                     $"Seed {seed} round {round} crash {files.CrashAt}: opened {Short(opened)}, not a commit at or after " +
                     $"{acknowledged}, which returned before the crash");
-                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                using var reopenedFiles = new OnDiskFileCollection(directory);
+                using var again = new BTreeKeyValueDB(Options(reopenedFiles));
                 Assert.True((opened.Length == 0 ? "C8=01" : opened + ";C8=01") == Dump(again),
                     $"Seed {seed} round {round}: the commit after the reopen is lost");
             }
@@ -452,7 +455,8 @@ public class KeyValueDBCrashSimulationTest
                 WriteSnapshot(files, left, random);
                 ulong reached;
                 Copy(left, left + "-probe");
-                var options = Options(new OnDiskFileCollection(left + "-probe"));
+                using var probeFiles = new OnDiskFileCollection(left + "-probe");
+                var options = Options(probeFiles);
                 options.PreserveHistoryUpToCommitUlong = (ulong)preserve;
                 using (var db = new BTreeKeyValueDB(options))
                 using (var tr = db.StartReadOnlyTransaction())
@@ -461,7 +465,8 @@ public class KeyValueDBCrashSimulationTest
                 {
                     var copy = $"{left}-{k}";
                     Copy(left, copy);
-                    var history = Options(new OnDiskFileCollection(copy));
+                    using var historyFiles = new OnDiskFileCollection(copy);
+                    var history = Options(historyFiles);
                     history.PreserveHistoryUpToCommitUlong = (ulong)preserve;
                     history.OpenUpToCommitUlong = (ulong)k;
                     using var db = new BTreeKeyValueDB(history);
@@ -545,7 +550,8 @@ public class KeyValueDBCrashSimulationTest
             try
             {
                 WriteSnapshot(files, directory, random);
-                using var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory)));
+                using var reopenedFiles = new OnDiskFileCollection(directory);
+                using var db = new BTreeKeyValueDB(Options(reopenedFiles));
                 var opened = DumpWithUlongs(db);
                 var acknowledged = done.FindLastIndex(d => d <= crash);
                 Assert.True(Enumerable.Range(acknowledged, states.Count - acknowledged).Any(i => states[i] == opened),
@@ -625,14 +631,18 @@ public class KeyValueDBCrashSimulationTest
                 // A read-only open of what the crash left shows a committed state and changes no file.
                 var before = Directory.GetFiles(directory).Order().Select(f => (f, Convert.ToHexString(
                     System.Security.Cryptography.SHA256.HashData(System.IO.File.ReadAllBytes(f))))).ToList();
-                var readOnly = Options(new OnDiskFileCollection(directory), split);
-                readOnly.ReadOnly = true;
-                using (var db = new BTreeKeyValueDB(readOnly))
-                    Assert.True(states.Contains(Dump(db)), $"Seed {seed} crash {crash}/{total}: read-only open shows {Short(Dump(db))}");
+                using (var disk = new OnDiskFileCollection(directory))
+                {
+                    var readOnly = Options(disk, split);
+                    readOnly.ReadOnly = true;
+                    using (var db = new BTreeKeyValueDB(readOnly))
+                        Assert.True(states.Contains(Dump(db)), $"Seed {seed} crash {crash}/{total}: read-only open shows {Short(Dump(db))}");
+                }
                 Assert.Equal(before, Directory.GetFiles(directory).Order().Select(f => (f, Convert.ToHexString(
                     System.Security.Cryptography.SHA256.HashData(System.IO.File.ReadAllBytes(f))))).ToList());
                 string opened;
-                using (var db = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory), split)))
+                using (var disk = new OnDiskFileCollection(directory))
+                using (var db = new BTreeKeyValueDB(Options(disk, split)))
                 {
                     opened = Dump(db);
                     using var tr = await db.StartWritingTransaction();
@@ -651,7 +661,8 @@ public class KeyValueDBCrashSimulationTest
                         $"Seed {seed} crash {crash}/{total}: lost commit {acknowledged}, which returned before the crash");
                 }
 
-                using var again = new BTreeKeyValueDB(Options(new OnDiskFileCollection(directory), split));
+                using var reopenedFiles = new OnDiskFileCollection(directory);
+                using var again = new BTreeKeyValueDB(Options(reopenedFiles, split));
                 Assert.True((opened.Length == 0 ? "C8=01" : opened + ";C8=01") == Dump(again),
                     $"Seed {seed} crash {crash}/{total}: the commit after the reopen is lost");
             }

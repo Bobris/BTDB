@@ -193,7 +193,7 @@ public class LsmSpillTest
     }
 
     static int Level0Runs(LsmKeyValueDB db) =>
-        System.Text.RegularExpressions.Regex.Match(db.CalcStats(), @"^Level0:.* (\d+) runs$",
+        System.Text.RegularExpressions.Regex.Match(db.CalcStats(), @"^Level0:.* (\d+) runs\r?$",
             System.Text.RegularExpressions.RegexOptions.Multiline) is { Success: true } match
             ? int.Parse(match.Groups[1].Value)
             : 0;

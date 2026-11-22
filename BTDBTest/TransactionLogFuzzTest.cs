@@ -12,9 +12,9 @@ namespace BTDBTest;
 /// keeps.
 public class TransactionLogFuzzTest
 {
-    static KeyValueDBOptions Options(string directory, bool compressed = false) => new()
+    static KeyValueDBOptions Options(IFileCollection files, bool compressed = false) => new()
     {
-        FileCollection = new OnDiskFileCollection(directory),
+        FileCollection = files,
         Compression = compressed ? new SnappyCompressionStrategy() : new NoCompressionStrategy(),
         CompactorScheduler = null
     };
@@ -46,7 +46,8 @@ public class TransactionLogFuzzTest
         Directory.CreateDirectory(directory);
         try
         {
-            using (var db = new BTreeKeyValueDB(Options(directory, compressed)))
+            using (var disk = new OnDiskFileCollection(directory))
+            using (var db = new BTreeKeyValueDB(Options(disk, compressed)))
             {
                 for (var t = 0; t < 30; t++)
                 {
@@ -117,7 +118,8 @@ public class TransactionLogFuzzTest
                     File.Delete(other);
                 try
                 {
-                    using (var reopened = new BTreeKeyValueDB(Options(directory, compressed)))
+                    using (var disk = new OnDiskFileCollection(directory))
+                    using (var reopened = new BTreeKeyValueDB(Options(disk, compressed)))
                     {
                         using (var read = reopened.StartReadOnlyTransaction())
                         using (var check = read.CreateCursor())
@@ -139,7 +141,8 @@ public class TransactionLogFuzzTest
                         tr.Commit();
                     }
 
-                    using (var again = new BTreeKeyValueDB(Options(directory, compressed)))
+                    using (var disk = new OnDiskFileCollection(directory))
+                    using (var again = new BTreeKeyValueDB(Options(disk, compressed)))
                     using (var read = again.StartReadOnlyTransaction())
                     using (var check = read.CreateCursor())
                         Assert.True(check.FindExactKey([200]));

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace BTDB.Replication;
 
@@ -13,7 +14,7 @@ namespace BTDB.Replication;
 /// are random and never repeat, even after a delete.
 /// One process owns the directory through an exclusive lock file; instances in that process share one lock and the
 /// lease state of <see cref="FileSystemLeaderStorage"/>. Call every member except <see cref="Stage"/> under
-/// <see cref="Lock"/>.
+/// <see cref="EnterLock"/>.
 /// </summary>
 internal sealed class FileSystemObjectStore : IDisposable
 {
@@ -22,7 +23,7 @@ internal sealed class FileSystemObjectStore : IDisposable
 
     sealed class Shared(string root, FileStream lockFile)
     {
-        public readonly object Lock = new();
+        public readonly Lock Lock = new();
         public readonly string Root = root;
         public readonly FileStream LockFile = lockFile;
         public int References;
@@ -85,13 +86,12 @@ internal sealed class FileSystemObjectStore : IDisposable
     /// <summary>Flush to the operating system and, unless disabled, to the disk.</summary>
     public void Flush(FileStream stream) => stream.Flush(FlushToDisk);
 
-    public object Lock
+    public Lock.Scope EnterLock()
     {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return _shared.Lock;
-        }
+        var scope = _shared.Lock.EnterScope();
+        if (!_disposed) return scope;
+        scope.Dispose();
+        throw new ObjectDisposedException(nameof(FileSystemObjectStore));
     }
 
     public string? LeaseHandle { get => _shared.LeaseHandle; set => _shared.LeaseHandle = value; }
@@ -293,6 +293,8 @@ internal sealed class FileSystemObjectStore : IDisposable
 
     public void Dispose()
     {
+        // Finish active operations before a new owner can recover the directory.
+        lock (_shared.Lock)
         lock (Opened)
         {
             if (_disposed) return;

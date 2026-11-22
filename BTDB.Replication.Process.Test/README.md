@@ -58,7 +58,7 @@ run is in [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
 
 Nodes use the production `SystemReplicationScheduler` with a 1000 ppm drift bound and a 250 ms safety margin. Test-only
 controls simulate partitions (a Blob pipeline policy that fails every request, middleware that drops replication
-connections), slow Blob reads (`BTDB_TEST_READ_DELAY_MILLISECONDS`), a second database (`BTDB_TEST_DATABASES`) and a
+connections), paused TRL range reads after the first block (`BTDB_TEST_PAUSE_RESTORE`), a second database (`BTDB_TEST_DATABASES`) and a
 higher application generation (`BTDB_TEST_GENERATION`).
 
 Limits: loopback sockets, not production TLS/proxies; partitions are injected per node rather than in the network;

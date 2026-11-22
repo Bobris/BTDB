@@ -136,6 +136,42 @@ public class FileSystemStorageTest : IDisposable
     }
 
     [Fact]
+    public async Task DisposalWaitsForAnObjectWriteBeforeDirectoryRecovery()
+    {
+        var directory = Dir("write-during-disposal");
+        using var store = new FileSystemObjectStore(directory, flushToDisk: false);
+        using var finishWrite = new ManualResetEventSlim();
+        var dataWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var write = Task.Run(() =>
+        {
+            using (store.EnterLock())
+            {
+                var dataFile = store.WriteData([42]);
+                dataWritten.SetResult();
+                if (!finishWrite.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+                store.Put("object", new("version", dataFile, 1));
+            }
+        });
+        await dataWritten.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var reopen = Task.Run(() =>
+        {
+            disposing.SetResult();
+            store.Dispose();
+            using var next = new FileSystemObjectStore(directory, flushToDisk: false);
+            using (next.EnterLock()) return next.ReadAll(next.Get("object")!);
+        });
+        try
+        {
+            await disposing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.NotSame(reopen, await Task.WhenAny(reopen, Task.Delay(100)));
+        }
+        finally { finishWrite.Set(); }
+        await write;
+        Assert.Equal(new byte[] { 42 }, await reopen);
+    }
+
+    [Fact]
     public async Task DirectoryIsLockedForOtherProcessesUntilEveryInstanceIsDisposed()
     {
         var lockFile = Path.Combine(Dir("db"), ".lock");
