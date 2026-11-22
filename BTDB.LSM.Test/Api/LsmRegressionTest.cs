@@ -293,11 +293,16 @@ public class LsmRegressionTest
         public Func<string, CancellationToken, ValueTask>? OnList { get; set; }
         public Func<string, string, TimeSpan, ValueTask<bool?>>? OnRenew { get; set; }
 
+        /// Runs after an object was created; throwing from it reports a failure for a create that landed.
+        public Action<string>? AfterCreate { get; set; }
+
         public async ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content,
             CancellationToken cancellation)
         {
             if (OnCreate != null && await OnCreate(key) is { } outcome) return outcome;
-            return await inner.CreateAsync(key, content, cancellation);
+            var created = await inner.CreateAsync(key, content, cancellation);
+            AfterCreate?.Invoke(key);
+            return created;
         }
 
         public ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation) => inner.TryReadAsync(key, cancellation);
@@ -352,6 +357,71 @@ public class LsmRegressionTest
         Assert.True(failedOnce);
         Assert.Contains("manifest/0000000000000002", inner.Keys("manifest/"));
         Assert.DoesNotContain("manifest/0000000000000003", inner.Keys("manifest/"));
+    }
+
+    // Before the fix a manifest create that landed but reported a failure was retried under the same name with
+    // different content, so the writer found "another writer's" manifest there and fenced itself.
+    [Fact]
+    public async Task LandedButFailedManifestWriteDoesNotFenceWriter()
+    {
+        var inner = new InMemoryLsmStorage();
+        var storage = new ScriptedStorage(inner);
+        var failedOnce = false;
+        using (var db = await LsmKeyValueDB.OpenAsync(new()
+               {
+                   Storage = storage, AcquireWriterLeaseOnOpen = true, BackgroundCompaction = true,
+                   MemtableSize = 4096, DeletionGracePeriod = TimeSpan.FromDays(1)
+               }))
+        {
+            storage.AfterCreate = key =>
+            {
+                if (failedOnce || key != "manifest/0000000000000002") return;
+                failedOnce = true;
+                throw new IOException("Response lost after manifest 2 was created.");
+            };
+            await Commit(db, 0, 10);
+            db.CreateKvi(default);
+            Assert.True(failedOnce);
+            Assert.True(db.HoldsWriterLease);
+            Assert.Contains("manifest/0000000000000003", inner.Keys("manifest/"));
+            await Commit(db, 10, 10);
+            Assert.Equal(20, Count(db));
+        }
+
+        using var reopened = await LsmKeyValueDB.OpenAsync(new() { Storage = inner });
+        Assert.Equal(20, Count(reopened));
+    }
+
+    // Before the fix a failure of the first work after a completed takeover (here the orphan search, which runs in
+    // the acquiring call without background compaction) released the lease while the instance stayed the writer.
+    [Fact]
+    public async Task FailedWorkAfterTakeoverKeepsWriterLease()
+    {
+        var inner = new InMemoryLsmStorage();
+        var storage = new ScriptedStorage(inner);
+        using var db = await LsmKeyValueDB.OpenAsync(new()
+        {
+            Storage = storage, BackgroundCompaction = false, LeaseDuration = TimeSpan.FromSeconds(30)
+        });
+        var failList = true;
+        storage.OnList = (prefix, _) =>
+            failList && prefix == "tables/"
+                ? throw new IOException("Transient listing failure.")
+                : ValueTask.CompletedTask;
+        await Assert.ThrowsAsync<IOException>(async () => await db.AcquireWriterLeaseAsync());
+        Assert.True(db.HoldsWriterLease);
+
+        using var other = await LsmKeyValueDB.OpenAsync(new()
+        {
+            Storage = inner, LeaseDuration = TimeSpan.FromSeconds(30)
+        });
+        using var acquireTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await other.AcquireWriterLeaseAsync(acquireTimeout.Token));
+
+        failList = false;
+        await Commit(db, 0, 5);
+        Assert.Equal(5, Count(db));
     }
 
     // Before the fix CompactAllNow skipped compaction when only one non-L0 table remained, even if it still

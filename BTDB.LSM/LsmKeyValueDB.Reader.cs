@@ -93,10 +93,8 @@ public sealed partial class LsmKeyValueDB
             }
 
             if (authoritative)
-            {
-                dirty = true;
-                (nextChunk, missing) = await ReplayListedWalAsync(_options, replay, cancellation);
-            }
+                (nextChunk, missing) = await ReplayListedWalAsync(_options, replay, cancellation,
+                    () => dirty = true);
             else
             {
                 // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to

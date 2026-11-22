@@ -38,7 +38,11 @@ public sealed partial class LsmKeyValueDB
     {
         lock (_walLock)
         {
-            if (!_isWriter) return;
+            // The commit was published, but the writer role ended before its record was queued: the reload drops
+            // it, so the commit must not report success.
+            if (!_isWriter)
+                throw new LsmWriterFencedException(
+                    "The writer lease was lost before the commit was logged; the transaction was not committed.");
             _walPending.Add(new(generation, transactionNumber, record));
             _walPendingBytes += record.Length;
             _walLinger?.Arrival(WalClock);

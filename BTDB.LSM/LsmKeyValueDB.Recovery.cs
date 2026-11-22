@@ -272,8 +272,9 @@ public sealed partial class LsmKeyValueDB
     /// Lists the WAL and replays its contiguous prefix from the replay's next chunk; returns one past the highest
     /// existing chunk name, which a new writer must not reuse, and the names below it that did not exist from the
     /// first one the replay did not read on, which a new writer must fence.
+    /// beforeApply runs before the first chunk changes the replay.
     static async ValueTask<(long NextChunk, List<long> Missing)> ReplayListedWalAsync(LsmKeyValueDBOptions options,
-        WalReplay replay, CancellationToken cancellation)
+        WalReplay replay, CancellationToken cancellation, Action? beforeApply = null)
     {
         var chunkNumbers = new List<long>();
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "wal/", cancellation))
@@ -293,7 +294,9 @@ public sealed partial class LsmKeyValueDB
         await foreach (var (number, content) in ReadChunksAsync(options, contiguous, cancellation))
         {
             if (content == null) break;
-            replay.Apply(number, WalFormat.Decode(content, WalKey(options.Prefix, number)));
+            var decoded = WalFormat.Decode(content, WalKey(options.Prefix, number));
+            beforeApply?.Invoke();
+            replay.Apply(number, decoded);
         }
 
         var next = Math.Max(chunkNumbers.Count == 0 ? replay.NextChunk : chunkNumbers[^1] + 1, replay.NextChunk);

@@ -72,6 +72,9 @@ public sealed partial class LsmKeyValueDB
                 return;
             }
 
+            // The loop starts before a takeover sets _isWriter, and a permit left by an earlier writer session may
+            // wake it at once; no unit runs before the instance is the writer.
+            if (!_isWriter) continue;
             DeleteObsoleteObjects();
             while (!stop.IsCancellationRequested)
             {
@@ -372,15 +375,50 @@ public sealed partial class LsmKeyValueDB
             _options.TableTailReadSize, content);
     }
 
+    /// A manifest attempt that failed without telling whether it was created; its name is checked before reuse.
+    (long Sequence, byte[] Content)? _unconfirmedManifest;
+
+    /// Manifests this writer created after _lastManifest while their edits failed; readers may have loaded them, so
+    /// they are replaced and deleted like any other manifest.
+    readonly List<long> _strandedManifests = [];
+
+    void ResetManifestAttempts()
+    {
+        _unconfirmedManifest = null;
+        _strandedManifests.Clear();
+    }
+
     /// Writes the next manifest. It lists every pending deletion: those already waiting, the objects this edit drops
-    /// and the manifest it replaces; the caller adds the dropped objects to the waiting ones once it published them.
+    /// and the manifests it replaces; the caller adds the dropped objects to the waiting ones once it published them.
+    /// A failed attempt does not use up its name unless it may have been created; then the name is read back first.
     void WriteManifest(LsmVersion version, ulong commitUlong, ulong[] ulongs, long transactionNumber,
         long flushedGeneration, long walStartChunk, long walStartEpoch,
         IReadOnlyCollection<LsmPendingDeletion>? dropped = null,
         DateTimeOffset? now = null)
     {
         var previous = _lastManifest;
+        var sequence = Math.Max(previous.Sequence, _strandedManifests.Count > 0 ? _strandedManifests[^1] : 0) + 1;
+        if (_unconfirmedManifest is { } unconfirmed)
+        {
+            if (unconfirmed.Sequence == sequence)
+            {
+                // A read failure keeps the attempt unconfirmed, so the next edit checks again.
+                var existing = _storage.TryReadAsync(ManifestKey(sequence), CancellationToken.None).AsTask()
+                    .GetAwaiter().GetResult();
+                if (existing != null)
+                {
+                    if (!existing.AsSpan().SequenceEqual(unconfirmed.Content))
+                        throw new LsmWriterFencedException($"{ManifestKey(sequence)} was written by another writer.");
+                    _strandedManifests.Add(sequence);
+                    sequence++;
+                }
+            }
+
+            _unconfirmedManifest = null;
+        }
+
         var replacedAt = now ?? _options.TimeProvider.GetUtcNow();
+        long[] replaced = previous.Sequence > 0 ? [previous.Sequence, .. _strandedManifests] : [.. _strandedManifests];
         LsmPendingDeletion[] pending;
         lock (_obsoleteObjects)
             pending =
@@ -388,9 +426,7 @@ public sealed partial class LsmKeyValueDB
                 .. _obsoleteObjects.Where(o => o.Kind != LsmObjectKind.WalChunk)
                     .Select(o => new LsmPendingDeletion(o.Kind, o.Number, o.Since)),
                 .. dropped ?? [],
-                .. previous.Sequence > 0
-                    ? [new LsmPendingDeletion(LsmObjectKind.Manifest, (ulong)previous.Sequence, replacedAt)]
-                    : Array.Empty<LsmPendingDeletion>()
+                .. replaced.Select(r => new LsmPendingDeletion(LsmObjectKind.Manifest, (ulong)r, replacedAt))
             ];
         // Rounding the times up to a 64th of the grace period keeps the manifest small: the manifests replaced
         // within one period form one run. A successor deletes those objects at most that much later.
@@ -403,7 +439,7 @@ public sealed partial class LsmKeyValueDB
         }
         var manifest = new LsmManifest
         {
-            Sequence = previous.Sequence + 1, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
+            Sequence = sequence, NextFileNumber = _nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = version.LevelCount, WriterEpoch = _epoch,
             WriterSession = _writerSession, FlushedGeneration = flushedGeneration, WalStartChunk = walStartChunk,
             WalStartEpoch = walStartEpoch,
@@ -412,12 +448,24 @@ public sealed partial class LsmKeyValueDB
             ValueFiles = version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray(),
             PendingDeletions = pending
         };
-        CreateObject(ManifestKey(manifest.Sequence), manifest.Encode(), true);
+        var content = manifest.Encode();
+        try
+        {
+            CreateObject(ManifestKey(manifest.Sequence), content, true);
+        }
+        catch (Exception ex) when (ex is not LsmWriterFencedException)
+        {
+            _unconfirmedManifest = (manifest.Sequence, content);
+            throw;
+        }
+
         _lastManifest = manifest;
+        _strandedManifests.Clear();
         // Readers probe manifest names in order, so replaced manifests stay for a while (ManifestRetention).
-        if (previous.Sequence > 0)
+        if (replaced.Length > 0)
             lock (_obsoleteObjects)
-                _obsoleteObjects.Add(new(LsmObjectKind.Manifest, (ulong)previous.Sequence, 0, replacedAt));
+                foreach (var r in replaced)
+                    _obsoleteObjects.Add(new(LsmObjectKind.Manifest, (ulong)r, 0, replacedAt));
         Logger?.KeyValueIndexCreated((uint)manifest.Sequence, version.Components.Sum(c => c.EntryCount), 0,
             TimeSpan.Zero, 0);
     }

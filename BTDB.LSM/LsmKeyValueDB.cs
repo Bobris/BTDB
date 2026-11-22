@@ -80,19 +80,39 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     {
         options.Validate();
         var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
+        LoadedDatabase? loaded = null;
         LsmKeyValueDB? db = null;
         try
         {
-            db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
+            loaded = await LoadAsync(options, cache, null, cancellation);
+            db = new LsmKeyValueDB(options, cache, loaded);
             if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);
             return db;
         }
         catch
         {
-            if (db != null) db.Dispose();
-            else if (options.BlockCache == null) cache.Dispose();
+            // Cleanup failures must not hide why opening failed.
+            try
+            {
+                if (db != null) db.Dispose();
+                else
+                {
+                    if (loaded != null) DisposeArenas(loaded.Replay);
+                    if (options.BlockCache == null) cache.Dispose();
+                }
+            }
+            catch
+            {
+            }
+
             throw;
         }
+    }
+
+    static void DisposeArenas(WalReplay replay)
+    {
+        replay.Memtable?.Arena?.Dispose();
+        foreach (var sealedMemtable in replay.Sealed) sealedMemtable.Memtable.Arena?.Dispose();
     }
 
     static string TableKey(string prefix, ulong fileNumber) => $"{prefix}tables/{fileNumber:D16}.sst";

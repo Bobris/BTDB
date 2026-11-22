@@ -50,6 +50,7 @@ public sealed partial class LsmKeyValueDB
     public async ValueTask AcquireWriterLeaseAsync(CancellationToken cancellation = default)
     {
         await _modeLock.WaitAsync(cancellation);
+        var becameWriter = false;
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -83,9 +84,10 @@ public sealed partial class LsmKeyValueDB
                     try
                     {
                         await BecomeWriterAsync(cancellation);
-                        return;
+                        becameWriter = true;
+                        break;
                     }
-                    catch (LsmWriterFencedException ex)
+                    catch (LsmWriterFencedException ex) when (!_isWriter)
                     {
                         // A predecessor wrote at the same name concurrently, or the lease ran out during the
                         // takeover; reload its legitimate history under a fresh lease.
@@ -101,7 +103,9 @@ public sealed partial class LsmKeyValueDB
         }
         catch
         {
-            if (_holdsLease)
+            // Only a takeover that did not complete gives the lease back; once _isWriter is set, the instance is the
+            // writer and leaves the lease to StepDownAsync or LoseWriterAsync.
+            if (_holdsLease && !_isWriter)
             {
                 _holdsLease = false;
                 try
@@ -119,6 +123,11 @@ public sealed partial class LsmKeyValueDB
         {
             _modeLock.Release();
         }
+
+        // The first work of the new writer (the orphan search, flushes of replayed generations) runs after the
+        // takeover completed and outside the mode lock; without background compaction it runs here and a failure
+        // reaches the caller like a failed unit of a commit, while the instance stays the writer.
+        if (becameWriter) RequestWork();
     }
 
     /// Takes over as the writer while holding the lease: catches up from this instance's reader state (listing
@@ -133,6 +142,7 @@ public sealed partial class LsmKeyValueDB
         _epoch = Math.Max(replay.MaxEpoch, manifest.WriterEpoch) + 1;
         // Another takeover from the same state computes the same epoch; its fencing manifest must differ from ours.
         _writerSession = _options.WriterSession ?? (ulong)Random.Shared.NextInt64(long.MinValue, long.MaxValue);
+        ResetManifestAttempts();
         // Every writer session numbers new files from its own range, so they never collide with files a predecessor
         // created but did not publish.
         _nextFileNumber = Math.Max(manifest.NextFileNumber, FirstFileNumber(_epoch));
@@ -168,11 +178,11 @@ public sealed partial class LsmKeyValueDB
         }
 
         // Only now is the manifest final: a failed attempt may have seen objects a predecessor then published.
-        // Start background services before exposing _isWriter so concurrent writers never miss the new signal.
+        // Start background services before exposing _isWriter so concurrent writers never miss the new signal; the
+        // background loops run no work until _isWriter is set.
         _orphanScanDue = true;
         StartWriterServices();
         _isWriter = true;
-        RequestWork();
     }
 
     static ulong FirstFileNumber(long epoch) => (ulong)epoch << 32;
