@@ -93,6 +93,7 @@ sealed class OverlappingLeaseStorage(InMemoryLsmStorage inner) : ILsmStorage
 sealed class RenewalFailingStorage(InMemoryLsmStorage inner) : ILsmStorage
 {
     public volatile bool FailRenewals;
+    public readonly TaskCompletionSource RenewalRejected = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation) => inner.CreateAsync(key, content, cancellation);
     public ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation) => inner.TryReadAsync(key, cancellation);
@@ -101,8 +102,12 @@ sealed class RenewalFailingStorage(InMemoryLsmStorage inner) : ILsmStorage
     public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) => inner.ListAsync(prefix, cancellation);
     public ValueTask DeleteAsync(string key, CancellationToken cancellation) => inner.DeleteAsync(key, cancellation);
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) => inner.TryAcquireLeaseAsync(key, leaseId, duration, cancellation);
-    public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation) =>
-        FailRenewals ? ValueTask.FromResult(false) : inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
+    public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation)
+    {
+        if (!FailRenewals) return inner.RenewLeaseAsync(key, leaseId, duration, cancellation);
+        RenewalRejected.TrySetResult();
+        return ValueTask.FromResult(false);
+    }
     public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation) => inner.ReleaseLeaseAsync(key, leaseId, cancellation);
 }
 
@@ -257,26 +262,24 @@ public class LsmWriterHandoffTest
         });
         await Write(db, 0, 10, 1);
         await db.FlushAsync();
-        // The commit found the instance the writer; then the lease is lost. Wait until losing the role reloaded the
-        // state from storage, or until it waits for this commit.
+        // The hook holds the commit state lock. Wait for the rejected renewal here; the role transition itself
+        // needs this same lock and can finish only after the hook returns.
         db.AfterWriterCheck = () =>
         {
             db.AfterWriterCheck = null;
             failing.FailRenewals = true;
-            var waited = Stopwatch.StartNew();
-            while (db.HoldsWriterLease && waited.Elapsed < TimeSpan.FromSeconds(5)) Thread.Sleep(10);
-            Thread.Sleep(500);
+            failing.RenewalRejected.Task.WaitAsync(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
         };
         try
         {
-            await Write(db, 1000, 1, 2);
+            await Task.Run(() => Write(db, 1000, 1, 2));
         }
-        catch (BTDBException)
+        catch (LsmWriterFencedException)
         {
         }
 
         var deadline = Stopwatch.StartNew();
-        while (db.HoldsWriterLease && deadline.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10);
+        while (db.HoldsWriterLease && deadline.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(10);
         Assert.False(db.HoldsWriterLease);
         // Before the fix the commit published after the reload, so the instance kept showing a commit storage lacks.
         using var fresh = await LsmKeyValueDB.OpenAsync(Options(storage));

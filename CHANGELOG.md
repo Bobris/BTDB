@@ -37,7 +37,8 @@
 - File-system replication storage now finishes writes under its directory lock before disposal releases ownership.
   An immediate restart can recover the directory without racing a write from the previous instance.
 - Fixed Windows test failures caused by open file collections and CRLF statistics output. The process failover
-  test now kills its node after the first TRL block is on disk, and CI can execute the BackendActions NativeAOT smoke script.
+  test now kills its node after the first TRL block is on disk, and the LSM race test waits for a rejected lease renewal.
+  CI can execute the BackendActions NativeAOT smoke script.
 
 - EventStoreLayer / EventStore2Layer / EventSourcing: hardened the new Layer2 metadata catalog and codec:
   - `TupleTypeDescriptor` no longer caches incomplete names or preferred types while an item is a placeholder, fixing
